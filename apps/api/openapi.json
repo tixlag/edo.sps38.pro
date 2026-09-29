@@ -1,0 +1,416 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "getHealth",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Service health check",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/dashboard": {
+      "get": {
+        "operationId": "getDashboard",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing bearer token"
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Dashboard summary (seed-backed for first slice)",
+        "tags": [
+          "dashboard"
+        ]
+      }
+    },
+    "/api/v1/employees": {
+      "get": {
+        "operationId": "listEmployees",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeListResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing bearer token"
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "List employees (first vertical slice)",
+        "tags": [
+          "employees"
+        ]
+      }
+    },
+    "/api/v1/employees/{id}": {
+      "get": {
+        "operationId": "getEmployee",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing bearer token"
+          },
+          "404": {
+            "description": "Employee not found"
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Get employee by id",
+        "tags": [
+          "employees"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "EDO SPS38 API",
+    "description": "Internal employee onboarding service: employees, documents, tasks, dashboard, audit.",
+    "version": "0.1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "access-jwt": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "HealthResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "ok"
+          },
+          "version": {
+            "type": "string",
+            "example": "0.1.0"
+          },
+          "time": {
+            "type": "string",
+            "example": "2026-09-29T12:00:00.000Z"
+          }
+        },
+        "required": [
+          "status",
+          "version",
+          "time"
+        ]
+      },
+      "KpiDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "queue"
+          },
+          "label": {
+            "type": "string",
+            "example": "Очередь проверки"
+          },
+          "value": {
+            "type": "string",
+            "example": "11"
+          },
+          "hint": {
+            "type": "string",
+            "example": "документов ждут проверки"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "value",
+          "hint"
+        ]
+      },
+      "WeeklyBarDto": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "example": "Пн"
+          },
+          "value": {
+            "type": "number",
+            "example": 4
+          }
+        },
+        "required": [
+          "day",
+          "value"
+        ]
+      },
+      "StageSliceDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "example": "Оформлены"
+          },
+          "value": {
+            "type": "number",
+            "example": 18
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ]
+      },
+      "ActivityItemDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "example": "doc-check"
+          },
+          "title": {
+            "type": "string",
+            "example": "Проверка документа — СНИЛС — Холов Джамшед Фирузович"
+          },
+          "time": {
+            "type": "string",
+            "example": "2 мин назад"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "time"
+        ]
+      },
+      "BlockedItemDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "example": "Токтогулов Айбек Русланович"
+          },
+          "step": {
+            "type": "string",
+            "example": "Проверка патента"
+          }
+        },
+        "required": [
+          "fullName",
+          "step"
+        ]
+      },
+      "TaskItemDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "example": "Проверить страховой полис ДМС — Назаров Фаррух"
+          },
+          "due": {
+            "type": "string",
+            "example": "today"
+          }
+        },
+        "required": [
+          "title",
+          "due"
+        ]
+      },
+      "DashboardResponseDto": {
+        "type": "object",
+        "properties": {
+          "kpis": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KpiDto"
+            }
+          },
+          "weekly": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeeklyBarDto"
+            }
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StageSliceDto"
+            }
+          },
+          "activity": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityItemDto"
+            }
+          },
+          "blocked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlockedItemDto"
+            }
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskItemDto"
+            }
+          },
+          "source": {
+            "type": "string",
+            "example": "seed"
+          }
+        },
+        "required": [
+          "kpis",
+          "weekly",
+          "stages",
+          "activity",
+          "blocked",
+          "tasks",
+          "source"
+        ]
+      },
+      "EmployeeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "cuid_1"
+          },
+          "fullName": {
+            "type": "string",
+            "example": "Каримов Азиз Шарифович"
+          },
+          "country": {
+            "type": "string",
+            "example": "Таджикистан",
+            "nullable": true
+          },
+          "position": {
+            "type": "string",
+            "example": "Монолитчик",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "INVITED",
+              "ONBOARDING",
+              "BLOCKED",
+              "IN_REVIEW",
+              "SIGNING",
+              "HIRED"
+            ],
+            "example": "IN_REVIEW"
+          },
+          "stage": {
+            "type": "string",
+            "example": "Проверка документов",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "fullName",
+          "country",
+          "position",
+          "status",
+          "stage",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "EmployeeListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EmployeeDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "example": 5
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ]
+      }
+    }
+  }
+}

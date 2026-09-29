@@ -1,0 +1,28 @@
+{
+  "name": "edo-sps38",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.15.3",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "api:generate": "turbo api:generate",
+    "db:migrate": "dotenv -e .env -- pnpm --filter @edo/api exec prisma migrate deploy",
+    "db:migrate:dev": "dotenv -e .env -- pnpm --filter @edo/api exec prisma migrate dev",
+    "db:seed": "pnpm --filter @edo/api db:seed",
+    "docker:up": "docker compose up -d mariadb redis minio",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@prisma/client": "6.2.1",
+    "dotenv-cli": "7.4.2",
+    "prisma": "6.2.1",
+    "turbo": "2.5.4",
+    "typescript": "5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

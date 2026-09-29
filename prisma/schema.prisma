@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmployeeStatus {
+  INVITED
+  ONBOARDING
+  BLOCKED
+  IN_REVIEW
+  SIGNING
+  HIRED
+}
+
+enum DocumentStatus {
+  DRAFT
+  UPLOADED
+  OCR_PENDING
+  OCR_FAILED
+  IN_REVIEW
+  RETURNED
+  APPROVED
+  SIGNED
+  EXPIRED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum AuditAction {
+  EMPLOYEE_CREATED
+  DOCUMENT_UPLOADED
+  DOCUMENT_RETURNED
+  DOCUMENT_APPROVED
+  DOCUMENT_SIGNED
+  WORKFLOW_STAGE_CHANGED
+  DATA_IMPORTED
+}
+
+model Employee {
+  id        String         @id @default(cuid())
+  fullName  String
+  country   String?
+  position  String?
+  status    EmployeeStatus @default(INVITED)
+  stage     String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  documents Document[]
+  tasks     Task[]
+  auditLogs AuditLog[] @relation("AuditEntityEmployee")
+
+  @@map("employees")
+}
+
+model DocumentType {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  title     String
+  createdAt DateTime @default(now())
+
+  documents Document[]
+
+  @@map("document_types")
+}
+
+model Document {
+  id             String         @id @default(cuid())
+  employeeId     String
+  documentTypeId String?
+  status         DocumentStatus @default(DRAFT)
+  currentVersion Int            @default(1)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  employee     Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  documentType DocumentType?  @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+  versions     DocumentVersion[]
+  auditLogs    AuditLog[]     @relation("AuditEntityDocument")
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id         String   @id @default(cuid())
+  documentId String
+  version    Int
+  storageKey String
+  mimeType   String?
+  sizeBytes  Int?
+  ocrRaw     Json?
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, version])
+  @@map("document_versions")
+}
+
+model Task {
+  id         String     @id @default(cuid())
+  title      String
+  assignee   String?
+  employeeId String?
+  status     TaskStatus @default(TODO)
+  dueDate    DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@map("tasks")
+}
+
+model AuditLog {
+  id            String      @id @default(cuid())
+  actorId       String?
+  action        AuditAction
+  entityType    String
+  entityId      String
+  before        Json?
+  after         Json?
+  correlationId String?
+  createdAt     DateTime    @default(now())
+
+  employee Employee? @relation("AuditEntityEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  employeeId String?
+  document Document? @relation("AuditEntityDocument", fields: [documentId], references: [id], onDelete: SetNull)
+  documentId String?
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

@@ -1,0 +1,8 @@
+export enum EmployeeStatus {
+  INVITED = 'INVITED',
+  ONBOARDING = 'ONBOARDING',
+  BLOCKED = 'BLOCKED',
+  IN_REVIEW = 'IN_REVIEW',
+  SIGNING = 'SIGNING',
+  HIRED = 'HIRED',
+}
