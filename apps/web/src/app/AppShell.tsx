@@ -1,13 +1,9 @@
 import * as React from 'react';
+import { Outlet, useLocation, useNavigate, useParams } from '@tanstack/react-router';
 import { AppSidebar } from '../components/AppSidebar';
 import { AppHeader } from '../components/AppHeader';
-import { DashboardPage } from '../pages/DashboardPage';
-import { EmployeesPage } from '../pages/EmployeesPage';
-import { EmployeeDetailPage } from '../pages/EmployeeDetailPage';
 
-type Route = '/' | '/employees' | '/employee' | '/tasks' | '/review' | '/onboarding' | '/signing' | '/participants' | '/settings';
-
-const CRUMBS: Record<Route, string> = {
+const CRUMBS: Record<string, string> = {
   '/': 'Дашборд',
   '/employees': 'Работники',
   '/employee': 'Карточка работника',
@@ -19,41 +15,39 @@ const CRUMBS: Record<Route, string> = {
   '/settings': 'Настройки',
 };
 
+function crumbFor(pathname: string): string {
+  if (pathname.startsWith('/employees/')) return CRUMBS['/employee'] ?? '';
+  return CRUMBS[pathname] ?? CRUMBS['/'] ?? '';
+}
+
+function activeFor(pathname: string): string {
+  if (pathname.startsWith('/employees')) return '/employees';
+  return pathname;
+}
+
+/** Layout shell: real URL routing via TanStack Router (back/forward + deep links work). */
 export function AppShell() {
   const [collapsed, setCollapsed] = React.useState(true);
-  const [route, setRoute] = React.useState<Route>('/');
-  const [employeeId, setEmployeeId] = React.useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const pathname = location.pathname;
 
-  const navigate = (to: string) => {
-    if (to.startsWith('/employees/')) {
-      setEmployeeId(to.split('/').pop() ?? null);
-      setRoute('/employee');
-      return;
-    }
-    setRoute((to as Route) in CRUMBS ? (to as Route) : '/');
+  const go = (to: string) => {
+    void navigate({ to });
   };
 
   return (
     <div className="flex h-full">
       <AppSidebar
         collapsed={collapsed}
-        active={route === '/employee' ? '/employees' : route}
+        active={activeFor(pathname)}
         onToggle={() => setCollapsed((v) => !v)}
-        onNavigate={navigate}
+        onNavigate={go}
       />
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        <AppHeader crumb={CRUMBS[route]} />
+        <AppHeader crumb={crumbFor(pathname)} />
         <main className="min-h-0 flex-1">
-          {route === '/' && <DashboardPage />}
-          {route === '/employees' && (
-            <EmployeesPage onOpen={(id) => navigate(`/employees/${id}`)} />
-          )}
-          {route === '/employee' && employeeId && <EmployeeDetailPage id={employeeId} />}
-          {!['/', '/employees', '/employee'].includes(route) && (
-            <div className="flex h-full items-center justify-center text-sm text-[var(--muted-foreground)]">
-              Раздел «{CRUMBS[route]}» — следующий слайс (макеты Pencil готовы).
-            </div>
-          )}
+          <Outlet />
         </main>
       </div>
       <div className="pointer-events-none fixed bottom-6 right-6 flex w-[360px] items-center gap-3 rounded-[12px] bg-[var(--toast-bg)] p-[12px_14px] text-white shadow-[0_5px_18px_rgba(0,0,0,0.19)]">
@@ -67,4 +61,13 @@ export function AppShell() {
       </div>
     </div>
   );
+}
+
+export function useEmployeeRouteId(): string | null {
+  try {
+    const params = useParams({ strict: false }) as { employeeId?: string };
+    return params.employeeId ?? null;
+  } catch {
+    return null;
+  }
 }

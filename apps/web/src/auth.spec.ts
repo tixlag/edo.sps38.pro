@@ -21,4 +21,11 @@ describe('auth-token (in-memory only)', () => {
       expect(src).not.toMatch(/indexedDB/);
     }
   });
+
+  it('dev bypass is explicitly gated (never a default demo login)', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(here, 'lib/auth-context.tsx'), 'utf8');
+    expect(src).toMatch(/VITE_ALLOW_INSECURE_DEV_AUTH/);
+    expect(src).toMatch(/import\.meta\.env\.DEV/);
+  });
 });

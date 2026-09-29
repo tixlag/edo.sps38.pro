@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DashboardService } from './src/dashboard/dashboard.service';
+import { DashboardService } from '../src/dashboard/dashboard.service';
 
 describe('DashboardService', () => {
   it('returns deterministic Pencil-shaped payload', () => {

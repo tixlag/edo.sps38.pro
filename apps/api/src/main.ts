@@ -4,8 +4,13 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule, type OpenAPIObject } from '@nestjs/swagger';
 import fastifyCors from '@fastify/cors';
 import { randomUUID } from 'crypto';
+import { join } from 'path';
+import { config as dotenvConfig } from 'dotenv';
 import { AppModule } from './app.module';
 import { HttpErrorFilter } from './common/http-error.filter';
+
+// Explicit root .env loading (do not rely on cwd): apps/api runs from apps/api/.
+dotenvConfig({ path: join(__dirname, '..', '..', '..', '.env') });
 
 export async function createApp(): Promise<{ app: NestFastifyApplication; document: OpenAPIObject }> {
   const app = await NestFactory.create<NestFastifyApplication>(

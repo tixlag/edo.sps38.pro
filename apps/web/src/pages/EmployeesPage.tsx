@@ -1,9 +1,10 @@
 import type { ColumnDef } from '@tanstack/react-table';
-import { useListEmployees, type EmployeeDto } from '@edo/api-client/src/generated/api';
-import { Card, CardContent } from '@edo/ui/src/components/card';
-import { PageHeader } from '@edo/ui/src/components/page-header';
-import { StatusBadge } from '@edo/ui/src/components/status-badge';
-import { Button } from '@edo/ui/src/components/button';
+import { useNavigate } from '@tanstack/react-router';
+import { useListEmployees, type EmployeeDto } from '@edo/api-client';
+import { Card, CardContent } from '@edo/ui';
+import { PageHeader } from '@edo/ui';
+import { StatusBadge } from '@edo/ui';
+import { Button } from '@edo/ui';
 import { DataTable } from '../components/DataTable';
 
 const columns: ColumnDef<EmployeeDto>[] = [
@@ -18,8 +19,9 @@ const columns: ColumnDef<EmployeeDto>[] = [
   },
 ];
 
-export function EmployeesPage({ onOpen }: { onOpen: (id: string) => void }) {
+export function EmployeesPage() {
   const { data, isLoading, isError } = useListEmployees();
+  const navigate = useNavigate();
 
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-[26px_28px_28px_28px]">
@@ -40,7 +42,11 @@ export function EmployeesPage({ onOpen }: { onOpen: (id: string) => void }) {
                   id: 'actions',
                   header: '',
                   cell: ({ row }) => (
-                    <Button size="sm" variant="outline" onClick={() => onOpen(row.original.id)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void navigate({ to: `/employees/${row.original.id}` })}
+                    >
                       Открыть
                     </Button>
                   ),

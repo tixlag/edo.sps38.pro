@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { createRoot } from 'react-dom/client';
-import { setApiBaseUrl } from '@edo/api-client/src/mutator/custom-instance';
+import { setApiBaseUrl } from '@edo/api-client';
 import { App } from './app/App';
 import './index.css';
 

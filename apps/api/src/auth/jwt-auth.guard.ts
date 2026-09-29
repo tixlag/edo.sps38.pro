@@ -1,21 +1,26 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
 import { IS_PUBLIC_KEY } from './public.decorator';
+import { JwtService } from './jwt.service';
+import { EDO_ACCESS_RULE_IDS } from './edo-access-rule';
+import type { AccessRulesMap, AuthPrincipal } from './auth-principal';
 
 /**
- * Abstraction over the external unified auth service.
- *
- * Real JWT verification (issuer/JWKS/audience from env) is plugged here once
- * the auth-service contract is provided. For the first slice the guard:
- * - allows @Public() routes (health, openapi),
- * - accepts any well-formed `Authorization: Bearer <jwt>` on protected routes
- *   so the end-to-end chain can be proven without inventing the IdP contract.
- *
- * TODO(auth): verify signature via AUTH_JWKS_URL / AUTH_ISSUER / AUTH_AUDIENCE.
+ * Verifies the unified ecosystem JWT (HS256, shared secret).
+ * - Algorithm pinned to JWT_ALG (default HS256), never trusts header.alg.
+ * - Issuer must equal JWT_ISSUER (default lk-auth-service); exp always checked.
+ * - Fail closed: misconfiguration or invalid token -> 401.
+ * - Dev bypass ONLY when ALLOW_INSECURE_DEV_AUTH=true AND NODE_ENV=development/test,
+ *   accepting the literal `dev-demo-token` for local UI work. Default off.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly jwtService: JwtService,
+    private readonly config: ConfigService,
+  ) {}
 
   canActivate(context: ExecutionContext): boolean {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -26,18 +31,41 @@ export class JwtAuthGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest() as {
       headers: Record<string, string | undefined>;
-      user?: unknown;
+      user?: AuthPrincipal;
     };
     const header = req.headers['authorization'] ?? req.headers['Authorization'];
     if (!header || !header.startsWith('Bearer ')) {
       throw new UnauthorizedException('Missing bearer token');
     }
     const token = header.slice('Bearer '.length).trim();
-    if (token.split('.').length !== 3 && token.length < 8) {
-      throw new UnauthorizedException('Malformed bearer token');
+    if (!token) {
+      throw new UnauthorizedException('Missing bearer token');
     }
-    // Attach a minimal principal; real claims come from verified JWT later.
-    req.user = { token };
+
+    const allowInsecure =
+      String(this.config.get('ALLOW_INSECURE_DEV_AUTH') ?? process.env.ALLOW_INSECURE_DEV_AUTH ?? 'false') ===
+        'true' ||
+      (this.config.get('ALLOW_INSECURE_DEV_AUTH') as unknown as boolean) === true;
+    const nodeEnv =
+      String(this.config.get('NODE_ENV') ?? process.env.NODE_ENV ?? 'development') as string;
+    if (token === 'dev-demo-token' && allowInsecure && (nodeEnv === 'development' || nodeEnv === 'test')) {
+      // Local UI work only: full EDO rule set so rule-guarded slices render.
+      // Never enabled in production (env validation throws when NODE_ENV=production).
+      const accessRules: AccessRulesMap = {};
+      for (const id of EDO_ACCESS_RULE_IDS) accessRules[String(id)] = [];
+      req.user = {
+        uuid: 'dev-demo',
+        code1c: null,
+        sid: null,
+        deviceId: null,
+        accessRules,
+        expiresAt: null,
+      };
+      return true;
+    }
+
+    const principal = this.jwtService.verify(token);
+    req.user = principal;
     return true;
   }
 }

@@ -19,6 +19,19 @@ export interface HealthResponseDto {
   time: string;
 }
 
+export interface ReadinessCheckDto {
+  status: string;
+  ok: boolean;
+  error?: string;
+}
+
+export interface ReadyResponseDto {
+  status: string;
+  mariadb: ReadinessCheckDto;
+  rabbitmq: ReadinessCheckDto;
+  redis: ReadinessCheckDto;
+}
+
 export interface KpiDto {
   key: string;
   label: string;
@@ -94,8 +107,23 @@ export interface EmployeeListResponseDto {
   total: number;
 }
 
+export interface LocationScopeDto {
+  all: boolean;
+  locationIds: number[];
+}
+
+export type MeResponseDtoPermissions = { [key: string]: unknown };
+
+export interface MeResponseDto {
+  uuid: string;
+  /** @nullable */
+  code1c: string | null;
+  permissions: MeResponseDtoPermissions;
+  locationScope: LocationScopeDto;
+}
+
 /**
- * @summary Service health check
+ * @summary Service health check (legacy, same as live)
  */
 export const getHealth = (signal?: AbortSignal) => {
   return customInstance<HealthResponseDto>({
@@ -136,7 +164,7 @@ export type GetHealthQueryResult = NonNullable<
 export type GetHealthQueryError = unknown;
 
 /**
- * @summary Service health check
+ * @summary Service health check (legacy, same as live)
  */
 
 export function useGetHealth<
@@ -146,6 +174,146 @@ export function useGetHealth<
   query?: UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetHealthQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Liveness: process is running
+ */
+export const getHealthLive = (signal?: AbortSignal) => {
+  return customInstance<HealthResponseDto>({
+    url: `/api/health/live`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetHealthLiveQueryKey = () => {
+  return [`/api/health/live`] as const;
+};
+
+export const getGetHealthLiveQueryOptions = <
+  TData = Awaited<ReturnType<typeof getHealthLive>>,
+  TError = unknown,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getHealthLive>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetHealthLiveQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getHealthLive>>> = ({
+    signal,
+  }) => getHealthLive(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getHealthLive>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetHealthLiveQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getHealthLive>>
+>;
+export type GetHealthLiveQueryError = unknown;
+
+/**
+ * @summary Liveness: process is running
+ */
+
+export function useGetHealthLive<
+  TData = Awaited<ReturnType<typeof getHealthLive>>,
+  TError = unknown,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getHealthLive>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetHealthLiveQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Readiness: MariaDB, RabbitMQ, Redis checks
+ */
+export const getHealthReady = (signal?: AbortSignal) => {
+  return customInstance<ReadyResponseDto>({
+    url: `/api/health/ready`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetHealthReadyQueryKey = () => {
+  return [`/api/health/ready`] as const;
+};
+
+export const getGetHealthReadyQueryOptions = <
+  TData = Awaited<ReturnType<typeof getHealthReady>>,
+  TError = unknown,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getHealthReady>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetHealthReadyQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getHealthReady>>> = ({
+    signal,
+  }) => getHealthReady(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getHealthReady>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetHealthReadyQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getHealthReady>>
+>;
+export type GetHealthReadyQueryError = unknown;
+
+/**
+ * @summary Readiness: MariaDB, RabbitMQ, Redis checks
+ */
+
+export function useGetHealthReady<
+  TData = Awaited<ReturnType<typeof getHealthReady>>,
+  TError = unknown,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getHealthReady>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetHealthReadyQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -227,7 +395,7 @@ export function useGetDashboard<
 }
 
 /**
- * @summary List employees (first vertical slice)
+ * @summary List employees (EDO domain)
  */
 export const listEmployees = (signal?: AbortSignal) => {
   return customInstance<EmployeeListResponseDto>({
@@ -272,7 +440,7 @@ export type ListEmployeesQueryResult = NonNullable<
 export type ListEmployeesQueryError = void;
 
 /**
- * @summary List employees (first vertical slice)
+ * @summary List employees (EDO domain)
  */
 
 export function useListEmployees<
@@ -367,6 +535,66 @@ export function useGetEmployee<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetEmployeeQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Current principal (permissions + location scope)
+ */
+export const getMe = (signal?: AbortSignal) => {
+  return customInstance<MeResponseDto>({
+    url: `/api/v1/me`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetMeQueryKey = () => {
+  return [`/api/v1/me`] as const;
+};
+
+export const getGetMeQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMe>>,
+  TError = void,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetMeQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getMe>>> = ({
+    signal,
+  }) => getMe(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMe>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMeQueryResult = NonNullable<Awaited<ReturnType<typeof getMe>>>;
+export type GetMeQueryError = void;
+
+/**
+ * @summary Current principal (permissions + location scope)
+ */
+
+export function useGetMe<
+  TData = Awaited<ReturnType<typeof getMe>>,
+  TError = void,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMeQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

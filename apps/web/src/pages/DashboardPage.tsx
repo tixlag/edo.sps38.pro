@@ -1,8 +1,8 @@
-import { useGetDashboard } from '@edo/api-client/src/generated/api';
-import { Card, CardContent, CardHeader } from '@edo/ui/src/components/card';
-import { MetricCard } from '@edo/ui/src/components/metric-card';
-import { PageHeader } from '@edo/ui/src/components/page-header';
-import { Button } from '@edo/ui/src/components/button';
+import { useGetDashboard } from '@edo/api-client';
+import { Card, CardContent, CardHeader } from '@edo/ui';
+import { MetricCard } from '@edo/ui';
+import { PageHeader } from '@edo/ui';
+import { Button } from '@edo/ui';
 import { ActivityItem } from '../components/ActivityItem';
 import { CheckCircle2, FileCheck2, AlertTriangle, PenLine, Award, RefreshCw } from 'lucide-react';
 

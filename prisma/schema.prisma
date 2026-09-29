@@ -42,6 +42,8 @@ enum AuditAction {
   DOCUMENT_SIGNED
   WORKFLOW_STAGE_CHANGED
   DATA_IMPORTED
+  LK_REFERENCE_SYNCED
+  LK_EVENT_APPLIED
 }
 
 model Employee {
@@ -142,4 +144,96 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// LK master-data read model (local projection, source of truth = lk.sps38.pro).
+// Table/model names carry the Lk prefix to never mix with EDO domain entities.
+// EDO business entities reference these via stable external keys (code_1c),
+// e.g. EmployeeOnboarding.lkEmployeeCode1c. No runtime direct DB access to LK.
+// ---------------------------------------------------------------------------
+
+model LkEmployee {
+  code1c               String    @id @map("code1c")
+  uuid                 String
+  fullName             String
+  birthday             DateTime?
+  citizenship          String?
+  organizationCode     String?
+  organizationName     String?
+  positionCode1c       String?
+  positionName         String?
+  departmentCode1c     String?
+  departmentName       String?
+  divisionCode1c       String?
+  divisionName         String?
+  lastLocationId       Int?
+  lastLocationCode1c   String?
+  lastLocationName     String?
+  hireDate             DateTime?
+  fired                Boolean   @default(false)
+  contractor           Boolean   @default(false)
+  sourceUpdatedAt      DateTime?
+  syncedAt             DateTime  @default(now())
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([uuid])
+  @@index([fired])
+  @@index([syncedAt])
+  @@map("lk_employees")
+}
+
+model LkLocation {
+  code1c          String    @id @map("code1c")
+  locationId      Int       @unique @map("locationId")
+  name            String
+  shortName       String    @default("")
+  generalUnitCode String?
+  deleted         Boolean   @default(false)
+  sourceUpdatedAt DateTime?
+  syncedAt        DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([deleted])
+  @@map("lk_locations")
+}
+
+model LkPosition {
+  code1c          String    @id @map("code1c")
+  name            String
+  deleted         Boolean   @default(false)
+  sourceUpdatedAt DateTime?
+  syncedAt        DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("lk_positions")
+}
+
+model LkDepartment {
+  code1c          String    @id @map("code1c")
+  name            String
+  deleted         Boolean   @default(false)
+  sourceUpdatedAt DateTime?
+  syncedAt        DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("lk_departments")
+}
+
+/// Idempotency inbox for RabbitMQ lk.reference.* events. eventId is globally unique.
+model LkProcessedEvent {
+  eventId     String   @id @map("eventId")
+  eventType   String
+  version     Int      @default(1)
+  occurredAt  DateTime?
+  receivedAt  DateTime @default(now())
+  entityCode  String?
+
+  @@index([eventType])
+  @@index([receivedAt])
+  @@map("lk_processed_events")
 }

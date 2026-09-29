@@ -3,17 +3,21 @@
   "ui": "tui",
   "tasks": {
     "build": {
-      "dependsOn": ["^build", "api:generate"],
+      "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
     "api:generate": {
       "outputs": ["../../packages/api-client/src/generated/**"]
     },
+    "generate": {},
     "dev": {
       "cache": false,
       "persistent": true
     },
     "lint": {},
-    "test": {}
+    "test": {},
+    "test:e2e": {
+      "cache": false
+    }
   }
 }

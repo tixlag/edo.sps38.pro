@@ -1,7 +1,7 @@
-import { useGetEmployee } from '@edo/api-client/src/generated/api';
-import { Card, CardContent } from '@edo/ui/src/components/card';
-import { PageHeader } from '@edo/ui/src/components/page-header';
-import { StatusBadge } from '@edo/ui/src/components/status-badge';
+import { useGetEmployee } from '@edo/api-client';
+import { Card, CardContent } from '@edo/ui';
+import { PageHeader } from '@edo/ui';
+import { StatusBadge } from '@edo/ui';
 
 export function EmployeeDetailPage({ id }: { id: string }) {
   const { data, isLoading, isError } = useGetEmployee(id);

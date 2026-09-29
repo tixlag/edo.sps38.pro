@@ -1,0 +1,392 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "LK → EDO master data API",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "\/api\/internal\/edo\/v1\/employees": {
+            "get": {
+                "tags": [
+                    "EDO master data"
+                ],
+                "operationId": "edoListEmployees",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 500,
+                            "maximum": 1000,
+                            "minimum": 1
+                        }
+                    },
+                    {
+                        "name": "cursor",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Employee page",
+                        "content": {
+                            "application\/json": {
+                                "schema": {
+                                    "$ref": "#\/components\/schemas\/EdoEmployeePage"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "edoBearer": []
+                    }
+                ]
+            }
+        },
+        "\/api\/internal\/edo\/v1\/locations": {
+            "get": {
+                "tags": [
+                    "EDO master data"
+                ],
+                "operationId": "edoListLocations",
+                "responses": {
+                    "200": {
+                        "description": "Locations",
+                        "content": {
+                            "application\/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#\/components\/schemas\/EdoLocation"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "edoBearer": []
+                    }
+                ]
+            }
+        },
+        "\/api\/internal\/edo\/v1\/positions": {
+            "get": {
+                "tags": [
+                    "EDO master data"
+                ],
+                "operationId": "edoListPositions",
+                "responses": {
+                    "200": {
+                        "description": "Positions",
+                        "content": {
+                            "application\/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#\/components\/schemas\/EdoReference"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "edoBearer": []
+                    }
+                ]
+            }
+        },
+        "\/api\/internal\/edo\/v1\/departments": {
+            "get": {
+                "tags": [
+                    "EDO master data"
+                ],
+                "operationId": "edoListDepartments",
+                "responses": {
+                    "200": {
+                        "description": "Departments",
+                        "content": {
+                            "application\/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#\/components\/schemas\/EdoReference"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "edoBearer": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "EdoOrganization": {
+                "required": [
+                    "code",
+                    "name"
+                ],
+                "properties": {
+                    "code": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "EdoLocationRef": {
+                "required": [
+                    "id",
+                    "code1c",
+                    "name"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "code1c": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "EdoEmployeePage": {
+                "required": [
+                    "items",
+                    "nextCursor"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#\/components\/schemas\/EdoEmployee"
+                        }
+                    },
+                    "nextCursor": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "EdoLocation": {
+                "required": [
+                    "id",
+                    "code1c",
+                    "name",
+                    "shortName",
+                    "generalUnitCode",
+                    "deleted",
+                    "updatedAt"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "code1c": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "shortName": {
+                        "type": "string"
+                    },
+                    "generalUnitCode": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "deleted": {
+                        "type": "boolean"
+                    },
+                    "updatedAt": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "EdoEmployee": {
+                "required": [
+                    "code1c",
+                    "uuid",
+                    "fullName",
+                    "birthday",
+                    "citizenship",
+                    "organization",
+                    "position",
+                    "department",
+                    "division",
+                    "lastLocation",
+                    "hireDate",
+                    "fired",
+                    "contractor",
+                    "updatedAt"
+                ],
+                "properties": {
+                    "code1c": {
+                        "type": "string"
+                    },
+                    "uuid": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "fullName": {
+                        "type": "string"
+                    },
+                    "birthday": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date"
+                    },
+                    "citizenship": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "organization": {
+                        "$ref": "#\/components\/schemas\/EdoOrganization"
+                    },
+                    "position": {
+                        "$ref": "#\/components\/schemas\/EdoNamedCode"
+                    },
+                    "department": {
+                        "$ref": "#\/components\/schemas\/EdoNamedCode"
+                    },
+                    "division": {
+                        "$ref": "#\/components\/schemas\/EdoNamedCode"
+                    },
+                    "lastLocation": {
+                        "oneOf": [
+                            {
+                                "$ref": "#\/components\/schemas\/EdoLocationRef"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "hireDate": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date"
+                    },
+                    "fired": {
+                        "type": "boolean"
+                    },
+                    "contractor": {
+                        "type": "boolean"
+                    },
+                    "updatedAt": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            },
+            "EdoNamedCode": {
+                "required": [
+                    "code1c",
+                    "name"
+                ],
+                "properties": {
+                    "code1c": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "EdoReference": {
+                "required": [
+                    "code1c",
+                    "name",
+                    "deleted",
+                    "updatedAt"
+                ],
+                "properties": {
+                    "code1c": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "deleted": {
+                        "type": "boolean"
+                    },
+                    "updatedAt": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    }
+                },
+                "type": "object"
+            }
+        },
+        "securitySchemes": {
+            "edoBearer": {
+                "type": "http",
+                "bearerFormat": "opaque",
+                "scheme": "bearer"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "EDO master data"
+        }
+    ]
+}

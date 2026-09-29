@@ -5,7 +5,7 @@ import {
   useReactTable,
   type ColumnDef,
 } from '@tanstack/react-table';
-import { EmptyState } from '@edo/ui/src/components/empty-state';
+import { EmptyState } from '@edo/ui';
 
 export function DataTable<T>({
   columns,

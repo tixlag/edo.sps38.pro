@@ -12,7 +12,7 @@ import {
   PanelLeftClose,
   type LucideIcon,
 } from 'lucide-react';
-import { cn } from '@edo/ui/src/lib/cn';
+import { cn } from '@edo/ui';
 
 export interface NavItem {
   key: string;

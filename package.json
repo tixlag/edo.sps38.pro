@@ -8,11 +8,13 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",
+    "test:e2e": "turbo test:e2e",
     "api:generate": "turbo api:generate",
-    "db:migrate": "dotenv -e .env -- pnpm --filter @edo/api exec prisma migrate deploy",
-    "db:migrate:dev": "dotenv -e .env -- pnpm --filter @edo/api exec prisma migrate dev",
+    "db:migrate": "dotenv -e .env -- pnpm --filter @edo/api exec prisma migrate deploy --schema ../../prisma/schema.prisma",
+    "db:migrate:dev": "dotenv -e .env -- pnpm --filter @edo/api exec prisma migrate dev --schema ../../prisma/schema.prisma",
     "db:seed": "pnpm --filter @edo/api db:seed",
-    "docker:up": "docker compose up -d mariadb redis minio",
+    "docker:up": "docker compose up -d mariadb",
+    "docker:up:standalone": "docker compose --profile standalone up -d mariadb redis rabbitmq-standalone",
     "docker:down": "docker compose down"
   },
   "devDependencies": {

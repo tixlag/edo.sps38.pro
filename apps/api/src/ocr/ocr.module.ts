@@ -1,12 +1,9 @@
 import { Module } from '@nestjs/common';
-import { BullMqOcrService } from './bullmq-ocr.service';
+import { RabbitmqOcrService } from './rabbitmq-ocr.service';
 import { OcrService } from './ocr.service';
 
 @Module({
-  providers: [
-    BullMqOcrService,
-    { provide: OcrService, useExisting: BullMqOcrService },
-  ],
+  providers: [RabbitmqOcrService, { provide: OcrService, useExisting: RabbitmqOcrService }],
   exports: [OcrService],
 })
 export class OcrModule {}

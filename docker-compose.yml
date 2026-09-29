@@ -22,11 +22,28 @@ services:
     image: redis:7-alpine
     container_name: edo-redis
     restart: unless-stopped
+    # Local standalone dev only (optional profile). Production MUST use the
+    # shared ecosystem Redis via REDIS_URL in the common Docker network and
+    # MUST NOT start this service. Kept behind `standalone` profile so
+    # `docker compose up` alone does not create a shadow broker/cache.
+    profiles: ["standalone"]
     # Host 6379 is commonly taken by other local projects -> expose 6380.
     ports:
       - "6380:6379"
     volumes:
       - redis-data:/data
+
+  # Local standalone RabbitMQ for offline dev only (optional profile).
+  # Production MUST use the shared broker via RABBITMQ_URL (same Docker network
+  # as lk.sps38.pro, exchange `lk.events`). Never run this in production.
+  rabbitmq-standalone:
+    image: rabbitmq:4.1-management-alpine
+    container_name: edo-rabbitmq-standalone
+    restart: unless-stopped
+    profiles: ["standalone"]
+    ports:
+      - "5673:5672"
+      - "15673:15672"
 
   # Default local S3-compatible storage (moto mock, Docker Hub friendly).
   s3:

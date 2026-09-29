@@ -2,7 +2,7 @@
  * Integration boundary for the external OCR service.
  * The OCR engine lives outside this repo — do NOT implement it here.
  *
- * Async model: upload -> save metadata/file -> BullMQ `ocr` job -> OCR service -> result -> document status.
+ * Async model: upload -> save metadata/file -> RabbitMQ `edo.ocr.requested.v1` -> OCR service -> result -> document status.
  * TODO(ocr): plug the real OCR contract (endpoint, payload, auth) once provided.
  */
 export interface OcrRequest {

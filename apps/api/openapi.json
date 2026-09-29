@@ -17,7 +17,51 @@
             }
           }
         },
-        "summary": "Service health check",
+        "summary": "Service health check (legacy, same as live)",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/health/live": {
+      "get": {
+        "operationId": "getHealthLive",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Liveness: process is running",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/health/ready": {
+      "get": {
+        "operationId": "getHealthReady",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Readiness: MariaDB, RabbitMQ, Redis checks",
         "tags": [
           "health"
         ]
@@ -39,7 +83,10 @@
             }
           },
           "401": {
-            "description": "Missing bearer token"
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Missing required EDO access rule"
           }
         },
         "security": [
@@ -69,7 +116,10 @@
             }
           },
           "401": {
-            "description": "Missing bearer token"
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Missing required EDO access rule"
           }
         },
         "security": [
@@ -77,7 +127,7 @@
             "access-jwt": []
           }
         ],
-        "summary": "List employees (first vertical slice)",
+        "summary": "List employees (EDO domain)",
         "tags": [
           "employees"
         ]
@@ -108,7 +158,10 @@
             }
           },
           "401": {
-            "description": "Missing bearer token"
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Missing required EDO access rule"
           },
           "404": {
             "description": "Employee not found"
@@ -122,6 +175,36 @@
         "summary": "Get employee by id",
         "tags": [
           "employees"
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "getMe",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Current principal (permissions + location scope)",
+        "tags": [
+          "me"
         ]
       }
     }
@@ -163,6 +246,51 @@
           "status",
           "version",
           "time"
+        ]
+      },
+      "ReadinessCheckDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "up"
+          },
+          "ok": {
+            "type": "boolean",
+            "example": true
+          },
+          "error": {
+            "type": "string",
+            "example": "connection refused"
+          }
+        },
+        "required": [
+          "status",
+          "ok"
+        ]
+      },
+      "ReadyResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "ready"
+          },
+          "mariadb": {
+            "$ref": "#/components/schemas/ReadinessCheckDto"
+          },
+          "rabbitmq": {
+            "$ref": "#/components/schemas/ReadinessCheckDto"
+          },
+          "redis": {
+            "$ref": "#/components/schemas/ReadinessCheckDto"
+          }
+        },
+        "required": [
+          "status",
+          "mariadb",
+          "rabbitmq",
+          "redis"
         ]
       },
       "KpiDto": {
@@ -409,6 +537,62 @@
         "required": [
           "items",
           "total"
+        ]
+      },
+      "LocationScopeDto": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "boolean",
+            "example": false
+          },
+          "locationIds": {
+            "example": [
+              98,
+              148
+            ],
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "all",
+          "locationIds"
+        ]
+      },
+      "MeResponseDto": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "example": "00000000-0000-0000-0000-000000000001"
+          },
+          "code1c": {
+            "type": "string",
+            "example": "УП00040092",
+            "nullable": true
+          },
+          "permissions": {
+            "type": "object",
+            "example": {
+              "20000": [],
+              "20007": [
+                "98",
+                "148"
+              ]
+            }
+          },
+          "locationScope": {
+            "$ref": "#/components/schemas/LocationScopeDto"
+          }
+        },
+        "required": [
+          "uuid",
+          "code1c",
+          "permissions",
+          "locationScope"
         ]
       }
     }
