@@ -51,7 +51,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "",
+            "description": "All required deps up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "MariaDB or RabbitMQ down",
             "content": {
               "application/json": {
                 "schema": {

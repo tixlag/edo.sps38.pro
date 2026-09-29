@@ -47,14 +47,14 @@ enum AuditAction {
 }
 
 model Employee {
-  id        String         @id @default(cuid())
-  fullName  String
-  country   String?
-  position  String?
+  id        String         @id @default(cuid()) @db.VarChar(64)
+  fullName  String         @db.VarChar(255)
+  country   String?        @db.VarChar(128)
+  position  String?        @db.VarChar(255)
   status    EmployeeStatus @default(INVITED)
-  stage     String?
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  stage     String?        @db.VarChar(255)
+  createdAt DateTime       @default(now()) @db.DateTime(3)
+  updatedAt DateTime       @updatedAt @db.DateTime(3)
 
   documents Document[]
   tasks     Task[]
@@ -64,10 +64,10 @@ model Employee {
 }
 
 model DocumentType {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  title     String
-  createdAt DateTime @default(now())
+  id        String   @id @default(cuid()) @db.VarChar(64)
+  code      String   @unique @db.VarChar(64)
+  title     String   @db.VarChar(255)
+  createdAt DateTime @default(now()) @db.DateTime(3)
 
   documents Document[]
 
@@ -75,13 +75,13 @@ model DocumentType {
 }
 
 model Document {
-  id             String         @id @default(cuid())
-  employeeId     String
-  documentTypeId String?
+  id             String         @id @default(cuid()) @db.VarChar(64)
+  employeeId     String         @db.VarChar(64)
+  documentTypeId String?        @db.VarChar(64)
   status         DocumentStatus @default(DRAFT)
   currentVersion Int            @default(1)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  createdAt      DateTime       @default(now()) @db.DateTime(3)
+  updatedAt      DateTime       @updatedAt @db.DateTime(3)
 
   employee     Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   documentType DocumentType?  @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
@@ -94,14 +94,14 @@ model Document {
 }
 
 model DocumentVersion {
-  id         String   @id @default(cuid())
-  documentId String
+  id         String   @id @default(cuid()) @db.VarChar(64)
+  documentId String   @db.VarChar(64)
   version    Int
-  storageKey String
-  mimeType   String?
+  storageKey String   @db.VarChar(1024)
+  mimeType   String?  @db.VarChar(128)
   sizeBytes  Int?
   ocrRaw     Json?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime @default(now()) @db.DateTime(3)
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
@@ -110,14 +110,14 @@ model DocumentVersion {
 }
 
 model Task {
-  id         String     @id @default(cuid())
-  title      String
-  assignee   String?
-  employeeId String?
+  id         String     @id @default(cuid()) @db.VarChar(64)
+  title      String     @db.VarChar(512)
+  assignee   String?    @db.VarChar(255)
+  employeeId String?    @db.VarChar(64)
   status     TaskStatus @default(TODO)
-  dueDate    DateTime?
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  dueDate    DateTime?  @db.DateTime(3)
+  createdAt  DateTime   @default(now()) @db.DateTime(3)
+  updatedAt  DateTime   @updatedAt @db.DateTime(3)
 
   employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
 
@@ -126,20 +126,20 @@ model Task {
 }
 
 model AuditLog {
-  id            String      @id @default(cuid())
-  actorId       String?
+  id            String      @id @default(cuid()) @db.VarChar(64)
+  actorId       String?     @db.VarChar(64)
   action        AuditAction
-  entityType    String
-  entityId      String
+  entityType    String      @db.VarChar(64)
+  entityId      String      @db.VarChar(64)
   before        Json?
   after         Json?
-  correlationId String?
-  createdAt     DateTime    @default(now())
+  correlationId String?     @db.VarChar(64)
+  createdAt     DateTime    @default(now()) @db.DateTime(3)
 
   employee Employee? @relation("AuditEntityEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
-  employeeId String?
+  employeeId String? @db.VarChar(64)
   document Document? @relation("AuditEntityDocument", fields: [documentId], references: [id], onDelete: SetNull)
-  documentId String?
+  documentId String? @db.VarChar(64)
 
   @@index([entityType, entityId])
   @@index([createdAt])
@@ -151,32 +151,39 @@ model AuditLog {
 // Table/model names carry the Lk prefix to never mix with EDO domain entities.
 // EDO business entities reference these via stable external keys (code_1c),
 // e.g. EmployeeOnboarding.lkEmployeeCode1c. No runtime direct DB access to LK.
+// Column lengths mirror prisma/migrations/0001_init + 0002_lk_read_model.
+// Reconciliation marking: lastSeenSyncId is set on every row seen during a full
+// snapshot; rows unseen after a SUCCESSFUL snapshot are marked deleted (refs)
+// or sourcePresent=false (employees). Partial snapshots never mark missing.
+// `fired` is a business dismissal status and is never set by absence.
 // ---------------------------------------------------------------------------
 
 model LkEmployee {
-  code1c               String    @id @map("code1c")
-  uuid                 String
-  fullName             String
-  birthday             DateTime?
-  citizenship          String?
-  organizationCode     String?
-  organizationName     String?
-  positionCode1c       String?
-  positionName         String?
-  departmentCode1c     String?
-  departmentName       String?
-  divisionCode1c       String?
-  divisionName         String?
+  code1c               String    @id @map("code1c") @db.VarChar(64)
+  uuid                 String    @db.VarChar(64)
+  fullName             String    @db.VarChar(512)
+  birthday             DateTime? @db.DateTime(3)
+  citizenship          String?   @db.VarChar(128)
+  organizationCode     String?   @db.VarChar(64)
+  organizationName     String?   @db.VarChar(512)
+  positionCode1c       String?   @db.VarChar(64)
+  positionName         String?   @db.VarChar(512)
+  departmentCode1c     String?   @db.VarChar(64)
+  departmentName       String?   @db.VarChar(512)
+  divisionCode1c       String?   @db.VarChar(64)
+  divisionName         String?   @db.VarChar(512)
   lastLocationId       Int?
-  lastLocationCode1c   String?
-  lastLocationName     String?
-  hireDate             DateTime?
+  lastLocationCode1c   String?   @db.VarChar(64)
+  lastLocationName     String?   @db.VarChar(512)
+  hireDate             DateTime? @db.DateTime(3)
   fired                Boolean   @default(false)
   contractor           Boolean   @default(false)
-  sourceUpdatedAt      DateTime?
-  syncedAt             DateTime  @default(now())
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  sourceUpdatedAt      DateTime? @db.DateTime(3)
+  syncedAt             DateTime  @default(now()) @db.DateTime(3)
+  createdAt            DateTime  @default(now()) @db.DateTime(3)
+  updatedAt            DateTime  @updatedAt @db.DateTime(3)
+  lastSeenSyncId       String?   @db.VarChar(64)
+  sourcePresent        Boolean   @default(true)
 
   @@index([uuid])
   @@index([fired])
@@ -185,53 +192,56 @@ model LkEmployee {
 }
 
 model LkLocation {
-  code1c          String    @id @map("code1c")
+  code1c          String    @id @map("code1c") @db.VarChar(64)
   locationId      Int       @unique @map("locationId")
-  name            String
-  shortName       String    @default("")
-  generalUnitCode String?
+  name            String    @db.VarChar(512)
+  shortName       String    @default("") @db.VarChar(512)
+  generalUnitCode String?   @db.VarChar(64)
   deleted         Boolean   @default(false)
-  sourceUpdatedAt DateTime?
-  syncedAt        DateTime  @default(now())
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  sourceUpdatedAt DateTime? @db.DateTime(3)
+  syncedAt        DateTime  @default(now()) @db.DateTime(3)
+  createdAt       DateTime  @default(now()) @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @db.DateTime(3)
+  lastSeenSyncId  String?   @db.VarChar(64)
 
   @@index([deleted])
   @@map("lk_locations")
 }
 
 model LkPosition {
-  code1c          String    @id @map("code1c")
-  name            String
+  code1c          String    @id @map("code1c") @db.VarChar(64)
+  name            String    @db.VarChar(512)
   deleted         Boolean   @default(false)
-  sourceUpdatedAt DateTime?
-  syncedAt        DateTime  @default(now())
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  sourceUpdatedAt DateTime? @db.DateTime(3)
+  syncedAt        DateTime  @default(now()) @db.DateTime(3)
+  createdAt       DateTime  @default(now()) @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @db.DateTime(3)
+  lastSeenSyncId  String?   @db.VarChar(64)
 
   @@map("lk_positions")
 }
 
 model LkDepartment {
-  code1c          String    @id @map("code1c")
-  name            String
+  code1c          String    @id @map("code1c") @db.VarChar(64)
+  name            String    @db.VarChar(512)
   deleted         Boolean   @default(false)
-  sourceUpdatedAt DateTime?
-  syncedAt        DateTime  @default(now())
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  sourceUpdatedAt DateTime? @db.DateTime(3)
+  syncedAt        DateTime  @default(now()) @db.DateTime(3)
+  createdAt       DateTime  @default(now()) @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @db.DateTime(3)
+  lastSeenSyncId  String?   @db.VarChar(64)
 
   @@map("lk_departments")
 }
 
 /// Idempotency inbox for RabbitMQ lk.reference.* events. eventId is globally unique.
 model LkProcessedEvent {
-  eventId     String   @id @map("eventId")
-  eventType   String
-  version     Int      @default(1)
-  occurredAt  DateTime?
-  receivedAt  DateTime @default(now())
-  entityCode  String?
+  eventId     String    @id @map("eventId") @db.VarChar(64)
+  eventType   String    @db.VarChar(128)
+  version     Int       @default(1)
+  occurredAt  DateTime? @db.DateTime(3)
+  receivedAt  DateTime  @default(now()) @db.DateTime(3)
+  entityCode  String?   @db.VarChar(64)
 
   @@index([eventType])
   @@index([receivedAt])

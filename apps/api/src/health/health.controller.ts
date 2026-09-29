@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, HttpCode, Res } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/public.decorator';
 import { HealthResponseDto, ReadyResponseDto } from './dto/health-response.dto';
@@ -34,13 +34,19 @@ export class HealthController {
   @Public()
   @Get('ready')
   @ApiOperation({ summary: 'Readiness: MariaDB, RabbitMQ, Redis checks', operationId: 'getHealthReady' })
-  @ApiResponse({ status: 200, type: ReadyResponseDto })
-  async ready(): Promise<ReadyResponseDto> {
+  @ApiResponse({ status: 200, type: ReadyResponseDto, description: 'All required deps up' })
+  @ApiResponse({ status: 503, type: ReadyResponseDto, description: 'MariaDB or RabbitMQ down' })
+  @HttpCode(200)
+  async ready(@Res({ passthrough: true }) reply: { status: (code: number) => unknown }): Promise<ReadyResponseDto> {
     const mariadb = await this.checkMaria();
     const rabbitmq = await this.checkRabbit();
     const redis = await this.checkRedis();
     // Redis is optional cache: reported but does not fail readiness.
-    const status = mariadb.ok && rabbitmq.ok ? 'ready' : 'not-ready';
+    const ready = mariadb.ok && rabbitmq.ok;
+    const status = ready ? 'ready' : 'not-ready';
+    if (!ready) {
+      reply.status(503);
+    }
     return { status, mariadb, rabbitmq, redis };
   }
 

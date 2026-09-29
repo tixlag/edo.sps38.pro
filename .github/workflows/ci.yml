@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: edo
+          MARIADB_USER: edo
+          MARIADB_USER_PASSWORD: edo
+          MARIADB_PASSWORD: edo
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h localhost -uedo -pedo"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      DATABASE_URL: mysql://edo:edo@localhost:3307/edo
+      JWT_SECRET: ci-only-insecure-secret
+      JWT_ALG: HS256
+      JWT_ISSUER: lk-auth-service
+      ALLOW_INSECURE_DEV_AUTH: false
+      NODE_ENV: test
+      LK_EVENTS_CONSUME: '0'
+      VITE_API_BASE_URL: http://localhost:3001
+      VITE_AUTH_REFRESH_URL: ''
+      VITE_ALLOW_INSECURE_DEV_AUTH: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @edo/api exec prisma generate --schema ../../prisma/schema.prisma
+      - run: pnpm db:migrate
+      - run: pnpm lint
+      - run: pnpm test
+      - name: OpenAPI + Orval regenerate (EDO API client)
+        run: pnpm --filter @edo/api api:generate
+      - name: LK client regenerate (narrow spec only)
+        run: pnpm --filter @edo/lk-client generate
+      - name: Generated drift check (reproducible gate)
+        run: |
+          git add -N -- apps/api/openapi.json packages/api-client/src/generated packages/lk-client/src/generated packages/lk-client/openapi/edo.json
+          git diff --exit-code -- apps/api/openapi.json packages/api-client/src/generated packages/lk-client/src/generated packages/lk-client/openapi/edo.json
+      - run: pnpm build
+      - name: Seed for e2e
+        run: pnpm db:seed
+      - name: Install Playwright browser
+        run: pnpm --filter @edo/web exec playwright install chromium --with-deps
+      - name: E2E (API + web, explicit dev bypass only)
+        run: |
+          ALLOW_INSECURE_DEV_AUTH=true NODE_ENV=test LK_EVENTS_CONSUME=0 pnpm --filter @edo/api dev &
+          API_PID=$!
+          VITE_ALLOW_INSECURE_DEV_AUTH=true VITE_AUTH_REFRESH_URL= VITE_API_BASE_URL=http://localhost:3001 pnpm --filter @edo/web dev -- --port 5173 &
+          WEB_PID=$!
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3001/api/health/live && curl -sf http://localhost:5173 && break
+            sleep 2
+          done
+          ALLOW_INSECURE_DEV_AUTH=true EDO_E2E_JWT_SECRET=ci-only-insecure-secret pnpm --filter @edo/web test:e2e
+          kill $API_PID $WEB_PID || true

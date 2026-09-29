@@ -28,17 +28,39 @@ LK publishes a narrow internal API + RabbitMQ events (see
   departments → employees (opaque cursor pagination, `limit` 1–1000, finish on
   `nextCursor: null`, persist cursor per page). CLI `pnpm --filter @edo/api lk:sync`.
 - **Changes**: RabbitMQ durable topic `lk.events`, EDO-owned durable queue
-  `edo.lk-reference-sync`, bindings `lk.reference.*.*.v1`. Published today:
+  `edo.lk-reference-sync` (+ DLX `edo.lk-reference-sync.dlx` + DLQ
+  `edo.lk-reference-sync.dlq`), bindings `lk.reference.*.*.v1`. Published today:
   `employee/position/department.upserted.v1`; location/deleted keys reserved.
   Envelope `{eventId, eventType, version: 1, occurredAt, source: "lk.sps38.pro",
   payload}`. Consumer is idempotent via `lk_processed_events.eventId`
-  (same DB transaction as the projection upsert), acks malformed/unknown
-  versions, requeues transient failures.
+  (same DB transaction as the projection upsert). Permanent errors (invalid
+  JSON/envelope, unsupported version, unknown routing key, eventType mismatch,
+  invalid domain payload/ZodError) are poison: `nack(requeue=false)` → DLQ,
+  logged with eventId/routingKey/reason only (never the full payload).
+  Transient infra errors (MariaDB/network) throw → `nack(requeue=true)`.
+  Reconnect uses bounded backoff 1s/2s/5s/10s/30s max + jitter with a single
+  loop; after reconnect the topology is re-asserted and the consumer
+  re-subscribed. Graceful shutdown stops the loop.
 - **Auth**: S2S `LK_EDO_INTERNAL_TOKEN` (`Authorization: Bearer`), never user
   JWT, never frontend. User JWT (HS256, `lk-auth-service`) drives EDO access
   rules 20000–20009 separately.
 - **No direct LK DB access, no full LK OpenAPI import, no LK business-logic copy.**
 - **Soft state preserved**: `fired`/`deleted` are states, not physical deletes.
+- **Safe bootstrap (consumer disabled during snapshot)** — deployment order:
+  1. `pnpm --filter @edo/api lk:topology` asserts exchange/queue/DLQ/bindings
+     without starting a consumer, so the queue starts accumulating live events.
+  2. `pnpm --filter @edo/api lk:sync` runs in `SyncAppModule` (no live
+     consumer module; `LK_EVENTS_CONSUME=0` forced before context creation),
+     performs the full snapshot, and marks missing rows ONLY after all four
+     endpoints succeed.
+  3. Boot the API: the consumer replays buffered events, then live mode.
+  Parallel online full sync + live consumer is NOT claimed safe (no reliable
+  LK entity revision); periodic reconciliation must pause the consumer or hold
+  a mutual-exclusion lock first.
+- **Reconciliation marking**: every snapshotted row is stamped
+  `lastSeenSyncId=<syncRunId>`; after success, unseen refs → `deleted=true`,
+  unseen employees → `sourcePresent=false` (never `fired`). Partial failures
+  never mark missing; empty snapshots skip marking with a warning.
 
 ## Consequences
 

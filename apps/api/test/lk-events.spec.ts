@@ -27,7 +27,7 @@ function envelope(eventId: string, eventType: 'employee.upserted', fired = false
   };
 }
 
-function handlerWithMemory() {
+function handlerWithMemory(opts: { transientOnUpsert?: boolean } = {}) {
   const employees = new Map<string, unknown>();
   const events = new Map<string, unknown>();
   const txClient = {
@@ -44,6 +44,11 @@ function handlerWithMemory() {
     },
     lkEmployee: {
       upsert: async ({ where, update, create }: { where: { code1c: string }; update: object; create: object }) => {
+        if (opts.transientOnUpsert) {
+          const err = new Error('MariaDB temporarily unavailable') as Error & { code: string };
+          err.code = 'P1001';
+          throw err;
+        }
         employees.set(where.code1c, { ...create, ...update });
         return employees.get(where.code1c);
       },
@@ -82,27 +87,58 @@ describe('LkEventHandler (RabbitMQ consumer)', () => {
     expect(await handler.applyRaw('lk.reference.employee.upserted.v1', raw)).toEqual({ status: 'duplicate' });
   });
 
-  it('ignores malformed events (ack, no throw)', async () => {
+  it('poisons malformed JSON (DLQ, no throw, no requeue)', async () => {
     const { handler } = handlerWithMemory();
     const res = await handler.applyRaw('lk.reference.employee.upserted.v1', Buffer.from('not-json'));
-    expect(res.status).toBe('ignored');
+    expect(res.status).toBe('poison');
   });
 
-  it('ignores unknown versions (ack, no throw)', async () => {
+  it('poisons unknown versions (DLQ, no throw)', async () => {
     const { handler } = handlerWithMemory();
     const bad = { ...envelope('evt-3', 'employee.upserted'), version: 2 };
     const res = await handler.applyRaw(
       'lk.reference.employee.upserted.v1',
       Buffer.from(JSON.stringify(bad)),
     );
-    expect(res.status).toBe('ignored');
+    expect(res.status).toBe('poison');
   });
 
-  it('ignores unknown routing keys', async () => {
+  it('poisons unknown routing keys', async () => {
     const { handler } = handlerWithMemory();
     const raw = Buffer.from(JSON.stringify(envelope('evt-4', 'employee.upserted')));
     const res = await handler.applyRaw('lk.reference.unknown.v9', raw);
-    expect(res.status).toBe('ignored');
+    expect(res.status).toBe('poison');
+  });
+
+  it('poisons invalid employee payload (ZodError -> DLQ, not infinite requeue)', async () => {
+    const { handler, employees } = handlerWithMemory();
+    const bad = {
+      ...envelope('evt-poison', 'employee.upserted'),
+      payload: { code1c: 123, uuid: null },
+    };
+    const res = await handler.applyRaw(
+      'lk.reference.employee.upserted.v1',
+      Buffer.from(JSON.stringify(bad)),
+    );
+    expect(res.status).toBe('poison');
+    expect(employees.has('УП00023070')).toBe(false);
+  });
+
+  it('poisons eventType/routingKey mismatch', async () => {
+    const { handler } = handlerWithMemory();
+    const env = { ...envelope('evt-mismatch', 'employee.upserted'), eventType: 'position.upserted' as never };
+    // Envelope says position but routing key says employee -> mismatch.
+    const res = await handler.applyRaw(
+      'lk.reference.employee.upserted.v1',
+      Buffer.from(JSON.stringify({ ...env, eventType: 'position.upserted' })),
+    );
+    expect(res.status).toBe('poison');
+  });
+
+  it('retries transient DB errors (throw -> requeue)', async () => {
+    const { handler } = handlerWithMemory({ transientOnUpsert: true });
+    const env = envelope('evt-transient', 'employee.upserted');
+    await expect(handler.applyEnvelope(env)).rejects.toThrow(/MariaDB/);
   });
 
   it('applies fired:true as upsert (not physical delete)', async () => {

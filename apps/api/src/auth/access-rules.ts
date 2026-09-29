@@ -1,10 +1,17 @@
 import { EdoAccessRule } from './edo-access-rule';
 import type { AccessRulesMap, AuthPrincipal } from './auth-principal';
 
-/** Key presence grants the right. NEVER use truthiness: `[]` means granted. */
+/** Key presence grants the right. NEVER use truthiness: `[]` means granted.
+ * FULL_ACCESS (20009) implies every other EDO rule (20000-20008).
+ * ACCESS_ALL_LOCATIONS (20008) only widens location scope, never grants actions.
+ */
 export function hasAccessRule(rules: AccessRulesMap | undefined | null, rule: EdoAccessRule): boolean {
   if (!rules || typeof rules !== 'object') return false;
-  return Object.prototype.hasOwnProperty.call(rules, String(rule));
+  if (Object.prototype.hasOwnProperty.call(rules, String(rule))) return true;
+  if (rule !== EdoAccessRule.FULL_ACCESS) {
+    return Object.prototype.hasOwnProperty.call(rules, String(EdoAccessRule.FULL_ACCESS));
+  }
+  return false;
 }
 
 export function hasAnyAccessRule(

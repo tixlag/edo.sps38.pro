@@ -12,7 +12,7 @@ import {
 export type EventApplyOutcome =
   | { status: 'applied' }
   | { status: 'duplicate' }
-  | { status: 'ignored'; reason: string };
+  | { status: 'poison'; reason: string };
 
 /**
  * Applies LK RabbitMQ events idempotently:
@@ -21,8 +21,14 @@ export type EventApplyOutcome =
  * - upserts the Lk* projection in the same DB transaction as the inbox row,
  * - out-of-order safe as far as possible (no version column from LK; full
  *   reconciliation via snapshot fixes divergence).
- * Malformed/unknown-version/unknown-key events return `ignored` (caller acks,
- * never requeues poison).
+ *
+ * Error classification (no infinite poison requeue):
+ * - poison (caller must nack requeue=false -> DLQ): invalid JSON, invalid
+ *   envelope, unsupported version, unknown routing key, eventType mismatch,
+ *   missing payload, invalid domain payload (ZodError). Logged with
+ *   eventId/routingKey/reason only, never the full employee payload.
+ * - transient (throw -> caller nacks requeue=true): MariaDB/network errors.
+ * - duplicate (caller acks): already-seen eventId or raced unique violation.
  */
 @Injectable()
 export class LkEventHandler {
@@ -39,21 +45,28 @@ export class LkEventHandler {
     try {
       json = JSON.parse(raw.toString('utf8'));
     } catch {
-      return { status: 'ignored', reason: 'malformed-json' };
+      this.logger.warn(`LK poison event malformed-json routingKey=${routingKey}`);
+      return { status: 'poison', reason: 'malformed-json' };
     }
     const expected = eventTypeFromRoutingKey(routingKey);
     if (!expected) {
-      return { status: 'ignored', reason: `unknown-routing-key:${routingKey}` };
+      this.logger.warn(`LK poison event unknown-routing-key routingKey=${routingKey}`);
+      return { status: 'poison', reason: `unknown-routing-key:${routingKey.slice(0, 120)}` };
     }
     const parsed = lkEventEnvelopeSchema.safeParse(json);
     if (!parsed.success) {
       const msg = parsed.error.issues.map((i) => `${i.path.join('.')}:${i.message}`).join('; ');
-      this.logger.warn(`Ignoring malformed LK event: ${msg.slice(0, 300)}`);
-      return { status: 'ignored', reason: `malformed-envelope:${msg.slice(0, 200)}` };
+      this.logger.warn(
+        `LK poison event malformed-envelope routingKey=${routingKey} reason=${msg.slice(0, 200)}`,
+      );
+      return { status: 'poison', reason: `malformed-envelope:${msg.slice(0, 200)}` };
     }
     const envelope = parsed.data;
     if (envelope.eventType !== expected) {
-      return { status: 'ignored', reason: 'event-type-routing-key-mismatch' };
+      this.logger.warn(
+        `LK poison event event-type-routing-key-mismatch routingKey=${routingKey} eventType=${envelope.eventType}`,
+      );
+      return { status: 'poison', reason: 'event-type-routing-key-mismatch' };
     }
     return this.applyEnvelope(envelope);
   }
@@ -67,7 +80,8 @@ export class LkEventHandler {
     payload?: unknown;
   }): Promise<EventApplyOutcome> {
     if (envelope.payload === undefined || envelope.payload === null) {
-      return { status: 'ignored', reason: 'missing-payload' };
+      this.logger.warn(`LK poison event missing-payload eventId=${envelope.eventId}`);
+      return { status: 'poison', reason: 'missing-payload' };
     }
     const existing = await this.prisma.lkProcessedEvent.findUnique({
       where: { eventId: envelope.eventId },
@@ -77,7 +91,15 @@ export class LkEventHandler {
     const occurredAt = toDateOrNull(envelope.occurredAt);
     try {
       if (envelope.eventType === 'employee.upserted') {
-        const payload = parseEmployeePayload(envelope.payload);
+        let payload: ReturnType<typeof parseEmployeePayload>;
+        try {
+          payload = parseEmployeePayload(envelope.payload);
+        } catch (err) {
+          this.logger.warn(
+            `LK poison event invalid-employee-payload eventId=${envelope.eventId} reason=${poisonReason(err)}`,
+          );
+          return { status: 'poison', reason: `invalid-employee-payload:${poisonReason(err)}` };
+        }
         await this.prisma.$transaction(async (tx) => {
           await tx.lkProcessedEvent.create({
             data: {
@@ -97,7 +119,15 @@ export class LkEventHandler {
           });
         });
       } else if (envelope.eventType === 'position.upserted') {
-        const payload = parseReferencePayload(envelope.payload);
+        let payload: ReturnType<typeof parseReferencePayload>;
+        try {
+          payload = parseReferencePayload(envelope.payload);
+        } catch (err) {
+          this.logger.warn(
+            `LK poison event invalid-position-payload eventId=${envelope.eventId} reason=${poisonReason(err)}`,
+          );
+          return { status: 'poison', reason: `invalid-position-payload:${poisonReason(err)}` };
+        }
         const now = new Date();
         await this.prisma.$transaction(async (tx) => {
           await tx.lkProcessedEvent.create({
@@ -116,7 +146,15 @@ export class LkEventHandler {
           });
         });
       } else {
-        const payload = parseReferencePayload(envelope.payload);
+        let payload: ReturnType<typeof parseReferencePayload>;
+        try {
+          payload = parseReferencePayload(envelope.payload);
+        } catch (err) {
+          this.logger.warn(
+            `LK poison event invalid-department-payload eventId=${envelope.eventId} reason=${poisonReason(err)}`,
+          );
+          return { status: 'poison', reason: `invalid-department-payload:${poisonReason(err)}` };
+        }
         const now = new Date();
         await this.prisma.$transaction(async (tx) => {
           await tx.lkProcessedEvent.create({
@@ -139,6 +177,12 @@ export class LkEventHandler {
     } catch (err) {
       // Unique violation on eventId raced by concurrent consumer -> duplicate.
       if (isUniqueViolation(err)) return { status: 'duplicate' };
+      if (isPoisonError(err)) {
+        this.logger.warn(
+          `LK poison event apply eventId=${envelope.eventId} reason=${poisonReason(err)}`,
+        );
+        return { status: 'poison', reason: `invalid-payload:${poisonReason(err)}` };
+      }
       throw err;
     }
   }
@@ -168,6 +212,7 @@ export class LkEventHandler {
         fired: payload.fired,
         contractor: payload.contractor,
         syncedAt: now,
+        sourcePresent: true,
       },
       create: {
         code1c: payload.code1c,
@@ -190,6 +235,7 @@ export class LkEventHandler {
         fired: payload.fired,
         contractor: payload.contractor,
         syncedAt: now,
+        sourcePresent: true,
       },
     });
     void this.sync;
@@ -205,4 +251,14 @@ function toDateOrNull(v: string | null | undefined): Date | null {
 function isUniqueViolation(err: unknown): boolean {
   const e = err as { code?: string };
   return e?.code === 'P2002';
+}
+
+function isPoisonError(err: unknown): boolean {
+  const e = err as { name?: string; issues?: unknown };
+  return e?.name === 'ZodError' || Array.isArray(e?.issues);
+}
+
+function poisonReason(err: unknown): string {
+  if (err instanceof Error) return err.message.slice(0, 200);
+  return String(err).slice(0, 200);
 }

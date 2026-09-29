@@ -67,6 +67,32 @@ describe('EDO accessRules (key presence, not truthiness)', () => {
     expect(isLocationAllowed(principal, 12345)).toBe(true);
   });
 
+  it('20009 implies every EDO action rule 20000-20008', () => {
+    const rules = { '20009': [] };
+    for (const id of [
+      EdoAccessRule.ACCESS,
+      EdoAccessRule.EMPLOYEE_MANAGE,
+      EdoAccessRule.DOCUMENT_REVIEW,
+      EdoAccessRule.SIGNING,
+      EdoAccessRule.CONFIG_MANAGE,
+      EdoAccessRule.AUDIT_VIEW,
+      EdoAccessRule.INTEGRATIONS_MANAGE,
+      EdoAccessRule.ACCESS_LOCATIONS,
+      EdoAccessRule.ACCESS_ALL_LOCATIONS,
+    ]) {
+      expect(hasAccessRule(rules, id)).toBe(true);
+    }
+    expect(hasAccessRule(rules, EdoAccessRule.FULL_ACCESS)).toBe(true);
+  });
+
+  it('20008 grants all locations but no action rights', () => {
+    const rules = { '20008': [] };
+    expect(hasAccessRule(rules, EdoAccessRule.EMPLOYEE_MANAGE)).toBe(false);
+    expect(hasAccessRule(rules, EdoAccessRule.DOCUMENT_REVIEW)).toBe(false);
+    expect(hasAccessRule(rules, EdoAccessRule.ACCESS)).toBe(false);
+    expect(hasAccessRule(rules, EdoAccessRule.ACCESS_ALL_LOCATIONS)).toBe(true);
+  });
+
   it('no scope rights -> denied', () => {
     const principal = {
       uuid: 'u',

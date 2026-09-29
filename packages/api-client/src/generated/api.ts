@@ -271,7 +271,7 @@ export const getGetHealthReadyQueryKey = () => {
 
 export const getGetHealthReadyQueryOptions = <
   TData = Awaited<ReturnType<typeof getHealthReady>>,
-  TError = unknown,
+  TError = ReadyResponseDto,
 >(options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getHealthReady>>,
@@ -297,7 +297,7 @@ export const getGetHealthReadyQueryOptions = <
 export type GetHealthReadyQueryResult = NonNullable<
   Awaited<ReturnType<typeof getHealthReady>>
 >;
-export type GetHealthReadyQueryError = unknown;
+export type GetHealthReadyQueryError = ReadyResponseDto;
 
 /**
  * @summary Readiness: MariaDB, RabbitMQ, Redis checks
@@ -305,7 +305,7 @@ export type GetHealthReadyQueryError = unknown;
 
 export function useGetHealthReady<
   TData = Awaited<ReturnType<typeof getHealthReady>>,
-  TError = unknown,
+  TError = ReadyResponseDto,
 >(options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getHealthReady>>,

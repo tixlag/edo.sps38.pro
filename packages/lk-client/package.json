@@ -9,15 +9,16 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src --ext .ts --ignore-pattern src/generated/**",
     "test": "vitest run",
-    "generate": "node ./scripts/generate.mjs"
+    "generate": "node ./scripts/generate.mjs && orval --config ./orval.config.ts"
   },
   "devDependencies": {
     "@edo/eslint-config": "workspace:*",
     "@edo/tsconfig": "workspace:*",
     "@types/node": "22.10.7",
     "eslint": "8.57.1",
+    "orval": "7.5.0",
     "typescript": "5.7.3",
     "vitest": "2.1.8"
   }

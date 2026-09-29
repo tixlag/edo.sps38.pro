@@ -7,7 +7,10 @@ import type { AccessRulesMap, AuthPrincipal } from './auth-principal';
  * Verifies the unified ecosystem JWT.
  * - HS256 only, algorithm pinned from EDO config (never trusts header.alg).
  * - Issuer must be `lk-auth-service` (configurable via JWT_ISSUER).
- * - exp is always verified.
+ * - exp is REQUIRED (number, NumericDate) and always verified; tokens without
+ *   exp are rejected. No artificial max-age: long-lived infra tokens are allowed.
+ * - iat, when present, must be a number; otherwise rejected.
+ * - No audience check: real LK JWT does not contain aud yet.
  * - Fail closed: missing/invalid secret in production throws at verification time.
  */
 @Injectable()
@@ -42,6 +45,14 @@ export class JwtService {
     }
 
     const payload = decoded as Record<string, unknown>;
+    const expRaw = payload['exp'];
+    if (typeof expRaw !== 'number' || !Number.isFinite(expRaw)) {
+      throw new UnauthorizedException('JWT exp is missing or invalid');
+    }
+    const iatRaw = payload['iat'];
+    if (iatRaw !== undefined && (typeof iatRaw !== 'number' || !Number.isFinite(iatRaw))) {
+      throw new UnauthorizedException('JWT iat is invalid');
+    }
     const uuid = typeof payload['uuid'] === 'string' ? (payload['uuid'] as string) : '';
     if (!uuid) {
       throw new UnauthorizedException('JWT uuid is empty');
@@ -69,11 +80,7 @@ export class JwtService {
       }
     }
 
-    const exp = payload['exp'];
-    let expiresAt: Date | null = null;
-    if (typeof exp === 'number') {
-      expiresAt = new Date(exp * 1000);
-    }
+    const expiresAt = new Date(expRaw * 1000);
 
     return { uuid, code1c, sid, deviceId, accessRules, expiresAt };
   }

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { createHmac } from 'node:crypto';
 import * as jwt from 'jsonwebtoken';
 import { JwtService } from '../src/auth/jwt.service';
 
@@ -20,6 +21,16 @@ function configService(env: Record<string, string> = {}) {
 
 function sign(payload: Record<string, unknown>, secret = SECRET, extra: jwt.SignOptions = {}) {
   return jwt.sign({ iss: ISSUER, ...payload }, secret, { algorithm: 'HS256', ...extra });
+}
+
+function signRaw(payload: Record<string, unknown>): string {
+  // Manual HS256 signing to craft structurally valid JWTs with invalid exp/iat
+  // types (jsonwebtoken.sign would reject them before verify is reached).
+  const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
+  const h = b64({ alg: 'HS256', typ: 'JWT' });
+  const p = b64({ iss: ISSUER, ...payload });
+  const sig = createHmac('sha256', SECRET).update(`${h}.${p}`).digest('base64url');
+  return `${h}.${p}.${sig}`;
 }
 
 describe('JwtService (HS256, lk-auth-service)', () => {
@@ -68,6 +79,33 @@ describe('JwtService (HS256, lk-auth-service)', () => {
   it('rejects tokens without uuid', () => {
     const token = sign({ exp: Math.floor(Date.now() / 1000) + 600 });
     expect(() => svc.verify(token)).toThrow();
+  });
+
+  it('rejects tokens without exp (exp is required)', () => {
+    const token = sign({ uuid: 'u1' });
+    expect(() => svc.verify(token)).toThrow(/exp/i);
+  });
+
+  it('rejects tokens with non-numeric exp', () => {
+    const token = signRaw({ uuid: 'u1', exp: 'not-a-number' });
+    expect(() => svc.verify(token)).toThrow(/exp/i);
+  });
+
+  it('rejects tokens with non-numeric iat when present', () => {
+    const token = signRaw({
+      uuid: 'u1',
+      exp: Math.floor(Date.now() / 1000) + 600,
+      iat: 'yesterday',
+    });
+    expect(() => svc.verify(token)).toThrow(/iat/i);
+  });
+
+  it('accepts long-lived tokens (no artificial max-age)', () => {
+    const token = sign({
+      uuid: 'u1',
+      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365,
+    });
+    expect(() => svc.verify(token)).not.toThrow();
   });
 
   it('fails closed when secret is missing', () => {

@@ -1,13 +1,16 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const root = join(here, '..', '..');
+// Package root is packages/lk-client (one level above scripts/). Do not build
+// repo paths by joining a packages-relative root with another `packages/...`
+// prefix — that yields packages/packages/... on clean checkouts.
+const packageRoot = join(here, '..');
 const specPath =
   process.env.LK_EDO_OPENAPI_URL && !process.env.LK_EDO_OPENAPI_URL.startsWith('http')
-    ? join(root, process.env.LK_EDO_OPENAPI_URL)
-    : join(root, 'packages', 'lk-client', 'openapi', 'edo.json');
+    ? join(packageRoot, process.env.LK_EDO_OPENAPI_URL)
+    : join(packageRoot, 'openapi', 'edo.json');
 
 async function main() {
   let raw;
@@ -15,7 +18,8 @@ async function main() {
     const res = await fetch(process.env.LK_EDO_OPENAPI_URL);
     if (!res.ok) throw new Error(`Failed to fetch LK EDO spec: ${res.status}`);
     raw = await res.text();
-    writeFileSync(join(root, 'packages', 'lk-client', 'openapi', 'edo.json'), raw);
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(packageRoot, 'openapi', 'edo.json'), raw);
   } else {
     raw = readFileSync(specPath, 'utf8');
   }
@@ -32,8 +36,8 @@ async function main() {
       throw new Error(`LK EDO spec contains unexpected path ${p}; refusing to generate broad client`);
     }
   }
-  mkdirSync(join(root, 'packages', 'lk-client', 'src', 'generated'), { recursive: true });
-  console.log(`LK EDO spec OK: ${paths.length} narrow paths verified. Types are hand-pinned in src/generated/types.ts.`);
+  console.log(`LK EDO spec OK: ${paths.length} narrow paths verified (${specPath}).`);
+  console.log('Run `orval --config ./orval.config.ts` to regenerate src/generated/api.ts.');
 }
 
 main().catch((e) => {

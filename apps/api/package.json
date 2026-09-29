@@ -12,7 +12,8 @@
     "api:generate": "pnpm openapi:export && orval --config ../../orval.config.ts",
     "db:seed": "dotenv run -f ../../.env -- ts-node --transpile-only prisma/seed.ts",
     "prisma:generate": "prisma generate --schema ../../prisma/schema.prisma",
-    "lk:sync": "dotenv run -f ../../.env -- ts-node --transpile-only src/lk-sync/run-sync.ts"
+    "lk:sync": "dotenv run -f ../../.env -- ts-node --transpile-only src/lk-sync/run-sync.ts",
+    "lk:topology": "dotenv run -f ../../.env -- ts-node --transpile-only src/lk-sync/run-topology.ts"
   },
   "dependencies": {
     "@edo/lk-client": "workspace:^",

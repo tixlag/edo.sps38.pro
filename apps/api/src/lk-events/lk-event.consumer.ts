@@ -4,9 +4,13 @@ import { LkEventHandler } from './lk-event.handler';
 
 /**
  * Long-running RabbitMQ consumer for lk.reference.* events.
- * Started on module init; tolerant when the broker is absent (logs, retries lazily).
- * Ack policy: applied/duplicate/ignored(malformed, unknown version/key) -> ack;
- * transient DB errors -> nack+requeue for retry.
+ * Started on module init; tolerant when the broker is absent (schedules
+ * reconnect via RabbitmqService instead of a dead "retry on demand" log).
+ * Ack policy:
+ * - applied/duplicate -> ack;
+ * - poison (malformed, unknown version/key, Zod payload errors) -> nack
+ *   requeue=false -> DLQ (edo.lk-reference-sync.dlq via DLX), never infinite;
+ * - transient DB/network errors (throw) -> nack+requeue for retry.
  */
 @Injectable()
 export class LkEventConsumer implements OnModuleInit {
@@ -24,10 +28,15 @@ export class LkEventConsumer implements OnModuleInit {
       await this.rabbitmq.consume(async ({ routingKey, content, ack, nack }) => {
         try {
           const outcome = await this.handler.applyRaw(routingKey, content);
-          if (outcome.status === 'ignored') {
-            this.logger.warn(`Ack-ing ignored LK event: ${(outcome as { reason: string }).reason}`);
+          if (outcome.status === 'applied' || outcome.status === 'duplicate') {
+            ack();
+          } else {
+            // Poison: log routingKey+reason only (never full payload), DLQ it.
+            this.logger.warn(
+              `Nack-ing poison LK event to DLQ: routingKey=${routingKey} reason=${outcome.reason}`,
+            );
+            nack(false);
           }
-          ack();
         } catch (err) {
           this.logger.error(`LK event apply failed, requeue: ${(err as Error).message}`);
           nack(true);
@@ -35,7 +44,11 @@ export class LkEventConsumer implements OnModuleInit {
       });
       this.logger.log('LK event consumer subscribed');
     } catch (err) {
-      this.logger.error(`LK consumer subscribe failed (will retry on demand): ${(err as Error).message}`);
+      // RabbitmqService already scheduled a reconnect loop; the consumer
+      // re-subscribes automatically after the broker returns.
+      this.logger.error(
+        `LK consumer subscribe failed, reconnect scheduled: ${(err as Error).message}`,
+      );
     }
   }
 }

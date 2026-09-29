@@ -1,4 +1,10 @@
-import type { EdoEmployeePage, EdoLocation, EdoReference } from './generated/types';
+import type { EdoEmployeePage, EdoLocation, EdoReference } from './generated/api';
+import {
+  getEdoListDepartmentsUrl,
+  getEdoListEmployeesUrl,
+  getEdoListLocationsUrl,
+  getEdoListPositionsUrl,
+} from './generated/api';
 
 export interface LkClientOptions {
   baseUrl: string;
@@ -15,10 +21,10 @@ function requireToken(token: string): void {
 }
 
 /**
- * Compact LK client (backend-only). Uses ONLY the narrow EDO spec endpoints:
- * GET /api/internal/edo/v1/{employees,locations,positions,departments}.
- * Auth: `Authorization: Bearer <LK_EDO_INTERNAL_TOKEN>` (service credential,
- * never a user JWT). Never import the full LK OpenAPI.
+ * Compact LK client (backend-only). Types + URL helpers are GENERATED from the
+ * narrow EDO spec (openapi/edo.json) via Orval; this file is the thin
+ * handwritten S2S adapter that adds `Authorization: Bearer <token>` + baseUrl.
+ * Never import the full LK OpenAPI. Never use from the frontend.
  */
 export class LkEdoClient {
   constructor(private readonly options: LkClientOptions) {}
@@ -41,21 +47,21 @@ export class LkEdoClient {
   }
 
   async listEmployeesPage(limit: number, cursor?: string | null): Promise<EdoEmployeePage> {
-    const params = new URLSearchParams({ limit: String(limit) });
-    if (cursor) params.set('cursor', cursor);
-    return this.getJson<EdoEmployeePage>(`/api/internal/edo/v1/employees?${params.toString()}`);
+    // URL shape comes from the generated client (spec pins limit/cursor).
+    const path = getEdoListEmployeesUrl({ limit, cursor: cursor ?? undefined });
+    return this.getJson<EdoEmployeePage>(path);
   }
 
   async listLocations(): Promise<EdoLocation[]> {
-    return this.getJson<EdoLocation[]>('/api/internal/edo/v1/locations');
+    return this.getJson<EdoLocation[]>(getEdoListLocationsUrl());
   }
 
   async listPositions(): Promise<EdoReference[]> {
-    return this.getJson<EdoReference[]>('/api/internal/edo/v1/positions');
+    return this.getJson<EdoReference[]>(getEdoListPositionsUrl());
   }
 
   async listDepartments(): Promise<EdoReference[]> {
-    return this.getJson<EdoReference[]>('/api/internal/edo/v1/departments');
+    return this.getJson<EdoReference[]>(getEdoListDepartmentsUrl());
   }
 }
 
