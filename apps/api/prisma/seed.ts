@@ -1,4 +1,10 @@
+import { join } from 'node:path';
+import { config as dotenvConfig } from 'dotenv';
 import { PrismaClient } from '@prisma/client';
+
+// Load root .env explicitly when present (local dev); CI provides env directly.
+// Missing file is fine — dotenvConfig simply loads nothing.
+dotenvConfig({ path: join(__dirname, '..', '..', '..', '.env') });
 
 const prisma = new PrismaClient();
 
