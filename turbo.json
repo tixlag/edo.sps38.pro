@@ -11,11 +11,14 @@
     },
     "generate": {},
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     },
     "lint": {},
-    "test": {},
+    "test": {
+      "dependsOn": ["^build"]
+    },
     "test:e2e": {
       "cache": false
     }

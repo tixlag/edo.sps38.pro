@@ -1,16 +1,31 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { RabbitmqService } from '../rabbitmq/rabbitmq.module';
+import { LkReconciliationLockService } from '../lk-sync/lk-reconciliation-lock.service';
 import { LkEventHandler } from './lk-event.handler';
+
+const RECONCILIATION_POLL_MS = 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * Long-running RabbitMQ consumer for lk.reference.* events.
  * Started on module init; tolerant when the broker is absent (schedules
  * reconnect via RabbitmqService instead of a dead "retry on demand" log).
+ *
+ * Reconciliation coordination: before APPLYING an event the consumer checks
+ * the distributed reconciliation lock. While a full snapshot holds the lock,
+ * messages stay unacked (poll with backoff, no tight nack/requeue loop);
+ * Rabbit buffers them server-side (prefetch=10) and they replay after the
+ * lock is released. A crashed sync never blocks forever (lock TTL).
+ *
  * Ack policy:
  * - applied/duplicate -> ack;
  * - poison (malformed, unknown version/key, Zod payload errors) -> nack
  *   requeue=false -> DLQ (edo.lk-reference-sync.dlq via DLX), never infinite;
- * - transient DB/network errors (throw) -> nack+requeue for retry.
+ * - transient DB/network errors (throw) -> delayed bounded retry via
+ *   edo.lk-reference-sync.retry (TTL 5s -> main, max 5) -> DLQ, never hot loop.
  */
 @Injectable()
 export class LkEventConsumer implements OnModuleInit {
@@ -19,13 +34,30 @@ export class LkEventConsumer implements OnModuleInit {
   constructor(
     private readonly rabbitmq: RabbitmqService,
     private readonly handler: LkEventHandler,
+    private readonly reconciliationLock: LkReconciliationLockService,
   ) {}
+
+  /** Pause event APPLY while a periodic snapshot holds the distributed lock. */
+  async waitWhileReconciling(): Promise<void> {
+    for (;;) {
+      let locked = false;
+      try {
+        locked = await this.reconciliationLock.isLocked();
+      } catch {
+        locked = false;
+      }
+      if (!locked) return;
+      this.logger.log('LK reconciliation in progress; pausing event apply (messages stay queued)');
+      await sleep(RECONCILIATION_POLL_MS);
+    }
+  }
 
   async onModuleInit() {
     // Skip eager connect in export/test contexts without broker.
     if (process.env.LK_EVENTS_CONSUME === '0') return;
     try {
-      await this.rabbitmq.consume(async ({ routingKey, content, ack, nack }) => {
+      await this.rabbitmq.consume(async ({ routingKey, content, ack, nack, retry }) => {
+        await this.waitWhileReconciling();
         try {
           const outcome = await this.handler.applyRaw(routingKey, content);
           if (outcome.status === 'applied' || outcome.status === 'duplicate') {
@@ -38,8 +70,10 @@ export class LkEventConsumer implements OnModuleInit {
             nack(false);
           }
         } catch (err) {
-          this.logger.error(`LK event apply failed, requeue: ${(err as Error).message}`);
-          nack(true);
+          this.logger.error(
+            `LK event apply failed, scheduling delayed retry: ${(err as Error).message}`,
+          );
+          retry();
         }
       });
       this.logger.log('LK event consumer subscribed');

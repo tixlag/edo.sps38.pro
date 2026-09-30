@@ -1,25 +1,51 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LkReferenceSyncService } from '../src/lk-sync/lk-reference-sync.service';
 
+type MarkWhere =
+  | { OR?: Array<{ lastSeenSyncId?: unknown; lastSeenSyncId?: { not?: string } }> }
+  | { code1c?: { notIn?: string[] }; lastSeenSyncId?: { not?: string } };
+
 function memoryPrisma() {
   const employees = new Map<string, Record<string, unknown>>();
   const locations = new Map<string, Record<string, unknown>>();
   const positions = new Map<string, Record<string, unknown>>();
   const departments = new Map<string, Record<string, unknown>>();
-  function applyNotIn(
+  // Marker-only reconciliation mock with REAL SQL NULL semantics:
+  // a row matches when lastSeenSyncId IS NULL OR lastSeenSyncId <> runId.
+  // Legacy `code1c.notIn` shapes are still tolerated for backwards compat.
+  function applyMarking(
     store: Map<string, Record<string, unknown>>,
-    where: { code1c?: { notIn?: string[] }; lastSeenSyncId?: { not?: string } },
+    where: MarkWhere,
     data: Record<string, unknown>,
   ) {
     let count = 0;
-    for (const [code, row] of store.entries()) {
-      if (where.code1c?.notIn && !where.code1c.notIn.includes(code)) {
-        if (where.lastSeenSyncId?.not !== undefined && row['lastSeenSyncId'] === where.lastSeenSyncId.not) {
-          continue;
+    const or = (where as { OR?: unknown }).OR as
+      | Array<{ lastSeenSyncId?: unknown }>
+      | undefined;
+    let runId: string | undefined;
+    if (Array.isArray(or)) {
+      for (const cond of or) {
+        const v = (cond as { lastSeenSyncId?: { not?: string } }).lastSeenSyncId;
+        if (v && typeof v === 'object' && 'not' in (v as object)) {
+          runId = (v as { not: string }).not;
         }
-        store.set(code, { ...row, ...data });
-        count += 1;
       }
+    } else {
+      const legacy = where as { lastSeenSyncId?: { not?: string } };
+      runId = legacy.lastSeenSyncId?.not;
+    }
+    const notIn = (where as { code1c?: { notIn?: string[] } }).code1c?.notIn;
+    for (const [code, row] of store.entries()) {
+      if (notIn && notIn.includes(code)) continue;
+      const seen = row['lastSeenSyncId'] as string | null | undefined;
+      // SQL NULL semantics: NULL <> runId is NOT true, so an explicit
+      // IS NULL branch is required. Memory mock models it exactly.
+      const matches = seen == null || (runId !== undefined && seen !== runId);
+      if (!matches) continue;
+      // Legacy shapes without OR that also filtered by notIn already handled above.
+      if (!Array.isArray(or) && runId === undefined) continue;
+      store.set(code, { ...row, ...data });
+      count += 1;
     }
     return { count };
   }
@@ -33,7 +59,7 @@ function memoryPrisma() {
         return next;
       },
       updateMany: async ({ where, data }: { where: never; data: Record<string, unknown> }) =>
-        applyNotIn(employees, where as never, data),
+        applyMarking(employees, where as never, data),
     },
     lkLocation: {
       upsert: async ({ where, update, create }: { where: { code1c: string }; update: Record<string, unknown>; create: Record<string, unknown> }) => {
@@ -43,7 +69,7 @@ function memoryPrisma() {
         return next;
       },
       updateMany: async ({ where, data }: { where: never; data: Record<string, unknown> }) =>
-        applyNotIn(locations, where as never, data),
+        applyMarking(locations, where as never, data),
     },
     lkPosition: {
       upsert: async ({ where, update, create }: { where: { code1c: string }; update: Record<string, unknown>; create: Record<string, unknown> }) => {
@@ -53,7 +79,7 @@ function memoryPrisma() {
         return next;
       },
       updateMany: async ({ where, data }: { where: never; data: Record<string, unknown> }) =>
-        applyNotIn(positions, where as never, data),
+        applyMarking(positions, where as never, data),
     },
     lkDepartment: {
       upsert: async ({ where, update, create }: { where: { code1c: string }; update: Record<string, unknown>; create: Record<string, unknown> }) => {
@@ -63,7 +89,7 @@ function memoryPrisma() {
         return next;
       },
       updateMany: async ({ where, data }: { where: never; data: Record<string, unknown> }) =>
-        applyNotIn(departments, where as never, data),
+        applyMarking(departments, where as never, data),
     },
   };
 }
@@ -187,6 +213,65 @@ describe('LkReferenceSyncService', () => {
     expect(prisma.store.employees.get('A')?.['sourcePresent']).toBe(true);
   });
 
+  it('legacy NULL lastSeenSyncId rows are marked (SQL NULL semantics)', async () => {
+    const prisma = memoryPrisma();
+    const audit = { log: vi.fn() };
+    const config = { get: () => undefined } as never;
+    const svc = new LkReferenceSyncService(prisma as never, audit as never, config);
+    // Simulate legacy/event-created rows that never got a sync stamp.
+    prisma.store.employees.set('OLD', {
+      code1c: 'OLD',
+      fullName: 'Старый',
+      fired: false,
+      sourcePresent: true,
+      lastSeenSyncId: null,
+    });
+    prisma.store.positions.set('OLD_POS', {
+      code1c: 'OLD_POS',
+      name: 'Старая',
+      deleted: false,
+      lastSeenSyncId: null,
+    });
+    const client = {
+      listLocations: async () => [
+        { id: 1, code1c: 'LOC1', name: 'Один', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null },
+      ],
+      listPositions: async () => [{ code1c: 'POS1', name: 'P1', deleted: false, updatedAt: null }],
+      listDepartments: async () => [{ code1c: 'DEP1', name: 'D1', deleted: false, updatedAt: null }],
+      listEmployeesPage: async () => ({ items: [emp('A')], nextCursor: null }),
+    } as never;
+    await svc.syncAll(client, 'run-2');
+    expect(prisma.store.employees.get('OLD')?.['sourcePresent']).toBe(false);
+    expect(prisma.store.employees.get('OLD')?.['fired']).toBe(false);
+    expect(prisma.store.positions.get('OLD_POS')?.['deleted']).toBe(true);
+  });
+
+  it('empty employee snapshot does not wipe the staff (safety guard)', async () => {
+    const prisma = memoryPrisma();
+    const audit = { log: vi.fn() };
+    const config = { get: () => undefined } as never;
+    const svc = new LkReferenceSyncService(prisma as never, audit as never, config);
+    const full = {
+      listLocations: async () => [
+        { id: 1, code1c: 'LOC1', name: 'Один', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null },
+      ],
+      listPositions: async () => [{ code1c: 'POS1', name: 'P1', deleted: false, updatedAt: null }],
+      listDepartments: async () => [{ code1c: 'DEP1', name: 'D1', deleted: false, updatedAt: null }],
+      listEmployeesPage: async () => ({ items: [emp('A')], nextCursor: null }),
+    } as never;
+    await svc.syncAll(full, 'sync-1');
+    const emptyEmployees = {
+      listLocations: async () => [
+        { id: 1, code1c: 'LOC1', name: 'Один', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null },
+      ],
+      listPositions: async () => [{ code1c: 'POS1', name: 'P1', deleted: false, updatedAt: null }],
+      listDepartments: async () => [{ code1c: 'DEP1', name: 'D1', deleted: false, updatedAt: null }],
+      listEmployeesPage: async () => ({ items: [], nextCursor: null }),
+    } as never;
+    await svc.syncAll(emptyEmployees, 'sync-2');
+    expect(prisma.store.employees.get('A')?.['sourcePresent']).toBe(true);
+  });
+
   it('failed partial snapshot does not mark unseen rows', async () => {
     const prisma = memoryPrisma();
     const audit = { log: vi.fn() };
@@ -201,6 +286,14 @@ describe('LkReferenceSyncService', () => {
       listEmployeesPage: async () => ({ items: [emp('A'), emp('B')], nextCursor: null }),
     } as never;
     await svc.syncAll(full, 'sync-1');
+    // NULL stale row must survive a partial failure as well.
+    prisma.store.employees.set('STALE_NULL', {
+      code1c: 'STALE_NULL',
+      fullName: 'Stale',
+      fired: false,
+      sourcePresent: true,
+      lastSeenSyncId: null,
+    });
     const failing = {
       listLocations: async () => [
         { id: 1, code1c: 'LOC1', name: 'Один', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null },
@@ -215,6 +308,7 @@ describe('LkReferenceSyncService', () => {
     // B is still present: no marking happened after the failed run.
     expect(prisma.store.employees.get('B')?.['sourcePresent']).not.toBe(false);
     expect(prisma.store.employees.has('B')).toBe(true);
+    expect(prisma.store.employees.get('STALE_NULL')?.['sourcePresent']).toBe(true);
   });
 
   it('fails closed without service token', () => {

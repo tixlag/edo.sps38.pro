@@ -19,21 +19,32 @@ export interface SyncResult {
   employees: number;
 }
 
+export interface SnapshotCounts {
+  locations: number;
+  positions: number;
+  departments: number;
+  employees: number;
+}
+
 /**
  * Bootstrap/reconciliation from the LK compact internal API.
  * Order: locations -> positions -> departments -> employees (paginated by cursor).
  * Idempotent upserts; soft deletes preserved (deleted/fired flags); syncedAt marked.
  * Never deletes rows physically (history for EDO documents).
  *
- * Reconciliation marking (safe full-snapshot strategy):
+ * Reconciliation marking (marker-only full-snapshot strategy):
  * - every row seen during a full snapshot is stamped with lastSeenSyncId;
- * - after ALL four endpoints succeed, rows not seen are marked:
+ * - after ALL four endpoints succeed, rows with
+ *   `lastSeenSyncId IS NULL OR lastSeenSyncId <> <runId>` are marked:
  *   refs -> deleted=true, employees -> sourcePresent=false (never fired);
- * - a partially failed snapshot never marks missing rows.
- * - MUST run with the live RabbitMQ consumer disabled/paused (see run-sync.ts
- *   and docs/decisions/ADR-002): queue buffers events, snapshot runs, then the
- *   consumer replays buffered events. Parallel online sync + consumer is NOT
- *   claimed safe (no reliable LK entity revision).
+ * - no code1c lists are kept in memory (marker-only, safe for large staff);
+ * - a partially failed snapshot never marks missing rows;
+ * - an endpoint returning 0 rows skips marking for that table (safety guard).
+ * - MUST run with the live RabbitMQ consumer paused via the distributed
+ *   reconciliation lock (see LkReconciliationLockService and run-sync.ts):
+ *   queue buffers events, snapshot runs, then the consumer replays buffered
+ *   events. Parallel online sync + consumer is NOT safe (no reliable LK
+ *   entity revision).
  */
 @Injectable()
 export class LkReferenceSyncService {
@@ -65,46 +76,41 @@ export class LkReferenceSyncService {
     const runId = syncId ?? randomUUID();
     // Fetch + upsert each endpoint first. Only when every step succeeded do we
     // mark unseen rows — a throw before this point leaves old marks untouched.
-    const seenLocations = await this.syncLocations(c, runId);
-    const seenPositions = await this.syncPositions(c, runId);
-    const seenDepartments = await this.syncDepartments(c, runId);
-    const seenEmployees = await this.syncEmployees(c, runId);
+    const loc = await this.syncLocations(c, runId);
+    const pos = await this.syncPositions(c, runId);
+    const dep = await this.syncDepartments(c, runId);
+    const emp = await this.syncEmployees(c, runId);
     await this.markMissing(runId, {
-      locations: seenLocations.codes,
-      positions: seenPositions.codes,
-      departments: seenDepartments.codes,
-      employees: seenEmployees.codes,
+      locations: loc.count,
+      positions: pos.count,
+      departments: dep.count,
+      employees: emp.count,
     });
     await this.audit.log({
       action: 'LK_REFERENCE_SYNCED',
       entityType: 'LkReference',
       entityId: 'all',
       after: {
-        locations: seenLocations.count,
-        positions: seenPositions.count,
-        departments: seenDepartments.count,
-        employees: seenEmployees.count,
+        locations: loc.count,
+        positions: pos.count,
+        departments: dep.count,
+        employees: emp.count,
         syncId: runId,
       },
     });
     return {
-      locations: seenLocations.count,
-      positions: seenPositions.count,
-      departments: seenDepartments.count,
-      employees: seenEmployees.count,
+      locations: loc.count,
+      positions: pos.count,
+      departments: dep.count,
+      employees: emp.count,
     };
   }
 
-  async syncLocations(
-    client?: LkEdoClient,
-    syncId?: string,
-  ): Promise<{ count: number; codes: string[] }> {
+  async syncLocations(client?: LkEdoClient, syncId?: string): Promise<{ count: number }> {
     const c = client ?? this.createClient();
     const items: EdoLocation[] = await c.listLocations();
     const now = new Date();
-    const codes: string[] = [];
     for (const loc of items) {
-      codes.push(loc.code1c);
       await this.prisma.lkLocation.upsert({
         where: { code1c: loc.code1c },
         update: {
@@ -130,19 +136,14 @@ export class LkReferenceSyncService {
         },
       });
     }
-    return { count: items.length, codes };
+    return { count: items.length };
   }
 
-  async syncPositions(
-    client?: LkEdoClient,
-    syncId?: string,
-  ): Promise<{ count: number; codes: string[] }> {
+  async syncPositions(client?: LkEdoClient, syncId?: string): Promise<{ count: number }> {
     const c = client ?? this.createClient();
     const items: EdoReference[] = await c.listPositions();
     const now = new Date();
-    const codes: string[] = [];
     for (const ref of items) {
-      codes.push(ref.code1c);
       await this.prisma.lkPosition.upsert({
         where: { code1c: ref.code1c },
         update: {
@@ -162,19 +163,14 @@ export class LkReferenceSyncService {
         },
       });
     }
-    return { count: items.length, codes };
+    return { count: items.length };
   }
 
-  async syncDepartments(
-    client?: LkEdoClient,
-    syncId?: string,
-  ): Promise<{ count: number; codes: string[] }> {
+  async syncDepartments(client?: LkEdoClient, syncId?: string): Promise<{ count: number }> {
     const c = client ?? this.createClient();
     const items: EdoReference[] = await c.listDepartments();
     const now = new Date();
-    const codes: string[] = [];
     for (const ref of items) {
-      codes.push(ref.code1c);
       await this.prisma.lkDepartment.upsert({
         where: { code1c: ref.code1c },
         update: {
@@ -194,30 +190,31 @@ export class LkReferenceSyncService {
         },
       });
     }
-    return { count: items.length, codes };
+    return { count: items.length };
   }
 
   async syncEmployees(
     client?: LkEdoClient,
     syncId?: string,
     limit = 500,
-  ): Promise<{ count: number; codes: string[] }> {
+  ): Promise<{ count: number }> {
     const c = client ?? this.createClient();
     let cursor: string | null | undefined = undefined;
     let total = 0;
-    const codes: string[] = [];
     for (;;) {
       const page = await c.listEmployeesPage(limit, cursor ?? null);
       for (const emp of page.items) {
         await this.upsertEmployee(emp, syncId);
-        codes.push(emp.code1c);
         total += 1;
       }
-      // Persist cursor only after the page was fully written (crash-safe resume).
+      // Advance the in-memory cursor only after the page was fully written.
+      // A crash restarts the whole employee snapshot from the start; this is
+      // safe because upserts are idempotent and a fresh syncRunId is used.
+      // markMissing runs only after the full pass succeeds.
       cursor = page.nextCursor;
       if (!cursor) break;
     }
-    return { count: total, codes };
+    return { count: total };
   }
 
   async upsertEmployee(emp: EdoEmployee, syncId?: string): Promise<void> {
@@ -275,20 +272,19 @@ export class LkReferenceSyncService {
     });
   }
 
-  private async markMissing(
-    runId: string,
-    seen: { locations: string[]; positions: string[]; departments: string[]; employees: string[] },
-  ): Promise<void> {
-    const notIn = (codes: string[]) =>
-      codes.length > 0 ? { notIn: codes } : undefined;
+  /**
+   * Marker-only reconciliation: mark every row NOT stamped with the current
+   * runId (including legacy NULL rows — SQL `<>` alone would miss them).
+   * Prisma: `{ OR: [{ lastSeenSyncId: null }, { lastSeenSyncId: { not: runId } }] }`
+   * compiles to `lastSeenSyncId IS NULL OR lastSeenSyncId <> runId`.
+   */
+  private async markMissing(runId: string, counts: SnapshotCounts): Promise<void> {
     // Reference data absent from a successful snapshot -> soft deleted.
-    const locWhere =
-      notIn(seen.locations) !== undefined
-        ? { code1c: notIn(seen.locations) as never }
-        : undefined;
-    if (locWhere) {
+    if (counts.locations > 0) {
       await (this.prisma.lkLocation.updateMany as (a: never) => Promise<unknown>)({
-        where: { ...locWhere, lastSeenSyncId: { not: runId } },
+        where: {
+          OR: [{ lastSeenSyncId: null }, { lastSeenSyncId: { not: runId } }],
+        },
         data: { deleted: true },
       } as never);
     } else {
@@ -296,26 +292,32 @@ export class LkReferenceSyncService {
       // potentially truncated response; operator must investigate.
       this.logger.warn('Snapshot returned 0 locations; skipping mark-missing for locations');
     }
-    if (seen.positions.length > 0) {
+    if (counts.positions > 0) {
       await (this.prisma.lkPosition.updateMany as (a: never) => Promise<unknown>)({
-        where: { code1c: { notIn: seen.positions }, lastSeenSyncId: { not: runId } },
+        where: {
+          OR: [{ lastSeenSyncId: null }, { lastSeenSyncId: { not: runId } }],
+        },
         data: { deleted: true },
       } as never);
     } else {
       this.logger.warn('Snapshot returned 0 positions; skipping mark-missing for positions');
     }
-    if (seen.departments.length > 0) {
+    if (counts.departments > 0) {
       await (this.prisma.lkDepartment.updateMany as (a: never) => Promise<unknown>)({
-        where: { code1c: { notIn: seen.departments }, lastSeenSyncId: { not: runId } },
+        where: {
+          OR: [{ lastSeenSyncId: null }, { lastSeenSyncId: { not: runId } }],
+        },
         data: { deleted: true },
       } as never);
     } else {
       this.logger.warn('Snapshot returned 0 departments; skipping mark-missing for departments');
     }
     // Employees absent from snapshot -> technically not present, never `fired`.
-    if (seen.employees.length > 0) {
+    if (counts.employees > 0) {
       await (this.prisma.lkEmployee.updateMany as (a: never) => Promise<unknown>)({
-        where: { code1c: { notIn: seen.employees }, lastSeenSyncId: { not: runId } },
+        where: {
+          OR: [{ lastSeenSyncId: null }, { lastSeenSyncId: { not: runId } }],
+        },
         data: { sourcePresent: false },
       } as never);
     } else {

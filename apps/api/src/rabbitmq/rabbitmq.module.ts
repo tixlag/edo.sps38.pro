@@ -20,6 +20,11 @@ export const LK_REFERENCE_BINDINGS = [
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000, 30000];
 const RECONNECT_MAX_MS = 30000;
 
+/** Delayed retry for transient failures (no hot nack/requeue loop). */
+export const LK_RETRY_TTL_MS = 5000;
+export const LK_MAX_RETRIES = 5;
+export const LK_RETRY_COUNT_HEADER = 'x-retry-count';
+
 /** Bounded exponential backoff step for tests/ops. attempt is 0-based. */
 export function computeReconnectDelay(attempt: number, jitterMs = 0): number {
   const base =
@@ -29,11 +34,21 @@ export function computeReconnectDelay(attempt: number, jitterMs = 0): number {
   return base + jitterMs;
 }
 
+/** Read the bounded-retry attempt counter from message headers. */
+export function getRetryCount(headers: Record<string, unknown> | undefined): number {
+  const v = headers?.[LK_RETRY_COUNT_HEADER];
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
+}
+
 export type LkConsumeHandler = (msg: {
   routingKey: string;
   content: Buffer;
+  headers: Record<string, unknown>;
+  retryCount: number;
   ack: () => void;
   nack: (requeue: boolean) => void;
+  /** Delayed bounded retry for transient failures (retry queue + TTL, not hot loop). */
+  retry: () => void;
 }) => Promise<void> | void;
 
 /**
@@ -43,8 +58,20 @@ export type LkConsumeHandler = (msg: {
  *
  * Lifecycle: connection/channel error+close listeners clear stale state and
  * schedule a single bounded reconnect loop (1s/2s/5s/10s/30s max + jitter).
- * After reconnect the topology (exchange, main queue with DLX, DLQ, bindings)
- * is re-asserted and the consumer is re-subscribed.
+ * After reconnect the topology (exchange, main queue with DLX, retry queue,
+ * DLQ, bindings) is re-asserted and the consumer is re-subscribed.
+ *
+ * Ack safety: each delivery captures its own `deliveryChannel`; ack/nack always
+ * go to the channel that delivered the message, never to a reconnected
+ * `this.channel`. A stale ack may fail (ignored) — Rabbit redelivers and the
+ * idempotency inbox (eventId) makes it safe. Old channel/connection close
+ * events never clear a newer connection state (identity-checked).
+ *
+ * Retry policy (no tight loop):
+ * - applied/duplicate -> ack;
+ * - poison -> nack(requeue=false) -> DLQ;
+ * - transient -> publish to `<queue>.retry` (TTL 5s, DLX back to main) with
+ *   `x-retry-count+1`, then ack the original. After 5 attempts -> DLQ.
  */
 @Injectable()
 export class RabbitmqService implements OnModuleDestroy {
@@ -83,6 +110,19 @@ export class RabbitmqService implements OnModuleDestroy {
   /** EDO-owned dead-letter queue: poison events land here via nack(requeue=false). */
   get dlq(): string {
     return `${this.queue}.dlq`;
+  }
+
+  /** Delayed-retry queue for transient failures (TTL -> DLX back to main). */
+  get retryQueue(): string {
+    return `${this.queue}.retry`;
+  }
+
+  get retryTtlMs(): number {
+    return LK_RETRY_TTL_MS;
+  }
+
+  get maxRetries(): number {
+    return LK_MAX_RETRIES;
   }
 
   private get url(): string {
@@ -140,6 +180,17 @@ export class RabbitmqService implements OnModuleDestroy {
         'x-dead-letter-exchange': this.dlx,
       },
     });
+    // Retry queue: TTL then dead-letter back to the MAIN queue via the default
+    // exchange (routing key = main queue name). No consumer is attached here;
+    // messages reappear on the main queue after the delay.
+    await ch.assertQueue(this.retryQueue, {
+      durable: true,
+      arguments: {
+        'x-dead-letter-exchange': '',
+        'x-dead-letter-routing-key': this.queue,
+        'x-message-ttl': this.retryTtlMs,
+      },
+    });
     for (const key of LK_REFERENCE_BINDINGS) {
       await ch.bindQueue(this.queue, this.exchange, key);
     }
@@ -172,35 +223,113 @@ export class RabbitmqService implements OnModuleDestroy {
     if (!this.channel) throw new Error('RabbitMQ channel is not available');
     const handler = this.consumerHandler;
     if (!handler) return;
-    await this.channel.consume(this.queue, async (msg) => {
+    // Capture the delivering channel: delivery tags are valid ONLY on the
+    // channel that delivered the message. Never use mutable this.channel for
+    // ack/nack of an already-delivered message (reconnect would send the ack
+    // to channel B with a tag from channel A -> PRECONDITION_FAILED closes B).
+    const deliveryChannel = this.channel;
+    await deliveryChannel.consume(this.queue, async (msg) => {
       if (!msg) return;
+      const headers = ((msg.properties.headers ?? {}) as Record<string, unknown>) ?? {};
+      const retryCount = getRetryCount(headers);
       const ack = () => {
         try {
-          this.channel?.ack(msg);
+          deliveryChannel.ack(msg);
         } catch {
-          // ignore
+          // Stale channel: ignore. Rabbit redelivers; eventId dedup keeps it safe.
         }
       };
       const nack = (requeue: boolean) => {
         try {
-          if (requeue) this.channel?.nack(msg, false, true);
-          else this.channel?.nack(msg, false, false);
+          if (requeue) deliveryChannel.nack(msg, false, true);
+          else deliveryChannel.nack(msg, false, false);
         } catch {
-          // ignore
+          // ignore (see ack)
+        }
+      };
+      const retry = () => {
+        try {
+          this.retryLater(deliveryChannel, msg);
+        } catch {
+          // ignore: redelivery after reconnect is the safe fallback
         }
       };
       try {
-        await handler({ routingKey: msg.fields.routingKey, content: msg.content, ack, nack });
+        await handler({
+          routingKey: msg.fields.routingKey,
+          content: msg.content,
+          headers,
+          retryCount,
+          ack,
+          nack,
+          retry,
+        });
       } catch (err) {
-        this.logger.error(`Consumer handler failed: ${(err as Error).message}`);
-        nack(true);
+        this.logger.error(`Consumer handler failed, scheduling delayed retry: ${(err as Error).message}`);
+        retry();
       }
     });
   }
 
+  /**
+   * Delayed bounded retry for transient failures.
+   * - attempts < max: publish a copy to the retry queue (TTL -> main) with
+   *   incremented x-retry-count, then ack the original (no immediate redelivery).
+   * - attempts >= max: nack(requeue=false) -> DLQ.
+   * Uses the delivery channel for ack/nack and the current channel (falling
+   * back to delivery) for the retry publish.
+   */
+  retryLater(
+    deliveryChannel: Channel,
+    msg: { content: Buffer; properties: { headers?: Record<string, unknown> | null } },
+  ): void {
+    const headers = ((msg.properties.headers ?? {}) as Record<string, unknown>) ?? {};
+    const count = getRetryCount(headers);
+    if (count >= this.maxRetries) {
+      this.logger.warn(`LK event exceeded ${this.maxRetries} retries, sending to DLQ`);
+      try {
+        deliveryChannel.nack(msg as never, false, false);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    const nextHeaders = { ...headers, [LK_RETRY_COUNT_HEADER]: count + 1 };
+    try {
+      const pub = (this.channel ?? deliveryChannel) as Channel & {
+        sendToQueue?: (q: string, c: Buffer, o?: unknown) => void;
+      };
+      if (typeof pub.sendToQueue === 'function') {
+        pub.sendToQueue(this.retryQueue, msg.content, {
+          persistent: true,
+          headers: nextHeaders,
+        });
+      } else {
+        // Fallback for minimal channel mocks: publish via default exchange.
+        (pub as Channel).publish('', this.retryQueue, msg.content, {
+          persistent: true,
+          headers: nextHeaders,
+        } as never);
+      }
+    } catch (err) {
+      // Publish failed (likely connection down): do NOT ack; the broker will
+      // redeliver after reconnect. Not a hot loop — delivery is paused offline.
+      this.logger.error(`LK retry publish failed: ${(err as Error).message}`);
+      return;
+    }
+    try {
+      deliveryChannel.ack(msg as never);
+    } catch {
+      // Stale ack ignored; duplicate retry copy is deduped via eventId.
+    }
+  }
+
   private attachConnectionListeners(conn: ChannelModel): void {
+    const watched = conn;
     const onDown = (err?: unknown) => {
       if (this.shuttingDown) return;
+      // Old connection's close must not wipe a newer connection state.
+      if (this.connection !== watched) return;
       const msg = err instanceof Error ? err.message : 'connection lost';
       this.logger.error(`RabbitMQ connection down (${msg}), scheduling reconnect`);
       this.clearChannelState();
@@ -218,8 +347,11 @@ export class RabbitmqService implements OnModuleDestroy {
   }
 
   private attachChannelListeners(ch: Channel): void {
+    const watched = ch;
     const onDown = (err?: unknown) => {
       if (this.shuttingDown) return;
+      // Old channel's close must not wipe a newer channel state.
+      if (this.channel !== watched) return;
       const msg = err instanceof Error ? err.message : 'channel lost';
       this.logger.error(`RabbitMQ channel down (${msg}), scheduling reconnect`);
       this.clearChannelState();

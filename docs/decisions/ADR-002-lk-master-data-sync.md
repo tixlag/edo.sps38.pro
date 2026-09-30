@@ -1,7 +1,7 @@
 # ADR-002: LK master-data sync (local projection in EDO)
 
 Date: 2026-09-29
-Status: accepted
+Status: accepted (amended 2026-09-30: marker-only reconciliation, Redis lock, delayed retry)
 
 ## Context
 
@@ -26,10 +26,16 @@ LK publishes a narrow internal API + RabbitMQ events (see
   via compact backend-only `packages/lk-client` (generated ONLY from
   `openapi/edo.json`, never the full LK spec). Order: locations → positions →
   departments → employees (opaque cursor pagination, `limit` 1–1000, finish on
-  `nextCursor: null`, persist cursor per page). CLI `pnpm --filter @edo/api lk:sync`.
+  `nextCursor: null`; the cursor is held in memory only and advanced after each
+  page is fully written — a crash restarts the whole employee snapshot from the
+  start, which is safe because upserts are idempotent and each run uses a fresh
+  `syncRunId`; `markMissing` runs only after the full pass succeeds).
+  CLI `pnpm --filter @edo/api lk:sync`.
 - **Changes**: RabbitMQ durable topic `lk.events`, EDO-owned durable queue
   `edo.lk-reference-sync` (+ DLX `edo.lk-reference-sync.dlx` + DLQ
-  `edo.lk-reference-sync.dlq`), bindings `lk.reference.*.*.v1`. Published today:
+  `edo.lk-reference-sync.dlq` + retry queue `edo.lk-reference-sync.retry`
+  with `x-message-ttl=5000` and DLX back to the main queue), bindings
+  `lk.reference.*.*.v1`. Published today:
   `employee/position/department.upserted.v1`; location/deleted keys reserved.
   Envelope `{eventId, eventType, version: 1, occurredAt, source: "lk.sps38.pro",
   payload}`. Consumer is idempotent via `lk_processed_events.eventId`
@@ -37,30 +43,51 @@ LK publishes a narrow internal API + RabbitMQ events (see
   JSON/envelope, unsupported version, unknown routing key, eventType mismatch,
   invalid domain payload/ZodError) are poison: `nack(requeue=false)` → DLQ,
   logged with eventId/routingKey/reason only (never the full payload).
-  Transient infra errors (MariaDB/network) throw → `nack(requeue=true)`.
+  Transient infra errors (MariaDB/network) use delayed bounded retry: publish
+  to the retry queue with `x-retry-count+1` (TTL 5s → main), then ack the
+  original — never a tight `nack(requeue=true)` hot loop. After 5 attempts the
+  message goes to the DLQ. Delivery tags are acked only on the channel that
+  delivered them; stale acks are ignored and redelivery is deduped via eventId.
   Reconnect uses bounded backoff 1s/2s/5s/10s/30s max + jitter with a single
-  loop; after reconnect the topology is re-asserted and the consumer
-  re-subscribed. Graceful shutdown stops the loop.
+  loop; after reconnect the topology (including the retry queue) is re-asserted
+  and the consumer re-subscribed. Old channel/connection close events never
+  clear a newer connection state (identity-checked). Graceful shutdown stops
+  the loop.
 - **Auth**: S2S `LK_EDO_INTERNAL_TOKEN` (`Authorization: Bearer`), never user
   JWT, never frontend. User JWT (HS256, `lk-auth-service`) drives EDO access
   rules 20000–20009 separately.
 - **No direct LK DB access, no full LK OpenAPI import, no LK business-logic copy.**
 - **Soft state preserved**: `fired`/`deleted` are states, not physical deletes.
 - **Safe bootstrap (consumer disabled during snapshot)** — deployment order:
-  1. `pnpm --filter @edo/api lk:topology` asserts exchange/queue/DLQ/bindings
+  1. `pnpm --filter @edo/api lk:topology` asserts exchange/queue/DLQ/retry/bindings
      without starting a consumer, so the queue starts accumulating live events.
   2. `pnpm --filter @edo/api lk:sync` runs in `SyncAppModule` (no live
      consumer module; `LK_EVENTS_CONSUME=0` forced before context creation),
-     performs the full snapshot, and marks missing rows ONLY after all four
-     endpoints succeed.
+     acquires the distributed reconciliation lock, performs the full snapshot,
+     and marks missing rows ONLY after all four endpoints succeed.
   3. Boot the API: the consumer replays buffered events, then live mode.
-  Parallel online full sync + live consumer is NOT claimed safe (no reliable
-  LK entity revision); periodic reconciliation must pause the consumer or hold
-  a mutual-exclusion lock first.
-- **Reconciliation marking**: every snapshotted row is stamped
-  `lastSeenSyncId=<syncRunId>`; after success, unseen refs → `deleted=true`,
-  unseen employees → `sourcePresent=false` (never `fired`). Partial failures
-  never mark missing; empty snapshots skip marking with a warning.
+  Parallel online full sync + live consumer is NOT safe (no reliable LK entity
+  revision).
+- **Periodic reconciliation (distributed pause/lock)** — REQUIRED, not optional
+  (location events are not published yet; some legacy LK write paths have no
+  events). Flow: `lk:sync` acquires `edo:lk-reconciliation-lock` in shared
+  Redis via `SET NX PX 30s` with a random owner token (second concurrent sync
+  exits non-zero); the live consumer checks the lock before APPLYING each event
+  and waits (poll 1s, message stays unacked — no tight requeue loop) while the
+  lock is held; buffered Rabbit events replay after release. The lock has a TTL
+  so a crashed sync never blocks the consumer forever, a heartbeat renews the
+  TTL only while the owner still holds it (`Lua compare-and-expire`), and
+  release deletes only its own token (`Lua compare-and-del`). Snapshot failure
+  skips `markMissing` but still releases the lock. When Redis is unavailable
+  (local docs/CI) the lock degrades to a no-op and the consumer does not pause;
+  production MUST use the shared Redis.
+- **Reconciliation marking (marker-only)**: every snapshotted row is stamped
+  `lastSeenSyncId=<syncRunId>` (employees also `sourcePresent=true`); after
+  success, rows with `lastSeenSyncId IS NULL OR lastSeenSyncId <> <runId>` are
+  marked — refs → `deleted=true`, employees → `sourcePresent=false` (never
+  `fired`). No `code1c` lists are kept in memory. Partial failures never mark
+  missing; empty snapshots skip marking for that table with a warning
+  (especially `0` employees never wipes the staff).
 
 ## Consequences
 

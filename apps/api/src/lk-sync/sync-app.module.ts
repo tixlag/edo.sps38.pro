@@ -5,6 +5,7 @@ import { validateEnv } from '../config/env.validation';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
 import { RabbitmqModule } from '../rabbitmq/rabbitmq.module';
+import { RedisModule } from '../redis/redis.module';
 import { LkSyncModule } from './lk-sync.module';
 
 const ROOT_ENV = join(__dirname, '..', '..', '..', '..', '.env');
@@ -24,6 +25,7 @@ const ROOT_ENV = join(__dirname, '..', '..', '..', '..', '.env');
     }),
     PrismaModule,
     RabbitmqModule,
+    RedisModule,
     AuditModule,
     LkSyncModule,
   ],
