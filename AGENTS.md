@@ -37,6 +37,16 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 - Changes: RabbitMQ durable topic `lk.events`, queue `edo.lk-reference-sync`, bindings `lk.reference.*.*.v1` (published today: employee/position/department upserted v1; location/deleted keys reserved). Consumer is idempotent via `lk_processed_events.eventId`, tolerant to redelivery, acks malformed/unknown-version (no poison requeue). Out-of-order safe as far as possible; periodic full snapshot fixes divergence (LK does not publish every write path — see ADR-002).
 - See `docs/decisions/ADR-002-lk-master-data-sync.md`.
 
+## Working with LK locally (shared containers)
+
+- LK repo lives outside this monorepo (sibling checkout). Canonical local stack: its `docker/docker-compose.yml`, compose project `lk` — ALL containers must carry the `lk_` prefix. Never run a second compose project/file for the same services (split-brain: app on one network, DB/broker on another).
+- Expected containers: `lk_nginx` (host `12000:80` + `12443:443`) · `lk_php` · `lk_php_next` · `lk_mariadb` (host `12002`) · `lk_redis` (host `6379`, no auth) · `lk_rabbitmq` (host AMQP/UI per env) · `lk_auth-service`. Data lives in project volumes (`lk_sps_db`, `lk_rabbitmq-data`, `lk_redis`) — NEVER delete volumes.
+- LK HTTP: `https://next.localhost:12443` (`server_name next.localhost`; plain HTTP redirects to HTTPS). Name must resolve to 127.0.0.1 (corporate DNS does here, else add `127.0.0.1 next.localhost` to /etc/hosts). Local cert is self-signed: dev-only `NODE_TLS_REJECT_UNAUTHORIZED=0`, never production.
+- S2S token is paired: LK `php_next` env `EDO_INTERNAL_TOKEN` (empty default = guard throws) ↔ EDO `LK_EDO_INTERNAL_TOKEN`. Verify without secrets: bad token → `401`, good token → `200` JSON on `GET /api/internal/edo/v1/locations`.
+- RabbitMQ: `RABBITMQ_NODENAME=rabbit@lk_rabbitmq` is pinned in compose (mnesia is hostname-bound — without it every recreate starts with an EMPTY broker). EDO user is operator-created via `rabbitmqctl` with configure/write/read on `(edo\.lk-reference-sync.*|lk.events|amq\.default|)` and read on `(edo\.lk-reference-sync.*|lk\.events)` (`amq.default` is required for the retry-queue DLX). `lk.events` is LK-owned: only assert compatible, never redeclare/delete. Host AMQP port may be remapped if another local stack holds `5672` (container port stays `5672`; LK app uses container DNS).
+- Gotchas: after recreating php containers run `docker exec lk_nginx nginx -s reload` (nginx caches upstream DNS at boot → stale IP → `502`). nginx serves code from the mounted repo checkout — mounts pointing at stale host copies (`/var/www/...`) silently serve old code; the local nginx site template must be the full version (an empty stub renders an empty vhost). `php-fpm-healthcheck` missing in dev image keeps php health at "starting" (cosmetic; verify via real request).
+- EDO side: `pnpm infra:check` (read-only) → `pnpm db:migrate` (refuses non-`edo` DB) → `pnpm --filter @edo/api lk:topology` → `pnpm --filter @edo/api lk:sync` (exits `2` busy / `3` no Redis). Never read LK tables; never seed/migrate outside database `edo`.
+
 ## Domain rules
 
 - Workflow logic is backend-owned (stage, required docs, actions, blockers). Never hardcode `if (employee.country ...)` / `showDocument(...)` in frontend.
