@@ -1,50 +1,19 @@
+# EDO local infrastructure.
+#
+# ARCHITECTURE: EDO uses the SHARED LK infrastructure containers for
+# MariaDB/Redis/RabbitMQ — it does NOT run its own copies.
+#
+#   shared LK MariaDB (lk_mariadb, host 12002)  -> separate database `edo`
+#   shared LK Redis   (host 6379, no auth)      -> EDO keys under `edo:*`
+#   shared LK RabbitMQ (host 5672, vhost /)     -> EDO owns ONLY its queues:
+#     edo.lk-reference-sync (+ .retry, .dlq, .dlx), exchange lk.events is LK-owned
+#
+# Same container/server != same application database: EDO never reads LK
+# tables, migrations apply ONLY to `edo` (see scripts/assert-edo-database.js).
+#
+# This compose file therefore contains ONLY EDO-specific storage (S3 mock).
+# Start the LK stack first (LK repo), then `docker compose up -d` here for S3.
 services:
-  mariadb:
-    image: mariadb:11.4
-    container_name: edo-mariadb
-    restart: unless-stopped
-    environment:
-      MARIADB_ROOT_PASSWORD: root
-      MARIADB_DATABASE: edo
-      MARIADB_USER: edo
-      MARIADB_PASSWORD: edo
-    ports:
-      - "3307:3306"
-    volumes:
-      - mariadb-data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-uedo", "-pedo"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-  redis:
-    image: redis:7-alpine
-    container_name: edo-redis
-    restart: unless-stopped
-    # Local standalone dev only (optional profile). Production MUST use the
-    # shared ecosystem Redis via REDIS_URL in the common Docker network and
-    # MUST NOT start this service. Kept behind `standalone` profile so
-    # `docker compose up` alone does not create a shadow broker/cache.
-    profiles: ["standalone"]
-    # Host 6379 is commonly taken by other local projects -> expose 6380.
-    ports:
-      - "6380:6379"
-    volumes:
-      - redis-data:/data
-
-  # Local standalone RabbitMQ for offline dev only (optional profile).
-  # Production MUST use the shared broker via RABBITMQ_URL (same Docker network
-  # as lk.sps38.pro, exchange `lk.events`). Never run this in production.
-  rabbitmq-standalone:
-    image: rabbitmq:4.1-management-alpine
-    container_name: edo-rabbitmq-standalone
-    restart: unless-stopped
-    profiles: ["standalone"]
-    ports:
-      - "5673:5672"
-      - "15673:15672"
-
   # Default local S3-compatible storage (moto mock, Docker Hub friendly).
   s3:
     image: motoserver/moto:latest
@@ -88,6 +57,4 @@ services:
       "
 
 volumes:
-  mariadb-data:
-  redis-data:
   minio-data:

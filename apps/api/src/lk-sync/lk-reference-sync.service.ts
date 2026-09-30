@@ -27,6 +27,16 @@ export interface SnapshotCounts {
 }
 
 /**
+ * Ownership guard for a coordinated snapshot (the distributed lock handle).
+ * Long syncs re-check it before each resource, between employee pages, and
+ * immediately before markMissing. On loss the sync aborts with
+ * LockOwnershipLostError and markMissing NEVER runs without the lock.
+ */
+export interface ReconciliationGuard {
+  assertOwned: () => Promise<void>;
+}
+
+/**
  * Bootstrap/reconciliation from the LK compact internal API.
  * Order: locations -> positions -> departments -> employees (paginated by cursor).
  * Idempotent upserts; soft deletes preserved (deleted/fired flags); syncedAt marked.
@@ -71,15 +81,27 @@ export class LkReferenceSyncService {
     return new LkEdoClient({ baseUrl, internalToken: token });
   }
 
-  async syncAll(client?: LkEdoClient, syncId?: string): Promise<SyncResult> {
+  async syncAll(client?: LkEdoClient, syncId?: string, guard?: ReconciliationGuard): Promise<SyncResult> {
     const c = client ?? this.createClient();
     const runId = syncId ?? randomUUID();
-    // Fetch + upsert each endpoint first. Only when every step succeeded do we
-    // mark unseen rows — a throw before this point leaves old marks untouched.
+    const check = async () => {
+      if (guard) await guard.assertOwned();
+    };
+    // Fetch + upsert each endpoint first. Only when every step succeeded (and
+    // the lock is still owned) do we mark unseen rows — a throw before
+    // markMissing leaves old marks untouched. Partial upserts are tolerable:
+    // buffered Rabbit events + the next coordinated snapshot repair them.
+    await check();
     const loc = await this.syncLocations(c, runId);
+    await check();
     const pos = await this.syncPositions(c, runId);
+    await check();
     const dep = await this.syncDepartments(c, runId);
-    const emp = await this.syncEmployees(c, runId);
+    await check();
+    const emp = await this.syncEmployees(c, runId, 500, guard);
+    // Re-verify ownership IMMEDIATELY before the destructive marking step:
+    // a snapshot that lost its lock must never mark rows as missing.
+    await check();
     await this.markMissing(runId, {
       locations: loc.count,
       positions: pos.count,
@@ -197,11 +219,13 @@ export class LkReferenceSyncService {
     client?: LkEdoClient,
     syncId?: string,
     limit = 500,
+    guard?: ReconciliationGuard,
   ): Promise<{ count: number }> {
     const c = client ?? this.createClient();
     let cursor: string | null | undefined = undefined;
     let total = 0;
     for (;;) {
+      if (guard) await guard.assertOwned();
       const page = await c.listEmployeesPage(limit, cursor ?? null);
       for (const emp of page.items) {
         await this.upsertEmployee(emp, syncId);

@@ -14,11 +14,13 @@ function sleep(ms: number): Promise<void> {
  * Started on module init; tolerant when the broker is absent (schedules
  * reconnect via RabbitmqService instead of a dead "retry on demand" log).
  *
- * Reconciliation coordination: before APPLYING an event the consumer checks
- * the distributed reconciliation lock. While a full snapshot holds the lock,
- * messages stay unacked (poll with backoff, no tight nack/requeue loop);
- * Rabbit buffers them server-side (prefetch=10) and they replay after the
- * lock is released. A crashed sync never blocks forever (lock TTL).
+ * Reconciliation coordination (tri-state, FAIL CLOSED):
+ * - before APPLYING an event the consumer checks the distributed lock state;
+ * - `locked` -> pause (a snapshot is running);
+ * - `unavailable` (shared Redis unreachable) -> ALSO pause: if a sync held the
+ *   lock when Redis went down we cannot safely claim reconciliation is over;
+ * - messages stay unacked within prefetch while paused (no tight nack/requeue
+ *   loop); Rabbit buffers the rest server-side and they replay after resume.
  *
  * Ack policy:
  * - applied/duplicate -> ack;
@@ -37,17 +39,21 @@ export class LkEventConsumer implements OnModuleInit {
     private readonly reconciliationLock: LkReconciliationLockService,
   ) {}
 
-  /** Pause event APPLY while a periodic snapshot holds the distributed lock. */
+  /** Pause event APPLY while reconciling OR while coordination is unknown. */
   async waitWhileReconciling(): Promise<void> {
     for (;;) {
-      let locked = false;
+      let state: string;
       try {
-        locked = await this.reconciliationLock.isLocked();
+        state = await this.reconciliationLock.getState();
       } catch {
-        locked = false;
+        state = 'unavailable';
       }
-      if (!locked) return;
-      this.logger.log('LK reconciliation in progress; pausing event apply (messages stay queued)');
+      if (state === 'unlocked') return;
+      this.logger.log(
+        state === 'locked'
+          ? 'LK reconciliation in progress; pausing event apply (messages stay queued)'
+          : 'LK coordination unavailable (Redis); pausing event apply until Redis recovers',
+      );
       await sleep(RECONCILIATION_POLL_MS);
     }
   }

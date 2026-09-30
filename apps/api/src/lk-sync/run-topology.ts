@@ -8,11 +8,13 @@ import { RabbitmqService } from '../rabbitmq/rabbitmq.module';
 dotenvConfig({ path: join(__dirname, '..', '..', '..', '..', '.env') });
 
 /**
- * Create the RabbitMQ topology (exchange, durable queue + DLQ/DLX, bindings)
+ * Create the RabbitMQ topology (LK-owned exchange is only asserted compatible;
+ * EDO-owned durable queue + retry queue + DLQ/DLX + bindings)
  * WITHOUT starting the consumer, so the queue can buffer live LK events while
  * a full snapshot runs. Deployment order:
  * 1. lk:topology (queue starts accumulating)
- * 2. lk:sync with consumer disabled (full snapshot, marks missing only on success)
+ * 2. lk:sync acquires the distributed Redis lock (consumer pauses apply), runs
+ *    the full snapshot, marks missing only on success, releases the lock
  * 3. boot the API (consumer replays buffered events, then live mode)
  */
 async function main() {

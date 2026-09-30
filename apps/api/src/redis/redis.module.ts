@@ -18,12 +18,11 @@ export class RedisService implements OnModuleDestroy {
 
   constructor(private readonly config: ConfigService) {
     const url =
-      this.config.get<string>('REDIS_URL') ?? process.env.REDIS_URL ?? 'redis://localhost:6380';
+      this.config.get<string>('REDIS_URL') ?? process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
     try {
-      const parsed = new URL(url);
-      this.client = new Redis({
-        host: parsed.hostname || 'localhost',
-        port: Number(parsed.port || 6379),
+      // Pass the full URL so username/password/DB from redis:// URLs are honored
+      // (shared LK Redis currently has no auth; EDO must not ignore creds if set).
+      this.client = new Redis(url, {
         maxRetriesPerRequest: 1,
         enableReadyCheck: false,
         lazyConnect: true,

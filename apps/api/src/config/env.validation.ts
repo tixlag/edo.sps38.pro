@@ -26,7 +26,7 @@ const envSchema = z.object({
   RABBITMQ_URL: z.string().default('amqp://guest:guest@localhost:5672'),
   LK_EVENTS_EXCHANGE: z.string().default('lk.events'),
   EDO_LK_QUEUE: z.string().default('edo.lk-reference-sync'),
-  REDIS_URL: z.string().default('redis://localhost:6380'),
+  REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
   S3_ENDPOINT: z.string().default('http://localhost:9000'),
   S3_REGION: z.string().default('us-east-1'),
   S3_BUCKET: z.string().default('edo-documents'),

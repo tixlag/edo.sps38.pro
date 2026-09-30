@@ -68,7 +68,23 @@ function snapshotClient(currentEmployees: string[], currentPositions: string[]) 
   } as never;
 }
 
+async function currentDatabase(): Promise<string | null> {
+  try {
+    const rows = (await prisma.$queryRaw`SELECT DATABASE() AS db`) as Array<{ db: string | null }>;
+    return rows[0]?.db ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function cleanup() {
+  // Safety: same MariaDB server hosts LK databases — never clean outside `edo`.
+  const db = await currentDatabase();
+  if (db !== 'edo') {
+    throw new Error(
+      `Refusing integration-test cleanup in database '${db}' (expected 'edo')`,
+    );
+  }
   await prisma.lkEmployee.deleteMany({ where: { code1c: { startsWith: PREFIX } } }).catch(() => undefined);
   await prisma.lkPosition.deleteMany({ where: { code1c: { startsWith: PREFIX } } }).catch(() => undefined);
   await prisma.lkLocation.deleteMany({ where: { code1c: { startsWith: PREFIX } } }).catch(() => undefined);

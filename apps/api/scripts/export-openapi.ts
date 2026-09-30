@@ -5,7 +5,7 @@ import { createApp } from '../src/main';
 async function main() {
   // Minimal env so ConfigModule validation passes during export.
   // Root .env is authoritative; fallbacks here are export-only and never production.
-  process.env.DATABASE_URL ??= 'mysql://edo:edo@localhost:3307/edo';
+  process.env.DATABASE_URL ??= 'mysql://edo:edo@127.0.0.1:12002/edo';
   process.env.JWT_SECRET ??= 'export-only-insecure-secret';
   process.env.LK_EVENTS_CONSUME ??= '0';
   const { document } = await createApp();

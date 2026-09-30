@@ -1,7 +1,8 @@
 # ADR-002: LK master-data sync (local projection in EDO)
 
 Date: 2026-09-29
-Status: accepted (amended 2026-09-30: marker-only reconciliation, Redis lock, delayed retry)
+Status: accepted (amended 2026-09-30: marker-only reconciliation, Redis lock, delayed retry;
+amended 2026-10-01: shared LK infra, fail-closed coordination, no shadow containers)
 
 ## Context
 
@@ -14,6 +15,16 @@ LK publishes a narrow internal API + RabbitMQ events (see
 `lk.sps38.pro/docs/integrations/edo.md` and `edo-consumer-guide.md`).
 
 ## Decision
+
+- **Shared local infrastructure, isolated data**: local development (and
+  production) uses the SHARED LK containers — one MariaDB server (`lk_mariadb`),
+  one Redis, one RabbitMQ broker — but EDO data stays logically isolated: a
+  separate MariaDB database `edo` (dedicated user, rights on `edo.*` only;
+  migrations/seed/tests refuse any other database name), Redis keys under
+  `edo:*`, and EDO-owned RabbitMQ objects only (`edo.lk-reference-sync` +
+  `.retry`/`.dlq`/`.dlx`; `lk.events` is LK-owned and only asserted compatible).
+  EDO runs no MariaDB/Redis/RabbitMQ of its own. Same container/server != same
+  application database. CI (manual) keeps its own disposable MariaDB.
 
 - **Source of truth**: LK/1C. EDO keeps a local read-model only:
   `LkEmployee` (`lk_employees`, key `code1c`), `LkLocation` (`lk_locations`,
@@ -78,9 +89,13 @@ LK publishes a narrow internal API + RabbitMQ events (see
   so a crashed sync never blocks the consumer forever, a heartbeat renews the
   TTL only while the owner still holds it (`Lua compare-and-expire`), and
   release deletes only its own token (`Lua compare-and-del`). Snapshot failure
-  skips `markMissing` but still releases the lock. When Redis is unavailable
-  (local docs/CI) the lock degrades to a no-op and the consumer does not pause;
-  production MUST use the shared Redis.
+  skips `markMissing` but still releases the lock. Coordination is FAIL CLOSED:
+  `lk:sync` refuses to run when shared Redis is unavailable (exit 3, no
+  degraded no-op mode); a sync that loses lock ownership mid-snapshot aborts
+  before `markMissing` (exit 1); the live consumer pauses event apply while the
+  lock is held AND while Redis is unreachable (messages stay unacked within
+  prefetch). CI (manual, disposable services) is the only environment without
+  shared Redis; local dev and production MUST use it.
 - **Reconciliation marking (marker-only)**: every snapshotted row is stamped
   `lastSeenSyncId=<syncRunId>` (employees also `sourcePresent=true`); after
   success, rows with `lastSeenSyncId IS NULL OR lastSeenSyncId <> <runId>` are

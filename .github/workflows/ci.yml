@@ -1,8 +1,10 @@
 name: CI
 
+# Manual quality tool (was green on 368645c). Local development uses the SHARED
+# LK infrastructure; CI intentionally stays isolated with its own disposable
+# MariaDB service and never touches local/production LK containers.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   ci:

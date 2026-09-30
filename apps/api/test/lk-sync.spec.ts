@@ -311,6 +311,46 @@ describe('LkReferenceSyncService', () => {
     expect(prisma.store.employees.get('STALE_NULL')?.['sourcePresent']).toBe(true);
   });
 
+  it('ownership lost before markMissing aborts the sync without marking', async () => {
+    const prisma = memoryPrisma();
+    const audit = { log: vi.fn() };
+    const config = { get: () => undefined } as never;
+    const svc = new LkReferenceSyncService(prisma as never, audit as never, config);
+    prisma.store.employees.set('STALE', {
+      code1c: 'STALE',
+      fullName: 'Stale',
+      fired: false,
+      sourcePresent: true,
+      lastSeenSyncId: null,
+    });
+    const client = {
+      listLocations: async () => [
+        { id: 1, code1c: 'LOC1', name: 'Один', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null },
+      ],
+      listPositions: async () => [{ code1c: 'POS1', name: 'P1', deleted: false, updatedAt: null }],
+      listDepartments: async () => [{ code1c: 'DEP1', name: 'D1', deleted: false, updatedAt: null }],
+      listEmployeesPage: async () => ({ items: [emp('A')], nextCursor: null }),
+    } as never;
+    // Guard passes during the whole snapshot but fails right before markMissing
+    // (6th check: 4 resources + 1 employee page + pre-marking verification).
+    let calls = 0;
+    const guard = {
+      assertOwned: async () => {
+        calls += 1;
+        if (calls >= 6) {
+          const { LockOwnershipLostError } = await import(
+            '../src/lk-sync/lk-reconciliation-lock.service'
+          );
+          throw new LockOwnershipLostError();
+        }
+      },
+    };
+    await expect(svc.syncAll(client, 'run-1', guard)).rejects.toThrow(/ownership lost/i);
+    // Snapshot upserts happened, but the stale row was NOT marked missing.
+    expect(prisma.store.employees.get('A')?.['lastSeenSyncId']).toBe('run-1');
+    expect(prisma.store.employees.get('STALE')?.['sourcePresent']).toBe(true);
+  });
+
   it('fails closed without service token', () => {
     const prisma = memoryPrisma();
     const audit = { log: vi.fn() };

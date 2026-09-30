@@ -52,4 +52,4 @@ No runtime direct DB access to LK. No full LK OpenAPI import. Frontend never cal
 
 ## Background jobs
 
-Shared RabbitMQ (`RABBITMQ_URL`, exchange `lk.events`, queue `edo.lk-reference-sync`) is the primary queue; shared Redis (`REDIS_URL`) is cache/locks/ephemeral only. No BullMQ. Local standalone broker/cache only via `docker compose --profile standalone up -d` for offline dev; production uses the common Docker-network services.
+Shared RabbitMQ (`RABBITMQ_URL` — the shared LK broker, exchange `lk.events`, EDO-owned queue `edo.lk-reference-sync` + `.retry`/`.dlq`/`.dlx`) is the primary queue; shared LK Redis (`REDIS_URL`) is cache/locks/ephemeral only (EDO keys under `edo:*`). No BullMQ. EDO never runs its own MariaDB/Redis/RabbitMQ: local dev uses the shared LK containers (see README local development); CI uses its own disposable MariaDB service.
