@@ -1,6 +1,29 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  "globalPassThroughEnv": [
+    "DATABASE_URL",
+    "JWT_SECRET",
+    "JWT_ALG",
+    "JWT_ISSUER",
+    "ALLOW_INSECURE_DEV_AUTH",
+    "NODE_ENV",
+    "LK_EVENTS_CONSUME",
+    "LK_BASE_URL",
+    "LK_EDO_INTERNAL_TOKEN",
+    "LK_EDO_OPENAPI_URL",
+    "LK_EVENTS_EXCHANGE",
+    "EDO_LK_QUEUE",
+    "RABBITMQ_URL",
+    "REDIS_URL",
+    "EDO_E2E_JWT_SECRET",
+    "VITE_API_BASE_URL",
+    "VITE_AUTH_REFRESH_URL",
+    "VITE_ALLOW_INSECURE_DEV_AUTH",
+    "API_PORT",
+    "API_PREFIX",
+    "CORS_ORIGIN"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
