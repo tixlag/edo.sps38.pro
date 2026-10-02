@@ -356,6 +356,15 @@
             "type": "number",
             "example": 0
           },
+          "queueErrors": {
+            "example": [
+              "queue main is missing (NOT_FOUND)"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "lastSyncRunId": {
             "type": "string",
             "example": "run-abc"

@@ -14,11 +14,22 @@ or merge; rollout/rollback are operator actions.
 - Bindings: `lk.reference.employee/position/department.upserted.v1` + reserved
   location/deleted keys (see `LK_REFERENCE_BINDINGS`).
 
-RabbitMQ 4.1.8 classic queues, durable + persistent + manual ack + publisher
-confirms give at-least-once for confirmed retry publishes (duplicates deduped
-via `lk_processed_events.eventId`). Unconfirmed publishes never ack the
-original (recoverable via redelivery). No at-least-once is claimed for
-unconfirmed or deleted-queue paths.
+Publisher confirms (ConfirmChannel, per-message callback, mandatory) give
+at-least-once placement INTO the retry queue, and duplicates are deduped via
+`lk_processed_events.eventId`. They do NOT cover the broker-internal hops:
+
+- KNOWN LOSS WINDOW (open blocker, proven on disposable RabbitMQ 4.x in
+  `test/lk-retry-chain-rabbit.spec.ts`, case b): a dead-lettered message whose
+  target queue does not exist at expire time is SILENTLY DROPPED (no DLQ, no
+  return, no trace). This covers retry→main, poison→DLQ and exhaust→DLQ alike.
+  The guarantee therefore reads: at-least-once **while the EDO-owned topology
+  stays intact**. Enforcement is operational, not just code: never delete EDO
+  queues; startup `assertTopology` fails closed on mismatch; integration health
+  reports missing queues as explicit `queueErrors` (never hidden as zero);
+  alert on any `queueErrors` entry immediately.
+- A v2 topology (new queue names, explicit drain/rollback plan) is prepared
+  separately and is NOT applied to shared infra in this task. Do not "fix" the
+  window by deleting/recreating queues with new arguments.
 
 If immutable args must change: deploy a NEW queue name, drain the backlog
 (consumer + `lk:recover --dry-run`), switch bindings, keep the old queue until
@@ -77,14 +88,24 @@ envelope.eventType, and acks the DLQ copy only after confirm.
 
 ## Lock loss / fencing
 
-- `LockOwnershipLostError` / fencing `RUNNING` conflict → snapshot aborts before
-  markMissing (exit 1). Stale rows keep old marks; next coordinated snapshot
-  repairs. Late event writes abort as transient and redeliver after the snapshot.
-- Crashed `RUNNING` rows: Redis TTL frees the consumer; the DB row stays
-  `RUNNING` for audit. Operator: check logs, confirm no live holder via Redis
-  `GET edo:lk-reconciliation-lock`, then either re-run `lk:sync` (creates a newer
-  generation; the stale run never marks) or mark the stale row `FAILED` manually.
-  Never delete `lk_sync_runs` rows.
+- `LockOwnershipLostError` / `FencingConflictError` / fencing `SnapshotActiveError`:
+  the losing side aborts (snapshot before any further write incl. pages, event
+  as transient for redelivery after the snapshot). Stale rows keep old marks;
+  next coordinated snapshot repairs. Late event writes abort as transient and
+  redeliver after the snapshot.
+- Serialization point: `lk_sync_state` row (`SELECT ... FOR UPDATE` inside each
+  short write transaction). Redis lock pauses admits; the DB row decides races.
+- Crashed/stuck `RUNNING` rows and orphaned generations:
+  1. The Redis heartbeat stops renewing past the 10min hold bound, so the lock
+     lapses and the consumer resumes; the holder's next gate fails and it aborts.
+  2. The DB row stays `activeRunId=<dead>` with a stale heartbeat: events
+     proceed (orphan rule, logged), nothing blocks forever.
+  3. The next `lk:sync` acquires the Redis lock (proving no live holder) and
+     STEALS the generation (logged `stolen`), bumping it so the dead holder —
+     if actually only paused — can never write afterwards.
+  4. Operator: confirm via `lk_sync_runs` (FAILED/STUCK categories) + Redis
+     `GET edo:lk-reconciliation-lock`; never delete `lk_sync_runs` rows.
+- Never delete `lk_sync_runs` rows.
 
 ## Shrinkage / empty snapshot
 

@@ -41,6 +41,7 @@ export interface IntegrationHealthDto {
   freshness: ReadinessCheckDto;
   pendingMessages?: number;
   dlqMessages?: number;
+  queueErrors?: string[];
   lastSyncRunId?: string;
   lastSyncFinishedAt?: string;
 }

@@ -124,7 +124,12 @@ LK publishes a narrow internal API + RabbitMQ events (see
 - Queue binding should exist before snapshot so concurrent changes stay queued;
   EDO must agree on the reconciliation schedule + queue-lag monitoring with LK owners.
 
-## Amendment 2026-10-02 (this branch)
+## Amendment 2026-10-02 (this branch, iteration 1 — partly superseded by iteration 2 below)
+
+> Iteration 2 replaces the retry publish path (single per-message-callback path,
+> correlated returns, slow-requeue recovery) and the fencing protocol
+> (`lk_sync_state` row locks instead of `lk_sync_runs` latest-RUNNING reads).
+> The iteration-1 bullets below remain true except where iteration 2 says otherwise.
 
 - **Retry**: preserves `x-original-routing-key` (validated allowlist, must match
   envelope.eventType); never republishes to shared `lk.events`; ConfirmChannel +
@@ -162,6 +167,41 @@ LK publishes a narrow internal API + RabbitMQ events (see
   `lk_sync_runs` ledger (started/finished/status/counts/error category, safe ids).
   Example cron in the runbook (not installed); alerts for backlog age, DLQ,
   retries, freshness, lock hold.
-- **Redis role**: cache/locks only, but coordination is fail-closed (sync refused
-  without Redis, consumer paused while unavailable). Lenient cache ops vs strict
-  coordination ops are separate methods; coordination never uses lenient paths.
+## Amendment 2026-10-02, iteration 2 (proven fencing, single confirm path, honest DLX)
+
+- **Retry publish**: ONE production path — default-exchange `publish` with
+  `mandatory: true` and a per-message ack/nack callback (wire-identical to
+  sendToQueue, which cannot report per-message nacks). ConfirmChannel creation
+  failure fails closed (explicit dial/factory seams for tests, no
+  plain-channel fallback). Returns correlated by fresh per-publish messageId
+  (source id kept in `x-source-message-id`); foreign/late-generation returns
+  never fail others. `publish()=false` = backpressure (confirm still gates, no
+  re-publish). Unconfirmed → bounded slow-requeue (one delayed nack(true) per
+  5s, max 3 cycles, then DLQ) — the prefetch slot cannot stall forever on a
+  healthy channel, with no hot loop and no extra subscriptions. Broker cancel
+  (null delivery) re-subscribes via the reconnect loop. Consumer passes a real
+  shutdown AbortSignal and drops post-wait work after a generation change.
+- **DLX chain (proven, with an explicit open window)**: intact retry→main and
+  poison→DLQ verified on disposable RabbitMQ 4.x; the unroutable-dead-letter
+  DROP (target deleted before expiry → silent loss) proven as case (b) in
+  `test/lk-retry-chain-rabbit.spec.ts`. Guarantee = at-least-once while the
+  EDO-owned topology stays intact (operational enforcement: never delete
+  queues, startup assert, `queueErrors` in integration health, alerts).
+- **Fencing (proven on real MariaDB with 2 connections + barriers)**:
+  `lk_sync_state` singleton + `SELECT ... FOR UPDATE` inside every short
+  write transaction (event applies, each resource list, each employee page,
+  single-tx marking). Acquire blocks-then-elects exactly one winner; losers
+  abort (events transient, snapshots fatal). Steals bump the generation so a
+  paused-then-resumed holder can never write fields/`lastSeenSyncId`/marks.
+  Orphans (stale heartbeat) don't block events; the next `lk:sync` steals
+  under the Redis lock. Redis heartbeat bounded by the 10min hold; run-sync
+  adds a DB heartbeat + watchdog. Coordination SQL errors always propagate —
+  no "probably a mock" branches (test doubles are explicit).
+- **Revisions**: LK source (edo.md @ fd92f9355, spec identical at fork/main
+  43fe698b0) publishes NO monotonic revision — EDO stays in bounded
+  unversioned mode (same-id dedup proven; cross-id last-writer-wins pinned as
+  a documented limit by an honest regression test). Handoff fields/rules/
+  fixtures enumerated in `edo-lk-contract-status.md`.
+- **Logs**: ORM errors → code only; Zod reasons safe by construction
+  (no value constraints in payload schemas); sync ledger via categorized
+  sanitizer; LK client errors carry status+path only.

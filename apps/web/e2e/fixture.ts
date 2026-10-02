@@ -11,11 +11,14 @@ const EDO_RULE_IDS = [20000, 20001, 20002, 20003, 20004, 20005, 20006, 20007, 20
  * dev-only `window.__EDO_DEV_TOKEN` hook. Never used in production.
  */
 export function signE2EJwt(): string {
+  return signE2EJwtWithRules(Object.fromEntries(EDO_RULE_IDS.map((id) => [String(id), []])));
+}
+
+/** Sign a real HS256 JWT with an explicit accessRules map (scoped-access e2e). */
+export function signE2EJwtWithRules(accessRules: Record<string, string[]>): string {
   const secret = process.env.EDO_E2E_JWT_SECRET;
   if (!secret) throw new Error('EDO_E2E_JWT_SECRET is required for e2e (must equal API JWT_SECRET)');
   const header = { alg: 'HS256', typ: 'JWT' };
-  const accessRules: Record<string, string[]> = {};
-  for (const id of EDO_RULE_IDS) accessRules[String(id)] = [];
   const payload = {
     uuid: 'e2e-operator',
     code_1c: 'E2E001',
@@ -32,9 +35,11 @@ export function signE2EJwt(): string {
 
 /** Open a URL with a real JWT already in the in-memory auth store. */
 export async function gotoAuthed(page: Page, url: string): Promise<void> {
-  const token = signE2EJwt();
-  // Inject BEFORE page scripts run: auth bootstrap reads the string once.
-  // (The app must NOT overwrite it — no installDevTokenHook in main.tsx.)
+  await gotoAuthedWith(page, url, signE2EJwt());
+}
+
+/** Open a URL with an explicitly signed JWT (scoped-access e2e). */
+export async function gotoAuthedWith(page: Page, url: string, token: string): Promise<void> {
   await page.addInitScript((t) => {
     (window as unknown as { __EDO_DEV_TOKEN?: string }).__EDO_DEV_TOKEN = t;
   }, token);

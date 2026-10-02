@@ -10,12 +10,14 @@ const prisma = new PrismaClient();
 
 async function main() {
   // Deterministic demo seed mirroring Pencil dashboard names.
+  // locationId is the explicit access object (20007 scope); NULL means "no
+  // object set" and is invisible to scoped users (see EmployeesService).
   const employees = [
-    { id: 'emp-toktogulov', fullName: 'Токтогулов Айбек Русланович', country: 'Кыргызстан', position: 'Арматурщик', status: 'BLOCKED' as const, stage: 'Проверка патента' },
-    { id: 'emp-osmonov', fullName: 'Осмонов Санжар Талантович', country: 'Кыргызстан', position: 'Монолитчик', status: 'BLOCKED' as const, stage: 'Дактилоскопия' },
-    { id: 'emp-karimov', fullName: 'Каримов Азиз Шарифович', country: 'Таджикистан', position: 'Каменщик', status: 'IN_REVIEW' as const, stage: 'Проверка документов' },
-    { id: 'emp-kholov', fullName: 'Холов Джамшед Фирузович', country: 'Таджикистан', position: 'Подсобный рабочий', status: 'ONBOARDING' as const, stage: 'Проходит путь' },
-    { id: 'emp-nazarov', fullName: 'Назаров Фаррух', country: 'Узбекистан', position: 'Сварщик', status: 'SIGNING' as const, stage: 'Подписание' },
+    { id: 'emp-toktogulov', fullName: 'Токтогулов Айбек Русланович', country: 'Кыргызстан', position: 'Арматурщик', status: 'BLOCKED' as const, stage: 'Проверка патента', locationId: 98 },
+    { id: 'emp-osmonov', fullName: 'Осмонов Санжар Талантович', country: 'Кыргызстан', position: 'Монолитчик', status: 'BLOCKED' as const, stage: 'Дактилоскопия', locationId: 999 },
+    { id: 'emp-karimov', fullName: 'Каримов Азиз Шарифович', country: 'Таджикистан', position: 'Каменщик', status: 'IN_REVIEW' as const, stage: 'Проверка документов', locationId: 98 },
+    { id: 'emp-kholov', fullName: 'Холов Джамшед Фирузович', country: 'Таджикистан', position: 'Подсобный рабочий', status: 'ONBOARDING' as const, stage: 'Проходит путь', locationId: 999 },
+    { id: 'emp-nazarov', fullName: 'Назаров Фаррух', country: 'Узбекистан', position: 'Сварщик', status: 'SIGNING' as const, stage: 'Подписание', locationId: null },
   ];
   for (const e of employees) {
     await prisma.employee.upsert({ where: { id: e.id }, update: e, create: e });
