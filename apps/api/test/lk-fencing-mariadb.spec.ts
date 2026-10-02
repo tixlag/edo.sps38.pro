@@ -13,12 +13,18 @@ import { LkEventHandler } from '../src/lk-events/lk-event.handler';
  * Each test asserts FINAL FIELDS, presence flags, lastSeenSyncId, inbox and
  * audit — not just that a guard method was called.
  */
+/**
+ * Disposable MariaDB only: EDO_TEST_DATABASE_URL must be set explicitly and
+ * must point at loopback :3307 (CI service) or :3308 (local disposable).
+ * Anything else — especially the shared :12002 — is refused loudly instead
+ * of silently skipping. Never falls back to DATABASE_URL.
+ */
 function disposableDbUrl(): string | null {
   const u = process.env.EDO_TEST_DATABASE_URL ?? '';
   if (!u) return null;
-  if (!/^mysql:\/\/[^@/]+@127\.0\.0\.1:3308\/edo(\?|$)/.test(u)) {
+  if (!/^mysql:\/\/[^@/]+@(127\.0\.0\.1|localhost):(3307|3308)\/edo(\?|$)/.test(u)) {
     throw new Error(
-      'Refusing: EDO_TEST_DATABASE_URL must be the disposable test server (mysql://…@127.0.0.1:3308/edo)',
+      'Refusing: EDO_TEST_DATABASE_URL must be a disposable test server (127.0.0.1:3307 or :3308, db edo)',
     );
   }
   return u;
@@ -260,7 +266,7 @@ describe.skipIf(!URL)('LK fencing on real MariaDB (row-lock serialization)', () 
       A.$transaction(async (tx) => {
         await fencing.assertSnapshotMayWrite(tx as never, `${PREFIX}-run-paused`, genA);
         await (tx as unknown as { lkEmployee: { updateMany: (a: unknown) => Promise<unknown> } }).lkEmployee.updateMany({
-          where: { code1c },
+          where: { code1c: code },
           data: { sourcePresent: false },
         });
       }),
