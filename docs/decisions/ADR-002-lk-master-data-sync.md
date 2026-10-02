@@ -2,7 +2,10 @@
 
 Date: 2026-09-29
 Status: accepted (amended 2026-09-30: marker-only reconciliation, Redis lock, delayed retry;
-amended 2026-10-01: shared LK infra, fail-closed coordination, no shadow containers)
+amended 2026-10-01: shared LK infra, fail-closed coordination, no shadow containers;
+amended 2026-10-02: confirm-gated retry with routing-key preservation, strict Redis GET,
+DB fencing via lk_sync_runs, guard-required syncAll, pagination/shrinkage guards,
+Employee scope, integration health; revision ordering blocked on LK contract SHA)
 
 ## Context
 
@@ -112,8 +115,53 @@ LK publishes a narrow internal API + RabbitMQ events (see
   not optional, until LK closes the coverage gap. Location changes currently
   arrive only via snapshot.
 - No monotonic entity version from LK (`updatedAt` is null); out-of-order
-  handling is best-effort, reconciliation fixes divergence.
+  handling is best-effort, reconciliation fixes divergence. Revision ordering
+  (newer-wins, equal-idempotent, tombstones) is BLOCKED on the LK reliability
+  contract SHA — see `docs/integrations/edo-lk-contract-status.md`. EDO never
+  invents revisions from local time/occurredAt/eventId.
 - `organization.code` is null (no stable code from LK); divisions have no
   authoritative directory yet — do not invent IDs from names.
 - Queue binding should exist before snapshot so concurrent changes stay queued;
   EDO must agree on the reconciliation schedule + queue-lag monitoring with LK owners.
+
+## Amendment 2026-10-02 (this branch)
+
+- **Retry**: preserves `x-original-routing-key` (validated allowlist, must match
+  envelope.eventType); never republishes to shared `lk.events`; ConfirmChannel +
+  `waitForConfirms` + mandatory return + timeout (5s) + backpressure (20 inflight);
+  ack original only after confirm; unconfirmed stays recoverable via redelivery
+  (no hot loop, no eternal unacked without reconnect resume). Old-format messages
+  (queue-name key, no header) poison deterministically; `lk:recover --dry-run/--apply
+  --limit` re-hydrates from envelope.eventType (bounded, never automatic mass replay).
+  Topology (RabbitMQ 4.x classic durable): at-least-once only for confirmed publishes
+  (duplicates via inbox); no at-least-once claimed for unconfirmed/deleted paths.
+  Immutable args never changed by deleting queues; new topologies use new names +
+  backlog drain + rollback.
+- **Coordination**: Redis strict GET (missing vs down distinguished; no
+  GET-error→null+PING fallback); DB fencing via `lk_sync_runs` generation
+  (event writes check RUNNING atomically in-tx; markMissing verifies latest
+  RUNNING is us + Redis guard); `syncAll` requires a guard in production
+  (tests pass `allowUnguardedForTests:true`); cancellation + overall deadline
+  (10min) + per-pagination deadline; heartbeat never holds past deadline;
+  consumer wait supports AbortSignal + shutdown.
+- **Versions**: P2002 duplicate only when inbox eventId confirmed; audit in the
+  same tx for all three types; ack after commit. Unified revision semantics are
+  explicitly deferred to the LK contract SHA.
+- **HTTP**: runtime validation, timeout + AbortSignal, bounded transient retries
+  (backoff), no retry on 401/403/contract errors, safe errors (status+path only);
+  pagination finishes only on `nextCursor === null`, missing cursor = contract
+  error, repeat/no-progress detection, page/time limits, validate-before-apply;
+  incomplete snapshots never mark; zero + shrinkage (>30% vs last FINISHED)
+  guards with operator confirmation.
+- **Object rights**: `Employee.lkEmployeeCode1c` (nullable, never ФИО-matched,
+  never auto-created) + `Employee.locationId` (explicit case object; NULL
+  invisible to 20007). Backend DB-filtered list/getById/total; 20009/20008 → all,
+  20007 → listed ids, else denied. Migration 0004 additive, unknown links NULL.
+- **Observability**: `GET /api/health/integration` (Redis, consumer, bootstrap,
+  freshness 24h, queue depths best-effort; never gates reads); durable
+  `lk_sync_runs` ledger (started/finished/status/counts/error category, safe ids).
+  Example cron in the runbook (not installed); alerts for backlog age, DLQ,
+  retries, freshness, lock hold.
+- **Redis role**: cache/locks only, but coordination is fail-closed (sync refused
+  without Redis, consumer paused while unavailable). Lenient cache ops vs strict
+  coordination ops are separate methods; coordination never uses lenient paths.

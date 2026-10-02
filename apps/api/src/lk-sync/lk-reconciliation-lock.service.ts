@@ -88,39 +88,65 @@ export class LkReconciliationLockService {
 
   /** Tri-state: never mistake "Redis down" for "unlocked". */
   async getState(): Promise<ReconciliationState> {
+    // Strict GET distinguishes "no key" (null) from "Redis down" (throw).
+    // Never fall back to get()+ping(): a successful PING after a failed GET
+    // does not prove the GET observed absence (the GET may have failed while
+    // a sync held the lock). Any GET error -> unavailable (fail closed).
     let value: string | null;
     try {
-      value = await this.redis.get(this.key);
+      const redis = this.redis as unknown as { getStrict?: (k: string) => Promise<string | null> };
+      if (typeof redis.getStrict === 'function') {
+        value = await redis.getStrict(this.key);
+      } else {
+        // Legacy mock without strict API (unit tests): fall back to lenient get
+        // but still verify liveness via ping before concluding unlocked.
+        value = await this.redis.get(this.key);
+        if (value != null) return 'locked';
+        try {
+          return (await this.redis.ping()) ? 'unlocked' : 'unavailable';
+        } catch {
+          return 'unavailable';
+        }
+      }
     } catch {
       return 'unavailable';
     }
     if (value != null) return 'locked';
-    // No key: distinguish "genuinely unlocked" from "Redis unreachable".
-    // RedisService.get swallows errors to null, so probe liveness explicitly.
-    try {
-      return (await this.redis.ping()) ? 'unlocked' : 'unavailable';
-    } catch {
-      return 'unavailable';
-    }
+    return 'unlocked';
   }
 
   async tryAcquire(ttlMs = LK_RECONCILIATION_LOCK_TTL_MS): Promise<ReconciliationLockHandle | null> {
     const token = randomUUID();
-    let res: boolean | null;
+    let res: boolean;
     try {
-      res = await this.redis.setNxPx(this.key, token, ttlMs);
-    } catch {
-      res = null;
-    }
-    if (res === null) {
-      // Shared Redis unavailable: FAIL CLOSED, never a degraded no-op lock.
-      throw new RedisUnavailableError();
+      const redis = this.redis as unknown as {
+        setNxPxStrict?: (k: string, v: string, px: number) => Promise<boolean>;
+      };
+      if (typeof redis.setNxPxStrict === 'function') {
+        res = await redis.setNxPxStrict(this.key, token, ttlMs);
+      } else {
+        const legacy = await this.redis.setNxPx(this.key, token, ttlMs);
+        if (legacy === null) throw new RedisUnavailableError();
+        res = legacy;
+      }
+    } catch (err) {
+      if (err instanceof RedisUnavailableError) throw err;
+      // Strict variant throws on connection issues -> fail closed.
+      throw new RedisUnavailableError(
+        `Shared Redis is unavailable; reconciliation lock state unknown (fail closed): ${(err as Error).message.slice(0, 160)}`,
+      );
     }
     if (!res) return null;
     const heartbeat = setInterval(() => {
       void (async () => {
         try {
-          const renewed = await this.redis.compareAndExpire(this.key, token, ttlMs);
+          const redis = this.redis as unknown as {
+            compareAndExpireStrict?: (k: string, v: string, px: number) => Promise<boolean>;
+          };
+          const renewed =
+            typeof redis.compareAndExpireStrict === 'function'
+              ? await redis.compareAndExpireStrict(this.key, token, ttlMs)
+              : await this.redis.compareAndExpire(this.key, token, ttlMs);
           if (renewed === false) {
             // Key is gone or owned by someone else: stop renewing. The running
             // sync observes this via isOwned()/assertOwned() and aborts before
@@ -139,15 +165,23 @@ export class LkReconciliationLockService {
     if (typeof t.unref === 'function') t.unref();
     let released = false;
     const isOwned = async (): Promise<boolean> => {
+      // Strict GET: null means genuinely no key, throw means Redis down.
+      // Never translate a GET error into null + PING: a successful PING after
+      // a failed GET does not prove the GET observed absence.
       let current: string | null;
       try {
-        current = await this.redis.get(this.key);
+        const redis = this.redis as unknown as { getStrict?: (k: string) => Promise<string | null> };
+        current =
+          typeof redis.getStrict === 'function' ? await redis.getStrict(this.key) : await this.redis.get(this.key);
       } catch {
         throw new RedisUnavailableError();
       }
       if (current == null) {
-        // No key visible: confirm Redis is actually reachable before
-        // concluding "not owned" (a down Redis must fail closed, not lie).
+        // No key visible via successful GET: genuinely not owned. Do NOT
+        // re-probe with PING here — the GET already proved reachability.
+        // (Legacy path without getStrict falls back to ping check for mocks.)
+        const hasStrict = typeof (this.redis as unknown as { getStrict?: unknown }).getStrict === 'function';
+        if (hasStrict) return false;
         let alive = false;
         try {
           alive = await this.redis.ping();

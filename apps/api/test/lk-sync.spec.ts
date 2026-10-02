@@ -135,7 +135,7 @@ describe('LkReferenceSyncService', () => {
       listEmployeesPage: async () => pages[pageIdx++ % pages.length] as never,
     } as never;
 
-    const result = await svc.syncAll(client, 'sync-1');
+    const result = await svc.syncAll(client, 'sync-1', { allowUnguardedForTests: true });
     expect(result).toEqual({ locations: 1, positions: 1, departments: 1, employees: 3 });
     expect(prisma.store.employees.size).toBe(3);
     expect(audit.log).toHaveBeenCalledOnce();
@@ -155,8 +155,8 @@ describe('LkReferenceSyncService', () => {
       listEmployeesPage: async () => ({ items: [emp('A', { fullName: 'Петров' })], nextCursor: null }),
     } as never;
 
-    await svc.syncAll(client, 'sync-1');
-    await svc.syncAll(client, 'sync-2');
+    await svc.syncAll(client, 'sync-1', { allowUnguardedForTests: true });
+    await svc.syncAll(client, 'sync-2', { allowUnguardedForTests: true });
     expect(prisma.store.employees.size).toBe(1);
     expect(prisma.store.employees.get('A')?.['fullName']).toBe('Петров');
   });
@@ -175,7 +175,7 @@ describe('LkReferenceSyncService', () => {
       listEmployeesPage: async () => ({ items: [emp('A', { fired: true })], nextCursor: null }),
     } as never;
 
-    await svc.syncAll(client, 'sync-1');
+    await svc.syncAll(client, 'sync-1', { allowUnguardedForTests: true });
     expect(prisma.store.employees.get('A')?.['fired']).toBe(true);
     expect(prisma.store.locations.get('LOC')?.['deleted']).toBe(true);
     expect(prisma.store.positions.get('POS')?.['deleted']).toBe(true);
@@ -196,7 +196,7 @@ describe('LkReferenceSyncService', () => {
       listDepartments: async () => [{ code1c: 'DEP1', name: 'D1', deleted: false, updatedAt: null }],
       listEmployeesPage: async () => ({ items: [emp('A'), emp('B')], nextCursor: null }),
     } as never;
-    await svc.syncAll(full, 'sync-1');
+    await svc.syncAll(full, 'sync-1', { allowUnguardedForTests: true });
     const slim = {
       listLocations: async () => [
         { id: 1, code1c: 'LOC1', name: 'Один', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null },
@@ -205,7 +205,7 @@ describe('LkReferenceSyncService', () => {
       listDepartments: async () => [{ code1c: 'DEP1', name: 'D1', deleted: false, updatedAt: null }],
       listEmployeesPage: async () => ({ items: [emp('A')], nextCursor: null }),
     } as never;
-    await svc.syncAll(slim, 'sync-2');
+    await svc.syncAll(slim, 'sync-2', { allowUnguardedForTests: true });
     expect(prisma.store.locations.get('LOC2')?.['deleted']).toBe(true);
     expect(prisma.store.employees.get('B')?.['sourcePresent']).toBe(false);
     // Absence never sets business `fired`.
@@ -240,7 +240,7 @@ describe('LkReferenceSyncService', () => {
       listDepartments: async () => [{ code1c: 'DEP1', name: 'D1', deleted: false, updatedAt: null }],
       listEmployeesPage: async () => ({ items: [emp('A')], nextCursor: null }),
     } as never;
-    await svc.syncAll(client, 'run-2');
+    await svc.syncAll(client, 'run-2', { allowUnguardedForTests: true });
     expect(prisma.store.employees.get('OLD')?.['sourcePresent']).toBe(false);
     expect(prisma.store.employees.get('OLD')?.['fired']).toBe(false);
     expect(prisma.store.positions.get('OLD_POS')?.['deleted']).toBe(true);
@@ -259,7 +259,7 @@ describe('LkReferenceSyncService', () => {
       listDepartments: async () => [{ code1c: 'DEP1', name: 'D1', deleted: false, updatedAt: null }],
       listEmployeesPage: async () => ({ items: [emp('A')], nextCursor: null }),
     } as never;
-    await svc.syncAll(full, 'sync-1');
+    await svc.syncAll(full, 'sync-1', { allowUnguardedForTests: true });
     const emptyEmployees = {
       listLocations: async () => [
         { id: 1, code1c: 'LOC1', name: 'Один', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null },
@@ -268,7 +268,7 @@ describe('LkReferenceSyncService', () => {
       listDepartments: async () => [{ code1c: 'DEP1', name: 'D1', deleted: false, updatedAt: null }],
       listEmployeesPage: async () => ({ items: [], nextCursor: null }),
     } as never;
-    await svc.syncAll(emptyEmployees, 'sync-2');
+    await svc.syncAll(emptyEmployees, 'sync-2', { allowUnguardedForTests: true });
     expect(prisma.store.employees.get('A')?.['sourcePresent']).toBe(true);
   });
 
@@ -285,7 +285,7 @@ describe('LkReferenceSyncService', () => {
       listDepartments: async () => [{ code1c: 'DEP1', name: 'D1', deleted: false, updatedAt: null }],
       listEmployeesPage: async () => ({ items: [emp('A'), emp('B')], nextCursor: null }),
     } as never;
-    await svc.syncAll(full, 'sync-1');
+    await svc.syncAll(full, 'sync-1', { allowUnguardedForTests: true });
     // NULL stale row must survive a partial failure as well.
     prisma.store.employees.set('STALE_NULL', {
       code1c: 'STALE_NULL',
@@ -304,7 +304,7 @@ describe('LkReferenceSyncService', () => {
       listDepartments: async () => [{ code1c: 'DEP1', name: 'D1', deleted: false, updatedAt: null }],
       listEmployeesPage: async () => ({ items: [emp('A')], nextCursor: null }),
     } as never;
-    await expect(svc.syncAll(failing, 'sync-2')).rejects.toThrow(/outage/);
+    await expect(svc.syncAll(failing, 'sync-2', { allowUnguardedForTests: true })).rejects.toThrow(/outage/);
     // B is still present: no marking happened after the failed run.
     expect(prisma.store.employees.get('B')?.['sourcePresent']).not.toBe(false);
     expect(prisma.store.employees.has('B')).toBe(true);

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LkEdoClient } from './client';
+import { LkEdoClient, LkAuthError, LkContractError } from './client';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -60,5 +60,62 @@ describe('lk-client (compact, backend-only)', () => {
     const script = readFileSync(join(here, '..', 'scripts', 'generate.mjs'), 'utf8');
     expect(script).toMatch(/packageRoot/);
     expect(script).not.toMatch(/join\(root, 'packages', 'lk-client'/);
+  });
+});
+
+describe('lk-client hardening (Etap 4)', () => {
+  function clientWith(fetchImpl: typeof fetch, opts: Record<string, unknown> = {}) {
+    return new LkEdoClient({ baseUrl: 'http://lk:8080', internalToken: 'svc-secret', fetchImpl, ...opts });
+  }
+
+  it('retries transient 503 with backoff, then succeeds', async () => {
+    let calls = 0;
+    const client = clientWith((async () => {
+      calls += 1;
+      if (calls < 3) return { ok: false, status: 503, text: async () => 'busy' };
+      return { ok: true, json: async () => [] };
+    }) as typeof fetch);
+    const res = await client.listLocations();
+    expect(res).toEqual([]);
+    expect(calls).toBe(3);
+  });
+
+  it('never retries permanent 401 (auth) and throws safe error without body', async () => {
+    let calls = 0;
+    const client = clientWith((async () => {
+      calls += 1;
+      return { ok: false, status: 401, text: async () => 'secret-body-with-PII-Иванов' };
+    }) as typeof fetch);
+    await expect(client.listLocations()).rejects.toBeInstanceOf(LkAuthError);
+    expect(calls).toBe(1);
+    await expect(client.listLocations()).rejects.toThrow(/401.*locations/);
+    await expect(client.listLocations()).rejects.not.toThrow(/Иванов/);
+  });
+
+  it('missing nextCursor is a contract error (never end-of-snapshot), no retry', async () => {
+    let calls = 0;
+    const client = clientWith((async () => {
+      calls += 1;
+      return { ok: true, json: async () => ({ items: [] }) };
+    }) as typeof fetch);
+    await expect(client.listEmployeesPage(500, null)).rejects.toBeInstanceOf(LkContractError);
+    expect(calls).toBe(1);
+  });
+
+  it('validates page shape before apply (non-array items rejected)', async () => {
+    const client = clientWith((async () => ({
+      ok: true,
+      json: async () => ({ items: 'not-an-array', nextCursor: null }),
+    })) as typeof fetch);
+    await expect(client.listEmployeesPage(500, null)).rejects.toThrow(/contract/i);
+  });
+
+  it('finishes only on valid nextCursor === null', async () => {
+    const client = clientWith((async () => ({
+      ok: true,
+      json: async () => ({ items: [], nextCursor: null }),
+    })) as typeof fetch);
+    const page = await client.listEmployeesPage(500, null);
+    expect(page.nextCursor).toBeNull();
   });
 });

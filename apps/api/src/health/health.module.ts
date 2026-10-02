@@ -1,5 +1,10 @@
-import { Module } from '@nestjs/common';
+import { Module, Optional } from '@nestjs/common';
 import { HealthController } from './health.controller';
+import { LkSyncModule } from '../lk-sync/lk-sync.module';
 
-@Module({ controllers: [HealthController] })
-export class HealthModule {}
+@Module({ imports: [LkSyncModule], controllers: [HealthController] })
+export class HealthModule {
+  constructor(@Optional() private readonly _sync?: unknown) {
+    void this._sync;
+  }
+}

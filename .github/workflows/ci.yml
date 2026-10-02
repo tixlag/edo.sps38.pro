@@ -25,8 +25,35 @@ jobs:
           --health-interval=5s
           --health-timeout=3s
           --health-retries=20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd="redis-cli ping | grep PONG"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+      rabbitmq:
+        image: rabbitmq:4-management-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: edo
+          RABBITMQ_DEFAULT_PASS: edo
+          RABBITMQ_DEFAULT_VHOST: /
+        ports:
+          - 5673:5672
+          - 15673:15672
+        options: >-
+          --health-cmd="rabbitmq-diagnostics ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
     env:
       DATABASE_URL: mysql://edo:edo@localhost:3307/edo
+      REDIS_URL: redis://localhost:6380
+      RABBITMQ_URL: amqp://edo:edo@localhost:5673/
+      LK_EVENTS_EXCHANGE: lk.events
+      EDO_LK_QUEUE: edo.lk-reference-sync
       JWT_SECRET: ci-only-insecure-secret
       JWT_ALG: HS256
       JWT_ISSUER: lk-auth-service

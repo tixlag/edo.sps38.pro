@@ -56,10 +56,19 @@ model Employee {
   createdAt DateTime       @default(now()) @db.DateTime(3)
   updatedAt DateTime       @updatedAt @db.DateTime(3)
 
+  // Explicit link to the LK master-data projection (nullable: a case may exist
+  // before the person appears in LK; never auto-matched by fullName).
+  lkEmployeeCode1c String? @db.VarChar(64)
+  // Access object for the case: explicitly fixed location (object) of the case.
+  // Null means "no object set" and is NOT visible to scoped (20007) users.
+  locationId Int?
+
   documents Document[]
   tasks     Task[]
   auditLogs AuditLog[] @relation("AuditEntityEmployee")
 
+  @@index([lkEmployeeCode1c])
+  @@index([locationId])
   @@map("employees")
 }
 
@@ -246,4 +255,30 @@ model LkProcessedEvent {
   @@index([eventType])
   @@index([receivedAt])
   @@map("lk_processed_events")
+}
+
+/// Durable sync-run ledger + fencing generation for snapshot-vs-events.
+/// A snapshot creates a RUNNING row at start (after acquiring the Redis lock)
+/// and flips it to FINISHED/FAILED at end. The monotonic `id` is the fencing
+/// generation: consumers check atomically in the same DB transaction as the
+/// inbox+projection write that no RUNNING run exists (late admits abort as
+/// transient); markMissing runs only when the current run is still the latest
+/// RUNNING and the Redis lock is still owned. Crashed RUNNING rows are
+/// reconciled by TTL expiry + operator runbook (never auto-deleted).
+model LkSyncRun {
+  id            Int       @id @default(autoincrement())
+  runId         String    @unique @db.VarChar(64)
+  status        String    @db.VarChar(16)
+  startedAt     DateTime  @default(now()) @db.DateTime(3)
+  finishedAt    DateTime? @db.DateTime(3)
+  locations     Int       @default(0)
+  positions     Int       @default(0)
+  departments   Int       @default(0)
+  employees     Int       @default(0)
+  errorCategory String?   @db.VarChar(64)
+  errorMessage  String?   @db.VarChar(1024)
+
+  @@index([status])
+  @@index([startedAt])
+  @@map("lk_sync_runs")
 }

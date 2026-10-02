@@ -144,7 +144,7 @@ describe('LK reconciliation against real MariaDB (NULL marking regression)', () 
     });
 
     // Successful snapshot where OLD rows are absent, CURRENT rows present.
-    await svc.syncAll(snapshotClient([CUR_EMP], [CUR_POS]), 'run-2');
+    await svc.syncAll(snapshotClient([CUR_EMP], [CUR_POS]), 'run-2', { allowUnguardedForTests: true });
 
     const oldEmp = await prisma.lkEmployee.findUnique({ where: { code1c: OLD_EMP } });
     expect(oldEmp?.sourcePresent).toBe(false);
@@ -192,7 +192,7 @@ describe('LK reconciliation against real MariaDB (NULL marking regression)', () 
       listDepartments: async () => [{ code1c: DEP, name: 'D', deleted: false, updatedAt: null }],
       listEmployeesPage: async () => ({ items: [emp(CUR_EMP)], nextCursor: null }),
     } as never;
-    await expect(svc.syncAll(failing, 'run-partial')).rejects.toThrow(/outage/);
+    await expect(svc.syncAll(failing, 'run-partial', { allowUnguardedForTests: true })).rejects.toThrow(/outage/);
     const stale = await prisma.lkEmployee.findUnique({ where: { code1c: STALE } });
     expect(stale?.sourcePresent).toBe(true);
   });
@@ -204,7 +204,7 @@ describe('LK reconciliation against real MariaDB (NULL marking regression)', () 
     }
     await cleanup();
     const svc = service();
-    await svc.syncAll(snapshotClient([CUR_EMP], [CUR_POS]), 'run-full');
+    await svc.syncAll(snapshotClient([CUR_EMP], [CUR_POS]), 'run-full', { allowUnguardedForTests: true });
     const emptyEmployees = {
       listLocations: async () => [
         { id: 910002, code1c: LOC, name: 'Л', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null },
@@ -213,7 +213,7 @@ describe('LK reconciliation against real MariaDB (NULL marking regression)', () 
       listDepartments: async () => [{ code1c: DEP, name: 'D', deleted: false, updatedAt: null }],
       listEmployeesPage: async () => ({ items: [], nextCursor: null }),
     } as never;
-    await svc.syncAll(emptyEmployees, 'run-empty');
+    await svc.syncAll(emptyEmployees, 'run-empty', { allowUnguardedForTests: true });
     const cur = await prisma.lkEmployee.findUnique({ where: { code1c: CUR_EMP } });
     expect(cur?.sourcePresent).toBe(true);
   });

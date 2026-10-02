@@ -50,10 +50,23 @@ EDO `docker-compose.yml` contains only EDO-specific storage (S3 mock on `:5000`)
 
 - Bootstrap: `lk:topology` → `lk:sync` → boot API (consumer replays buffered events).
 - Periodic reconciliation (REQUIRED — LK event coverage is partial): distributed
-  Redis lock `edo:lk-reconciliation-lock` pauses live event apply; snapshot runs;
-  `markMissing` only on success with lock still owned; lock released; queue replays.
+  Redis lock `edo:lk-reconciliation-lock` pauses live event apply; snapshot runs
+  with DB fencing (`lk_sync_runs` generation, atomic with writes); `markMissing`
+  only on success with lock still owned + latest RUNNING is us; lock released;
+  queue replays.
 - `lk:sync` exit codes: `0` ok · `2` another sync holds the lock · `3` Redis
-  unavailable (fail closed) · `1` other failure (incl. lock lost mid-snapshot).
+  unavailable (fail closed) · `1` other failure (incl. lock lost mid-snapshot,
+  fencing conflict, shrinkage guard, cancellation/deadline).
+- Retry (confirm-gated, no hot loop): transient → `*.retry` (TTL 5s → main) with
+  `x-retry-count+1` + validated `x-original-routing-key`, ack only after publisher
+  confirm (ConfirmChannel); max 5 → DLQ. Old-format messages (queue-name key, no
+  header) poison deterministically; recover via `lk:recover --dry-run/--apply
+  --limit --from=dlq|retry` (bounded, never automatic mass replay).
+- Integration health: `GET /api/health/integration` (Redis, consumer, bootstrap,
+  freshness 24h, queue depths; never gates reads). Durable `lk_sync_runs` ledger
+  for started/finished/status/counts/error. See `docs/integrations/edo-runbook.md`
+  (example cron + alerts + rollback; schedule not installed) and
+  `docs/integrations/edo-lk-contract-status.md` (LK contract SHA blocked stage).
 - Recovery for a 406-mismatched EDO queue (broker already has it with stale
   arguments): `CONFIRM_EDO_QUEUE_RESET=I_UNDERSTAND_QUEUED_EVENTS_WILL_BE_LOST
   pnpm --filter @edo/api lk:queues:reset` (EDO queues only, never LK objects).
@@ -66,6 +79,9 @@ EDO `docker-compose.yml` contains only EDO-specific storage (S3 mock on `:5000`)
   (prettier is pinned for reproducible Orval output).
 - E2E: `pnpm test:e2e` (Playwright, dev-bypass JWT only).
 - CI (`.github/workflows/ci.yml`) is a **manual** quality tool (`workflow_dispatch`)
-  with its own disposable MariaDB; it never touches shared LK containers.
+  with its own disposable MariaDB + Redis + RabbitMQ; it never touches shared LK
+  containers. Destructive fault-injection uses only CI isolated services, never
+  the shared LK broker (local retry tests use isolated `edo.lk-reference-sync.test.*`
+  queues).
 
 See `docs/architecture/overview.md` and `docs/decisions/ADR-002-lk-master-data-sync.md`.

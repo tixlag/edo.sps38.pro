@@ -18,17 +18,26 @@ export type EventApplyOutcome =
  * Applies LK RabbitMQ events idempotently:
  * - validates envelope (version must be 1, source must be lk.sps38.pro),
  * - deduplicates by eventId via lk_processed_events (re-delivery safe),
- * - upserts the Lk* projection in the same DB transaction as the inbox row,
- * - out-of-order safe as far as possible (no version column from LK; full
- *   reconciliation via snapshot fixes divergence).
+ * - upserts the Lk* projection in the same DB transaction as the inbox row
+ *   plus audit (all three event types; ack only after commit),
+ * - fencing: the same transaction checks for a RUNNING LkSyncRun; if a
+ *   snapshot holds the fencing generation the write aborts as transient so the
+ *   broker redelivers after the snapshot (no silent interleave).
+ * - out-of-order safe as far as possible (no LK revision yet; full
+ *   reconciliation via snapshot fixes divergence; see ADR-002 and the blocked
+ *   revision stage in docs/integrations/edo-lk-contract-status.md).
  *
  * Error classification (no infinite poison requeue):
  * - poison (caller must nack requeue=false -> DLQ): invalid JSON, invalid
  *   envelope, unsupported version, unknown routing key, eventType mismatch,
  *   missing payload, invalid domain payload (ZodError). Logged with
  *   eventId/routingKey/reason only, never the full employee payload.
- * - transient (throw -> caller nacks requeue=true): MariaDB/network errors.
- * - duplicate (caller acks): already-seen eventId or raced unique violation.
+ * - transient (throw -> caller retries via confirm-gated retry queue): MariaDB/
+ *   network errors, fencing conflicts (snapshot RUNNING), P2002 on non-inbox
+ *   constraints (re-thrown, never acked as duplicate).
+ * - duplicate (caller acks): already-seen eventId, confirmed via re-read after
+ *   P2002. A P2002 that is NOT on lk_processed_events.eventId is never
+ *   treated as duplicate (it would lose the conflict via ack).
  */
 @Injectable()
 export class LkEventHandler {
@@ -101,6 +110,7 @@ export class LkEventHandler {
           return { status: 'poison', reason: `invalid-employee-payload:${poisonReason(err)}` };
         }
         await this.prisma.$transaction(async (tx) => {
+          await this.assertNoRunningSnapshotTx(tx as never, envelope.eventId);
           await tx.lkProcessedEvent.create({
             data: {
               eventId: envelope.eventId,
@@ -130,6 +140,7 @@ export class LkEventHandler {
         }
         const now = new Date();
         await this.prisma.$transaction(async (tx) => {
+          await this.assertNoRunningSnapshotTx(tx as never, envelope.eventId);
           await tx.lkProcessedEvent.create({
             data: {
               eventId: envelope.eventId,
@@ -144,6 +155,12 @@ export class LkEventHandler {
             update: { name: payload.name, deleted: payload.deleted, syncedAt: now },
             create: { code1c: payload.code1c, name: payload.name, deleted: payload.deleted, syncedAt: now },
           });
+          await this.audit.logInTransaction(tx as never, {
+            action: 'LK_EVENT_APPLIED',
+            entityType: 'LkPosition',
+            entityId: payload.code1c,
+            after: { eventId: envelope.eventId },
+          });
         });
       } else {
         let payload: ReturnType<typeof parseReferencePayload>;
@@ -157,6 +174,7 @@ export class LkEventHandler {
         }
         const now = new Date();
         await this.prisma.$transaction(async (tx) => {
+          await this.assertNoRunningSnapshotTx(tx as never, envelope.eventId);
           await tx.lkProcessedEvent.create({
             data: {
               eventId: envelope.eventId,
@@ -171,19 +189,64 @@ export class LkEventHandler {
             update: { name: payload.name, deleted: payload.deleted, syncedAt: now },
             create: { code1c: payload.code1c, name: payload.name, deleted: payload.deleted, syncedAt: now },
           });
+          await this.audit.logInTransaction(tx as never, {
+            action: 'LK_EVENT_APPLIED',
+            entityType: 'LkDepartment',
+            entityId: payload.code1c,
+            after: { eventId: envelope.eventId },
+          });
         });
       }
       return { status: 'applied' };
     } catch (err) {
-      // Unique violation on eventId raced by concurrent consumer -> duplicate.
-      if (isUniqueViolation(err)) return { status: 'duplicate' };
+      // P2002 is duplicate ONLY when the inbox row for THIS eventId now exists.
+      // Any other unique conflict (e.g. LkLocation.locationId, Employee keys)
+      // must NOT be acked as duplicate — rethrow as transient so the conflict
+      // is investigated instead of silently lost.
+      if (isUniqueViolation(err)) {
+        const confirmed = await this.prisma.lkProcessedEvent
+          .findUnique({ where: { eventId: envelope.eventId } })
+          .catch(() => null);
+        if (confirmed) return { status: 'duplicate' };
+        this.logger.error(
+          `LK event P2002 not on inbox eventId=${envelope.eventId}; rethrowing as transient (no ack)`,
+        );
+        throw err;
+      }
       if (isPoisonError(err)) {
         this.logger.warn(
           `LK poison event apply eventId=${envelope.eventId} reason=${poisonReason(err)}`,
         );
         return { status: 'poison', reason: `invalid-payload:${poisonReason(err)}` };
       }
+      // Fencing conflict (snapshot RUNNING) is transient: caller retries via
+      // confirm-gated retry queue; the message stays recoverable.
       throw err;
+    }
+  }
+
+  /**
+   * Fencing gate: abort event writes while a snapshot holds the generation.
+   * Runs inside the same DB transaction as the inbox+projection write so the
+   * check and the write are atomic (a Redis GET before SQL alone would race).
+   * Memory mocks without lkSyncRun simply skip (unit tests for handler logic).
+   */
+  private async assertNoRunningSnapshotTx(tx: never, eventId: string): Promise<void> {
+    try {
+      const t = tx as unknown as {
+        lkSyncRun?: { findFirst?: (a: unknown) => Promise<{ runId: string } | null> };
+      };
+      if (!t.lkSyncRun?.findFirst) return;
+      const running = await t.lkSyncRun.findFirst({ where: { status: 'RUNNING' } });
+      if (running) {
+        throw new Error(
+          `LK snapshot ${running.runId} is RUNNING; deferring event ${eventId} (fencing, transient)`,
+        );
+      }
+    } catch (err) {
+      // Re-throw fencing conflicts; ignore missing-table/mocks.
+      if (err instanceof Error && /RUNNING; deferring event/.test(err.message)) throw err;
+      return;
     }
   }
 

@@ -32,6 +32,19 @@ export interface ReadyResponseDto {
   redis: ReadinessCheckDto;
 }
 
+export interface IntegrationHealthDto {
+  status: string;
+  time: string;
+  redis: ReadinessCheckDto;
+  consumer: ReadinessCheckDto;
+  bootstrap: ReadinessCheckDto;
+  freshness: ReadinessCheckDto;
+  pendingMessages?: number;
+  dlqMessages?: number;
+  lastSyncRunId?: string;
+  lastSyncFinishedAt?: string;
+}
+
 export interface KpiDto {
   key: string;
   label: string;
@@ -325,6 +338,76 @@ export function useGetHealthReady<
 }
 
 /**
+ * @summary Integration health: Redis coordination, consumer, bootstrap, freshness (does not gate reads)
+ */
+export const getHealthIntegration = (signal?: AbortSignal) => {
+  return customInstance<IntegrationHealthDto>({
+    url: `/api/health/integration`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetHealthIntegrationQueryKey = () => {
+  return [`/api/health/integration`] as const;
+};
+
+export const getGetHealthIntegrationQueryOptions = <
+  TData = Awaited<ReturnType<typeof getHealthIntegration>>,
+  TError = unknown,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getHealthIntegration>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetHealthIntegrationQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getHealthIntegration>>
+  > = ({ signal }) => getHealthIntegration(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getHealthIntegration>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetHealthIntegrationQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getHealthIntegration>>
+>;
+export type GetHealthIntegrationQueryError = unknown;
+
+/**
+ * @summary Integration health: Redis coordination, consumer, bootstrap, freshness (does not gate reads)
+ */
+
+export function useGetHealthIntegration<
+  TData = Awaited<ReturnType<typeof getHealthIntegration>>,
+  TError = unknown,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getHealthIntegration>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetHealthIntegrationQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
  * @summary Dashboard summary (seed-backed for first slice)
  */
 export const getDashboard = (signal?: AbortSignal) => {
@@ -395,7 +478,7 @@ export function useGetDashboard<
 }
 
 /**
- * @summary List employees (EDO domain)
+ * @summary List employees (EDO domain, location-scoped)
  */
 export const listEmployees = (signal?: AbortSignal) => {
   return customInstance<EmployeeListResponseDto>({
@@ -440,7 +523,7 @@ export type ListEmployeesQueryResult = NonNullable<
 export type ListEmployeesQueryError = void;
 
 /**
- * @summary List employees (EDO domain)
+ * @summary List employees (EDO domain, location-scoped)
  */
 
 export function useListEmployees<
@@ -465,7 +548,7 @@ export function useListEmployees<
 }
 
 /**
- * @summary Get employee by id
+ * @summary Get employee by id (location-scoped)
  */
 export const getEmployee = (id: string, signal?: AbortSignal) => {
   return customInstance<EmployeeDto>({
@@ -518,7 +601,7 @@ export type GetEmployeeQueryResult = NonNullable<
 export type GetEmployeeQueryError = void;
 
 /**
- * @summary Get employee by id
+ * @summary Get employee by id (location-scoped)
  */
 
 export function useGetEmployee<

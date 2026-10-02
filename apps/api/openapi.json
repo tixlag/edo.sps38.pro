@@ -77,6 +77,28 @@
         ]
       }
     },
+    "/api/health/integration": {
+      "get": {
+        "operationId": "getHealthIntegration",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationHealthDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Integration health: Redis coordination, consumer, bootstrap, freshness (does not gate reads)",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/api/v1/dashboard": {
       "get": {
         "operationId": "getDashboard",
@@ -137,7 +159,7 @@
             "access-jwt": []
           }
         ],
-        "summary": "List employees (EDO domain)",
+        "summary": "List employees (EDO domain, location-scoped)",
         "tags": [
           "employees"
         ]
@@ -182,7 +204,7 @@
             "access-jwt": []
           }
         ],
-        "summary": "Get employee by id",
+        "summary": "Get employee by id (location-scoped)",
         "tags": [
           "employees"
         ]
@@ -301,6 +323,55 @@
           "mariadb",
           "rabbitmq",
           "redis"
+        ]
+      },
+      "IntegrationHealthDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "healthy"
+          },
+          "time": {
+            "type": "string",
+            "example": "2026-10-02T12:00:00.000Z"
+          },
+          "redis": {
+            "$ref": "#/components/schemas/ReadinessCheckDto"
+          },
+          "consumer": {
+            "$ref": "#/components/schemas/ReadinessCheckDto"
+          },
+          "bootstrap": {
+            "$ref": "#/components/schemas/ReadinessCheckDto"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/ReadinessCheckDto"
+          },
+          "pendingMessages": {
+            "type": "number",
+            "example": 0
+          },
+          "dlqMessages": {
+            "type": "number",
+            "example": 0
+          },
+          "lastSyncRunId": {
+            "type": "string",
+            "example": "run-abc"
+          },
+          "lastSyncFinishedAt": {
+            "type": "string",
+            "example": "2026-10-01T10:00:00.000Z"
+          }
+        },
+        "required": [
+          "status",
+          "time",
+          "redis",
+          "consumer",
+          "bootstrap",
+          "freshness"
         ]
       },
       "KpiDto": {

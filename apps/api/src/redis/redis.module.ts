@@ -5,12 +5,14 @@ import Redis from 'ioredis';
 /**
  * Shared Redis for cache/locks/ephemeral state only (NOT a primary queue).
  * Production must point REDIS_URL to the shared ecosystem Redis.
- * Tolerant when Redis is absent (local docs/CI builds): operations no-op null.
+ * Tolerant when Redis is absent (local docs/CI builds): lenient operations no-op null.
  *
  * Lock primitives (SET NX PX + Lua compare-and-delete/extend) power the
- * distributed LK reconciliation lock. They return `null` when Redis is
- * unavailable so callers can degrade safely (log + proceed without
- * coordination); they never throw for connection issues.
+ * distributed LK reconciliation lock. Lenient variants return `null` when Redis
+ * is unavailable so cache callers can degrade safely; strict variants
+ * (`getStrict`, `pingStrict`, `setNxPxStrict`, ...) THROW on connection issues
+ * so coordination callers can FAIL CLOSED and never mistake "Redis down" for
+ * "unlocked". Coordination code MUST use strict variants only.
  */
 @Injectable()
 export class RedisService implements OnModuleDestroy {
@@ -46,6 +48,14 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  /** Strict ping: throws when Redis is unreachable (for coordination, fail closed). */
+  async pingStrict(): Promise<boolean> {
+    if (!this.client) throw new Error('Redis client is not configured');
+    const res = await this.client.ping();
+    if (res !== 'PONG') throw new Error(`Unexpected Redis PING reply: ${res}`);
+    return true;
+  }
+
   async get(key: string): Promise<string | null> {
     if (!this.client) return null;
     try {
@@ -53,6 +63,16 @@ export class RedisService implements OnModuleDestroy {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Strict GET: distinguishes "no key" (null) from "Redis down" (throw).
+   * Coordination code MUST use this, never lenient get() + ping() fallback:
+   * a successful PING after a failed GET does not prove the GET observed absence.
+   */
+  async getStrict(key: string): Promise<string | null> {
+    if (!this.client) throw new Error('Redis client is not configured');
+    return await this.client.get(key);
   }
 
   async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
@@ -80,6 +100,13 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  /** Strict acquire: throws when Redis is unavailable (fail closed). */
+  async setNxPxStrict(key: string, value: string, pxMs: number): Promise<boolean> {
+    if (!this.client) throw new Error('Redis client is not configured');
+    const res = await this.client.set(key, value, 'PX', pxMs, 'NX');
+    return res === 'OK';
+  }
+
   /**
    * Release only if the stored value equals the owner token (Lua compare-and-del).
    * Returns true when the lock was released by its owner.
@@ -97,6 +124,18 @@ export class RedisService implements OnModuleDestroy {
     } catch {
       return null;
     }
+  }
+
+  /** Strict compare-and-del: throws when Redis is unavailable. */
+  async compareAndDelStrict(key: string, expected: string): Promise<boolean> {
+    if (!this.client) throw new Error('Redis client is not configured');
+    const res = (await this.client.eval(
+      `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`,
+      1,
+      key,
+      expected,
+    )) as number;
+    return res === 1;
   }
 
   /**
@@ -117,6 +156,19 @@ export class RedisService implements OnModuleDestroy {
     } catch {
       return null;
     }
+  }
+
+  /** Strict compare-and-expire: throws when Redis is unavailable. */
+  async compareAndExpireStrict(key: string, expected: string, pxMs: number): Promise<boolean> {
+    if (!this.client) throw new Error('Redis client is not configured');
+    const res = (await this.client.eval(
+      `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("pexpire", KEYS[1], ARGV[2]) else return 0 end`,
+      1,
+      key,
+      expected,
+      String(pxMs),
+    )) as number;
+    return res === 1;
   }
 
   async onModuleDestroy() {
