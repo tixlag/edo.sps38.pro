@@ -16,8 +16,8 @@ import { describe, expect, it } from 'vitest';
 function disposableRabbitUrl(): string | null {
   const u = process.env.EDO_TEST_RABBITMQ_URL ?? '';
   if (!u) return null;
-  if (!/^amqp:\/\/[^@]+@127\.0\.0\.1:5675\/?$/.test(u)) {
-    throw new Error('Refusing: EDO_TEST_RABBITMQ_URL must be the disposable test broker (amqp://…@127.0.0.1:5675/)');
+  if (!/^amqp:\/\/[^@]+@(127\.0\.0\.1|localhost):(5673|5675)\/?$/.test(u)) {
+    throw new Error('Refusing: EDO_TEST_RABBITMQ_URL must be a disposable test broker (127.0.0.1:5673 or :5675)');
   }
   return u;
 }
@@ -160,3 +160,72 @@ describe.skipIf(!URL)('LK retry/DLX chain on disposable RabbitMQ', () => {
 function PREFIX_FALLBACK(): string {
   return PFX;
 }
+
+describe.skipIf(!URL)('Health diagnostics isolation (disposable broker)', () => {
+  it('(d) missing queue is reported AND the live consumer keeps working', async () => {
+    const amqp = await import('amqplib');
+    const { RabbitmqService } = await import('../src/rabbitmq/rabbitmq.module');
+    const queue = `${PFX}.d.main`;
+    const config = {
+      get: (key: string) => {
+        if (key === 'RABBITMQ_URL') return URL!;
+        if (key === 'EDO_LK_QUEUE') return queue;
+        if (key === 'LK_EVENTS_EXCHANGE') return `${PFX}.d.ex`;
+        return undefined;
+      },
+    } as never;
+    const svc = new RabbitmqService(config);
+    await svc.ensureConnected(8000);
+    const received: string[] = [];
+    await svc.consume(async ({ content, ack }) => {
+      received.push(content.toString());
+      ack();
+    });
+    const raw = await amqp.connect(URL!);
+    try {
+      const ch = await raw.createChannel();
+      try {
+        const probe = (body: string) =>
+          ch.sendToQueue(queue, Buffer.from(body), { persistent: true, contentType: 'application/json' });
+        probe('{"n":1}');
+        await new Promise((r) => setTimeout(r, 1500));
+        expect(received).toContain('{"n":1}');
+        // Break the topology: delete the retry queue, then run diagnostics.
+        await ch.deleteQueue(`${queue}.retry`);
+        const depths = await svc.checkQueueDepths();
+        expect(depths).not.toBeNull();
+        expect(depths!.errors.length).toBeGreaterThan(0);
+        expect(depths!.errors.join(' ')).toMatch(/retry/);
+        // The delivery channel survived the diagnostic 404: the live consumer
+        // still applies new deliveries (old code closed it here).
+        probe('{"n":2}');
+        const deadline = Date.now() + 10000;
+        while (!received.includes('{"n":2}') && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        expect(received).toContain('{"n":2}');
+        expect(svc.getReconnectState().scheduled).toBe(false);
+      } finally {
+        await ch.close().catch(() => undefined);
+      }
+    } finally {
+      await raw.close().catch(() => undefined);
+    }
+    await svc.onModuleDestroy();
+    const janitor = await amqp.connect(URL!);
+    try {
+      const ch = await janitor.createChannel();
+      try {
+        await ch.deleteQueue(queue).catch(() => undefined);
+        await ch.deleteQueue(`${queue}.retry`).catch(() => undefined);
+        await ch.deleteQueue(`${queue}.dlq`).catch(() => undefined);
+        await ch.deleteExchange(`${queue}.dlx`).catch(() => undefined);
+        await ch.deleteExchange(`${PFX}.d.ex`).catch(() => undefined);
+      } finally {
+        await ch.close().catch(() => undefined);
+      }
+    } finally {
+      await janitor.close().catch(() => undefined);
+    }
+  }, 40000);
+});

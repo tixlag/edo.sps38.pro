@@ -52,6 +52,10 @@ jobs:
       DATABASE_URL: mysql://edo:edo@localhost:3307/edo
       REDIS_URL: redis://localhost:6380
       RABBITMQ_URL: amqp://edo:edo@localhost:5673/
+      # Disposable-test DSNs (loopback CI ports only; specs refuse anything else
+      # and never fall back to shared infrastructure).
+      EDO_TEST_DATABASE_URL: mysql://edo:edo@localhost:3307/edo
+      EDO_TEST_RABBITMQ_URL: amqp://edo:edo@localhost:5673/
       LK_EVENTS_EXCHANGE: lk.events
       EDO_LK_QUEUE: edo.lk-reference-sync
       JWT_SECRET: ci-only-insecure-secret
@@ -77,6 +81,25 @@ jobs:
       - run: pnpm db:migrate
       - run: pnpm lint
       - run: pnpm test
+      - name: Infrastructure suites (isolated MariaDB + RabbitMQ, skips fail this step)
+        run: |
+          pnpm --filter @edo/api exec vitest run \
+            test/lk-fencing-mariadb.spec.ts \
+            test/lk-retry-chain-rabbit.spec.ts \
+            test/lk-consumer-recovery-rabbit.spec.ts \
+            --reporter=json --outputFile=/tmp/edo-infra-tests.json
+          node -e "
+            const fs = require('fs');
+            const r = JSON.parse(fs.readFileSync('/tmp/edo-infra-tests.json', 'utf8'));
+            const files = (r.testResults || []).map((f) => ({ file: f.name, skipped: (f.assertionResults || []).filter((a) => a.status === 'skipped').length, passed: (f.assertionResults || []).filter((a) => a.status === 'passed').length }));
+            console.log(JSON.stringify(files, null, 1));
+            const totalSkipped = files.reduce((n, f) => n + f.skipped, 0);
+            const totalPassed = files.reduce((n, f) => n + f.passed, 0);
+            if (files.length !== 3) throw new Error('expected 3 infra spec files, environment miswired?');
+            if (totalSkipped > 0) throw new Error(totalSkipped + ' infra tests SKIPPED: disposable environment missing or miswired (see EDO_TEST_* env)');
+            if (totalPassed < 10) throw new Error('expected at least 10 passing infra tests, got ' + totalPassed);
+            console.log('infra suites: ' + totalPassed + ' passed, 0 skipped');
+          "
       - name: OpenAPI + Orval regenerate (EDO API client)
         run: pnpm --filter @edo/api api:generate
       - name: LK client regenerate (narrow spec only)

@@ -98,14 +98,14 @@ envelope.eventType, and acks the DLQ copy only after confirm.
 - Crashed/stuck `RUNNING` rows and orphaned generations:
   1. The Redis heartbeat stops renewing past the 10min hold bound, so the lock
      lapses and the consumer resumes; the holder's next gate fails and it aborts.
-  2. The DB row stays `activeRunId=<dead>` with a stale heartbeat: events
-     proceed (orphan rule, logged), nothing blocks forever.
+  2. An event admitted while the heartbeat is stale REVOKES the orphan in the
+     same row-locked transaction (activeRunId=NULL + generation bump): a merely
+     paused holder resuming afterwards fails every gate (pages, stamps, marks),
+     and its late heartbeat cannot resurrect it (0 rows updated → lost).
   3. The next `lk:sync` acquires the Redis lock (proving no live holder) and
-     STEALS the generation (logged `stolen`), bumping it so the dead holder —
-     if actually only paused — can never write afterwards.
+     STEALS any remaining stale generation (logged `stolen`), bumping it again.
   4. Operator: confirm via `lk_sync_runs` (FAILED/STUCK categories) + Redis
      `GET edo:lk-reconciliation-lock`; never delete `lk_sync_runs` rows.
-- Never delete `lk_sync_runs` rows.
 
 ## Shrinkage / empty snapshot
 
