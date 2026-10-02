@@ -217,15 +217,15 @@ describe.skipIf(!URL)('LK fencing on real MariaDB (row-lock serialization)', () 
     await B.$executeRaw`UPDATE lk_sync_state SET activeRunId = NULL, heartbeatAt = NULL WHERE id = 1`;
   }, 30000);
 
-  it('orphaned generation does not block events forever; next sync steals it', async () => {
+  it('orphan admit REVOKES the stale owner: A resumes afterwards, no B yet — A writes nothing', async () => {
     const A = prismaA!;
-    const B = prismaB!;
-    const code = `${PREFIX}-E4`;
-    const evt = `${PREFIX}-evt-e4`;
-    // Simulate a crashed holder: active run with an ancient heartbeat.
-    await A.$executeRaw`UPDATE lk_sync_state SET activeRunId = ${`${PREFIX}-run-dead`}, generation = generation + 1, heartbeatAt = ${new Date(Date.now() - 600_000)} WHERE id = 1`;
+    const code = `${PREFIX}-E5`;
+    const evt = `${PREFIX}-evt-e5`;
     const fencing = fencingOf(A);
-    // Event proceeds (orphan), writes inbox + projection in one tx.
+    // A acquires, then its heartbeat/lease lapses (paused holder).
+    const { generation: genA } = await fencing.acquireDb(`${PREFIX}-run-paused`);
+    await A.$executeRaw`UPDATE lk_sync_state SET heartbeatAt = ${new Date(Date.now() - 600_000)} WHERE id = 1`;
+    // Consumer admits the event: applied AND the stale owner revoked atomically.
     const handler = new LkEventHandler(A as never, {} as never, { logInTransaction: async () => undefined } as never, fencing as never);
     await expect(
       handler.applyEnvelope({
@@ -234,19 +234,53 @@ describe.skipIf(!URL)('LK fencing on real MariaDB (row-lock serialization)', () 
         version: 1,
         occurredAt: new Date().toISOString(),
         source: 'lk.sps38.pro',
-        payload: empPayload(code, 'Orphan Window'),
+        payload: empPayload(code, 'Admitted Value'),
       }),
     ).resolves.toEqual({ status: 'applied' });
-    // Next sync steals the orphaned generation (holds its own lock in production).
-    const stolen = await fencingOf(B).acquireDb(`${PREFIX}-run-next`);
-    expect(stolen.stolen).toBe(true);
-    // And the orphaned holder can no longer write (generation moved on).
-    const deadGen = (await A.$queryRaw<Array<{ generation: bigint }>>`SELECT generation FROM lk_sync_state WHERE id = 1`)[0]!.generation - 1n;
+    const state = await A.$queryRaw<Array<{ activeRunId: string | null; generation: bigint }>>`SELECT activeRunId, generation FROM lk_sync_state WHERE id = 1`;
+    expect(state[0]?.activeRunId).toBeNull();
+    expect(state[0]?.generation).toBe(genA + 1n);
+    // A resumes and tries a page write with its old generation: refused.
     await expect(
       A.$transaction(async (tx) => {
-        await fencing.assertSnapshotMayWrite(tx as never, `${PREFIX}-run-dead`, deadGen);
+        await fencing.assertSnapshotMayWrite(tx as never, `${PREFIX}-run-paused`, genA);
+        await (tx as unknown as { lkEmployee: { upsert: (a: unknown) => Promise<unknown> } }).lkEmployee.upsert({
+          where: { code1c: code },
+          update: { fullName: 'Stale Resumed Overwrite', lastSeenSyncId: `${PREFIX}-run-paused`, syncedAt: new Date() },
+          create: { code1c: code, uuid: 'u', fullName: 'Stale Resumed Overwrite', fired: false, contractor: false, syncedAt: new Date() },
+        });
       }),
     ).rejects.toBeInstanceOf(LockOwnershipLostError);
+    // Event's fields stand; nothing from the stale run landed.
+    const row = await A.lkEmployee.findUnique({ where: { code1c: code } });
+    expect(row?.fullName).toBe('Admitted Value');
+    expect(row?.lastSeenSyncId).toBeNull();
+    // Stale mark attempt aborts the whole marking transaction.
+    await expect(
+      A.$transaction(async (tx) => {
+        await fencing.assertSnapshotMayWrite(tx as never, `${PREFIX}-run-paused`, genA);
+        await (tx as unknown as { lkEmployee: { updateMany: (a: unknown) => Promise<unknown> } }).lkEmployee.updateMany({
+          where: { code1c },
+          data: { sourcePresent: false },
+        });
+      }),
+    ).rejects.toBeInstanceOf(LockOwnershipLostError);
+    expect((await A.lkEmployee.findUnique({ where: { code1c: code } }))?.sourcePresent).toBe(true);
+    // Late heartbeat of the revoked owner does NOT resurrect it.
+    await expect(fencing.heartbeatDb(`${PREFIX}-run-paused`)).rejects.toBeInstanceOf(LockOwnershipLostError);
+    const state2 = await A.$queryRaw<Array<{ activeRunId: string | null }>>`SELECT activeRunId FROM lk_sync_state WHERE id = 1`;
+    expect(state2[0]?.activeRunId).toBeNull();
+  }, 30000);
+
+  it('steal without prior event: stale row + acquireDb steals and bumps (B path)', async () => {
+    const A = prismaA!;
+    const B = prismaB!;
+    // Stale holder, no event admitted in between: next sync steals at acquire.
+    await A.$executeRaw`UPDATE lk_sync_state SET activeRunId = ${`${PREFIX}-run-dead2`}, generation = generation + 1, heartbeatAt = ${new Date(Date.now() - 600_000)} WHERE id = 1`;
+    const before = (await A.$queryRaw<Array<{ generation: bigint }>>`SELECT generation FROM lk_sync_state WHERE id = 1`)[0]!.generation;
+    const stolen = await fencingOf(B).acquireDb(`${PREFIX}-run-next2`);
+    expect(stolen.stolen).toBe(true);
+    expect(stolen.generation).toBe(before + 1n);
     await B.$executeRaw`UPDATE lk_sync_state SET activeRunId = NULL, heartbeatAt = NULL WHERE id = 1`;
   }, 30000);
 });

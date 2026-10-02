@@ -155,14 +155,24 @@ export class DbFencingService implements SnapshotFencing {
     const row = await this.readStateTx(tx as never);
     if (row.activeRunId == null) return;
     const age = row.heartbeatAt ? Date.now() - row.heartbeatAt.getTime() : Number.POSITIVE_INFINITY;
-    if (age > LK_FENCING_LEASE_MS) {
-      // Orphaned run (holder dead/stuck past the lease): do not block the
-      // event forever. The next lk:sync steals the generation under the Redis
-      // lock; until then the event write is the freshest known state.
-      this.logger.warn(`LK fencing: event ${eventId} proceeds despite orphaned run ${row.activeRunId} (heartbeat ${Math.round(age / 1000)}s ago)`);
-      return;
+    if (age <= LK_FENCING_LEASE_MS) {
+      throw new FencingConflictError(row.activeRunId);
     }
-    throw new FencingConflictError(row.activeRunId);
+    // Orphaned run (holder dead/stuck past the lease): admit the event AND
+    // atomically revoke the stale owner in the SAME row-locked transaction —
+    // activeRunId=NULL + generation bump — so a snapshot that resumes
+    // afterwards (before any successor B starts) can no longer write pages,
+    // lastSeenSyncId or marks. The revocation rides the row lock we already
+    // hold, so no later acquireDb() is needed to close the window.
+    // (A live holder heartbeats every 10s against a 90s lease and always holds
+    // the Redis lock too — while it does, the consumer is paused and never
+    // reaches this path. Reaching here with a stale heartbeat means the holder
+    // is gone as far as any observer can tell.)
+    this.logger.warn(
+      `LK fencing: event ${eventId} revokes orphaned run ${row.activeRunId} (heartbeat ${Math.round(age / 1000)}s ago); stale owner can no longer write`,
+    );
+    await (tx as unknown as { $executeRaw: (q: TemplateStringsArray, ...a: unknown[]) => Promise<unknown> }).$executeRaw`
+      UPDATE lk_sync_state SET activeRunId = NULL, heartbeatAt = NULL, generation = ${row.generation + 1n} WHERE id = 1`;
   }
 
   async assertSnapshotMayWrite(tx: unknown, runId: string, generation: bigint): Promise<void> {
