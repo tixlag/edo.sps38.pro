@@ -5,23 +5,27 @@ import { LkEventHandler } from './lk-event.handler';
 
 const RECONCILIATION_POLL_MS = 1000;
 
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+function sleepAny(ms: number, signals: AbortSignal[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
+    if (signals.some((s) => s.aborted)) {
       reject(new Error('LK consumer wait cancelled (shutdown)'));
       return;
     }
     const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
+      cleanup();
       resolve();
     }, ms);
     const t = timer as unknown as { unref?: () => void };
     if (typeof t.unref === 'function') t.unref();
     const onAbort = () => {
       clearTimeout(timer);
+      cleanup();
       reject(new Error('LK consumer wait cancelled (shutdown)'));
     };
-    signal?.addEventListener('abort', onAbort, { once: true });
+    const cleanup = () => {
+      for (const s of signals) s.removeEventListener('abort', onAbort);
+    };
+    for (const s of signals) s.addEventListener('abort', onAbort, { once: true });
   });
 }
 
@@ -61,7 +65,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 export class LkEventConsumer implements OnModuleInit {
   private readonly logger = new Logger(LkEventConsumer.name);
   private stopped = false;
-  private waiters = new Set<{ cancelled: boolean }>();
+  private shutdownController: AbortController | null = null;
 
   constructor(
     private readonly rabbitmq: RabbitmqService,
@@ -71,8 +75,12 @@ export class LkEventConsumer implements OnModuleInit {
 
   /** Pause event APPLY while reconciling OR while coordination is unknown. */
   async waitWhileReconciling(signal?: AbortSignal): Promise<void> {
+    // Combine the caller signal with the shutdown signal: a wait started
+    // before shutdown still aborts promptly.
+    const shutdownSignal = this.shutdownController?.signal;
+    const signals = [signal, shutdownSignal].filter((s): s is AbortSignal => !!s);
     for (;;) {
-      if (this.stopped || signal?.aborted) {
+      if (this.stopped || signals.some((s) => s.aborted)) {
         throw new Error('LK consumer wait cancelled (shutdown)');
       }
       let state: string;
@@ -87,13 +95,18 @@ export class LkEventConsumer implements OnModuleInit {
           ? 'LK reconciliation in progress; pausing event apply (messages stay queued)'
           : 'LK coordination unavailable (Redis); pausing event apply until Redis recovers',
       );
-      await sleep(RECONCILIATION_POLL_MS, signal);
+      await sleepAny(RECONCILIATION_POLL_MS, signals);
     }
   }
 
   /** Signal shutdown: waiting callbacks abort promptly instead of hanging. */
   stopWaiting(): void {
     this.stopped = true;
+    try {
+      this.shutdownController?.abort();
+    } catch {
+      // ignore
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -103,11 +116,23 @@ export class LkEventConsumer implements OnModuleInit {
   async onModuleInit() {
     // Skip eager connect in export/test contexts without broker.
     if (process.env.LK_EVENTS_CONSUME === '0') return;
+    this.shutdownController = new AbortController();
+    const shutdownSignal = this.shutdownController.signal;
     try {
       await this.rabbitmq.consume(async ({ routingKey, rawRoutingKey, content, ack, nack, retryAsync }) => {
-        if (this.stopped) return;
-        await this.waitWhileReconciling();
-        if (this.stopped) return;
+        if (this.stopped || shutdownSignal.aborted) return;
+        const genBeforeWait = this.rabbitmq.getGeneration();
+        try {
+          await this.waitWhileReconciling(shutdownSignal);
+        } catch {
+          // Cancelled while waiting (shutdown): leave unacked for redelivery.
+          return;
+        }
+        // A reconnect during the wait invalidates this delivery: the broker
+        // redelivers on the new channel, and the DB fencing gate re-checks.
+        // Applying here would bypass neither, but double-apply wastes work and
+        // risks acking on a dead channel — drop it and let redelivery handle it.
+        if (this.stopped || shutdownSignal.aborted || !this.rabbitmq.isCurrentGeneration(genBeforeWait)) return;
         try {
           const outcome = await this.handler.applyRaw(routingKey, content);
           if (outcome.status === 'applied' || outcome.status === 'duplicate') {
@@ -125,10 +150,12 @@ export class LkEventConsumer implements OnModuleInit {
             `LK event apply failed, scheduling delayed retry: ${(err as Error).message}`,
           );
           // Async confirm path: ack original only after the retry copy is
-          // confirmed. Unconfirmed -> stays unacked for broker redelivery.
+          // confirmed. Unconfirmed schedules a bounded slow-requeue inside
+          // RabbitmqService (one delayed nack per 5s, max 3 cycles, then DLQ),
+          // so the prefetch slot cannot stall forever on a healthy channel.
           const ok = await retryAsync().catch(() => false);
           if (!ok) {
-            this.logger.warn('LK retry unconfirmed; original stays queued for redelivery (no hot loop)');
+            this.logger.warn('LK retry unconfirmed; bounded slow-requeue scheduled (no hot loop, no eternal stall)');
           }
         }
       });

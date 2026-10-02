@@ -61,6 +61,9 @@ export class IntegrationHealthDto {
   @ApiProperty({ example: 0, required: false })
   dlqMessages?: number;
 
+  @ApiProperty({ example: ['queue main is missing (NOT_FOUND)'], required: false, type: [String] })
+  queueErrors?: string[];
+
   @ApiProperty({ example: 'run-abc', required: false })
   lastSyncRunId?: string;
 

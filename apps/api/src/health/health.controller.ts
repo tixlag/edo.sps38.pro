@@ -131,19 +131,27 @@ export class HealthController {
       bootstrap = { status: 'unknown', ok: false, error: (err as Error).message.slice(0, 200) };
       freshness = { status: 'unknown', ok: false, error: 'freshness check failed' };
     }
-    // Queue depths (best-effort; never fail the endpoint).
+    // Queue depths (best-effort; never fail the endpoint, never hide damage).
+    // Missing queues are explicit errors, not zeros: zero means "empty and
+    // present". A missing EDO queue degrades integration health (DLX hops may
+    // drop messages) without gating reads of existing data.
     let pendingMessages: number | undefined;
     let dlqMessages: number | undefined;
+    let queueErrors: string[] | undefined;
     try {
       const depths = await this.rabbitmq.checkQueueDepths().catch(() => null);
       if (depths) {
         pendingMessages = depths.main;
         dlqMessages = depths.dlq;
+        if (depths.errors.length > 0) queueErrors = depths.errors;
       }
     } catch {
       // ignore
     }
-    const status = redis.ok && consumer.ok && bootstrap.ok && freshness.ok ? 'healthy' : 'degraded';
-    return { status, time, redis, consumer, bootstrap, freshness, pendingMessages, dlqMessages, lastSyncRunId, lastSyncFinishedAt };
+    const status =
+      redis.ok && consumer.ok && bootstrap.ok && freshness.ok && (queueErrors?.length ?? 0) === 0
+        ? 'healthy'
+        : 'degraded';
+    return { status, time, redis, consumer, bootstrap, freshness, pendingMessages, dlqMessages, queueErrors, lastSyncRunId, lastSyncFinishedAt };
   }
 }

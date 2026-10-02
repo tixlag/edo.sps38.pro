@@ -1,23 +1,43 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
   RabbitmqService,
   getRetryCount,
   LK_RETRY_COUNT_HEADER,
+  LK_ORIGINAL_ROUTING_KEY_HEADER,
+  LK_SOURCE_MESSAGE_ID_HEADER,
   LK_MAX_RETRIES,
 } from '../src/rabbitmq/rabbitmq.module';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function service() {
   const config = { get: () => undefined } as never;
   return new RabbitmqService(config);
 }
 
-function mockChannel(name: string) {
-  const calls: { ack: unknown[]; nack: unknown[]; sent: unknown[]; published: unknown[] } = {
+type ConfirmBehavior =
+  | { kind: 'ack' }
+  | { kind: 'nack' }
+  | { kind: 'never' };
+
+/**
+ * Confirm-capable fake channel (production path):
+ * per-message `publish(ex, key, content, opts, cb)` callback, correlated
+ * `basic.return` emission, controllable buffer-full, no sendToQueue shortcut.
+ */
+function confirmChannel(
+  name: string,
+  behavior: ConfirmBehavior = { kind: 'ack' },
+  opts: { bufferFull?: boolean; emitReturnFor?: (o: Record<string, unknown>) => boolean } = {},
+) {
+  const calls: { ack: unknown[]; nack: unknown[]; published: unknown[] } = {
     ack: [],
     nack: [],
-    sent: [],
     published: [],
   };
+  const returnHandlers: Array<(m: unknown) => void> = [];
   let consumeCb: ((msg: unknown) => Promise<void>) | null = null;
   const ch = {
     name,
@@ -32,19 +52,35 @@ function mockChannel(name: string) {
     nack(msg: unknown, all: boolean, requeue: boolean) {
       calls.nack.push({ msg, all, requeue });
     },
-    sendToQueue(queue: string, content: Buffer, opts: unknown) {
-      calls.sent.push({ queue, content, opts });
+    publish(exchange: string, key: string, content: Buffer, pOpts: unknown, cb?: (e: Error | null) => void) {
+      calls.published.push({ exchange, key, content, opts: pOpts });
+      if (typeof cb === 'function') {
+        setImmediate(() => {
+          if (opts.emitReturnFor?.(pOpts as Record<string, unknown>)) {
+            const ret = { properties: { messageId: (pOpts as Record<string, unknown>)['messageId'] } };
+            for (const h of [...returnHandlers]) h(ret);
+          }
+          if (behavior.kind === 'nack') cb(new Error('broker nack'));
+          else if (behavior.kind === 'ack') cb(null);
+          // 'never': callback never fires (timeout path).
+        });
+      }
+      return !opts.bufferFull;
     },
-    publish(exchange: string, key: string, content: Buffer, opts: unknown) {
-      calls.published.push({ exchange, key, content, opts });
-      return true;
+    on(ev: string, fn: (m: unknown) => void) {
+      if (ev === 'return') returnHandlers.push(fn);
+    },
+    emitReturnNow(msg: unknown) {
+      for (const h of [...returnHandlers]) h(msg);
     },
     async assertExchange() {},
     async assertQueue() {},
     async bindQueue() {},
     async prefetch() {},
     async close() {},
-    on() {},
+    async checkQueue() {
+      return { messageCount: 0 };
+    },
     trigger(msg: unknown) {
       if (!consumeCb) throw new Error('no consumer registered');
       return consumeCb(msg);
@@ -53,11 +89,17 @@ function mockChannel(name: string) {
   return ch;
 }
 
+/** Wire the service to a fake confirm channel (incl. correlated returns). */
+function wire(svc: RabbitmqService, ch: ReturnType<typeof confirmChannel>) {
+  (svc as unknown as { channel: unknown }).channel = ch;
+  (svc as unknown as { attachReturnListener: (c: unknown) => void }).attachReturnListener.call(svc, ch);
+}
+
 function rabbitMsg(overrides: Record<string, unknown> = {}) {
   return {
     fields: { routingKey: 'lk.reference.employee.upserted.v1' },
-    properties: { headers: {} },
-    content: Buffer.from('{}'),
+    properties: { headers: {}, messageId: 'src-mid-1' },
+    content: Buffer.from(JSON.stringify({ eventId: 'evt-1' })),
     ...overrides,
   };
 }
@@ -65,8 +107,8 @@ function rabbitMsg(overrides: Record<string, unknown> = {}) {
 describe('RabbitMQ delivery-channel ack safety', () => {
   it('acks an old message on channel A even after the service switched to B', async () => {
     const svc = service();
-    const channelA = mockChannel('A');
-    const channelB = mockChannel('B');
+    const channelA = confirmChannel('A');
+    const channelB = confirmChannel('B');
     (svc as unknown as { channel: unknown }).channel = channelA;
     let capturedAck: (() => void) | null = null;
     (svc as unknown as { consumerHandler: unknown }).consumerHandler = async ({
@@ -77,10 +119,8 @@ describe('RabbitMQ delivery-channel ack safety', () => {
       capturedAck = ack;
     };
     await (svc as unknown as { subscribe: () => Promise<void> }).subscribe();
-    // Channel A delivers a message; handler captures ack/nack bound to A.
     await channelA.trigger(rabbitMsg());
     expect(capturedAck).not.toBeNull();
-    // Reconnect switches the service to channel B before the handler finishes.
     (svc as unknown as { channel: unknown }).channel = channelB;
     capturedAck!();
     expect(channelA.calls.ack).toHaveLength(1);
@@ -91,8 +131,8 @@ describe('RabbitMQ delivery-channel ack safety', () => {
 
   it('nacks an old message on channel A, never on the reconnected B', async () => {
     const svc = service();
-    const channelA = mockChannel('A');
-    const channelB = mockChannel('B');
+    const channelA = confirmChannel('A');
+    const channelB = confirmChannel('B');
     (svc as unknown as { channel: unknown }).channel = channelA;
     let capturedNack: ((r: boolean) => void) | null = null;
     (svc as unknown as { consumerHandler: unknown }).consumerHandler = async ({
@@ -127,11 +167,7 @@ describe('RabbitMQ delivery-channel ack safety', () => {
       svc,
       c1,
     );
-    // Simulate reconnect: service now tracks the new connection.
     (svc as unknown as { connection: unknown }).connection = 'new-conn-stub';
-    // Re-attach for the new connection (identity = c2 object is not tracked by
-    // value, but `this.connection` no longer equals c1, so c1 close is stale).
-    // Trigger old connection close: must NOT schedule/clear new state.
     const before = (svc as unknown as { connection: unknown }).connection;
     for (const fn of oldConn.handlers['close'] ?? []) fn(new Error('close'));
     const after = (svc as unknown as { connection: unknown }).connection;
@@ -140,9 +176,23 @@ describe('RabbitMQ delivery-channel ack safety', () => {
     expect(c2).toBeDefined();
     await svc.onModuleDestroy();
   });
+
+  it('broker cancel (null delivery) triggers re-subscribe, not a silent dead consumer', async () => {
+    const svc = service();
+    const ch = confirmChannel('A');
+    (svc as unknown as { channel: unknown }).channel = ch;
+    (svc as unknown as { consumerHandler: unknown }).consumerHandler = async () => undefined;
+    await (svc as unknown as { subscribe: () => Promise<void> }).subscribe();
+    expect((svc as unknown as { channel: unknown }).channel).not.toBeNull();
+    await ch.trigger(null);
+    // Cancel clears the channel and schedules the single reconnect loop.
+    expect((svc as unknown as { channel: unknown }).channel).toBeNull();
+    expect(svc.getReconnectState().scheduled).toBe(true);
+    await svc.onModuleDestroy();
+  });
 });
 
-describe('RabbitMQ transient retry policy (no hot loop)', () => {
+describe('RabbitMQ confirm-gated retry (single publish path)', () => {
   it('reads retry attempts from headers, defaults to 0', () => {
     expect(getRetryCount(undefined)).toBe(0);
     expect(getRetryCount({})).toBe(0);
@@ -150,56 +200,277 @@ describe('RabbitMQ transient retry policy (no hot loop)', () => {
     expect(getRetryCount({ [LK_RETRY_COUNT_HEADER]: 'bad' })).toBe(0);
   });
 
-  it('transient failure publishes to retry queue with TTL and acks original (no immediate nack)', () => {
+  it('confirmed publish uses mandatory + fresh messageId and acks original', async () => {
     const svc = service();
-    const delivery = mockChannel('delivery');
-    (svc as unknown as { channel: unknown }).channel = delivery;
-    const msg = rabbitMsg({ properties: { headers: {} } });
-    (svc as unknown as { retryLater: (c: unknown, m: unknown) => void }).retryLater.call(
-      svc,
-      delivery,
-      msg,
-    );
-    // One delayed copy, original acked, no hot nack(true).
-    expect(delivery.calls.sent).toHaveLength(1);
-    const sent = delivery.calls.sent[0] as { queue: string; opts: { headers: Record<string, unknown> } };
-    expect(sent.queue).toBe('edo.lk-reference-sync.retry');
-    expect(sent.opts.headers[LK_RETRY_COUNT_HEADER]).toBe(1);
+    const pub = confirmChannel('pub');
+    const delivery = confirmChannel('delivery');
+    wire(svc, pub);
+    const msg = rabbitMsg({ properties: { headers: {}, messageId: 'src-mid-1' } });
+    const ok = await svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    expect(ok).toBe(true);
+    expect(pub.calls.published).toHaveLength(1);
+    const sent = pub.calls.published[0] as {
+      exchange: string;
+      key: string;
+      opts: Record<string, unknown>;
+    };
+    // Default exchange to the retry queue (wire-identical to sendToQueue).
+    expect(sent.exchange).toBe('');
+    expect(sent.key).toBe('edo.lk-reference-sync.retry');
+    expect(sent.opts['mandatory']).toBe(true);
+    expect(sent.opts['persistent']).toBe(true);
+    const headers = sent.opts['headers'] as Record<string, unknown>;
+    expect(headers[LK_RETRY_COUNT_HEADER]).toBe(1);
+    expect(headers[LK_ORIGINAL_ROUTING_KEY_HEADER]).toBe('lk.reference.employee.upserted.v1');
+    // Fresh unique id on the wire; source id preserved in a header.
+    expect(typeof sent.opts['messageId']).toBe('string');
+    expect(sent.opts['messageId']).not.toBe('src-mid-1');
+    expect(headers[LK_SOURCE_MESSAGE_ID_HEADER]).toBe('src-mid-1');
     expect(delivery.calls.ack).toHaveLength(1);
-    expect(delivery.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(0);
+    expect(delivery.calls.nack).toHaveLength(0);
+    await svc.onModuleDestroy();
   });
 
-  it('increments the attempt counter on each retry', () => {
+  it('correlated return (unroutable) fails the publish: no ack, slow-requeue scheduled', async () => {
+    vi.useFakeTimers();
     const svc = service();
-    const delivery = mockChannel('delivery');
-    (svc as unknown as { channel: unknown }).channel = delivery;
-    const msg = rabbitMsg({ properties: { headers: { [LK_RETRY_COUNT_HEADER]: 3 } } });
-    (svc as unknown as { retryLater: (c: unknown, m: unknown) => void }).retryLater.call(
-      svc,
-      delivery,
-      msg,
+    const pub = confirmChannel('pub', { kind: 'ack' }, { emitReturnFor: () => true });
+    const delivery = confirmChannel('delivery');
+    wire(svc, pub);
+    const msg = rabbitMsg();
+    const p = svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(p).resolves.toBe(false);
+    expect(delivery.calls.ack).toHaveLength(0);
+    // Bounded recovery: exactly one delayed nack(true) per failure.
+    await vi.advanceTimersByTimeAsync(5000);
+    const requeues = delivery.calls.nack.filter((n) => (n as { requeue: boolean }).requeue);
+    expect(requeues).toHaveLength(1);
+    await svc.onModuleDestroy();
+  });
+
+  it('a return for ANOTHER publishId does not fail an unrelated publish', async () => {
+    const svc = service();
+    const pub = confirmChannel('pub');
+    const delivery = confirmChannel('delivery');
+    wire(svc, pub);
+    // Foreign return arrives before our publish (late callback scenario).
+    pub.emitReturnNow({ properties: { messageId: 'someone-else' } });
+    const msg = rabbitMsg();
+    const ok = await svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    expect(ok).toBe(true);
+    expect(delivery.calls.ack).toHaveLength(1);
+    await svc.onModuleDestroy();
+  });
+
+  it('concurrent publishes: return for the first fails only the first', async () => {
+    const svc = service();
+    let n = 0;
+    const pub = confirmChannel(
+      'pub',
+      { kind: 'ack' },
+      {
+        emitReturnFor: () => {
+          n += 1;
+          return n === 1;
+        },
+      },
     );
-    const sent = delivery.calls.sent[0] as { opts: { headers: Record<string, unknown> } };
+    const d1 = confirmChannel('d1');
+    const d2 = confirmChannel('d2');
+    wire(svc, pub);
+    const m1 = rabbitMsg({ properties: { headers: {}, messageId: 'm1' } });
+    const m2 = rabbitMsg({
+      properties: { headers: {}, messageId: 'm2' },
+      content: Buffer.from(JSON.stringify({ eventId: 'evt-2' })),
+    });
+    const [ok1, ok2] = await Promise.all([
+      svc.retryLaterAsync(d1 as never, m1 as never, 'lk.reference.employee.upserted.v1', 0),
+      svc.retryLaterAsync(d2 as never, m2 as never, 'lk.reference.employee.upserted.v1', 0),
+    ]);
+    expect(ok1).toBe(false);
+    expect(ok2).toBe(true);
+    expect(d1.calls.ack).toHaveLength(0);
+    expect(d2.calls.ack).toHaveLength(1);
+    await svc.onModuleDestroy();
+  });
+
+  it('late return from a previous generation is ignored', async () => {
+    const svc = service();
+    const pub = confirmChannel('pub');
+    const delivery = confirmChannel('delivery');
+    wire(svc, pub);
+    const msg = rabbitMsg();
+    const okP = svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    // Simulate reconnect BEFORE the confirm lands (generation bump).
+    (svc as unknown as { generation: number }).generation += 1;
+    // Late return for our publishId arrives on the old channel.
+    const sent = pub.calls.published[0] as { opts: Record<string, unknown> };
+    pub.emitReturnNow({ properties: { messageId: sent.opts['messageId'] } });
+    const ok = await okP;
+    // Stale generation: never ack, return ignored (no crash, no ack).
+    expect(ok).toBe(false);
+    expect(delivery.calls.ack).toHaveLength(0);
+    await svc.onModuleDestroy();
+  });
+
+  it('confirm nack fails the publish without ack (recoverable via slow-requeue)', async () => {
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'nack' });
+    const delivery = confirmChannel('delivery');
+    wire(svc, pub);
+    const msg = rabbitMsg();
+    const ok = await svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    expect(ok).toBe(false);
+    expect(delivery.calls.ack).toHaveLength(0);
+    expect(delivery.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(0);
+    await svc.onModuleDestroy();
+  });
+
+  it('confirm timeout fails without ack (no silent success)', async () => {
+    vi.useFakeTimers();
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'never' });
+    const delivery = confirmChannel('delivery');
+    wire(svc, pub);
+    const msg = rabbitMsg();
+    const p = svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(await p).toBe(false);
+    expect(delivery.calls.ack).toHaveLength(0);
+    await svc.onModuleDestroy();
+  });
+
+  it('buffer-full (publish false) waits for the confirm instead of re-publishing or acking early', async () => {
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'ack' }, { bufferFull: true });
+    const delivery = confirmChannel('delivery');
+    wire(svc, pub);
+    const msg = rabbitMsg();
+    const ok = await svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    expect(ok).toBe(true);
+    expect(pub.calls.published).toHaveLength(1);
+    expect(delivery.calls.ack).toHaveLength(1);
+    await svc.onModuleDestroy();
+  });
+
+  it('channel without per-message confirms fails closed (never acked as placed)', async () => {
+    const svc = service();
+    const noConfirm = {
+      calls: { ack: [] as unknown[], nack: [] as unknown[], published: [] as unknown[] },
+      ack(msg: unknown) {
+        (this.calls.ack as unknown[]).push(msg);
+      },
+      nack(msg: unknown, all: boolean, requeue: boolean) {
+        (this.calls.nack as unknown[]).push({ msg, all, requeue });
+      },
+    };
+    (svc as unknown as { channel: unknown }).channel = noConfirm;
+    const delivery = confirmChannel('delivery');
+    const msg = rabbitMsg();
+    const ok = await svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    expect(ok).toBe(false);
+    expect(delivery.calls.ack).toHaveLength(0);
+    await svc.onModuleDestroy();
+  });
+
+  it('ConfirmChannel creation failure fails closed (no plain-channel fallback)', async () => {
+    const svc = service();
+    svc.setDialForTests(async () => ({}) as never);
+    svc.setChannelFactoryForTests(async () => {
+      throw new Error('no confirm support');
+    });
+    await expect(
+      (svc as unknown as { ensureConnected: (t: number) => Promise<void> }).ensureConnected.call(svc, 50),
+    ).rejects.toThrow(/no confirm support/);
+    expect((svc as unknown as { channel: unknown }).channel).toBeNull();
+    await svc.onModuleDestroy();
+  });
+
+  it('slow-requeue exhausts to DLQ after bounded cycles (no eternal stall)', async () => {
+    vi.useFakeTimers();
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'nack' });
+    const delivery = confirmChannel('delivery');
+    wire(svc, pub);
+    const msg = rabbitMsg();
+    for (let i = 0; i < 3; i++) {
+      const p = svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(p).resolves.toBe(false);
+      await vi.advanceTimersByTimeAsync(5000);
+    }
+    expect(delivery.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(3);
+    // 4th failure exceeds LK_STALL_MAX_CYCLES -> DLQ, no further timers.
+    const last = svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(last).resolves.toBe(false);
+    expect(delivery.calls.nack.filter((n) => !(n as { requeue: boolean }).requeue)).toHaveLength(1);
+    expect(delivery.calls.ack).toHaveLength(0);
+    await svc.onModuleDestroy();
+  });
+
+  it('recovery through the normal path: failed attempt, then redelivery succeeds (no manual close)', async () => {
+    const svc = service();
+    let failFirst = true;
+    const pub = confirmChannel('pub', { kind: 'ack' });
+    const origPublish = pub.publish.bind(pub);
+    (pub as unknown as { publish: unknown }).publish = (
+      ex: string,
+      key: string,
+      content: Buffer,
+      o: unknown,
+      cb?: (e: Error | null) => void,
+    ) => {
+      if (failFirst && typeof cb === 'function') {
+        failFirst = false;
+        setImmediate(() => cb(new Error('transient nack')));
+        return true;
+      }
+      return origPublish(ex, key, content, o, cb);
+    };
+    const delivery = confirmChannel('delivery');
+    wire(svc, pub);
+    const msg = rabbitMsg();
+    // First delivery: confirm fails -> false, one slow-requeue nack(true) pending.
+    await expect(
+      svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0),
+    ).resolves.toBe(false);
+    // Redelivery (as the broker would do after the slow-requeue nack): succeeds.
+    const ok = await svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    expect(ok).toBe(true);
+    expect(delivery.calls.ack).toHaveLength(1);
+    await svc.onModuleDestroy();
+  });
+
+  it('increments the attempt counter on each retry', async () => {
+    const svc = service();
+    const pub = confirmChannel('pub');
+    const delivery = confirmChannel('delivery');
+    wire(svc, pub);
+    const msg = rabbitMsg({ properties: { headers: { [LK_RETRY_COUNT_HEADER]: 3 } } });
+    await svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    const sent = pub.calls.published[0] as { opts: { headers: Record<string, unknown> } };
     expect(sent.opts.headers[LK_RETRY_COUNT_HEADER]).toBe(4);
     expect(delivery.calls.ack).toHaveLength(1);
+    await svc.onModuleDestroy();
   });
 
-  it(`after ${LK_MAX_RETRIES} attempts the message goes to DLQ (nack false, no retry publish)`, () => {
+  it(`after ${LK_MAX_RETRIES} attempts the message goes to DLQ (nack false, no retry publish)`, async () => {
     const svc = service();
-    const delivery = mockChannel('delivery');
-    (svc as unknown as { channel: unknown }).channel = delivery;
+    const pub = confirmChannel('pub');
+    const delivery = confirmChannel('delivery');
+    wire(svc, pub);
     const msg = rabbitMsg({
       properties: { headers: { [LK_RETRY_COUNT_HEADER]: LK_MAX_RETRIES } },
     });
-    (svc as unknown as { retryLater: (c: unknown, m: unknown) => void }).retryLater.call(
-      svc,
-      delivery,
-      msg,
-    );
-    expect(delivery.calls.sent).toHaveLength(0);
+    const ok = await svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    expect(ok).toBe(true);
+    expect(pub.calls.published).toHaveLength(0);
     expect(delivery.calls.nack).toHaveLength(1);
     const nack = delivery.calls.nack[0] as { requeue: boolean };
     expect(nack.requeue).toBe(false);
+    await svc.onModuleDestroy();
   });
 
   it('asserts retry queue topology (TTL + DLX back to main)', async () => {
@@ -221,17 +492,22 @@ describe('RabbitMQ transient retry policy (no hot loop)', () => {
     expect(svc.dlq).toBe('edo.lk-reference-sync.dlq');
   });
 
-  it('handler throw triggers delayed retry, not immediate nack(true)', async () => {
+  it('handler throw triggers confirm-gated retry, not immediate nack(true)', async () => {
     const svc = service();
-    const delivery = mockChannel('delivery');
+    const delivery = confirmChannel('delivery');
+    // Subscribe on the delivery channel first (it captures the deliverer)...
     (svc as unknown as { channel: unknown }).channel = delivery;
     (svc as unknown as { consumerHandler: unknown }).consumerHandler = async () => {
       throw new Error('MariaDB down');
     };
     await (svc as unknown as { subscribe: () => Promise<void> }).subscribe();
+    // ...then switch the publish path to the confirm channel.
+    const pub = confirmChannel('pub');
+    (svc as unknown as { channel: unknown }).channel = pub;
+    (svc as unknown as { attachReturnListener: (c: unknown) => void }).attachReturnListener.call(svc, pub);
     await delivery.trigger(rabbitMsg());
-    // subscribe() catches handler throw and calls retry(): retry copy + ack.
-    expect(delivery.calls.sent.length + delivery.calls.published.length).toBeGreaterThan(0);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(pub.calls.published).toHaveLength(1);
     expect(delivery.calls.ack).toHaveLength(1);
     expect(delivery.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(0);
     await svc.onModuleDestroy();
@@ -239,7 +515,7 @@ describe('RabbitMQ transient retry policy (no hot loop)', () => {
 
   it('poison still goes straight to DLQ (nack false)', async () => {
     const svc = service();
-    const delivery = mockChannel('delivery');
+    const delivery = confirmChannel('delivery');
     (svc as unknown as { channel: unknown }).channel = delivery;
     let capturedNack: ((r: boolean) => void) | null = null;
     (svc as unknown as { consumerHandler: unknown }).consumerHandler = async ({
