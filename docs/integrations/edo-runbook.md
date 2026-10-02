@@ -69,8 +69,12 @@ staleness never gates reads of existing data.
 
 - Poison (malformed, unknown version/key, Zod errors): `nack(false)` → DLQ.
   Logs carry routingKey+reason only, never payloads.
-- Transient (DB/network, fencing RUNNING): confirm-gated retry (TTL 5s → main,
-  max 5, then DLQ). Original acked only after confirm.
+- Transient (DB/network, fencing conflict): confirm-gated retry (TTL 5s → main,
+  max 5 confirmed attempts, then DLQ). Original acked only after confirm.
+  While the retry route itself is unavailable, originals wait via one delayed
+  nack(true) per delivery (fixed 5s) instead of being DLQed for the outage;
+  repeated warn logs + integration-health DLQ/backlog signals are the alert
+  path. DLQ stays for poison and confirmed-exhaustion.
 - Old retry-format (queue-name key, no `x-original-routing-key`): poisoned
   deterministically. Recover via:
 

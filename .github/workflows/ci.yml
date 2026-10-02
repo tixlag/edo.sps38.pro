@@ -91,14 +91,23 @@ jobs:
           node -e "
             const fs = require('fs');
             const r = JSON.parse(fs.readFileSync('/tmp/edo-infra-tests.json', 'utf8'));
-            const files = (r.testResults || []).map((f) => ({ file: f.name, skipped: (f.assertionResults || []).filter((a) => a.status === 'skipped').length, passed: (f.assertionResults || []).filter((a) => a.status === 'passed').length }));
-            console.log(JSON.stringify(files, null, 1));
-            const totalSkipped = files.reduce((n, f) => n + f.skipped, 0);
-            const totalPassed = files.reduce((n, f) => n + f.passed, 0);
-            if (files.length !== 3) throw new Error('expected 3 infra spec files, environment miswired?');
-            if (totalSkipped > 0) throw new Error(totalSkipped + ' infra tests SKIPPED: disposable environment missing or miswired (see EDO_TEST_* env)');
-            if (totalPassed < 10) throw new Error('expected at least 10 passing infra tests, got ' + totalPassed);
-            console.log('infra suites: ' + totalPassed + ' passed, 0 skipped');
+            const files = r.testResults || [];
+            const names = files.map((f) => String(f.name).split('/').pop()).sort();
+            console.log('files: ' + JSON.stringify(names));
+            const expected = ['lk-consumer-recovery-rabbit.spec.ts', 'lk-fencing-mariadb.spec.ts', 'lk-retry-chain-rabbit.spec.ts'];
+            if (JSON.stringify(names) !== JSON.stringify(expected)) throw new Error('infra file set mismatch: environment miswired?');
+            let passed = 0, failed = 0, skipped = 0, pending = 0;
+            for (const f of files) for (const a of (f.assertionResults || [])) {
+              if (a.status === 'passed') passed++;
+              else if (a.status === 'failed') failed++;
+              else if (a.status === 'skipped') skipped++;
+              else pending++;
+            }
+            console.log(JSON.stringify({ passed, failed, skipped, pending }));
+            if (failed > 0 || pending > 0) throw new Error('infra tests failed/incomplete');
+            if (skipped > 0) throw new Error(skipped + ' infra tests SKIPPED: disposable environment missing or miswired (see EDO_TEST_* env)');
+            if (passed < 10) throw new Error('expected at least 10 passing infra tests, got ' + passed);
+            console.log('infra suites: ' + passed + ' passed, 0 skipped/failed');
           "
       - name: OpenAPI + Orval regenerate (EDO API client)
         run: pnpm --filter @edo/api api:generate

@@ -46,9 +46,9 @@ describe.skipIf(!URL)('Live consumer slow-requeue recovery (disposable broker)',
     const deliveries: Array<{ tag: unknown; count: number }> = [];
     let attempts = 0;
     let applied = false;
-    await svc.consume(async ({ content, headers, retryCount, ack }) => {
+    await svc.consume(async ({ retryCount, ack }) => {
       attempts += 1;
-      deliveries.push({ tag: (headers as Record<string, unknown>)['__tag'] ?? attempts, count: retryCount });
+      deliveries.push({ tag: attempts, count: retryCount });
       if (attempts === 1) throw new Error('transient handler failure');
       applied = true;
       ack();
@@ -105,4 +105,77 @@ describe.skipIf(!URL)('Live consumer slow-requeue recovery (disposable broker)',
       await janitor.close().catch(() => undefined);
     }
   }, 40000);
+
+  it('long retry-route outage: repeated failures redeliver, route restore recovers, no DLQ, nothing stuck', async () => {
+    const svc = service(URL!, `${PFX}.main2`);
+    await svc.ensureConnected(8000);
+    let attempts = 0;
+    let applied = 0;
+    await svc.consume(async ({ ack }) => {
+      attempts += 1;
+      // Four transient failures (retry route down throughout), then success.
+      if (attempts < 5) throw new Error(`transient failure ${attempts}`);
+      applied += 1;
+      ack();
+    });
+    const amqp = await import('amqplib');
+    const raw = await amqp.connect(URL!);
+    try {
+      const ch = await raw.createChannel();
+      try {
+        await ch.deleteQueue(`${PFX}.main2.retry`).catch(() => undefined);
+        const body = Buffer.from(JSON.stringify({ eventId: `${PFX}-evt-long` }));
+        await ch.sendToQueue(`${PFX}.main2`, body, { persistent: true, contentType: 'application/json', headers: {} });
+        // Restore the retry route after the 2nd failed attempt is observed:
+        // attempts 3+ go through redeliveries, attempt 5 applies.
+        const deadline = Date.now() + 55000;
+        let restored = false;
+        while (applied === 0 && Date.now() < deadline) {
+          if (!restored && attempts >= 2) {
+            await ch.assertQueue(`${PFX}.main2.retry`, {
+              durable: true,
+              arguments: { 'x-dead-letter-exchange': '', 'x-dead-letter-routing-key': `${PFX}.main2`, 'x-message-ttl': 5000 },
+            });
+            restored = true;
+          }
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        expect(restored).toBe(true);
+        expect(applied).toBe(1);
+        // Every failed attempt redelivered (4 failures + 1 success).
+        expect(attempts).toBe(5);
+        // No diversion to DLQ for a mere unavailable retry route...
+        const probe = await raw.createChannel();
+        try {
+          const dlq = await probe.checkQueue(`${PFX}.main2.dlq`).catch(() => ({ messageCount: -1 }));
+          expect(dlq.messageCount).toBe(0);
+          // ...and nothing left stuck unacked on the main queue.
+          const main = await probe.checkQueue(`${PFX}.main2`).catch(() => ({ messageCount: -1 }));
+          expect(main.messageCount).toBe(0);
+        } finally {
+          await probe.close().catch(() => undefined);
+        }
+      } finally {
+        await ch.close().catch(() => undefined);
+      }
+    } finally {
+      await raw.close().catch(() => undefined);
+    }
+    await svc.onModuleDestroy();
+    const janitor = await amqp.connect(URL!);
+    try {
+      const ch = await janitor.createChannel();
+      try {
+        await ch.deleteQueue(`${PFX}.main2`).catch(() => undefined);
+        await ch.deleteQueue(`${PFX}.main2.retry`).catch(() => undefined);
+        await ch.deleteQueue(`${PFX}.main2.dlq`).catch(() => undefined);
+        await ch.deleteExchange(`${PFX}.main2.dlx`).catch(() => undefined);
+        await ch.deleteExchange(`${PFX}.ex`).catch(() => undefined);
+      } finally {
+        await ch.close().catch(() => undefined);
+      }
+    } finally {
+      await janitor.close().catch(() => undefined);
+    }
+  }, 70000);
 });

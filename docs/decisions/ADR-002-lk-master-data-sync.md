@@ -176,8 +176,10 @@ LK publishes a narrow internal API + RabbitMQ events (see
   plain-channel fallback). Returns correlated by fresh per-publish messageId
   (source id kept in `x-source-message-id`); foreign/late-generation returns
   never fail others. `publish()=false` = backpressure (confirm still gates, no
-  re-publish). Unconfirmed → bounded slow-requeue (one delayed nack(true) per
-  5s, max 3 cycles, then DLQ) — the prefetch slot cannot stall forever on a
+  re-publish). Unconfirmed → one delayed nack(true) per delivery (fixed 5s,
+  tracked by generation:deliveryTag, removed on settlement; redeliveries carry
+  their own entries, valid events are never DLQed for a mere unavailable retry
+  route) — the prefetch slot cannot stall forever on a
   healthy channel, with no hot loop and no extra subscriptions. Broker cancel
   (null delivery) re-subscribes via the reconnect loop. Consumer passes a real
   shutdown AbortSignal and drops post-wait work after a generation change.

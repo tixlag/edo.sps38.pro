@@ -86,27 +86,44 @@ Unversioned transitional mode, precisely bounded:
 
 To close Blocker B, LK should publish (as `edo-reliability-contract.md` or an
 amendment to `edo.md` + spec), with a contract SHA EDO can pin:
-1. A per-entity monotonic revision: name, type and comparison rule, e.g.
-   `revision: string` (opaque, lexicographically comparable) or `uint64`,
-   bumped on EVERY write path that feeds the compact DTO (including the
-   currently uncovered location-move and legacy-import paths, or an explicit
-   list of paths that do NOT bump it).
+1. A per-entity monotonic revision: name, type and comparison rule. If the
+   revision is a DECIMAL STRING (e.g. 1C sequence numbers), the contract must
+   state NUMERIC comparison explicitly: EDO will compare without `Number()`
+   and without plain lexicographic order (both misorder e.g. "9" vs "10") —
+   arbitrary-precision integer comparison after format validation. Opaque
+   lexicographically-comparable strings or `uint64` are equally acceptable
+   if the contract says so; what is NOT acceptable is an unspecified order.
+   The revision must bump on EVERY write path that feeds the compact DTO
+   (including the currently uncovered location-move and legacy-import paths,
+   or an explicit list of paths that do NOT bump it).
 2. Event/snapshot carriage: `payload.revision` on all three upserted envelopes
    AND `*.revision` on all four HTTP DTOs (null only during a dated transition
-   window, with the switchover date in the contract).
+   window, with the switchover date in the contract). Cutover rule (confirm
+   exact wording): an UNVERSIONED event/snapshot row must NEVER overwrite a
+   row that already carries a revision — after cutover, absent revision means
+   "unknown", not "newest" and not "zero". EDO will treat unversioned-after-
+   versioned as a contract violation (poison DLQ + alert), never as an apply.
 3. Application semantics EDO must implement (confirm exact wording):
    newer → apply; older → drop without rollback; equal + byte-equal payload →
    idempotent ok; equal + differing payload → conflict signal (DLQ + alert,
    never silent overwrite); comparison + write atomic under concurrency.
+   Normalization of payload bytes for the equal-comparison must be part of
+   the contract (field order, whitespace, null-vs-absent).
 4. Tombstone/reappearance rules with the revision: does a reappearing `code1c`
    reuse or bump the revision; `code1c`/`uuid` change, merges and splits
    (which code survives, what event the vanished code produces, if any);
    whether a full snapshot may ever LOWER a stored revision.
 5. Fixtures at the contract SHA: a 3-event sequence (newer→older→equal-conflict)
-   per entity with expected final states, plus a snapshot-then-stale-event case.
-6. Switchover plan: EDO ships revision-aware handling first (ignoring absent
-   revisions as today), LK starts populating, then LK flips a contract flag;
-   rollback = LK stops populating + EDO keeps accepting absent revisions.
+   per entity with expected final states, plus a snapshot-then-stale-event case,
+   plus an unversioned-after-versioned case.
+6. Switchover plan: EDO ships revision-aware handling first (unversioned rows
+   handled as today while no revision exists anywhere for the entity);
+   LK starts populating; then LK flips a contract flag. Rollback is a
+   VERSIONED protocol step, not "stop populating": if LK stops sending
+   revisions after cutover, EDO keeps rejecting unversioned writes to
+   versioned rows (fail closed with DLQ + alert) instead of silently resuming
+   last-writer-wins — resuming it requires a new contract SHA that explicitly
+   re-allows unversioned writes, followed by a full reconciliation.
 
 Until that SHA exists, EDO stays in the bounded unversioned mode above and the
 integration is NOT declared fully reliable (known windows: stale overwrite,
