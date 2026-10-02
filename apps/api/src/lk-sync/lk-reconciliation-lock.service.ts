@@ -115,7 +115,10 @@ export class LkReconciliationLockService {
     return 'unlocked';
   }
 
-  async tryAcquire(ttlMs = LK_RECONCILIATION_LOCK_TTL_MS): Promise<ReconciliationLockHandle | null> {
+  async tryAcquire(
+    ttlMs = LK_RECONCILIATION_LOCK_TTL_MS,
+    opts: { maxHoldMs?: number } = {},
+  ): Promise<ReconciliationLockHandle | null> {
     const token = randomUUID();
     let res: boolean;
     try {
@@ -137,9 +140,22 @@ export class LkReconciliationLockService {
       );
     }
     if (!res) return null;
+    // Bounded heartbeat: never renew past maxHoldMs (a hung-but-alive holder
+    // must not pin the consumer pause forever). After the bound the lock
+    // lapses naturally; the holder's next assertOwned fails and it aborts.
+    // The DB fencing generation is the authoritative guard meanwhile.
+    const acquiredAt = Date.now();
+    const maxHoldMs = opts.maxHoldMs ?? Number.POSITIVE_INFINITY;
     const heartbeat = setInterval(() => {
       void (async () => {
         try {
+          if (Date.now() - acquiredAt > maxHoldMs) {
+            this.logger.error(
+              `LK reconciliation lock hold bound exceeded (${maxHoldMs}ms); heartbeat stopped, lock will lapse`,
+            );
+            clearInterval(heartbeat);
+            return;
+          }
           const redis = this.redis as unknown as {
             compareAndExpireStrict?: (k: string, v: string, px: number) => Promise<boolean>;
           };

@@ -282,3 +282,24 @@ model LkSyncRun {
   @@index([startedAt])
   @@map("lk_sync_runs")
 }
+
+/// Fencing singleton (exactly one row, id=1) — the serialization point between
+/// snapshot page/mark writes and live event applies on MariaDB/InnoDB.
+/// Every LK-projection write runs in a SHORT transaction that first takes
+/// SELECT ... FOR UPDATE on this row:
+/// - event applies require activeRunId IS NULL (a stale heartbeatAt counts as
+///   an orphaned run and does not block; the next lk:sync steals it while
+///   holding the Redis lock, which proves the previous holder is gone);
+/// - snapshot page/mark writes require activeRunId = own runId AND
+///   generation = acquired generation (a steal bumps generation, so a stale
+///   holder's writes abort instead of overwriting newer data).
+/// No transaction spans HTTP pagination. Heartbeat lease: 90s.
+model LkSyncState {
+  id          Int       @id @default(1)
+  activeRunId String?   @db.VarChar(64)
+  generation  BigInt    @default(0)
+  heartbeatAt DateTime? @db.DateTime(3)
+  updatedAt   DateTime  @updatedAt @db.DateTime(3)
+
+  @@map("lk_sync_state")
+}

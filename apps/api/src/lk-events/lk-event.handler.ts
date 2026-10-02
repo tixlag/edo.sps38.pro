@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { LkReferenceSyncService } from '../lk-sync/lk-reference-sync.service';
+import { DbFencingService } from '../lk-sync/lk-fencing.service';
 import {
   eventTypeFromRoutingKey,
   lkEventEnvelopeSchema,
@@ -20,12 +21,14 @@ export type EventApplyOutcome =
  * - deduplicates by eventId via lk_processed_events (re-delivery safe),
  * - upserts the Lk* projection in the same DB transaction as the inbox row
  *   plus audit (all three event types; ack only after commit),
- * - fencing: the same transaction checks for a RUNNING LkSyncRun; if a
- *   snapshot holds the fencing generation the write aborts as transient so the
- *   broker redelivers after the snapshot (no silent interleave).
- * - out-of-order safe as far as possible (no LK revision yet; full
- *   reconciliation via snapshot fixes divergence; see ADR-002 and the blocked
- *   revision stage in docs/integrations/edo-lk-contract-status.md).
+ * - fencing: the same transaction first takes SELECT ... FOR UPDATE on the
+ *   `lk_sync_state` row and requires no active snapshot (see DbFencingService).
+ *   Late admits abort as transient and redeliver after the snapshot.
+ *   LK publishes no monotonic entity revision (updatedAt is always null;
+ *   occurredAt/eventId are NOT versions — see LK docs/integrations/edo.md),
+ *   so ordering between different eventIds of one entity is last-writer-wins
+ *   and divergence is repaired by periodic full reconciliation. The inbox
+ *   guarantees no double-apply of the SAME eventId, nothing more.
  *
  * Error classification (no infinite poison requeue):
  * - poison (caller must nack requeue=false -> DLQ): invalid JSON, invalid
@@ -47,6 +50,7 @@ export class LkEventHandler {
     private readonly prisma: PrismaService,
     private readonly sync: LkReferenceSyncService,
     private readonly audit: AuditService,
+    private readonly fencing: DbFencingService,
   ) {}
 
   async applyRaw(routingKey: string, raw: Buffer): Promise<EventApplyOutcome> {
@@ -110,7 +114,11 @@ export class LkEventHandler {
           return { status: 'poison', reason: `invalid-employee-payload:${poisonReason(err)}` };
         }
         await this.prisma.$transaction(async (tx) => {
-          await this.assertNoRunningSnapshotTx(tx as never, envelope.eventId);
+          // Fencing gate INSIDE the write transaction: SELECT ... FOR UPDATE
+          // on the coordination row serializes against snapshot acquire/page
+          // transactions. Any gate SQL error propagates as transient (the
+          // caller slow-requeues); it is never swallowed as "probably a mock".
+          await this.fencing.assertEventMayWrite(tx as never, envelope.eventId);
           await tx.lkProcessedEvent.create({
             data: {
               eventId: envelope.eventId,
@@ -140,7 +148,11 @@ export class LkEventHandler {
         }
         const now = new Date();
         await this.prisma.$transaction(async (tx) => {
-          await this.assertNoRunningSnapshotTx(tx as never, envelope.eventId);
+          // Fencing gate INSIDE the write transaction: SELECT ... FOR UPDATE
+          // on the coordination row serializes against snapshot acquire/page
+          // transactions. Any gate SQL error propagates as transient (the
+          // caller slow-requeues); it is never swallowed as "probably a mock".
+          await this.fencing.assertEventMayWrite(tx as never, envelope.eventId);
           await tx.lkProcessedEvent.create({
             data: {
               eventId: envelope.eventId,
@@ -174,7 +186,11 @@ export class LkEventHandler {
         }
         const now = new Date();
         await this.prisma.$transaction(async (tx) => {
-          await this.assertNoRunningSnapshotTx(tx as never, envelope.eventId);
+          // Fencing gate INSIDE the write transaction: SELECT ... FOR UPDATE
+          // on the coordination row serializes against snapshot acquire/page
+          // transactions. Any gate SQL error propagates as transient (the
+          // caller slow-requeues); it is never swallowed as "probably a mock".
+          await this.fencing.assertEventMayWrite(tx as never, envelope.eventId);
           await tx.lkProcessedEvent.create({
             data: {
               eventId: envelope.eventId,
@@ -219,34 +235,11 @@ export class LkEventHandler {
         );
         return { status: 'poison', reason: `invalid-payload:${poisonReason(err)}` };
       }
-      // Fencing conflict (snapshot RUNNING) is transient: caller retries via
-      // confirm-gated retry queue; the message stays recoverable.
+      // Fencing conflicts/unavailability and all other errors are transient:
+      // the caller retries via the confirm-gated retry queue / slow-requeue.
+      // (FencingConflictError/FencingUnavailableError are plain Errors, never
+      // ZodError, so they correctly land here and never in the poison branch.)
       throw err;
-    }
-  }
-
-  /**
-   * Fencing gate: abort event writes while a snapshot holds the generation.
-   * Runs inside the same DB transaction as the inbox+projection write so the
-   * check and the write are atomic (a Redis GET before SQL alone would race).
-   * Memory mocks without lkSyncRun simply skip (unit tests for handler logic).
-   */
-  private async assertNoRunningSnapshotTx(tx: never, eventId: string): Promise<void> {
-    try {
-      const t = tx as unknown as {
-        lkSyncRun?: { findFirst?: (a: unknown) => Promise<{ runId: string } | null> };
-      };
-      if (!t.lkSyncRun?.findFirst) return;
-      const running = await t.lkSyncRun.findFirst({ where: { status: 'RUNNING' } });
-      if (running) {
-        throw new Error(
-          `LK snapshot ${running.runId} is RUNNING; deferring event ${eventId} (fencing, transient)`,
-        );
-      }
-    } catch (err) {
-      // Re-throw fencing conflicts; ignore missing-table/mocks.
-      if (err instanceof Error && /RUNNING; deferring event/.test(err.message)) throw err;
-      return;
     }
   }
 
@@ -322,6 +315,10 @@ function isPoisonError(err: unknown): boolean {
 }
 
 function poisonReason(err: unknown): string {
+  // Safe by construction (not just by truncation): our payload/envelope schemas
+  // contain no enum/literal value constraints, so Zod messages carry only
+  // field paths + expected-type names, never payload values. Equal-type
+  // mismatches (e.g. source/eventType literals) echo only protocol constants.
   if (err instanceof Error) return err.message.slice(0, 200);
   return String(err).slice(0, 200);
 }
