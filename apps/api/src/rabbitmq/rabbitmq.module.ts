@@ -39,10 +39,13 @@ export const LK_ORIGINAL_ROUTING_KEY_HEADER = 'x-original-routing-key';
 export const LK_SOURCE_MESSAGE_ID_HEADER = 'x-source-message-id';
 export const LK_RETRY_PUBLISH_TIMEOUT_MS = 5000;
 export const LK_RETRY_MAX_INFLIGHT = 20;
-/** Slow-requeue delay after an unconfirmed retry (no hot loop). */
+/** Fixed slow-requeue delay after an unconfirmed retry (no hot loop). */
 export const LK_STALL_REQUEUE_DELAY_MS = 5000;
-/** Bounded slow-requeue cycles per message before DLQ (no infinite wait). */
-export const LK_STALL_MAX_CYCLES = 3;
+/**
+ * Fallback delay when stall tracking overflows (bounded memory, bounded rate).
+ * The timer is untracked; the message is preserved via broker redelivery.
+ */
+export const LK_STALL_OVERFLOW_DELAY_MS = 60000;
 
 export class ConfirmUnsupportedError extends Error {
   constructor(message = 'RabbitMQ channel does not support publisher confirms (ConfirmChannel required)') {
@@ -167,10 +170,12 @@ export interface DeliveryMsg {
  *   main via default exchange) with `x-retry-count+1` AND validated
  *   `x-original-routing-key`, waiting for the per-message publisher confirm;
  *   ack the original ONLY after the confirm. After 5 attempts -> DLQ.
- * - unconfirmed (nack/return/timeout/drain-timeout/connection loss): the
- *   original is NOT acked. A bounded slow-requeue (one delayed
- *   nack(requeue=true) per 5s, max 3 cycles, then DLQ) guarantees the delivery
- *   slot is eventually freed without a hot loop and without waiting forever.
+ * - unconfirmed (nack/return/timeout/connection loss): the original is NOT
+ *   acked and NOT diverted to DLQ for a mere unavailable retry route. One
+ *   delayed nack(requeue=true) per delivery (fixed 5s, tracked by
+ *   generation:deliveryTag, removed on settlement) frees the slot without a
+ *   hot loop; the redelivered copy carries its own entry. DLQ stays for
+ *   poison and for the confirmed retry-count chain (maxRetries).
  * The retry copy preserves eventId (in payload), contentType, deliveryMode,
  * correlationId/source-messageId when present, and the retry counter.
  * Backpressure is bounded (max 20 inflight retry publishes + drain wait);
@@ -228,18 +233,24 @@ export class RabbitmqService implements OnModuleDestroy {
   /** Dedicated diagnostic channel for health checks (never the delivery channel). */
   private diagChannel: Channel | null = null;
   /**
-   * Per-delivery stall recovery: deliveryKey -> {cycles, timer}.
+   * Per-delivery stall recovery: deliveryKey -> {timer, token}.
    * Keyed by `${generation}:${deliveryTag}` — two deliveries of identical
    * content have different tags and recover INDEPENDENTLY (neither cancels
    * the other's timer, successes never clear another delivery's path).
-   * Attempt budgets are per delivery: concurrent identical copies do not
-   * pool their cycles as if they were sequential redeliveries of one copy.
-   * Each delivery ends exactly once (ack on confirmed retry, delayed
-   * nack(true) per failed cycle, nack(false) to DLQ after LK_STALL_MAX_CYCLES
-   * cycles). A redelivered copy arrives with a NEW tag and its own budget;
-   * the broker-persistent x-retry-count header still bounds the confirm path.
+   * Explicit lifecycle: a delivery is either pending (entry present, timer
+   * armed) or settled (entry REMOVED — on ack, on DLQ decision, on timer
+   * fire after the broker takes the message back, on generation change or
+   * shutdown). A redelivered copy arrives with a NEW tag and its own entry;
+   * history never accumulates, so the retry delay is preserved per delivery
+   * and no overflow flips the path into a hot requeue.
+   * Each delivery ends exactly once (ack on confirmed retry, one delayed
+   * nack(true) per failure, nack(false) to DLQ only via the confirmed
+   * retry-count chain or poison). The x-retry-count header bounds the
+   * CONFIRMED retry-copy chain; it does NOT bound original returns while the
+   * retry route itself is unavailable — those wait for recovery with a fixed
+   * delay instead of diverting valid events to DLQ for an infra outage.
    */
-  private stalls = new Map<string, { cycles: number; timer: ReturnType<typeof setTimeout> | null; token: object }>();
+  private stalls = new Map<string, { timer: ReturnType<typeof setTimeout> | null; token: object }>();
   /** Max tracked stall deliveries (overflow degrades to immediate nack(true), never unbounded). */
   private static readonly STALL_MAX_TRACKED = 1000;
   /** Confirm-channel factory (production default; tests inject fakes explicitly). */
@@ -524,11 +535,15 @@ export class RabbitmqService implements OnModuleDestroy {
    *   the per-message confirm AND absence of a correlated mandatory return,
    *   then ack the original. Returns true on confirmed placement + ack.
    * - attempts >= max: nack(requeue=false) -> DLQ. Returns true (settled).
-   * - publish unconfirmed (nack/return/timeout/drain-timeout/connection loss/
-   *   backpressure): the original is NOT acked. A bounded slow-requeue is
-   *   scheduled (one delayed nack(requeue=true) per 5s, max 3 cycles, then DLQ)
-   *   so the prefetch slot is eventually freed without a hot loop, an infinite
-   *   wait, or extra consumer subscriptions. Returns false (not settled).
+   *   (The x-retry-count chain bounds CONFIRMED retry copies only.)
+   * - publish unconfirmed (nack/return/timeout/connection loss/backpressure):
+   *   the original is NOT acked and NOT diverted to DLQ for a mere
+   *   unavailable retry route. One delayed nack(requeue=true) is scheduled
+   *   per delivery (fixed 5s delay, tracked by generation:deliveryTag and
+   *   removed on settlement), so the prefetch slot is eventually freed
+   *   without a hot loop, an infinite wait, or extra consumer subscriptions.
+   *   The redelivered copy arrives with a new tag and its own entry.
+   *   Returns false (not settled).
    * Uses the delivery channel for ack/nack and the current confirm channel for
    * the retry publish. Stale generations (reconnect/shutdown) never ack and
    * never schedule recovery.
@@ -621,56 +636,47 @@ export class RabbitmqService implements OnModuleDestroy {
 
   /**
    * Bounded per-delivery recovery for an unconfirmed retry while the channel
-   * stays open. Schedules ONE delayed nack(requeue=true) for THIS delivery
-   * (5s, unref'd); after LK_STALL_MAX_CYCLES failures of the same delivery the
-   * message goes to DLQ via nack(requeue=false) instead of stalling the
-   * prefetch slot forever. Stale generations and shutdown never nack; the
-   * timer token prevents double nack of one deliveryTag.
-   * If tracking overflows (1000 deliveries), degrade to an immediate
-   * nack(true): the redelivery recreates tracking — recovery preserved,
-   * memory bounded, no stranded delivery.
+   * stays open. Arms ONE delayed nack(requeue=true) for THIS delivery (fixed
+   * LK_STALL_REQUEUE_DELAY_MS, unref'd). Stale generations and shutdown never
+   * nack; the timer token prevents double nack of one deliveryTag, and a late
+   * callback for a settled (removed) entry is a no-op — it never recreates
+   * recovery for a finished delivery.
+   * No DLQ exhaustion here by design: while the retry route itself is
+   * unavailable, valid events wait for recovery instead of being diverted to
+   * DLQ for an infrastructure outage (DLQ stays for poison and for the
+   * confirmed retry-count chain via maxRetries).
+   * If tracking overflows (1000 deliveries), an untracked fallback timer with
+   * LK_STALL_OVERFLOW_DELAY_MS preserves the message via broker redelivery
+   * with bounded memory and bounded rate — never an immediate hot requeue and
+   * never a stranded unacked delivery.
    */
   private scheduleStallRequeue(deliveryChannel: Channel, msg: DeliveryMsg, gen: number): void {
     if (this.shuttingDown || gen !== this.generation) return;
     const key = this.stallKey(gen, msg);
     const prev = this.stalls.get(key);
     if (prev?.timer) clearTimeout(prev.timer);
-    const cycles = (prev?.cycles ?? 0) + 1;
-    if (cycles > LK_STALL_MAX_CYCLES) {
-      this.stalls.delete(key);
-      this.logger.error(
-        `LK stall recovery exhausted (${LK_STALL_MAX_CYCLES} cycles); sending to DLQ for operator triage`,
-      );
-      if (!this.isCurrentGeneration(gen)) return;
-      try {
-        deliveryChannel.nack(msg as never, false, false);
-      } catch {
-        // Channel dead: broker redelivers on close; inbox dedup keeps it safe.
-      }
-      return;
-    }
     if (this.stalls.size >= RabbitmqService.STALL_MAX_TRACKED && !this.stalls.has(key)) {
-      // Memory bound hit: immediate requeue keeps a live recovery path while
-      // bounding memory (redelivery recreates tracking or settles).
-      this.logger.warn('LK stall tracking overflow; immediate requeue (bounded memory)');
-      if (!this.isCurrentGeneration(gen)) return;
-      try {
-        deliveryChannel.nack(msg as never, false, true);
-      } catch {
-        // ignore: broker redelivers on close.
-      }
+      this.logger.warn('LK stall tracking overflow; fallback delayed requeue (bounded memory and rate)');
+      const timer = setTimeout(() => {
+        if (!this.isCurrentGeneration(gen)) return;
+        try {
+          deliveryChannel.nack(msg as never, false, true);
+        } catch {
+          // Channel dead: broker redelivers everything unacked on close.
+        }
+      }, LK_STALL_OVERFLOW_DELAY_MS);
+      const t = timer as unknown as { unref?: () => void };
+      if (typeof t.unref === 'function') t.unref();
       return;
     }
     const token = {};
     const timer = setTimeout(() => {
       const entry = this.stalls.get(key);
-      // Only this timer may settle this delivery (no double nack on one tag).
+      // Only this timer may settle this delivery (no double nack on one tag);
+      // a settled (removed) entry means a late callback: do nothing.
       if (!entry || entry.token !== token) return;
-      entry.timer = null;
-      if (!this.isCurrentGeneration(gen)) {
-        this.stalls.delete(key);
-        return;
-      }
+      this.stalls.delete(key);
+      if (!this.isCurrentGeneration(gen)) return;
       try {
         deliveryChannel.nack(msg as never, false, true);
       } catch {
@@ -679,7 +685,7 @@ export class RabbitmqService implements OnModuleDestroy {
     }, LK_STALL_REQUEUE_DELAY_MS);
     const t = timer as unknown as { unref?: () => void };
     if (typeof t.unref === 'function') t.unref();
-    this.stalls.set(key, { cycles, timer, token });
+    this.stalls.set(key, { timer, token });
   }
 
   /**

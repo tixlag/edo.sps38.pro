@@ -508,20 +508,28 @@ describe('RabbitMQ confirm-gated retry (single publish path)', () => {
     await svc.onModuleDestroy();
   });
 
-  it('stall tracking overflow degrades to immediate requeue (bounded memory, path preserved)', async () => {
+  it('stall tracking overflow uses a bounded fallback delay (message preserved, memory capped)', async () => {
+    vi.useFakeTimers();
     const svc = service();
     const pub = confirmChannel('pub', { kind: 'nack' });
     const d = confirmChannel('d');
     wire(svc, pub);
     // Fill tracking to the cap with foreign entries.
-    const stalls = (svc as unknown as { stalls: Map<string, { cycles: number; timer: null; token: object }> }).stalls;
-    for (let i = 0; i < 1000; i++) stalls.set(`9:fill-${i}`, { cycles: 1, timer: null, token: {} });
+    const stalls = (svc as unknown as { stalls: Map<string, { timer: null; token: object }> }).stalls;
+    for (let i = 0; i < 1000; i++) stalls.set(`9:fill-${i}`, { timer: null, token: {} });
     const msg = rabbitMsg();
-    const ok = await svc.retryLaterAsync(d as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
-    expect(ok).toBe(false);
-    // Immediate nack(true): recovery preserved without growing memory.
-    expect(d.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(1);
+    const p = svc.retryLaterAsync(d as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(p).resolves.toBe(false);
+    // No immediate hot requeue and no map growth...
+    expect(d.calls.nack).toHaveLength(0);
     expect(stalls.size).toBeLessThanOrEqual(1001);
+    // ...but the message still has a live recovery path (fallback delay).
+    await vi.advanceTimersByTimeAsync(59000);
+    expect(d.calls.nack).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(d.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(1);
+    expect(d.calls.nack.filter((n) => !(n as { requeue: boolean }).requeue)).toHaveLength(0);
     await svc.onModuleDestroy();
   });
 
@@ -554,25 +562,107 @@ describe('RabbitMQ confirm-gated retry (single publish path)', () => {
     await svc.onModuleDestroy();
   });
 
-  it('slow-requeue exhausts to DLQ after bounded cycles (no eternal stall)', async () => {
+  it('REGRESSION (stall lifecycle): settled deliveries free their tracking entry', async () => {
+    // Defect: the timer callback cleared entry.timer but kept the entry, so
+    // sequential deliveries with NEW tags (like real redeliveries) accumulated
+    // history until STALL_MAX_TRACKED flipped the path into immediate nack.
+    vi.useFakeTimers();
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'nack' });
+    const d = confirmChannel('d');
+    wire(svc, pub);
+    const size = () => (svc as unknown as { stalls: Map<string, unknown> }).stalls.size;
+    let maxSize = 0;
+    const body = Buffer.from(JSON.stringify({ eventId: 'evt-history' }));
+    for (let i = 0; i < 5; i++) {
+      const m = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 500 + i, redelivered: i > 0 }, properties: { headers: {} }, content: body };
+      const p = svc.retryLaterAsync(d as never, m as never, 'lk.reference.employee.upserted.v1', 0);
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(p).resolves.toBe(false);
+      // Let this delivery's slow-requeue fire: it is settled afterwards.
+      await vi.advanceTimersByTimeAsync(5000);
+      maxSize = Math.max(maxSize, size());
+    }
+    // Settled deliveries must not accumulate: bounded by live deliveries only.
+    expect(maxSize).toBeLessThanOrEqual(2);
+    // Every delivery got its delayed (never immediate, never hot) requeue...
+    expect(d.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(5);
+    // ...and none was diverted to DLQ for a mere unavailable retry route.
+    expect(d.calls.nack.filter((n) => !(n as { requeue: boolean }).requeue)).toHaveLength(0);
+    await svc.onModuleDestroy();
+  });
+
+  it('settled entries are freed; later deliveries start clean', async () => {
+    vi.useFakeTimers();
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'nack' });
+    const d = confirmChannel('d');
+    wire(svc, pub);
+    const size = () => (svc as unknown as { stalls: Map<string, unknown> }).stalls.size;
+    const m1 = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 81, redelivered: false }, properties: { headers: {} }, content: Buffer.from('{"e":1}') };
+    const p1 = svc.retryLaterAsync(d as never, m1 as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(p1).resolves.toBe(false);
+    expect(size()).toBe(1);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(size()).toBe(0);
+    // A subsequent successful delivery leaves nothing behind either.
+    const pubOk = confirmChannel('pubOk');
+    (svc as unknown as { channel: unknown }).channel = pubOk;
+    const m2 = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 82, redelivered: true }, properties: { headers: {} }, content: Buffer.from('{"e":1}') };
+    const p2 = svc.retryLaterAsync(d as never, m2 as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(p2).resolves.toBe(true);
+    expect(size()).toBe(0);
+    await svc.onModuleDestroy();
+  });
+
+  it('same-tag reschedule replaces (one nack); stale-generation timers stay silent', async () => {
+    vi.useFakeTimers();
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'nack' });
+    const d = confirmChannel('d');
+    wire(svc, pub);
+    const m = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 83, redelivered: false }, properties: { headers: {} }, content: Buffer.from('{"e":2}') };
+    const p1 = svc.retryLaterAsync(d as never, m as never, 'lk.reference.employee.upserted.v1', 0);
+    const p2 = svc.retryLaterAsync(d as never, m as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(p1).resolves.toBe(false);
+    await expect(p2).resolves.toBe(false);
+    await vi.advanceTimersByTimeAsync(5000);
+    // Exactly one nack for the tag despite two schedules (token replacement).
+    expect(d.calls.nack).toHaveLength(1);
+    // A timer armed before a generation change never settles its tag.
+    const mOld = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 84, redelivered: false }, properties: { headers: {} }, content: Buffer.from('{"e":3}') };
+    const pOld = svc.retryLaterAsync(d as never, mOld as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(pOld).resolves.toBe(false);
+    (svc as unknown as { generation: number }).generation = 99;
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(d.calls.nack).toHaveLength(1);
+    await svc.onModuleDestroy();
+  });
+
+  it('repeated route failures never divert a valid event to DLQ (waits for recovery)', async () => {
+    // Policy: x-retry-count bounds the CONFIRMED retry chain only. While the
+    // retry route itself is unavailable, sequential redeliveries (new tags, as
+    // the broker really issues them) each get their delayed requeue — the
+    // message is preserved for recovery instead of being DLQed for an outage.
     vi.useFakeTimers();
     const svc = service();
     const pub = confirmChannel('pub', { kind: 'nack' });
     const delivery = confirmChannel('delivery');
     wire(svc, pub);
-    const msg = rabbitMsg();
-    for (let i = 0; i < 3; i++) {
-      const p = svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    const body = Buffer.from(JSON.stringify({ eventId: 'evt-outage' }));
+    for (let i = 0; i < 4; i++) {
+      const m = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 600 + i, redelivered: i > 0 }, properties: { headers: {} }, content: body };
+      const p = svc.retryLaterAsync(delivery as never, m as never, 'lk.reference.employee.upserted.v1', 0);
       await vi.advanceTimersByTimeAsync(10);
       await expect(p).resolves.toBe(false);
       await vi.advanceTimersByTimeAsync(5000);
     }
-    expect(delivery.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(3);
-    // 4th failure exceeds LK_STALL_MAX_CYCLES -> DLQ, no further timers.
-    const last = svc.retryLaterAsync(delivery as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
-    await vi.advanceTimersByTimeAsync(10);
-    await expect(last).resolves.toBe(false);
-    expect(delivery.calls.nack.filter((n) => !(n as { requeue: boolean }).requeue)).toHaveLength(1);
+    expect(delivery.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(4);
+    expect(delivery.calls.nack.filter((n) => !(n as { requeue: boolean }).requeue)).toHaveLength(0);
     expect(delivery.calls.ack).toHaveLength(0);
     await svc.onModuleDestroy();
   });
