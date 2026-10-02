@@ -3,6 +3,7 @@ import { config as dotenvConfig } from 'dotenv';
 import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { LkReferenceSyncService } from '../src/lk-sync/lk-reference-sync.service';
+import { noopFencing } from './helpers/noop-fencing';
 
 // Load root .env so DATABASE_URL resolves for local `pnpm test` (CI sets it explicitly).
 dotenvConfig({ path: join(__dirname, '..', '..', '..', '.env') });
@@ -33,7 +34,7 @@ function emp(code1c: string, overrides: Record<string, unknown> = {}) {
 function service() {
   const audit = { log: vi.fn() } as never;
   const config = { get: () => undefined } as never;
-  return new LkReferenceSyncService(prisma as never, audit, config);
+  return new LkReferenceSyncService(prisma as never, audit, config, noopFencing() as never);
 }
 
 const PREFIX = `T${Date.now().toString(36).toUpperCase()}`;

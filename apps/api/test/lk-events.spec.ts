@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LkEventHandler } from '../src/lk-events/lk-event.handler';
+import { noopFencing } from './helpers/noop-fencing';
 
 function envelope(eventId: string, eventType: 'employee.upserted', fired = false) {
   return {
@@ -65,7 +66,7 @@ function handlerWithMemory(opts: { transientOnUpsert?: boolean } = {}) {
   } as never;
   const sync = {} as never;
   const audit = { logInTransaction: vi.fn() } as never;
-  const handler = new LkEventHandler(prisma, sync, audit);
+  const handler = new LkEventHandler(prisma, sync, audit, noopFencing() as never);
   return { handler, events, employees };
 }
 

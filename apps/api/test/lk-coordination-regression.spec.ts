@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { LkEventHandler } from '../src/lk-events/lk-event.handler';
 import { LkReferenceSyncService } from '../src/lk-sync/lk-reference-sync.service';
 import { LkReconciliationLockService } from '../src/lk-sync/lk-reconciliation-lock.service';
+import { noopFencing, blockingFencing } from './helpers/noop-fencing';
 
 function envelope(eventId: string, code1c = 'УП00023070', fullName = 'Иванов Иван') {
   return {
@@ -29,7 +30,9 @@ function envelope(eventId: string, code1c = 'УП00023070', fullName = 'Иван
   };
 }
 
-function handlerWithMemory(opts: { p2002On?: 'inbox' | 'other'; runningSnapshot?: boolean } = {}) {
+function handlerWithMemory(
+  opts: { p2002On?: 'inbox' | 'other'; fencing?: 'noop' | 'blocking' } = {},
+) {
   const employees = new Map<string, Record<string, unknown>>();
   const events = new Map<string, unknown>();
   const txClient: Record<string, unknown> = {
@@ -62,11 +65,6 @@ function handlerWithMemory(opts: { p2002On?: 'inbox' | 'other'; runningSnapshot?
     lkDepartment: { upsert: async () => ({}) },
     auditLog: { create: async () => ({}) },
   };
-  if (opts.runningSnapshot) {
-    (txClient as Record<string, unknown>)['lkSyncRun'] = {
-      findFirst: async () => ({ runId: 'run-other' }),
-    };
-  }
   const prisma = {
     lkProcessedEvent: {
       findUnique: async ({ where }: { where: { eventId: string } }) =>
@@ -87,10 +85,11 @@ function handlerWithMemory(opts: { p2002On?: 'inbox' | 'other'; runningSnapshot?
   } as never;
   const sync = {} as never;
   const audit = { logInTransaction: vi.fn() } as never;
-  return { handler: new LkEventHandler(prisma, sync, audit), events, employees, audit };
+  const fencing = (opts.fencing === 'blocking' ? blockingFencing() : noopFencing()) as never;
+  return { handler: new LkEventHandler(prisma, sync, audit, fencing), events, employees, audit };
 }
 
-describe('Etap 3: P2002 discrimination + inbox atomicity + fencing', () => {
+describe('P2002 discrimination + inbox atomicity + fencing gate', () => {
   it('P2002 on inbox.eventId with existing row -> duplicate (acked)', async () => {
     const { handler } = handlerWithMemory();
     const env = envelope('evt-dup');
@@ -116,23 +115,32 @@ describe('Etap 3: P2002 discrimination + inbox atomicity + fencing', () => {
     expect((employees.get('УП00023070') as { fullName: string }).fullName).toBe('Иванов Иван v1');
   });
 
-  it('two events for one entity in reverse order both apply (idempotent inbox, last-writer-wins documented)', async () => {
+  it('different eventIds are independent inbox entries (dedup proves same-id safety only)', async () => {
     const { handler, employees } = handlerWithMemory();
     const e1 = envelope('evt-older', 'УП00023070', 'Старое имя');
     const e2 = envelope('evt-newer', 'УП00023070', 'Новое имя');
-    // Reverse completion: newer first, then older (no LK revision yet -> last write wins;
-    // contract stage will add revision ordering; this test pins idempotency, not rollback protection).
     expect(await handler.applyEnvelope(e2)).toEqual({ status: 'applied' });
     expect(await handler.applyEnvelope(e1)).toEqual({ status: 'applied' });
     expect(employees.size).toBe(1);
-    // Both eventIds are recorded (no dedup across different ids).
     expect(await handler.applyEnvelope(e2)).toEqual({ status: 'duplicate' });
   });
 
-  it('fencing: event aborts as transient while a snapshot RUNNING row exists', async () => {
-    const { handler } = handlerWithMemory({ runningSnapshot: true });
+  it('KNOWN UNVERSIONED LIMIT: a stale event overwrites newer state (LK publishes no revision)', async () => {
+    // LK contract (docs/integrations/edo.md @ LK fd92f9355): updatedAt is
+    // always null, occurredAt is NOT a version, eventId (uuid7) is identity
+    // only. EDO therefore cannot order different eventIds: last-writer-wins.
+    // This test pins the limit honestly — it is NOT proof of correct ordering.
+    // Divergence is repaired by the next full reconciliation (snapshot wins).
+    const { handler, employees } = handlerWithMemory();
+    expect(await handler.applyEnvelope(envelope('evt-new', 'УП00023070', 'Новое имя'))).toEqual({ status: 'applied' });
+    expect(await handler.applyEnvelope(envelope('evt-old', 'УП00023070', 'Старое имя'))).toEqual({ status: 'applied' });
+    expect((employees.get('УП00023070') as { fullName: string }).fullName).toBe('Старое имя');
+  });
+
+  it('fencing: event aborts as transient while a snapshot owns the generation', async () => {
+    const { handler } = handlerWithMemory({ fencing: 'blocking' });
     const env = envelope('evt-fenced');
-    await expect(handler.applyEnvelope(env)).rejects.toThrow(/RUNNING; deferring event/);
+    await expect(handler.applyEnvelope(env)).rejects.toThrow(/owns the fencing generation/);
   });
 
   it('position/department applies include audit in the same transaction (no silent loss)', async () => {
@@ -155,7 +163,12 @@ describe('Etap 3: P2002 discrimination + inbox atomicity + fencing', () => {
       lkProcessedEvent: { findUnique: async () => null },
       $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(txClient),
     } as never;
-    const handler = new LkEventHandler(prisma, {} as never, { logInTransaction: async (tx: never, e: never) => { auditCalls.push(e); } } as never);
+    const handler = new LkEventHandler(
+      prisma,
+      {} as never,
+      { logInTransaction: async (tx: never, e: never) => { auditCalls.push(e); } } as never,
+      noopFencing() as never,
+    );
     const pos = {
       eventId: 'evt-pos-1',
       eventType: 'position.upserted' as const,
@@ -170,11 +183,10 @@ describe('Etap 3: P2002 discrimination + inbox atomicity + fencing', () => {
   });
 });
 
-describe('Etap 2: snapshot/consumer race + lock loss + Redis GET errors', () => {
+describe('Snapshot/consumer race + lock loss + Redis GET errors', () => {
   function memoryPrisma() {
     const employees = new Map<string, Record<string, unknown>>();
-    return {
-      store: { employees },
+    const delegates = {
       lkEmployee: {
         upsert: async ({ where, update, create }: { where: { code1c: string }; update: Record<string, unknown>; create: Record<string, unknown> }) => {
           const prev = employees.get(where.code1c);
@@ -185,6 +197,11 @@ describe('Etap 2: snapshot/consumer race + lock loss + Redis GET errors', () => 
       lkLocation: { upsert: async () => ({}), updateMany: async () => ({ count: 0 }) },
       lkPosition: { upsert: async () => ({}), updateMany: async () => ({ count: 0 }) },
       lkDepartment: { upsert: async () => ({}), updateMany: async () => ({ count: 0 }) },
+    };
+    return {
+      store: { employees },
+      ...delegates,
+      $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(delegates),
     };
   }
 
@@ -204,20 +221,17 @@ describe('Etap 2: snapshot/consumer race + lock loss + Redis GET errors', () => 
     const fakeLock = {
       getState: async () => (locked ? 'locked' : 'unlocked'),
     };
-    // Consumer admits (check passes)...
     expect(await fakeLock.getState()).toBe('unlocked');
-    // ...snapshot acquires before the write (race window).
     locked = true;
-    // Without DB fencing the write would proceed. With fencing (LkSyncRun
-    // RUNNING check in the same transaction) the handler aborts instead.
-    // This test pins the race window exists; fencing tests below pin the fix.
+    // Without DB fencing the write would proceed. With the SELECT ... FOR UPDATE
+    // gate in the same transaction as the write, the late side blocks then aborts.
+    // This test pins the race window exists; the MariaDB spec pins the fix.
     expect(await fakeLock.getState()).toBe('locked');
   });
 
   it('lock lost mid-pages aborts before markMissing (no partial marking)', async () => {
     const prisma = memoryPrisma();
-    const svc = new LkReferenceSyncService(prisma as never, { log: vi.fn() } as never, { get: () => undefined } as never);
-    // Seed a stale row that must NOT be marked when ownership is lost.
+    const svc = new LkReferenceSyncService(prisma as never, { log: vi.fn() } as never, { get: () => undefined } as never, noopFencing() as never);
     prisma.store.employees.set('STALE', { code1c: 'STALE', sourcePresent: true, lastSeenSyncId: null } as never);
     const client = {
       listLocations: async () => [{ id: 1, code1c: 'L1', name: 'N', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null }],
@@ -254,15 +268,23 @@ describe('Etap 2: snapshot/consumer race + lock loss + Redis GET errors', () => 
     await expect(lock.tryAcquire()).rejects.toMatchObject({ name: 'RedisUnavailableError' });
   });
 
-  it('fenced markMissing aborts when a newer RUNNING run exists (late process never corrupts)', async () => {
-    const prisma = memoryPrisma() as unknown as {
-      lkSyncRun: { findFirst: (a: unknown) => Promise<{ runId: string } | null> };
-    } & ReturnType<typeof memoryPrisma>;
-    // Simulate a newer snapshot that started after we lost the lock.
-    (prisma as unknown as Record<string, unknown>)['lkSyncRun'] = {
-      findFirst: async () => ({ runId: 'run-newer' }),
+  it('stale holder cannot write pages NOR marks after a steal (generation gate)', async () => {
+    const prisma = memoryPrisma();
+    // Fencing double: first 4 gate checks pass (3 resources + 1 page), then the
+    // generation is stolen — every later gate (incl. the marking tx) throws.
+    let gates = 0;
+    const stealing = {
+      ...noopFencing(),
+      assertSnapshotMayWrite: async () => {
+        gates += 1;
+        if (gates > 4) {
+          const { LockOwnershipLostError } = await import('../src/lk-sync/lk-reconciliation-lock.service');
+          throw new LockOwnershipLostError('LK fencing: run run-stale lost the generation (active=run-newer)');
+        }
+      },
     };
-    const svc = new LkReferenceSyncService(prisma as never, { log: vi.fn() } as never, { get: () => undefined } as never);
+    const svc = new LkReferenceSyncService(prisma as never, { log: vi.fn() } as never, { get: () => undefined } as never, stealing as never);
+    prisma.store.employees.set('STALE', { code1c: 'STALE', sourcePresent: true, lastSeenSyncId: null } as never);
     const client = {
       listLocations: async () => [{ id: 1, code1c: 'L1', name: 'N', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null }],
       listPositions: async () => [{ code1c: 'P1', name: 'P', deleted: false, updatedAt: null }],
@@ -272,17 +294,26 @@ describe('Etap 2: snapshot/consumer race + lock loss + Redis GET errors', () => 
     const guard = { assertOwned: async () => undefined };
     await expect(
       svc.syncAll(client, 'run-stale', { guard, allowShrinkage: true } as never),
-    ).rejects.toThrow(/fencing|ownership lost/i);
+    ).rejects.toThrow(/lost the generation/);
+    // Pages were written (first 4 gates passed)...
+    expect(prisma.store.employees.get('A')?.['lastSeenSyncId']).toBe('run-stale');
+    // ...but the stale mark never ran.
+    expect(prisma.store.employees.get('STALE')?.['sourcePresent']).toBe(true);
   });
 });
 
-describe('Etap 4: pagination guards never trigger markMissing on bad snapshots', () => {
-  function svcWith(prisma: unknown) {
-    return new LkReferenceSyncService(prisma as never, { log: vi.fn() } as never, { get: () => undefined } as never);
+describe('Pagination guards never trigger markMissing on bad snapshots', () => {
+  function svcWith(prisma: unknown, fencing?: unknown) {
+    return new LkReferenceSyncService(
+      prisma as never,
+      { log: vi.fn() } as never,
+      { get: () => undefined } as never,
+      ((fencing ?? noopFencing()) as never),
+    );
   }
   function memoryPrisma() {
     const employees = new Map<string, Record<string, unknown>>();
-    return {
+    const delegates = {
       lkEmployee: {
         upsert: async ({ where, update, create }: { where: { code1c: string }; update: Record<string, unknown>; create: Record<string, unknown> }) => {
           employees.set(where.code1c, { ...create, ...update, code1c: where.code1c });
@@ -293,6 +324,7 @@ describe('Etap 4: pagination guards never trigger markMissing on bad snapshots',
       lkPosition: { upsert: async () => ({}), updateMany: vi.fn(async () => ({ count: 0 })) },
       lkDepartment: { upsert: async () => ({}), updateMany: vi.fn(async () => ({ count: 0 })) },
     };
+    return { ...delegates, $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(delegates) };
   }
   function baseClient(pages: unknown) {
     let i = 0;
@@ -343,17 +375,48 @@ describe('Etap 4: pagination guards never trigger markMissing on bad snapshots',
   });
 
   it('shrinkage guard aborts before marking (operator confirmation required)', async () => {
-    const prisma = {
-      ...memoryPrisma(),
-      lkSyncRun: {
-        create: async () => ({ id: 2 }),
-        update: async () => ({}),
-        findFirst: async () => ({ locations: 100, positions: 100, departments: 100, employees: 100 }),
-      },
+    const prisma = memoryPrisma();
+    const fencing = {
+      ...noopFencing(),
+      getLastFinishedCounts: async () => ({ locations: 100, positions: 100, departments: 100, employees: 100 }),
     };
-    const svc = svcWith(prisma);
+    const svc = svcWith(prisma, fencing);
     const client = baseClient([{ items: [emp('A')], nextCursor: null }]);
-    // locations/positions/departments still 1 each vs 100 before -> shrinkage fires.
     await expect(svc.syncAll(client, 'run-shrink', { allowUnguardedForTests: true })).rejects.toThrow(/shrinkage/i);
+  });
+
+  it('partial failure leaves previously written pages but marks nothing (final-state check)', async () => {
+    const employees = new Map<string, Record<string, unknown>>();
+    const delegates = {
+      lkEmployee: {
+        upsert: async ({ where, update, create }: { where: { code1c: string }; update: Record<string, unknown>; create: Record<string, unknown> }) => {
+          employees.set(where.code1c, { ...create, ...update, code1c: where.code1c });
+        },
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
+      lkLocation: { upsert: async () => ({}), updateMany: vi.fn(async () => ({ count: 0 })) },
+      lkPosition: { upsert: async () => ({}), updateMany: vi.fn(async () => ({ count: 0 })) },
+      lkDepartment: { upsert: async () => ({}), updateMany: vi.fn(async () => ({ count: 0 })) },
+    };
+    const prisma = { ...delegates, $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(delegates) };
+    employees.set('STALE', { code1c: 'STALE', sourcePresent: true, lastSeenSyncId: null });
+    const svc = svcWith(prisma);
+    let page = 0;
+    const client = {
+      listLocations: async () => [{ id: 1, code1c: 'L1', name: 'N', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null }],
+      listPositions: async () => [{ code1c: 'P1', name: 'P', deleted: false, updatedAt: null }],
+      listDepartments: async () => [{ code1c: 'D1', name: 'D', deleted: false, updatedAt: null }],
+      listEmployeesPage: async () => {
+        page += 1;
+        if (page === 1) return { items: [emp('A')], nextCursor: 'N1' };
+        throw new Error('LK employees outage mid-pagination');
+      },
+    } as never;
+    await expect(svc.syncAll(client, 'run-partial', { allowUnguardedForTests: true })).rejects.toThrow(/outage/);
+    // Page 1 was written (tolerable partial upsert, repaired by next run)...
+    expect(employees.get('A')?.['lastSeenSyncId']).toBe('run-partial');
+    // ...but nothing was marked missing.
+    expect(employees.get('STALE')?.['sourcePresent']).toBe(true);
+    expect(delegates.lkEmployee.updateMany).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LkReferenceSyncService } from '../src/lk-sync/lk-reference-sync.service';
+import { noopFencing } from './helpers/noop-fencing';
 
 type MarkWhere =
   | { OR?: Array<{ lastSeenSyncId?: unknown; lastSeenSyncId?: { not?: string } }> }
@@ -51,6 +52,51 @@ function memoryPrisma() {
   }
   return {
     store: { employees, locations, positions, departments },
+    // Pass-through transaction: the fenced gate is a noop double here, so the
+    // callback receives the same mock (real serialization is covered on MariaDB).
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({
+        lkEmployee: {
+          upsert: async ({ where, update, create }: { where: { code1c: string }; update: Record<string, unknown>; create: Record<string, unknown> }) => {
+            const prev = employees.get(where.code1c);
+            const next = { ...(prev ?? create), ...update, code1c: where.code1c };
+            employees.set(where.code1c, next);
+            return next;
+          },
+          updateMany: async ({ where, data }: { where: never; data: Record<string, unknown> }) =>
+            applyMarking(employees, where as never, data),
+        },
+        lkLocation: {
+          upsert: async ({ where, update, create }: { where: { code1c: string }; update: Record<string, unknown>; create: Record<string, unknown> }) => {
+            const prev = locations.get(where.code1c);
+            const next = { ...(prev ?? create), ...update, code1c: where.code1c };
+            locations.set(where.code1c, next);
+            return next;
+          },
+          updateMany: async ({ where, data }: { where: never; data: Record<string, unknown> }) =>
+            applyMarking(locations, where as never, data),
+        },
+        lkPosition: {
+          upsert: async ({ where, update, create }: { where: { code1c: string }; update: Record<string, unknown>; create: Record<string, unknown> }) => {
+            const prev = positions.get(where.code1c);
+            const next = { ...(prev ?? create), ...update, code1c: where.code1c };
+            positions.set(where.code1c, next);
+            return next;
+          },
+          updateMany: async ({ where, data }: { where: never; data: Record<string, unknown> }) =>
+            applyMarking(positions, where as never, data),
+        },
+        lkDepartment: {
+          upsert: async ({ where, update, create }: { where: { code1c: string }; update: Record<string, unknown>; create: Record<string, unknown> }) => {
+            const prev = departments.get(where.code1c);
+            const next = { ...(prev ?? create), ...update, code1c: where.code1c };
+            departments.set(where.code1c, next);
+            return next;
+          },
+          updateMany: async ({ where, data }: { where: never; data: Record<string, unknown> }) =>
+            applyMarking(departments, where as never, data),
+        },
+      }),
     lkEmployee: {
       upsert: async ({ where, update, create }: { where: { code1c: string }; update: Record<string, unknown>; create: Record<string, unknown> }) => {
         const prev = employees.get(where.code1c);
@@ -119,7 +165,7 @@ describe('LkReferenceSyncService', () => {
     const prisma = memoryPrisma();
     const audit = { log: vi.fn() };
     const config = { get: () => undefined } as never;
-    const svc = new LkReferenceSyncService(prisma as never, audit as never, config);
+    const svc = new LkReferenceSyncService(prisma as never, audit as never, config, noopFencing() as never);
 
     const pages = [
       { items: [emp('A'), emp('B')], nextCursor: 'B' },
@@ -145,7 +191,7 @@ describe('LkReferenceSyncService', () => {
     const prisma = memoryPrisma();
     const audit = { log: vi.fn() };
     const config = { get: () => undefined } as never;
-    const svc = new LkReferenceSyncService(prisma as never, audit as never, config);
+    const svc = new LkReferenceSyncService(prisma as never, audit as never, config, noopFencing() as never);
     const client = {
       listLocations: async () => [
         { id: 98, code1c: 'LOC', name: 'Объект', shortName: 'О', generalUnitCode: null, deleted: false, updatedAt: null },
@@ -165,7 +211,7 @@ describe('LkReferenceSyncService', () => {
     const prisma = memoryPrisma();
     const audit = { log: vi.fn() };
     const config = { get: () => undefined } as never;
-    const svc = new LkReferenceSyncService(prisma as never, audit as never, config);
+    const svc = new LkReferenceSyncService(prisma as never, audit as never, config, noopFencing() as never);
     const client = {
       listLocations: async () => [
         { id: 98, code1c: 'LOC', name: 'Объект', shortName: 'О', generalUnitCode: null, deleted: true, updatedAt: null },
@@ -186,7 +232,7 @@ describe('LkReferenceSyncService', () => {
     const prisma = memoryPrisma();
     const audit = { log: vi.fn() };
     const config = { get: () => undefined } as never;
-    const svc = new LkReferenceSyncService(prisma as never, audit as never, config);
+    const svc = new LkReferenceSyncService(prisma as never, audit as never, config, noopFencing() as never);
     const full = {
       listLocations: async () => [
         { id: 1, code1c: 'LOC1', name: 'Один', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null },
@@ -217,7 +263,7 @@ describe('LkReferenceSyncService', () => {
     const prisma = memoryPrisma();
     const audit = { log: vi.fn() };
     const config = { get: () => undefined } as never;
-    const svc = new LkReferenceSyncService(prisma as never, audit as never, config);
+    const svc = new LkReferenceSyncService(prisma as never, audit as never, config, noopFencing() as never);
     // Simulate legacy/event-created rows that never got a sync stamp.
     prisma.store.employees.set('OLD', {
       code1c: 'OLD',
@@ -250,7 +296,7 @@ describe('LkReferenceSyncService', () => {
     const prisma = memoryPrisma();
     const audit = { log: vi.fn() };
     const config = { get: () => undefined } as never;
-    const svc = new LkReferenceSyncService(prisma as never, audit as never, config);
+    const svc = new LkReferenceSyncService(prisma as never, audit as never, config, noopFencing() as never);
     const full = {
       listLocations: async () => [
         { id: 1, code1c: 'LOC1', name: 'Один', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null },
@@ -276,7 +322,7 @@ describe('LkReferenceSyncService', () => {
     const prisma = memoryPrisma();
     const audit = { log: vi.fn() };
     const config = { get: () => undefined } as never;
-    const svc = new LkReferenceSyncService(prisma as never, audit as never, config);
+    const svc = new LkReferenceSyncService(prisma as never, audit as never, config, noopFencing() as never);
     const full = {
       listLocations: async () => [
         { id: 1, code1c: 'LOC1', name: 'Один', shortName: '', generalUnitCode: null, deleted: false, updatedAt: null },
@@ -315,7 +361,7 @@ describe('LkReferenceSyncService', () => {
     const prisma = memoryPrisma();
     const audit = { log: vi.fn() };
     const config = { get: () => undefined } as never;
-    const svc = new LkReferenceSyncService(prisma as never, audit as never, config);
+    const svc = new LkReferenceSyncService(prisma as never, audit as never, config, noopFencing() as never);
     prisma.store.employees.set('STALE', {
       code1c: 'STALE',
       fullName: 'Stale',
@@ -355,7 +401,7 @@ describe('LkReferenceSyncService', () => {
     const prisma = memoryPrisma();
     const audit = { log: vi.fn() };
     const config = { get: () => undefined } as never;
-    const svc = new LkReferenceSyncService(prisma as never, audit as never, config);
+    const svc = new LkReferenceSyncService(prisma as never, audit as never, config, noopFencing() as never);
     // No env token and no client -> must throw, not silently skip.
     expect(() => svc.createClient()).toThrow();
   });
