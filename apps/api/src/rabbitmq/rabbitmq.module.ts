@@ -124,6 +124,24 @@ export type LkConsumeHandler = (msg: {
   retryAsync: () => Promise<boolean>;
 }) => Promise<void> | void;
 
+/** Broker delivery envelope (subset of amqplib ConsumeMessage we rely on). */
+export interface DeliveryMsg {
+  content: Buffer;
+  properties: {
+    headers?: Record<string, unknown> | null;
+    contentType?: unknown;
+    contentEncoding?: unknown;
+    deliveryMode?: unknown;
+    priority?: unknown;
+    correlationId?: unknown;
+    messageId?: unknown;
+    timestamp?: unknown;
+    type?: unknown;
+    appId?: unknown;
+  };
+  fields?: { routingKey?: string; deliveryTag?: number | string; redelivered?: boolean };
+}
+
 /**
  * Minimal RabbitMQ abstraction for EDO (shared ecosystem broker).
  * EDO never runs its own production broker; RABBITMQ_URL must point to shared infra.
@@ -207,8 +225,23 @@ export class RabbitmqService implements OnModuleDestroy {
   private retryInflight = 0;
   /** Correlated mandatory returns: publishId -> generation that published it. */
   private pendingReturns = new Map<string, number>();
-  /** Slow-requeue stall tracking: contentHash -> {cycles, timer}. Bounded. */
-  private stallCycles = new Map<string, { cycles: number; timer: ReturnType<typeof setTimeout> | null }>();
+  /** Dedicated diagnostic channel for health checks (never the delivery channel). */
+  private diagChannel: Channel | null = null;
+  /**
+   * Per-delivery stall recovery: deliveryKey -> {cycles, timer}.
+   * Keyed by `${generation}:${deliveryTag}` — two deliveries of identical
+   * content have different tags and recover INDEPENDENTLY (neither cancels
+   * the other's timer, successes never clear another delivery's path).
+   * Attempt budgets are per delivery: concurrent identical copies do not
+   * pool their cycles as if they were sequential redeliveries of one copy.
+   * Each delivery ends exactly once (ack on confirmed retry, delayed
+   * nack(true) per failed cycle, nack(false) to DLQ after LK_STALL_MAX_CYCLES
+   * cycles). A redelivered copy arrives with a NEW tag and its own budget;
+   * the broker-persistent x-retry-count header still bounds the confirm path.
+   */
+  private stalls = new Map<string, { cycles: number; timer: ReturnType<typeof setTimeout> | null; token: object }>();
+  /** Max tracked stall deliveries (overflow degrades to immediate nack(true), never unbounded). */
+  private static readonly STALL_MAX_TRACKED = 1000;
   /** Confirm-channel factory (production default; tests inject fakes explicitly). */
   private channelFactory: ConfirmChannelFactory = (conn) =>
     (conn as unknown as { createConfirmChannel: () => Promise<Channel> }).createConfirmChannel();
@@ -502,22 +535,7 @@ export class RabbitmqService implements OnModuleDestroy {
    */
   async retryLaterAsync(
     deliveryChannel: Channel,
-    msg: {
-      content: Buffer;
-      properties: {
-        headers?: Record<string, unknown> | null;
-        contentType?: unknown;
-        contentEncoding?: unknown;
-        deliveryMode?: unknown;
-        priority?: unknown;
-        correlationId?: unknown;
-        messageId?: unknown;
-        timestamp?: unknown;
-        type?: unknown;
-        appId?: unknown;
-      };
-      fields?: { routingKey?: string };
-    },
+    msg: DeliveryMsg,
     routingKey?: string,
     deliveryGeneration?: number,
   ): Promise<boolean> {
@@ -528,7 +546,7 @@ export class RabbitmqService implements OnModuleDestroy {
     if (count >= this.maxRetries) {
       this.logger.warn(`LK event exceeded ${this.maxRetries} retries, sending to DLQ`);
       if (isStale()) return false;
-      this.clearStall(msg.content);
+      this.clearStall(gen, msg);
       try {
         deliveryChannel.nack(msg as never, false, false);
         return true;
@@ -577,7 +595,7 @@ export class RabbitmqService implements OnModuleDestroy {
       this.retryInflight -= 1;
     }
     if (isStale()) return false;
-    this.clearStall(msg.content);
+    this.clearStall(gen, msg);
     try {
       deliveryChannel.ack(msg as never);
       return true;
@@ -587,72 +605,81 @@ export class RabbitmqService implements OnModuleDestroy {
     }
   }
 
-  /** Content hash for stall tracking (no payload/keys in logs or map keys). */
-  private stallKey(content: Buffer): string {
-    return createHash('sha1').update(content).digest('hex');
+  /** Per-delivery stall key: generation + broker deliveryTag (no content coupling). */
+  private stallKey(gen: number, msg: DeliveryMsg): string {
+    const tag = msg.fields?.deliveryTag;
+    if (typeof tag === 'number' || typeof tag === 'string') return `${gen}:${tag}`;
+    // Fallback for tag-less doubles: content hash (documented, tests prefer tags).
+    return `${gen}:hash:${createHash('sha1').update(msg.content).digest('hex')}`;
   }
 
-  private clearStall(content: Buffer): void {
-    const key = this.stallKey(content);
-    const entry = this.stallCycles.get(key);
+  private clearStall(gen: number, msg: DeliveryMsg): void {
+    const entry = this.stalls.get(this.stallKey(gen, msg));
     if (entry?.timer) clearTimeout(entry.timer);
-    this.stallCycles.delete(key);
+    this.stalls.delete(this.stallKey(gen, msg));
   }
 
   /**
-   * Bounded recovery for an unconfirmed retry while the channel stays open.
-   * Schedules ONE delayed nack(requeue=true) per failure (5s, unref'd);
-   * after LK_STALL_MAX_CYCLES failures the message goes to DLQ via
-   * nack(requeue=false) instead of stalling the prefetch slot forever.
-   * Stale generations and shutdown never nack. Map is bounded (1000 entries).
+   * Bounded per-delivery recovery for an unconfirmed retry while the channel
+   * stays open. Schedules ONE delayed nack(requeue=true) for THIS delivery
+   * (5s, unref'd); after LK_STALL_MAX_CYCLES failures of the same delivery the
+   * message goes to DLQ via nack(requeue=false) instead of stalling the
+   * prefetch slot forever. Stale generations and shutdown never nack; the
+   * timer token prevents double nack of one deliveryTag.
+   * If tracking overflows (1000 deliveries), degrade to an immediate
+   * nack(true): the redelivery recreates tracking — recovery preserved,
+   * memory bounded, no stranded delivery.
    */
-  private scheduleStallRequeue(
-    deliveryChannel: Channel,
-    msg: { content: Buffer },
-    gen: number,
-  ): void {
+  private scheduleStallRequeue(deliveryChannel: Channel, msg: DeliveryMsg, gen: number): void {
     if (this.shuttingDown || gen !== this.generation) return;
-    const key = this.stallKey(msg.content);
-    const prev = this.stallCycles.get(key);
+    const key = this.stallKey(gen, msg);
+    const prev = this.stalls.get(key);
     if (prev?.timer) clearTimeout(prev.timer);
     const cycles = (prev?.cycles ?? 0) + 1;
     if (cycles > LK_STALL_MAX_CYCLES) {
-      this.stallCycles.delete(key);
+      this.stalls.delete(key);
       this.logger.error(
         `LK stall recovery exhausted (${LK_STALL_MAX_CYCLES} cycles); sending to DLQ for operator triage`,
       );
       if (!this.isCurrentGeneration(gen)) return;
       try {
-        (deliveryChannel as Channel).nack(msg as never, false, false);
+        deliveryChannel.nack(msg as never, false, false);
       } catch {
         // Channel dead: broker redelivers on close; inbox dedup keeps it safe.
       }
       return;
     }
-    if (this.stallCycles.size >= 1000 && !this.stallCycles.has(key)) {
-      const oldest = this.stallCycles.keys().next();
-      if (!oldest.done) {
-        const e = this.stallCycles.get(oldest.value);
-        if (e?.timer) clearTimeout(e.timer);
-        this.stallCycles.delete(oldest.value);
+    if (this.stalls.size >= RabbitmqService.STALL_MAX_TRACKED && !this.stalls.has(key)) {
+      // Memory bound hit: immediate requeue keeps a live recovery path while
+      // bounding memory (redelivery recreates tracking or settles).
+      this.logger.warn('LK stall tracking overflow; immediate requeue (bounded memory)');
+      if (!this.isCurrentGeneration(gen)) return;
+      try {
+        deliveryChannel.nack(msg as never, false, true);
+      } catch {
+        // ignore: broker redelivers on close.
       }
+      return;
     }
+    const token = {};
     const timer = setTimeout(() => {
-      const entry = this.stallCycles.get(key);
-      if (entry) entry.timer = null;
+      const entry = this.stalls.get(key);
+      // Only this timer may settle this delivery (no double nack on one tag).
+      if (!entry || entry.token !== token) return;
+      entry.timer = null;
       if (!this.isCurrentGeneration(gen)) {
-        this.stallCycles.delete(key);
+        this.stalls.delete(key);
         return;
       }
       try {
-        (deliveryChannel as Channel).nack(msg as never, false, true);
+        deliveryChannel.nack(msg as never, false, true);
       } catch {
         // Channel dead: broker redelivers everything unacked on close.
       }
     }, LK_STALL_REQUEUE_DELAY_MS);
     const t = timer as unknown as { unref?: () => void };
     if (typeof t.unref === 'function') t.unref();
-    this.stallCycles.set(key, { cycles, timer });
+    this.stalls.set(key, { cycles, timer, token });
   }
 
   /**
@@ -840,8 +867,19 @@ export class RabbitmqService implements OnModuleDestroy {
   private clearChannelState(): void {
     this.channel = null;
     this.connection = null;
+    // The diagnostic channel dies with the connection too; drop the handle
+    // without touching anything else (generation bump below is for the
+    // delivery channel only).
+    void this.closeDiagChannel();
     // Invalidate callbacks from the previous connection so stale deliveries
-    // cannot ack/nack uncontrolled after reconnect.
+    // cannot ack/nack uncontrolled after reconnect. Stall timers of the dead
+    // generation are cancelled too: the broker redelivers everything unacked
+    // with NEW deliveryTags, and each redelivery gets its own fresh recovery
+    // entry — no live delivery is left without a path.
+    for (const [, entry] of this.stalls) {
+      if (entry.timer) clearTimeout(entry.timer);
+    }
+    this.stalls.clear();
     this.generation += 1;
   }
 
@@ -885,16 +923,21 @@ export class RabbitmqService implements OnModuleDestroy {
 
   /**
    * Queue depths for integration health/alerts (never throws).
-   * A missing EDO-owned queue is reported explicitly in `errors` (RabbitMQ
-   * 404 NOT_FOUND) instead of being hidden as zero: zero means "empty and
+   * Runs on a DEDICATED diagnostic channel, never on the delivery channel:
+   * `checkQueue` of a missing queue closes the channel by protocol (404), and
+   * that must never reset the working consumer, its generation, or pending
+   * confirms. A missing EDO-owned queue is reported explicitly in `errors`
+   * (404 NOT_FOUND) instead of being hidden as zero: zero means "empty and
    * present", an error entry means "topology damaged". Returns null only when
    * the broker itself is unreachable.
    */
   async checkQueueDepths(): Promise<{ main: number; retry: number; dlq: number; errors: string[] } | null> {
+    let diag: Channel | null = null;
     try {
       await this.ensureConnected(3000);
-      if (!this.channel) return null;
-      const ch = this.channel as unknown as {
+      diag = await this.ensureDiagChannel();
+      if (!diag) return null;
+      const ch = diag as unknown as {
         checkQueue?: (q: string) => Promise<{ messageCount: number }>;
       };
       if (typeof ch.checkQueue !== 'function') return null;
@@ -924,6 +967,49 @@ export class RabbitmqService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Dedicated diagnostic channel for health checks. Isolated from the delivery
+   * channel: its death (e.g. 404 on a missing queue) drops only this handle
+   * via the error/close listener below — generation, consumer subscription
+   * and pending confirms are untouched.
+   */
+  private async ensureDiagChannel(): Promise<Channel | null> {
+    if (this.diagChannel) return this.diagChannel;
+    const conn = this.connection;
+    if (!conn) return null;
+    try {
+      const create = (conn as unknown as { createChannel?: () => Promise<Channel> }).createChannel;
+      if (typeof create !== 'function') return null;
+      const ch = await create.call(conn);
+      const drop = () => {
+        if (this.diagChannel === ch) this.diagChannel = null;
+      };
+      try {
+        const emitter = ch as unknown as { on?: (ev: string, fn: () => void) => void };
+        if (typeof emitter.on === 'function') {
+          emitter.on('error', drop);
+          emitter.on('close', drop);
+        }
+      } catch {
+        // ignore (mocks)
+      }
+      this.diagChannel = ch;
+      return ch;
+    } catch {
+      return null;
+    }
+  }
+
+  private async closeDiagChannel(): Promise<void> {
+    const ch = this.diagChannel;
+    this.diagChannel = null;
+    try {
+      await ch?.close();
+    } catch {
+      // ignore
+    }
+  }
+
   async onModuleDestroy() {
     this.shuttingDown = true;
     this.generation += 1;
@@ -931,13 +1017,14 @@ export class RabbitmqService implements OnModuleDestroy {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    await this.closeDiagChannel();
     // Drop pending return correlations and stall-requeue timers: stale
     // callbacks must not nack after shutdown.
     this.pendingReturns.clear();
-    for (const [, entry] of this.stallCycles) {
+    for (const [, entry] of this.stalls) {
       if (entry.timer) clearTimeout(entry.timer);
     }
-    this.stallCycles.clear();
+    this.stalls.clear();
     // Cancel the consumer so no new deliveries arrive during shutdown; in-flight
     // handlers observe shuttingDown via generation and skip ack/nack.
     try {

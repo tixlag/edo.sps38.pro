@@ -95,9 +95,15 @@ function wire(svc: RabbitmqService, ch: ReturnType<typeof confirmChannel>) {
   (svc as unknown as { attachReturnListener: (c: unknown) => void }).attachReturnListener.call(svc, ch);
 }
 
+let nextDeliveryTag = 100;
+function freshTag(): number {
+  nextDeliveryTag += 1;
+  return nextDeliveryTag;
+}
+
 function rabbitMsg(overrides: Record<string, unknown> = {}) {
   return {
-    fields: { routingKey: 'lk.reference.employee.upserted.v1' },
+    fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: freshTag(), redelivered: false },
     properties: { headers: {}, messageId: 'src-mid-1' },
     content: Buffer.from(JSON.stringify({ eventId: 'evt-1' })),
     ...overrides,
@@ -387,6 +393,167 @@ describe('RabbitMQ confirm-gated retry (single publish path)', () => {
     await svc.onModuleDestroy();
   });
 
+  it('two identical deliveries recover independently (no timer clash, no shared budget)', async () => {
+    vi.useFakeTimers();
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'nack' });
+    const dA = confirmChannel('dA');
+    const dB = confirmChannel('dB');
+    wire(svc, pub);
+    const body = Buffer.from(JSON.stringify({ eventId: 'evt-same' }));
+    const mA = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 11, redelivered: false }, properties: { headers: {} }, content: body };
+    const mB = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 12, redelivered: false }, properties: { headers: {} }, content: body };
+    const pA = svc.retryLaterAsync(dA as never, mA as never, 'lk.reference.employee.upserted.v1', 0);
+    const pB = svc.retryLaterAsync(dB as never, mB as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(pA).resolves.toBe(false);
+    await expect(pB).resolves.toBe(false);
+    // The second schedule must NOT cancel the first delivery's timer.
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(dA.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(1);
+    expect(dB.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(1);
+    expect(dA.calls.nack.filter((n) => !(n as { requeue: boolean }).requeue)).toHaveLength(0);
+    expect(dB.calls.nack.filter((n) => !(n as { requeue: boolean }).requeue)).toHaveLength(0);
+    await svc.onModuleDestroy();
+  });
+
+  it('one copy succeeding never cancels another delivery recovery', async () => {
+    vi.useFakeTimers();
+    const svc = service();
+    let failB = true;
+    const pub = confirmChannel('pub', { kind: 'ack' });
+    const origPublish = pub.publish.bind(pub);
+    (pub as unknown as { publish: unknown }).publish = (
+      ex: string,
+      key: string,
+      content: Buffer,
+      o: unknown,
+      cb?: (e: Error | null) => void,
+    ) => {
+      if (failB && typeof cb === 'function') {
+        failB = false;
+        setImmediate(() => cb(new Error('transient nack')));
+        return true;
+      }
+      return origPublish(ex, key, content, o, cb);
+    };
+    const dA = confirmChannel('dA');
+    const dB = confirmChannel('dB');
+    wire(svc, pub);
+    const mB = rabbitMsg();
+    // B fails first (timer armed for B's tag)...
+    const pB = svc.retryLaterAsync(dB as never, mB as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(pB).resolves.toBe(false);
+    // ...then A (different tag, same-shape content) succeeds and acks.
+    const mA = rabbitMsg();
+    const pA = svc.retryLaterAsync(dA as never, mA as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(pA).resolves.toBe(true);
+    expect(dA.calls.ack).toHaveLength(1);
+    // B's recovery still fires afterwards.
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(dB.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(1);
+    expect(dA.calls.nack).toHaveLength(0);
+    await svc.onModuleDestroy();
+  });
+
+  it('four identical copies keep independent budgets (no pooled exhaustion to DLQ)', async () => {
+    vi.useFakeTimers();
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'nack' });
+    wire(svc, pub);
+    const body = Buffer.from(JSON.stringify({ eventId: 'evt-quad' }));
+    const chans = [confirmChannel('q1'), confirmChannel('q2'), confirmChannel('q3'), confirmChannel('q4')];
+    const calls = chans.map((d, i) => {
+      const m = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 21 + i, redelivered: false }, properties: { headers: {} }, content: body };
+      return svc.retryLaterAsync(d as never, m as never, 'lk.reference.employee.upserted.v1', 0);
+    });
+    await vi.advanceTimersByTimeAsync(10);
+    for (const c of calls) await expect(c).resolves.toBe(false);
+    await vi.advanceTimersByTimeAsync(5000);
+    for (const d of chans) {
+      expect(d.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(1);
+      expect(d.calls.nack.filter((n) => !(n as { requeue: boolean }).requeue)).toHaveLength(0);
+    }
+    await svc.onModuleDestroy();
+  });
+
+  it('reconnect cleanup keeps the live redelivery path (old timer dies, new delivery recovers)', async () => {
+    vi.useFakeTimers();
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'nack' });
+    const dOld = confirmChannel('dOld');
+    wire(svc, pub);
+    const body = Buffer.from(JSON.stringify({ eventId: 'evt-reconn' }));
+    const mOld = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 31, redelivered: false }, properties: { headers: {} }, content: body };
+    const pOld = svc.retryLaterAsync(dOld as never, mOld as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(pOld).resolves.toBe(false);
+    // Reconnect: dead-generation timers are cancelled; broker redelivers anew.
+    (svc as unknown as { clearChannelState: () => void }).clearChannelState.call(svc);
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(dOld.calls.nack).toHaveLength(0);
+    // Redelivery on the new generation schedules a fresh recovery entry.
+    const gen = (svc as unknown as { generation: number }).generation;
+    expect(gen).toBe(1);
+    const dNew = confirmChannel('dNew');
+    (svc as unknown as { channel: unknown }).channel = pub;
+    const mNew = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 32, redelivered: true }, properties: { headers: {} }, content: body };
+    const pNew = svc.retryLaterAsync(dNew as never, mNew as never, 'lk.reference.employee.upserted.v1', gen);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(pNew).resolves.toBe(false);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(dNew.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(1);
+    await svc.onModuleDestroy();
+  });
+
+  it('stall tracking overflow degrades to immediate requeue (bounded memory, path preserved)', async () => {
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'nack' });
+    const d = confirmChannel('d');
+    wire(svc, pub);
+    // Fill tracking to the cap with foreign entries.
+    const stalls = (svc as unknown as { stalls: Map<string, { cycles: number; timer: null; token: object }> }).stalls;
+    for (let i = 0; i < 1000; i++) stalls.set(`9:fill-${i}`, { cycles: 1, timer: null, token: {} });
+    const msg = rabbitMsg();
+    const ok = await svc.retryLaterAsync(d as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    expect(ok).toBe(false);
+    // Immediate nack(true): recovery preserved without growing memory.
+    expect(d.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(1);
+    expect(stalls.size).toBeLessThanOrEqual(1001);
+    await svc.onModuleDestroy();
+  });
+
+  it('exactly one settlement per deliveryTag across fail -> redeliver -> success', async () => {
+    vi.useFakeTimers();
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'nack' });
+    const d1 = confirmChannel('d1');
+    const d2 = confirmChannel('d2');
+    wire(svc, pub);
+    const body = Buffer.from(JSON.stringify({ eventId: 'evt-once' }));
+    const m1 = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 41, redelivered: false }, properties: { headers: {} }, content: body };
+    const p1 = svc.retryLaterAsync(d1 as never, m1 as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(p1).resolves.toBe(false);
+    await vi.advanceTimersByTimeAsync(5000);
+    // Redelivery under a new tag succeeds (confirm now acks).
+    const pubOk = confirmChannel('pubOk');
+    (svc as unknown as { channel: unknown }).channel = pubOk;
+    (svc as unknown as { attachReturnListener: (c: unknown) => void }).attachReturnListener.call(svc, pubOk);
+    const m2 = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 42, redelivered: true }, properties: { headers: {} }, content: body };
+    const p2 = svc.retryLaterAsync(d2 as never, m2 as never, 'lk.reference.employee.upserted.v1', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(p2).resolves.toBe(true);
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(d1.calls.ack).toHaveLength(0);
+    expect(d1.calls.nack).toHaveLength(1);
+    expect(d2.calls.ack).toHaveLength(1);
+    expect(d2.calls.nack).toHaveLength(0);
+    await svc.onModuleDestroy();
+  });
+
   it('slow-requeue exhausts to DLQ after bounded cycles (no eternal stall)', async () => {
     vi.useFakeTimers();
     const svc = service();
@@ -530,6 +697,50 @@ describe('RabbitMQ confirm-gated retry (single publish path)', () => {
     capturedNack!(false);
     expect(delivery.calls.nack).toHaveLength(1);
     expect((delivery.calls.nack[0] as { requeue: boolean }).requeue).toBe(false);
+    await svc.onModuleDestroy();
+  });
+
+  it('diagnostics use an isolated channel: a 404 never closes the delivery channel', async () => {
+    const svc = service();
+    let deliveryClosed = false;
+    const delivery = {
+      ...confirmChannel('delivery'),
+      async close() {
+        deliveryClosed = true;
+      },
+    };
+    let diagClosed = false;
+    const diag = {
+      async checkQueue(queue: string) {
+        if (String(queue).endsWith('.retry')) {
+          const err = new Error('NOT_FOUND - no queue') as Error & { code: number };
+          err.code = 404;
+          throw err;
+        }
+        return { messageCount: 3 };
+      },
+      async close() {
+        diagClosed = true;
+      },
+      on() {},
+    };
+    (svc as unknown as { channel: unknown }).channel = delivery;
+    (svc as unknown as { connection: unknown }).connection = {
+      createChannel: async () => diag,
+    };
+    const genBefore = (svc as unknown as { generation: number }).generation;
+    const depths = await svc.checkQueueDepths();
+    expect(depths).not.toBeNull();
+    expect(depths!.errors.length).toBeGreaterThan(0);
+    expect(depths!.errors.join(' ')).toMatch(/retry/);
+    expect(depths!.main).toBe(3);
+    // Delivery channel untouched: not closed, still wired, same generation.
+    expect(deliveryClosed).toBe(false);
+    expect((svc as unknown as { channel: unknown }).channel).toBe(delivery);
+    expect((svc as unknown as { generation: number }).generation).toBe(genBefore);
+    // Unknown values are errors, never presented as trustworthy zeros.
+    expect(depths!.retry).toBe(0);
+    void diagClosed;
     await svc.onModuleDestroy();
   });
 });

@@ -71,9 +71,15 @@ function wire(svc: RabbitmqService, ch: ReturnType<typeof confirmChannel>) {
   (svc as unknown as { attachReturnListener: (c: unknown) => void }).attachReturnListener.call(svc, ch);
 }
 
+let nextDeliveryTag = 1000;
+function freshTag(): number {
+  nextDeliveryTag += 1;
+  return nextDeliveryTag;
+}
+
 function msg(headers: Record<string, unknown> = {}, fieldsRoutingKey = 'lk.reference.employee.upserted.v1') {
   return {
-    fields: { routingKey: fieldsRoutingKey },
+    fields: { routingKey: fieldsRoutingKey, deliveryTag: freshTag(), redelivered: false },
     properties: { headers, contentType: 'application/json', messageId: 'mid-1' },
     content: Buffer.from(JSON.stringify({ eventId: 'evt-1', eventType: 'employee.upserted' })),
   };
