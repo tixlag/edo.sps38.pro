@@ -180,7 +180,13 @@ LK publishes a narrow internal API + RabbitMQ events (see
   tracked by generation:deliveryTag, removed on settlement; redeliveries carry
   their own entries, valid events are never DLQed for a mere unavailable retry
   route) — the prefetch slot cannot stall forever on a
-  healthy channel, with no hot loop and no extra subscriptions. Broker cancel
+  healthy channel, with no hot loop and no extra subscriptions. Settled
+  deliveries free their entries (no history growth; 1050 sequential
+  redeliveries stay at ≤2 tracked); same-delivery reschedule replaces via
+  token (exactly one nack per tag). Tracking overflow (1000, unreachable
+  under the prefetch=10 invariant) recycles the delivery channel so the
+  broker requeues everything unacked — no untracked timers, message
+  preserved, rate via reconnect backoff. Broker cancel
   (null delivery) re-subscribes via the reconnect loop. Consumer passes a real
   shutdown AbortSignal and drops post-wait work after a generation change.
 - **DLX chain (proven, with an explicit open window)**: intact retry→main and
