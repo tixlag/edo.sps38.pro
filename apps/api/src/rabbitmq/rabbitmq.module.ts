@@ -41,11 +41,6 @@ export const LK_RETRY_PUBLISH_TIMEOUT_MS = 5000;
 export const LK_RETRY_MAX_INFLIGHT = 20;
 /** Fixed slow-requeue delay after an unconfirmed retry (no hot loop). */
 export const LK_STALL_REQUEUE_DELAY_MS = 5000;
-/**
- * Fallback delay when stall tracking overflows (bounded memory, bounded rate).
- * The timer is untracked; the message is preserved via broker redelivery.
- */
-export const LK_STALL_OVERFLOW_DELAY_MS = 60000;
 
 export class ConfirmUnsupportedError extends Error {
   constructor(message = 'RabbitMQ channel does not support publisher confirms (ConfirmChannel required)') {
@@ -251,7 +246,7 @@ export class RabbitmqService implements OnModuleDestroy {
    * delay instead of diverting valid events to DLQ for an infra outage.
    */
   private stalls = new Map<string, { timer: ReturnType<typeof setTimeout> | null; token: object }>();
-  /** Max tracked stall deliveries (overflow degrades to immediate nack(true), never unbounded). */
+  /** Max tracked stall deliveries; overflow recycles the channel (see recycleOnStallOverflow). */
   private static readonly STALL_MAX_TRACKED = 1000;
   /** Confirm-channel factory (production default; tests inject fakes explicitly). */
   private channelFactory: ConfirmChannelFactory = (conn) =>
@@ -645,10 +640,9 @@ export class RabbitmqService implements OnModuleDestroy {
    * unavailable, valid events wait for recovery instead of being diverted to
    * DLQ for an infrastructure outage (DLQ stays for poison and for the
    * confirmed retry-count chain via maxRetries).
-   * If tracking overflows (1000 deliveries), an untracked fallback timer with
-   * LK_STALL_OVERFLOW_DELAY_MS preserves the message via broker redelivery
-   * with bounded memory and bounded rate — never an immediate hot requeue and
-   * never a stranded unacked delivery.
+   * Every armed timer lives in `stalls` keyed by its delivery (1:1), so the
+   * map size IS the active-timer count. Overflow (see recycleOnStallOverflow)
+   * creates no untracked timers.
    */
   private scheduleStallRequeue(deliveryChannel: Channel, msg: DeliveryMsg, gen: number): void {
     if (this.shuttingDown || gen !== this.generation) return;
@@ -656,17 +650,7 @@ export class RabbitmqService implements OnModuleDestroy {
     const prev = this.stalls.get(key);
     if (prev?.timer) clearTimeout(prev.timer);
     if (this.stalls.size >= RabbitmqService.STALL_MAX_TRACKED && !this.stalls.has(key)) {
-      this.logger.warn('LK stall tracking overflow; fallback delayed requeue (bounded memory and rate)');
-      const timer = setTimeout(() => {
-        if (!this.isCurrentGeneration(gen)) return;
-        try {
-          deliveryChannel.nack(msg as never, false, true);
-        } catch {
-          // Channel dead: broker redelivers everything unacked on close.
-        }
-      }, LK_STALL_OVERFLOW_DELAY_MS);
-      const t = timer as unknown as { unref?: () => void };
-      if (typeof t.unref === 'function') t.unref();
+      this.recycleOnStallOverflow(deliveryChannel, msg, gen);
       return;
     }
     const token = {};
@@ -686,6 +670,36 @@ export class RabbitmqService implements OnModuleDestroy {
     const t = timer as unknown as { unref?: () => void };
     if (typeof t.unref === 'function') t.unref();
     this.stalls.set(key, { timer, token });
+  }
+
+  /**
+   * Invariant-violation recovery for stall-tracking overflow.
+   * Reachable only when live deliveries exceed STALL_MAX_TRACKED (1000):
+   * under the intact prefetch=10 invariant at most ~10 deliveries can be
+   * unacked per channel, so this means a leak or consumer miswiring — never
+   * normal load. Instead of an untracked fallback timer (uncancellable,
+   * invisible) or an immediate hot requeue, the delivery channel is
+   * recycled: closing it makes the broker requeue EVERYTHING unacked, and
+   * the existing reconnect loop re-establishes the consumer with fresh tags.
+   * No timer is created, the map does not grow, the message is preserved by
+   * the broker (not stranded), and the rate is governed by reconnect
+   * backoff — then the anomaly is impossible to miss in logs.
+   */
+  private recycleOnStallOverflow(deliveryChannel: Channel, msg: DeliveryMsg, gen: number): void {
+    this.logger.error(
+      `LK stall tracking overflow (${this.stalls.size} tracked): recycling delivery channel for broker-side requeue`,
+    );
+    if (this.shuttingDown || gen !== this.generation) return;
+    try {
+      const closer = deliveryChannel as unknown as { close?: () => Promise<unknown> };
+      void closer.close?.()?.catch(() => undefined);
+    } catch {
+      // ignore: state reset below still forces reconnect.
+    }
+    this.clearChannelState();
+    this.connecting = null;
+    this.scheduleReconnect();
+    void msg;
   }
 
   /**

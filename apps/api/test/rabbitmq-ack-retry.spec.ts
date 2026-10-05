@@ -508,8 +508,7 @@ describe('RabbitMQ confirm-gated retry (single publish path)', () => {
     await svc.onModuleDestroy();
   });
 
-  it('stall tracking overflow uses a bounded fallback delay (message preserved, memory capped)', async () => {
-    vi.useFakeTimers();
+  it('stall tracking overflow recycles the channel (no untracked timers, broker requeues)', async () => {
     const svc = service();
     const pub = confirmChannel('pub', { kind: 'nack' });
     const d = confirmChannel('d');
@@ -517,19 +516,22 @@ describe('RabbitMQ confirm-gated retry (single publish path)', () => {
     // Fill tracking to the cap with foreign entries.
     const stalls = (svc as unknown as { stalls: Map<string, { timer: null; token: object }> }).stalls;
     for (let i = 0; i < 1000; i++) stalls.set(`9:fill-${i}`, { timer: null, token: {} });
+    let closed = 0;
+    (d as unknown as { close: () => Promise<void> }).close = async () => {
+      closed += 1;
+    };
     const msg = rabbitMsg();
-    const p = svc.retryLaterAsync(d as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
-    await vi.advanceTimersByTimeAsync(10);
-    await expect(p).resolves.toBe(false);
-    // No immediate hot requeue and no map growth...
+    const ok = await svc.retryLaterAsync(d as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    expect(ok).toBe(false);
+    // No untracked fallback timer, no nack from here: the channel is recycled
+    // so the broker requeues everything unacked (message preserved, rate via
+    // reconnect backoff). Reachable only on leak/miswiring (prefetch caps
+    // live deliveries at ~10); the error is unmissable in logs.
+    expect(closed).toBe(1);
     expect(d.calls.nack).toHaveLength(0);
-    expect(stalls.size).toBeLessThanOrEqual(1001);
-    // ...but the message still has a live recovery path (fallback delay).
-    await vi.advanceTimersByTimeAsync(59000);
-    expect(d.calls.nack).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(d.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(1);
-    expect(d.calls.nack.filter((n) => !(n as { requeue: boolean }).requeue)).toHaveLength(0);
+    expect(d.calls.ack).toHaveLength(0);
+    expect(stalls.size).toBe(0);
+    expect(svc.getReconnectState().scheduled).toBe(true);
     await svc.onModuleDestroy();
   });
 
@@ -562,33 +564,42 @@ describe('RabbitMQ confirm-gated retry (single publish path)', () => {
     await svc.onModuleDestroy();
   });
 
-  it('REGRESSION (stall lifecycle): settled deliveries free their tracking entry', async () => {
+  it('REGRESSION (stall lifecycle): 1050 sequential deliveries leave no history', async () => {
     // Defect: the timer callback cleared entry.timer but kept the entry, so
     // sequential deliveries with NEW tags (like real redeliveries) accumulated
     // history until STALL_MAX_TRACKED flipped the path into immediate nack.
+    // Here 1050 sequential failing deliveries (one outstanding at a time, as
+    // redelivery chains arrive under prefetch) must each wait the full delay,
+    // settle exactly once, and leave tracking empty — never DLQed for a mere
+    // unavailable retry route.
     vi.useFakeTimers();
     const svc = service();
     const pub = confirmChannel('pub', { kind: 'nack' });
     const d = confirmChannel('d');
     wire(svc, pub);
     const size = () => (svc as unknown as { stalls: Map<string, unknown> }).stalls.size;
-    let maxSize = 0;
+    const requeues = () => d.calls.nack.filter((n) => (n as { requeue: boolean }).requeue).length;
     const body = Buffer.from(JSON.stringify({ eventId: 'evt-history' }));
-    for (let i = 0; i < 5; i++) {
-      const m = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 500 + i, redelivered: i > 0 }, properties: { headers: {} }, content: body };
+    let maxSize = 0;
+    const N = 1050;
+    for (let i = 0; i < N; i++) {
+      const m = { fields: { routingKey: 'lk.reference.employee.upserted.v1', deliveryTag: 10000 + i, redelivered: i > 0 }, properties: { headers: {} }, content: body };
       const p = svc.retryLaterAsync(d as never, m as never, 'lk.reference.employee.upserted.v1', 0);
       await vi.advanceTimersByTimeAsync(10);
       await expect(p).resolves.toBe(false);
-      // Let this delivery's slow-requeue fire: it is settled afterwards.
-      await vi.advanceTimersByTimeAsync(5000);
+      // Delay preserved per delivery: nothing fires early (total < 5000)...
+      await vi.advanceTimersByTimeAsync(4989);
+      expect(requeues()).toBe(i);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(requeues()).toBe(i + 1);
       maxSize = Math.max(maxSize, size());
     }
     // Settled deliveries must not accumulate: bounded by live deliveries only.
     expect(maxSize).toBeLessThanOrEqual(2);
-    // Every delivery got its delayed (never immediate, never hot) requeue...
-    expect(d.calls.nack.filter((n) => (n as { requeue: boolean }).requeue)).toHaveLength(5);
+    expect(size()).toBe(0);
     // ...and none was diverted to DLQ for a mere unavailable retry route.
     expect(d.calls.nack.filter((n) => !(n as { requeue: boolean }).requeue)).toHaveLength(0);
+    expect(d.calls.ack).toHaveLength(0);
     await svc.onModuleDestroy();
   });
 
@@ -617,7 +628,7 @@ describe('RabbitMQ confirm-gated retry (single publish path)', () => {
     await svc.onModuleDestroy();
   });
 
-  it('same-tag reschedule replaces (one nack); stale-generation timers stay silent', async () => {
+  it('same-delivery reschedule replaces the pending timer (not a redelivery): one nack; stale timers silent', async () => {
     vi.useFakeTimers();
     const svc = service();
     const pub = confirmChannel('pub', { kind: 'nack' });
