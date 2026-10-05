@@ -520,17 +520,95 @@ describe('RabbitMQ confirm-gated retry (single publish path)', () => {
     (d as unknown as { close: () => Promise<void> }).close = async () => {
       closed += 1;
     };
+    let connClosed = 0;
+    const connA = { close: async () => { connClosed += 1; }, on: () => undefined };
+    (svc as unknown as { connection: unknown }).connection = connA;
     const msg = rabbitMsg();
     const ok = await svc.retryLaterAsync(d as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
     expect(ok).toBe(false);
-    // No untracked fallback timer, no nack from here: the channel is recycled
-    // so the broker requeues everything unacked (message preserved, rate via
-    // reconnect backoff). Reachable only on leak/miswiring (prefetch caps
-    // live deliveries at ~10); the error is unmissable in logs.
+    // No untracked fallback timer, no nack from here: channel AND connection
+    // are recycled so the broker requeues everything unacked (message
+    // preserved, rate via reconnect backoff). Reachable only on leak/miswiring
+    // (prefetch caps live deliveries at ~10); the error is unmissable in logs.
     expect(closed).toBe(1);
+    expect(connClosed).toBe(1);
     expect(d.calls.nack).toHaveLength(0);
     expect(d.calls.ack).toHaveLength(0);
     expect(stalls.size).toBe(0);
+    // Old stall timers cancelled.
+    expect(svc.getReconnectState().scheduled).toBe(true);
+    // Handles detached from active service state.
+    expect((svc as unknown as { channel: unknown }).channel).toBeNull();
+    expect((svc as unknown as { connection: unknown }).connection).toBeNull();
+    expect((svc as unknown as { generation: number }).generation).toBe(1);
+    await svc.onModuleDestroy();
+  });
+
+  it('late old connection close cannot kill the new connection', async () => {
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'nack' });
+    const d = confirmChannel('d');
+    wire(svc, pub);
+    const stored: Record<string, Array<(e?: unknown) => void>> = {};
+    const connA = {
+      close: async () => undefined,
+      on: (ev: string, fn: (e?: unknown) => void) => {
+        (stored[ev] ??= []).push(fn);
+      },
+    };
+    (svc as unknown as { connection: unknown }).connection = connA;
+    (svc as unknown as { attachConnectionListeners: (c: unknown) => void }).attachConnectionListeners.call(svc, connA);
+    const stalls = (svc as unknown as { stalls: Map<string, { timer: null; token: object }> }).stalls;
+    for (let i = 0; i < 1000; i++) stalls.set(`8:fill-${i}`, { timer: null, token: {} });
+    const msg = rabbitMsg();
+    await svc.retryLaterAsync(d as never, msg as never, 'lk.reference.employee.upserted.v1', 0);
+    expect((svc as unknown as { generation: number }).generation).toBe(1);
+    // Simulate a completed reconnect: timer fired, new resources installed.
+    const pendingTimer = (svc as unknown as { reconnectTimer: ReturnType<typeof setTimeout> | null }).reconnectTimer;
+    expect(pendingTimer).not.toBeNull();
+    if (pendingTimer) clearTimeout(pendingTimer);
+    (svc as unknown as { reconnectTimer: unknown }).reconnectTimer = null;
+    const connB = { close: async () => undefined, on: () => undefined };
+    const channelB = confirmChannel('B');
+    (svc as unknown as { connection: unknown }).connection = connB;
+    (svc as unknown as { channel: unknown }).channel = channelB;
+    // Late callbacks from the recycled connection A must be ignored.
+    for (const fn of stored['close'] ?? []) fn(new Error('old close'));
+    for (const fn of stored['error'] ?? []) fn(new Error('old error'));
+    expect((svc as unknown as { connection: unknown }).connection).toBe(connB);
+    expect((svc as unknown as { channel: unknown }).channel).toBe(channelB);
+    expect((svc as unknown as { generation: number }).generation).toBe(1);
+    expect((svc as unknown as { reconnectTimer: unknown }).reconnectTimer).toBeNull();
+    await svc.onModuleDestroy();
+  });
+
+  it('multiple overflow triggers for one generation recycle exactly once', async () => {
+    const svc = service();
+    const pub = confirmChannel('pub', { kind: 'nack' });
+    const d = confirmChannel('d');
+    wire(svc, pub);
+    const stalls = (svc as unknown as { stalls: Map<string, { timer: null; token: object }> }).stalls;
+    for (let i = 0; i < 1000; i++) stalls.set(`7:fill-${i}`, { timer: null, token: {} });
+    let channelCloses = 0;
+    (d as unknown as { close: () => Promise<void> }).close = async () => {
+      channelCloses += 1;
+    };
+    let connCloses = 0;
+    (svc as unknown as { connection: unknown }).connection = {
+      close: async () => { connCloses += 1; },
+      on: () => undefined,
+    };
+    // Three triggers for the same old generation: the first recycles (0->1),
+    // the rest observe the bumped generation and become stale no-ops.
+    await svc.retryLaterAsync(d as never, rabbitMsg() as never, 'lk.reference.employee.upserted.v1', 0);
+    await svc.retryLaterAsync(d as never, rabbitMsg() as never, 'lk.reference.employee.upserted.v1', 0);
+    await svc.retryLaterAsync(d as never, rabbitMsg() as never, 'lk.reference.employee.upserted.v1', 0);
+    expect(channelCloses).toBe(1);
+    expect(connCloses).toBe(1);
+    expect((svc as unknown as { generation: number }).generation).toBe(1);
+    expect(stalls.size).toBe(0);
+    expect(d.calls.nack).toHaveLength(0);
+    expect(d.calls.ack).toHaveLength(0);
     expect(svc.getReconnectState().scheduled).toBe(true);
     await svc.onModuleDestroy();
   });

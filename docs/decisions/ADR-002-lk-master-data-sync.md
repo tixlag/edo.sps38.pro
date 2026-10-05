@@ -184,9 +184,13 @@ LK publishes a narrow internal API + RabbitMQ events (see
   deliveries free their entries (no history growth; 1050 sequential
   redeliveries stay at ≤2 tracked); same-delivery reschedule replaces via
   token (exactly one nack per tag). Tracking overflow (1000, unreachable
-  under the prefetch=10 invariant) recycles the delivery channel so the
-  broker requeues everything unacked — no untracked timers, message
-  preserved, rate via reconnect backoff. Broker cancel
+  under the prefetch=10 invariant) recycles the OLD delivery channel AND
+  the OLD connection (both closed best-effort, never awaited — otherwise the
+  orphaned connection/socket would accumulate, as the service drops its
+  reference) so the broker requeues everything unacked — no untracked timers,
+  message preserved, rate via reconnect backoff. First trigger per generation
+  wins (generation bump makes the rest stale no-ops); late old-connection
+  callbacks cannot touch the new connection (identity guard). Broker cancel
   (null delivery) re-subscribes via the reconnect loop. Consumer passes a real
   shutdown AbortSignal and drops post-wait work after a generation change.
 - **DLX chain (proven, with an explicit open window)**: intact retry→main and

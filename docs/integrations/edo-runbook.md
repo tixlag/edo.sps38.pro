@@ -77,8 +77,10 @@ staleness never gates reads of existing data.
   path. DLQ stays for poison and confirmed-exhaustion. Stall tracking is
   per-delivery (`generation:deliveryTag`, freed on settlement); a tracking
   overflow (1000 entries — unreachable under prefetch=10, i.e. leak/miswire)
-  recycles the delivery channel for broker-side requeue instead of creating
-  untracked timers.
+  recycles the OLD delivery channel AND the OLD connection (both closed
+  best-effort, never awaited) for broker-side requeue instead of creating
+  untracked timers. First trigger per generation wins; late old-connection
+  callbacks are ignored by the identity guard.
 - Old retry-format (queue-name key, no `x-original-routing-key`): poisoned
   deterministically. Recover via:
 

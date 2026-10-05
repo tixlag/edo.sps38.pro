@@ -678,26 +678,51 @@ export class RabbitmqService implements OnModuleDestroy {
    * under the intact prefetch=10 invariant at most ~10 deliveries can be
    * unacked per channel, so this means a leak or consumer miswiring — never
    * normal load. Instead of an untracked fallback timer (uncancellable,
-   * invisible) or an immediate hot requeue, the delivery channel is
-   * recycled: closing it makes the broker requeue EVERYTHING unacked, and
-   * the existing reconnect loop re-establishes the consumer with fresh tags.
-   * No timer is created, the map does not grow, the message is preserved by
-   * the broker (not stranded), and the rate is governed by reconnect
-   * backoff — then the anomaly is impossible to miss in logs.
+   * invisible) or an immediate hot requeue, the OLD delivery channel AND the
+   * OLD connection are both closed (best-effort, never awaited): otherwise an
+   * orphaned connection/socket would accumulate on repeated overflows, since
+   * the service drops its reference and the old connection's late callbacks
+   * are ignored by the identity guard. Closing both makes the broker requeue
+   * EVERYTHING unacked, and the existing reconnect loop re-establishes the
+   * consumer with fresh tags. No timer is created, the map does not grow, the
+   * message is preserved by the broker (not stranded, never DLQed for this),
+   * and the rate is governed by reconnect backoff — then the anomaly is
+   * impossible to miss in logs.
    */
   private recycleOnStallOverflow(deliveryChannel: Channel, msg: DeliveryMsg, gen: number): void {
     this.logger.error(
-      `LK stall tracking overflow (${this.stalls.size} tracked): recycling delivery channel for broker-side requeue`,
+      `LK stall tracking overflow (${this.stalls.size} tracked): recycling AMQP resources for broker-side requeue`,
     );
+    // Idempotency without a mutex: only the first trigger of a generation
+    // proceeds — it bumps the generation below, so every concurrent or late
+    // trigger for the same old generation becomes a stale no-op. Exactly one
+    // recycle (one channel close, one connection close, one reconnect) per
+    // generation, and stale callbacks never settle old deliveryTags again.
     if (this.shuttingDown || gen !== this.generation) return;
-    try {
-      const closer = deliveryChannel as unknown as { close?: () => Promise<unknown> };
-      void closer.close?.()?.catch(() => undefined);
-    } catch {
-      // ignore: state reset below still forces reconnect.
-    }
+    // Capture the old handles BEFORE detaching state: after clearChannelState
+    // the service no longer references them, and their late error/close
+    // callbacks are ignored by the identity guard (connection !== watched).
+    const oldChannel = deliveryChannel;
+    const oldConnection = this.connection;
+    // Detach first: nulls handles, cancels stall timers, bumps generation.
+    // From here no stale callback can ack/nack, schedule, or clear new state.
     this.clearChannelState();
     this.connecting = null;
+    // Best-effort, non-blocking closes of the OLD resources only. Never awaited:
+    // hanging closes must not stall recovery; errors are swallowed. New
+    // resources created later by reconnect are never touched here.
+    try {
+      const channelCloser = oldChannel as unknown as { close?: () => Promise<unknown> };
+      void channelCloser.close?.()?.catch(() => undefined);
+    } catch {
+      // ignore: the state reset above already forces reconnect.
+    }
+    try {
+      const connectionCloser = oldConnection as unknown as { close?: () => Promise<unknown> } | null;
+      void connectionCloser?.close?.()?.catch(() => undefined);
+    } catch {
+      // ignore: see above.
+    }
     this.scheduleReconnect();
     void msg;
   }
