@@ -7,12 +7,13 @@ import {
   PenLine,
   Users,
   Settings,
-  LogOut,
   PanelLeftOpen,
   PanelLeftClose,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@edo/ui';
+import type { MeResponseDto } from '@edo/api-client';
+import { profileLabel, profileInitials } from '../lib/profile';
 
 export interface NavItem {
   key: string;
@@ -24,10 +25,10 @@ export interface NavItem {
 
 export const WORK_NAV: NavItem[] = [
   { key: 'dashboard', label: 'Дашборд', icon: LayoutDashboard, to: '/' },
-  { key: 'tasks', label: 'Мои задачи', icon: ClipboardCheck, badge: 12, to: '/tasks' },
-  { key: 'review', label: 'Проверка документов', icon: FileCheck2, badge: 11, to: '/review' },
+  { key: 'tasks', label: 'Мои задачи', icon: ClipboardCheck, to: '/tasks' },
+  { key: 'review', label: 'Проверка документов', icon: FileCheck2, to: '/review' },
   { key: 'onboarding', label: 'Оформление', icon: Route, to: '/onboarding' },
-  { key: 'signing', label: 'Подписание', icon: PenLine, badge: 4, to: '/signing' },
+  { key: 'signing', label: 'Подписание', icon: PenLine, to: '/signing' },
   { key: 'employees', label: 'Работники', icon: Users, to: '/employees' },
 ];
 
@@ -46,12 +47,15 @@ export function AppSidebar({
   active,
   onToggle,
   onNavigate,
+  profile,
 }: {
   collapsed: boolean;
   active: string;
   onToggle: () => void;
   onNavigate: (to: string) => void;
+  profile?: MeResponseDto;
 }) {
+  const name = profileLabel(profile);
   if (collapsed) {
     const all = [...WORK_NAV, ...CONFIG_NAV];
     return (
@@ -86,10 +90,9 @@ export function AppSidebar({
           </nav>
         </div>
         <div className="flex flex-col items-center gap-3">
-          <div className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
-            МК
+          <div title={name} aria-label={name} className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
+            {profileInitials(profile)}
           </div>
-          <LogOut size={21} color="var(--primary)" />
         </div>
         <button
           aria-label="Развернуть меню"
@@ -159,17 +162,14 @@ export function AppSidebar({
       </div>
       <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
         <div className="flex items-center gap-3 px-2">
-          <div className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
-            МК
+          <div title={name} className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
+            {profileInitials(profile)}
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold">Менеджер К.</span>
-            <span className="text-xs text-[var(--muted-foreground)]">HR-оператор</span>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate text-sm font-semibold" title={name}>{name}</span>
+            <span className="truncate text-xs text-[var(--muted-foreground)]">{profile?.positionName ?? 'Учётная запись ЛК'}</span>
           </div>
         </div>
-        <button className="flex h-[46px] items-center gap-3 rounded-[12px] px-[14px] text-sm font-semibold text-[var(--primary)] hover:bg-[var(--primary-soft)]">
-          <LogOut size={20} /> Выйти
-        </button>
       </div>
     </aside>
   );

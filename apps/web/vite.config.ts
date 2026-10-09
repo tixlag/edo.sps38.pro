@@ -21,7 +21,12 @@ export default defineConfig(({ mode }) => {
   }
   return {
     plugins: [react()],
-    server: { port: 5173 },
+    server: {
+      port: 5173,
+      ...(process.env.EDO_LOCAL_HTTPS === 'true' ? {
+        hmr: { protocol: 'wss', host: 'edo.localhost', clientPort: 12443 },
+      } : {}),
+    },
     envDir: rootDir,
     define: clientOverrides,
   };

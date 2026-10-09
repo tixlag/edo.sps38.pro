@@ -126,7 +126,7 @@
             "access-jwt": []
           }
         ],
-        "summary": "Dashboard summary (seed-backed for first slice)",
+        "summary": "Current dashboard summary within user location scope",
         "tags": [
           "dashboard"
         ]
@@ -234,7 +234,7 @@
             "access-jwt": []
           }
         ],
-        "summary": "Current principal (permissions + location scope)",
+        "summary": "Current LK profile, permissions and location scope",
         "tags": [
           "me"
         ]
@@ -1992,6 +1992,9 @@
       "BlockedItemDto": {
         "type": "object",
         "properties": {
+          "employeeId": {
+            "type": "string"
+          },
           "fullName": {
             "type": "string",
             "example": "Токтогулов Айбек Русланович"
@@ -2002,6 +2005,7 @@
           }
         },
         "required": [
+          "employeeId",
           "fullName",
           "step"
         ]
@@ -2064,7 +2068,7 @@
           },
           "source": {
             "type": "string",
-            "example": "seed"
+            "example": "database"
           }
         },
         "required": [
@@ -2187,6 +2191,23 @@
             "example": "УП00040092",
             "nullable": true
           },
+          "fullName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Name from the LK projection, matched only by JWT code1c/uuid"
+          },
+          "positionName": {
+            "type": "string",
+            "nullable": true
+          },
+          "departmentName": {
+            "type": "string",
+            "nullable": true
+          },
+          "organizationName": {
+            "type": "string",
+            "nullable": true
+          },
           "permissions": {
             "type": "object",
             "example": {
@@ -2204,6 +2225,10 @@
         "required": [
           "uuid",
           "code1c",
+          "fullName",
+          "positionName",
+          "departmentName",
+          "organizationName",
           "permissions",
           "locationScope"
         ]

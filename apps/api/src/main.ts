@@ -16,7 +16,8 @@ dotenvConfig({ path: join(__dirname, '..', '..', '..', '.env') });
 export async function createApp(): Promise<{ app: NestFastifyApplication; document: OpenAPIObject }> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ logger: false }),
+    // Unified LK JWTs include accessRules and can exceed Node's default 16 KiB.
+    new FastifyAdapter({ logger: false, http: { maxHeaderSize: 128 * 1024 } }),
   );
 
   await app.register(fastifyMultipart, { limits: { files: 10, fileSize: 10 * 1024 * 1024, fields: 2, parts: 12 } });

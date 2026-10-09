@@ -5,6 +5,7 @@ import { PageHeader } from '@edo/ui';
 import { Button } from '@edo/ui';
 import { ActivityItem } from '../components/ActivityItem';
 import { CheckCircle2, FileCheck2, AlertTriangle, PenLine, Award, RefreshCw } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
 
 const KPI_ICONS = [FileCheck2, AlertTriangle, PenLine, Award, RefreshCw, CheckCircle2];
 const KPI_ACCENTS = [
@@ -26,20 +27,20 @@ const STAGE_COLORS = [
 ];
 
 function Donut({ slices }: { slices: { value: number; color: string }[] }) {
-  const total = slices.reduce((a, s) => a + s.value, 0) || 1;
+  const total = slices.reduce((a, s) => a + s.value, 0);
   let acc = 0;
   const stops = slices
     .map((s) => {
-      const from = (acc / total) * 360;
+      const from = (acc / (total || 1)) * 360;
       acc += s.value;
-      const to = (acc / total) * 360;
+      const to = (acc / (total || 1)) * 360;
       return `${s.color} ${from}deg ${to}deg`;
     })
     .join(', ');
   return (
     <div
       className="relative h-[120px] w-[120px] shrink-0 rounded-full"
-      style={{ background: `conic-gradient(${stops})` }}
+      style={{ background: total ? `conic-gradient(${stops})` : 'var(--border)' }}
     >
       <div className="absolute inset-[22px] flex items-center justify-center rounded-full bg-white">
         <span className="font-mono text-[20px] font-bold">{total}</span>
@@ -50,16 +51,17 @@ function Donut({ slices }: { slices: { value: number; color: string }[] }) {
 
 export function DashboardPage() {
   const { data, isLoading, isError } = useGetDashboard();
+  const navigate = useNavigate();
 
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-[26px_28px_28px_28px]">
       <PageHeader
         title="Дашборд"
-        subtitle="Оформление сотрудников · данные backend через generated hooks"
+        subtitle="Дела оформления в пределах ваших прав доступа"
         actions={
           <>
-            <Button variant="outline">Фильтры</Button>
-            <Button>Добавить работника</Button>
+            <Button variant="outline" disabled title="Фильтры пока недоступны">Фильтры</Button>
+            <Button disabled title="Создание дела пока недоступно">Добавить работника</Button>
           </>
         }
       />
@@ -93,8 +95,8 @@ export function DashboardPage() {
             <Card className="flex w-[1100px] max-w-[60%] flex-col">
               <CardHeader>
                 <div className="flex flex-col">
-                  <span className="text-[15px] font-bold">Оформлено за неделю</span>
-                  <span className="text-[12px] text-[var(--muted-foreground)]">Пн — Вс · источник: backend seed</span>
+                  <span className="text-[15px] font-bold">Новые дела за неделю</span>
+                  <span className="text-[12px] text-[var(--muted-foreground)]">Пн — Вс · текущая неделя, UTC</span>
                 </div>
               </CardHeader>
               <CardContent className="flex flex-1 items-end gap-3">
@@ -102,7 +104,7 @@ export function DashboardPage() {
                   <div key={b.day} className="flex flex-1 flex-col items-center gap-2">
                     <div
                       className="w-full rounded-t-[6px] bg-[var(--primary)]"
-                      style={{ height: `${Math.max(8, b.value * 22)}px`, opacity: 0.85 }}
+                      style={{ height: b.value ? `${Math.max(8, b.value / Math.max(1, ...data.weekly.map(item => item.value)) * 180)}px` : '0px', opacity: 0.85 }}
                     />
                     <span className="text-[11px] text-[var(--muted-foreground)]">{b.day}</span>
                   </div>
@@ -141,8 +143,9 @@ export function DashboardPage() {
               </CardHeader>
               <div>
                 {data.activity.map((a, i) => (
-                  <ActivityItem key={i} kind={a.kind} title={a.title} time={a.time} />
+                  <ActivityItem key={i} kind={a.kind} title={a.title} time={new Date(a.time).toLocaleString('ru-RU')} />
                 ))}
+                {data.activity.length === 0 && <p className="px-5 py-6 text-sm text-[var(--muted-foreground)]">Ваших действий в EDO пока нет.</p>}
               </div>
             </Card>
 
@@ -153,27 +156,29 @@ export function DashboardPage() {
                 </CardHeader>
                 <CardContent className="flex flex-col gap-2">
                   {data.blocked.map((b) => (
-                    <div key={b.fullName} className="flex items-center justify-between gap-2 text-[13px]">
+                    <div key={b.employeeId} className="flex items-center justify-between gap-2 text-[13px]">
                       <span className="flex flex-col">
                         <span className="font-semibold">{b.fullName}</span>
                         <span className="text-[var(--muted-foreground)]">{b.step}</span>
                       </span>
-                      <Button size="sm" variant="outline">Открыть</Button>
+                      <Button size="sm" variant="outline" onClick={() => void navigate({ to: `/employees/${b.employeeId}` })}>Открыть</Button>
                     </div>
                   ))}
+                  {data.blocked.length === 0 && <p className="text-sm text-[var(--muted-foreground)]">Заблокированных дел нет.</p>}
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader>
-                  <span className="text-[15px] font-bold">Мои задачи на сегодня</span>
+                  <span className="text-[15px] font-bold">Мои открытые задачи</span>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-2">
                   {data.tasks.map((t) => (
                     <div key={t.title} className="flex items-center justify-between gap-2 text-[13px]">
                       <span>{t.title}</span>
-                      <Button size="sm">Готово</Button>
+                      <Button size="sm" disabled title="Завершение задачи пока недоступно">Готово</Button>
                     </div>
                   ))}
+                  {data.tasks.length === 0 && <p className="text-sm text-[var(--muted-foreground)]">Вам пока не назначены задачи.</p>}
                 </CardContent>
               </Card>
             </div>

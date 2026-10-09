@@ -15,6 +15,18 @@ export class MeResponseDto {
   @ApiProperty({ example: 'УП00040092', nullable: true, type: String })
   code1c!: string | null;
 
+  @ApiProperty({ type: String, nullable: true, description: 'Name from the LK projection, matched only by JWT code1c/uuid' })
+  fullName!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  positionName!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  departmentName!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  organizationName!: string | null;
+
   @ApiProperty({ example: { '20000': [], '20007': ['98', '148'] } })
   permissions!: Record<string, string[]>;
 

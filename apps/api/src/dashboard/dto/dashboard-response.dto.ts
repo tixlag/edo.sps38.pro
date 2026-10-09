@@ -42,6 +42,8 @@ export class ActivityItemDto {
 }
 
 export class BlockedItemDto {
+  @ApiProperty({ type: String })
+  employeeId!: string;
   @ApiProperty({ example: 'Токтогулов Айбек Русланович' })
   fullName!: string;
 
@@ -76,6 +78,6 @@ export class DashboardResponseDto {
   @ApiProperty({ type: [TaskItemDto] })
   tasks!: TaskItemDto[];
 
-  @ApiProperty({ example: 'seed' })
+  @ApiProperty({ example: 'database' })
   source!: string;
 }

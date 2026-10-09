@@ -73,6 +73,7 @@ export interface ActivityItemDto {
 }
 
 export interface BlockedItemDto {
+  employeeId: string;
   fullName: string;
   step: string;
 }
@@ -135,6 +136,17 @@ export interface MeResponseDto {
   uuid: string;
   /** @nullable */
   code1c: string | null;
+  /**
+   * Name from the LK projection, matched only by JWT code1c/uuid
+   * @nullable
+   */
+  fullName: string | null;
+  /** @nullable */
+  positionName: string | null;
+  /** @nullable */
+  departmentName: string | null;
+  /** @nullable */
+  organizationName: string | null;
   permissions: MeResponseDtoPermissions;
   locationScope: LocationScopeDto;
 }
@@ -648,7 +660,7 @@ export function useGetHealthIntegration<
 }
 
 /**
- * @summary Dashboard summary (seed-backed for first slice)
+ * @summary Current dashboard summary within user location scope
  */
 export const getDashboard = (signal?: AbortSignal) => {
   return customInstance<DashboardResponseDto>({
@@ -693,7 +705,7 @@ export type GetDashboardQueryResult = NonNullable<
 export type GetDashboardQueryError = void;
 
 /**
- * @summary Dashboard summary (seed-backed for first slice)
+ * @summary Current dashboard summary within user location scope
  */
 
 export function useGetDashboard<
@@ -869,7 +881,7 @@ export function useGetEmployee<
 }
 
 /**
- * @summary Current principal (permissions + location scope)
+ * @summary Current LK profile, permissions and location scope
  */
 export const getMe = (signal?: AbortSignal) => {
   return customInstance<MeResponseDto>({
@@ -908,7 +920,7 @@ export type GetMeQueryResult = NonNullable<Awaited<ReturnType<typeof getMe>>>;
 export type GetMeQueryError = void;
 
 /**
- * @summary Current principal (permissions + location scope)
+ * @summary Current LK profile, permissions and location scope
  */
 
 export function useGetMe<

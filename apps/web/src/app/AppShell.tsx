@@ -2,6 +2,8 @@ import * as React from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from '@tanstack/react-router';
 import { AppSidebar } from '../components/AppSidebar';
 import { AppHeader } from '../components/AppHeader';
+import { useGetMe } from '@edo/api-client';
+import { Button } from '@edo/ui';
 
 const CRUMBS: Record<string, string> = {
   '/': 'Дашборд',
@@ -27,6 +29,7 @@ function activeFor(pathname: string): string {
 
 /** Layout shell: real URL routing via TanStack Router (back/forward + deep links work). */
 export function AppShell() {
+  const profile = useGetMe();
   const [collapsed, setCollapsed] = React.useState(true);
   const navigate = useNavigate();
   const location = useLocation();
@@ -43,21 +46,24 @@ export function AppShell() {
         active={activeFor(pathname)}
         onToggle={() => setCollapsed((v) => !v)}
         onNavigate={go}
+        profile={profile.data}
       />
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        <AppHeader crumb={crumbFor(pathname)} />
+        <AppHeader crumb={crumbFor(pathname)} profile={profile.data} />
+        {profile.isError && (
+          <div role="alert" className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-7 py-3 text-sm">
+            Не удалось загрузить ваш профиль ЛК.
+            <Button variant="outline" size="sm" onClick={() => void profile.refetch()}>Повторить</Button>
+          </div>
+        )}
+        {profile.data && !profile.data.fullName && (
+          <div className="border-b border-[var(--border)] px-7 py-3 text-sm text-[var(--muted-foreground)]">
+            Вход выполнен. Для этой учётной записи профиль в справочнике ЛК пока не найден.
+          </div>
+        )}
         <main className="min-h-0 flex-1">
           <Outlet />
         </main>
-      </div>
-      <div className="pointer-events-none fixed bottom-6 right-6 flex w-[360px] items-center gap-3 rounded-[12px] bg-[var(--toast-bg)] p-[12px_14px] text-white shadow-[0_5px_18px_rgba(0,0,0,0.19)]">
-        <span className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-[var(--success-tint)] text-[var(--success-bright)]">
-          ✓
-        </span>
-        <span className="flex flex-col gap-[3px]">
-          <span className="text-[12px] font-bold">Данные синхронизированы</span>
-          <span className="text-[10px] text-[var(--toast-sub)]">1С ERP · 2 мин назад</span>
-        </span>
       </div>
     </div>
   );

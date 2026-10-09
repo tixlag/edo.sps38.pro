@@ -27,8 +27,8 @@ export function EmployeesPage() {
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-[26px_28px_28px_28px]">
       <PageHeader
         title="Работники"
-        subtitle="Первый vertical slice: MariaDB → Prisma → NestJS → OpenAPI → Orval → React"
-        actions={<Button>Добавить работника</Button>}
+        subtitle="Дела оформления сотрудников в пределах ваших прав доступа"
+        actions={<Button disabled title="Создание дела пока недоступно">Добавить работника</Button>}
       />
       <Card>
         <CardContent>

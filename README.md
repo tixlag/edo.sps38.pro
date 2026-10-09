@@ -9,6 +9,11 @@ Prisma + MariaDB · RabbitMQ · Redis · Orval-generated clients.
 
 ## Local development (shared LK infrastructure)
 
+Local HTTPS stand: **https://edo.localhost:12443** · `pnpm local:up` /
+`pnpm local:status` / `pnpm local:down`.
+See [local stand and login instructions](docs/local/stand.md) for demo auth,
+shared nginx, S3 configuration and the currently implemented screens.
+
 EDO runs **no** MariaDB/Redis/RabbitMQ of its own. Local dev uses the shared LK
 containers; only data ownership is isolated:
 

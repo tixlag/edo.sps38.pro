@@ -16,6 +16,9 @@
     "docker:up": "docker compose up -d s3",
     "s3:up": "docker compose up -d s3",
     "infra:check": "pnpm --filter @edo/api infra:check",
+    "local:up": "node scripts/local-stand.mjs up",
+    "local:down": "node scripts/local-stand.mjs down",
+    "local:status": "node scripts/local-stand.mjs status",
     "docker:down": "docker compose down"
   },
   "devDependencies": {

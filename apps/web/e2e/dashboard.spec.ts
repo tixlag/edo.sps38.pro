@@ -9,7 +9,7 @@ test('dashboard renders Pencil blocks from generated hooks', async ({ page }) =>
   await gotoAuthed(page, '/');
   await expect(page.getByRole('heading', { name: 'Дашборд' })).toBeVisible();
   await expect(page.getByText('Очередь проверки')).toBeVisible();
-  await expect(page.getByText('Оформлено за неделю')).toBeVisible();
+  await expect(page.getByText('Новые дела за неделю')).toBeVisible();
   await expect(page.getByText('Работники по этапам')).toBeVisible();
   await expect(page.getByText('Последние действия')).toBeVisible();
 });
