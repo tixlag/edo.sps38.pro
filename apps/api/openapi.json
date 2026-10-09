@@ -2348,6 +2348,64 @@
           "deleted"
         ]
       },
+      "OcrRegionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "string"
+          },
+          "fileOrdinal": {
+            "type": "number",
+            "minimum": 0
+          },
+          "pageNumber": {
+            "type": "number",
+            "minimum": 1
+          },
+          "x": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Normalized left coordinate after image EXIF/PDF page rotation"
+          },
+          "y": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "width": {
+            "type": "number",
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "height": {
+            "type": "number",
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "text": {
+            "type": "string",
+            "nullable": true,
+            "description": "Original OCR text in this region, never changed by manual corrections"
+          }
+        },
+        "required": [
+          "id",
+          "fileId",
+          "fileOrdinal",
+          "pageNumber",
+          "x",
+          "y",
+          "width",
+          "height",
+          "text"
+        ]
+      },
       "DocumentFieldDto": {
         "type": "object",
         "properties": {
@@ -2365,13 +2423,20 @@
           "editedBy": {
             "type": "string",
             "nullable": true
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OcrRegionDto"
+            }
           }
         },
         "required": [
           "name",
           "originalValue",
           "value",
-          "editedBy"
+          "editedBy",
+          "regions"
         ]
       },
       "OcrIssueDto": {

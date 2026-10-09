@@ -13,7 +13,7 @@ import { StorageService } from "../storage/storage.service";
 import { DocumentUploadService } from "../documents/document-upload.service";
 import {
   OcrService,
-  ocrResultSchema,
+  validateOcrResult,
   type OcrRequest,
   type OcrResult,
 } from "./ocr.service";
@@ -186,7 +186,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
         this.ocr.recognize(request, controller.signal),
         controller.signal,
       );
-      const checked = ocrResultSchema.parse(result);
+      const checked = validateOcrResult(result, request.files);
       const raw = JSON.stringify(checked.raw);
       if (!raw || Buffer.byteLength(raw) > 2 * 1024 * 1024)
         throw new Error("OCR_CONTRACT_INVALID");
@@ -299,6 +299,37 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
             value,
           })),
         });
+        if (result.regions?.length) {
+          const [fields, files] = await Promise.all([
+            tx.documentVersionField.findMany({
+              where: { versionId: initial.versionId },
+              select: { id: true, name: true },
+            }),
+            tx.documentVersionFile.findMany({
+              where: { versionId: initial.versionId },
+              select: { id: true, ordinal: true, pageCount: true },
+            }),
+          ]);
+          const regions = result.regions.map((region) => {
+            const field = fields.find((item) => item.name === region.fieldName);
+            const file = files.find(
+              (item) => item.ordinal === region.fileOrdinal,
+            );
+            if (!field || !file || region.pageNumber > file.pageCount)
+              throw new Error("OCR_CONTRACT_INVALID");
+            return {
+              fieldId: field.id,
+              fileId: file.id,
+              pageNumber: region.pageNumber,
+              x: region.x,
+              y: region.y,
+              width: region.width,
+              height: region.height,
+              text: region.text ?? null,
+            };
+          });
+          await tx.ocrRegion.createMany({ data: regions });
+        }
       } else {
         await tx.ocrIssue.createMany({
           data: result.issues.map((issue) => ({

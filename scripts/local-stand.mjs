@@ -60,7 +60,7 @@ async function bucket() {
     console.log('External S3: bucket provisioning left to its operator');
     return;
   }
-  const { S3Client, HeadBucketCommand, CreateBucketCommand, PutPublicAccessBlockCommand } = require('@aws-sdk/client-s3');
+  const { S3Client, HeadBucketCommand, CreateBucketCommand, PutPublicAccessBlockCommand, PutBucketCorsCommand } = require('@aws-sdk/client-s3');
   const client = new S3Client({
     endpoint: endpoint.href, region: process.env.S3_REGION ?? 'us-east-1', forcePathStyle: true,
     credentials: { accessKeyId: process.env.S3_ACCESS_KEY ?? '', secretAccessKey: process.env.S3_SECRET_KEY ?? '' },
@@ -76,6 +76,11 @@ async function bucket() {
     await client.send(new PutPublicAccessBlockCommand({ Bucket, PublicAccessBlockConfiguration: {
       BlockPublicAcls: true, IgnorePublicAcls: true, BlockPublicPolicy: true, RestrictPublicBuckets: true,
     } }), { abortSignal: AbortSignal.timeout(10_000) });
+    await client.send(new PutBucketCorsCommand({ Bucket, CORSConfiguration: { CORSRules: [{
+      AllowedOrigins: [process.env.CORS_ORIGIN ?? 'https://edo.localhost:12443'],
+      AllowedMethods: ['GET', 'HEAD'], AllowedHeaders: ['Range'],
+      ExposeHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges', 'ETag'], MaxAgeSeconds: 300,
+    }] } }), { abortSignal: AbortSignal.timeout(10_000) });
     console.log('Local S3 bucket ready');
   } finally { client.destroy(); }
 }

@@ -67,11 +67,37 @@ export class DocumentFileDto {
   @ApiProperty() pageCount!: number;
   @ApiProperty() deleted!: boolean;
 }
+export class OcrRegionDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() fileId!: string;
+  @ApiProperty({ minimum: 0 }) fileOrdinal!: number;
+  @ApiProperty({ minimum: 1 }) pageNumber!: number;
+  @ApiProperty({
+    minimum: 0,
+    maximum: 1,
+    description:
+      "Normalized left coordinate after image EXIF/PDF page rotation",
+  })
+  x!: number;
+  @ApiProperty({ minimum: 0, maximum: 1 }) y!: number;
+  @ApiProperty({ exclusiveMinimum: true, minimum: 0, maximum: 1 })
+  width!: number;
+  @ApiProperty({ exclusiveMinimum: true, minimum: 0, maximum: 1 })
+  height!: number;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "Original OCR text in this region, never changed by manual corrections",
+  })
+  text!: string | null;
+}
 export class DocumentFieldDto {
   @ApiProperty() name!: string;
   @ApiProperty({ type: String, nullable: true }) originalValue!: string | null;
   @ApiProperty({ type: String, nullable: true }) value!: string | null;
   @ApiProperty({ type: String, nullable: true }) editedBy!: string | null;
+  @ApiProperty({ type: [OcrRegionDto] }) regions!: OcrRegionDto[];
 }
 export class OcrIssueDto {
   @ApiProperty({ enum: ["DOCUMENT_TYPE_MISMATCH", "POOR_IMAGE_QUALITY"] })

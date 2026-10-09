@@ -208,6 +208,43 @@ export interface DocumentFileDto {
   deleted: boolean;
 }
 
+export interface OcrRegionDto {
+  id: string;
+  fileId: string;
+  /** @minimum 0 */
+  fileOrdinal: number;
+  /** @minimum 1 */
+  pageNumber: number;
+  /**
+   * Normalized left coordinate after image EXIF/PDF page rotation
+   * @minimum 0
+   * @maximum 1
+   */
+  x: number;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  y: number;
+  /**
+   * @minimum 0
+   * @maximum 1
+   * @exclusiveMinimum
+   */
+  width: number;
+  /**
+   * @minimum 0
+   * @maximum 1
+   * @exclusiveMinimum
+   */
+  height: number;
+  /**
+   * Original OCR text in this region, never changed by manual corrections
+   * @nullable
+   */
+  text: string | null;
+}
+
 export interface DocumentFieldDto {
   name: string;
   /** @nullable */
@@ -216,6 +253,7 @@ export interface DocumentFieldDto {
   value: string | null;
   /** @nullable */
   editedBy: string | null;
+  regions: OcrRegionDto[];
 }
 
 export type OcrIssueDtoCode =

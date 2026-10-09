@@ -347,6 +347,7 @@ model DocumentVersionFile {
   pageCount  Int             @default(1)
   deletedAt  DateTime?       @db.DateTime(3)
   version    DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  ocrRegions OcrRegion[]
 
   @@unique([versionId, ordinal])
   @@map("document_version_files")
@@ -361,9 +362,31 @@ model DocumentVersionField {
   editedBy      String?         @db.VarChar(64)
   updatedAt     DateTime        @updatedAt @db.DateTime(3)
   version       DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  regions       OcrRegion[]
 
   @@unique([versionId, name])
   @@map("document_version_fields")
+}
+
+// Immutable OCR geometry in normalized coordinates of the displayed page,
+// after EXIF/PDF rotation. Manual edits change value, never this source evidence.
+model OcrRegion {
+  id         String @id @default(cuid()) @db.VarChar(64)
+  fieldId    String @db.VarChar(64)
+  fileId     String @db.VarChar(64)
+  pageNumber Int
+  x          Float
+  y          Float
+  width      Float
+  height     Float
+  text       String? @db.Text
+
+  field DocumentVersionField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  file  DocumentVersionFile  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fieldId])
+  @@index([fileId, pageNumber])
+  @@map("ocr_regions")
 }
 
 enum OcrJobStatus {

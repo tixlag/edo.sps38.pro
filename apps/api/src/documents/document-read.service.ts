@@ -15,7 +15,19 @@ import type {
 
 const versionInclude = {
   files: { orderBy: { ordinal: "asc" as const } },
-  fields: { orderBy: { name: "asc" as const } },
+  fields: {
+    orderBy: { name: "asc" as const },
+    include: {
+      regions: {
+        include: { file: { select: { ordinal: true } } },
+        orderBy: [
+          { pageNumber: "asc" as const },
+          { y: "asc" as const },
+          { x: "asc" as const },
+        ],
+      },
+    },
+  },
   issues: true,
   job: true,
 } satisfies Prisma.DocumentVersionInclude;
@@ -143,6 +155,17 @@ export class DocumentReadService {
         originalValue: f.originalValue,
         value: f.value,
         editedBy: f.editedBy,
+        regions: f.regions.map((region) => ({
+          id: region.id,
+          fileId: region.fileId,
+          fileOrdinal: region.file.ordinal,
+          pageNumber: region.pageNumber,
+          x: region.x,
+          y: region.y,
+          width: region.width,
+          height: region.height,
+          text: region.text,
+        })),
       })),
       issues: row.issues.map((i) => ({
         code: i.code,

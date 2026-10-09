@@ -4,7 +4,7 @@
   "fields": {
     "holder_name": "Иванов Иван Иванович",
     "document_series": "0000",
-    "document_number": "000000",
+    "document_number": "00000O",
     "date_of_birth": "1990-01-15",
     "birth_place": "ТЕСТОВЫЙ ГОРОД",
     "citizenship": "Россия",
@@ -16,6 +16,109 @@
   "raw": {
     "synthetic": true,
     "note": "Учебный пример. Это не ответ внешнего OCR и не действительный паспорт.",
-    "documentTypeCode": "PASSPORT"
-  }
+    "documentTypeCode": "PASSPORT",
+    "exampleVersion": 3
+  },
+  "regions": [
+    {
+      "fieldName": "holder_name",
+      "fileOrdinal": 0,
+      "pageNumber": 1,
+      "x": 0.048,
+      "y": 0.27205882352941174,
+      "width": 0.44,
+      "height": 0.05588235294117647,
+      "text": "Иванов Иван Иванович"
+    },
+    {
+      "fieldName": "document_series",
+      "fileOrdinal": 0,
+      "pageNumber": 1,
+      "x": 0.048,
+      "y": 0.4117647058823529,
+      "width": 0.075,
+      "height": 0.05,
+      "text": "0000"
+    },
+    {
+      "fieldName": "document_number",
+      "fileOrdinal": 0,
+      "pageNumber": 1,
+      "x": 0.139,
+      "y": 0.4117647058823529,
+      "width": 0.105,
+      "height": 0.05,
+      "text": "00000O"
+    },
+    {
+      "fieldName": "date_of_birth",
+      "fileOrdinal": 0,
+      "pageNumber": 1,
+      "x": 0.528,
+      "y": 0.4117647058823529,
+      "width": 0.18,
+      "height": 0.05,
+      "text": "1990-01-15"
+    },
+    {
+      "fieldName": "birth_place",
+      "fileOrdinal": 0,
+      "pageNumber": 1,
+      "x": 0.048,
+      "y": 0.5426470588235294,
+      "width": 0.33,
+      "height": 0.051470588235294115,
+      "text": "ТЕСТОВЫЙ ГОРОД"
+    },
+    {
+      "fieldName": "citizenship",
+      "fileOrdinal": 0,
+      "pageNumber": 1,
+      "x": 0.528,
+      "y": 0.5426470588235294,
+      "width": 0.15,
+      "height": 0.051470588235294115,
+      "text": "Россия"
+    },
+    {
+      "fieldName": "issued_by",
+      "fileOrdinal": 0,
+      "pageNumber": 1,
+      "x": 0.048,
+      "y": 0.675,
+      "width": 0.77,
+      "height": 0.051470588235294115,
+      "text": "ТЕСТОВОЕ ПОДРАЗДЕЛЕНИЕ — ОБРАЗЕЦ"
+    },
+    {
+      "fieldName": "issued_at",
+      "fileOrdinal": 0,
+      "pageNumber": 1,
+      "x": 0.048,
+      "y": 0.8073529411764706,
+      "width": 0.19,
+      "height": 0.051470588235294115,
+      "text": "2020-02-20"
+    },
+    {
+      "fieldName": "department_code",
+      "fileOrdinal": 0,
+      "pageNumber": 1,
+      "x": 0.528,
+      "y": 0.8073529411764706,
+      "width": 0.2,
+      "height": 0.051470588235294115,
+      "text": "000-000"
+    },
+    {
+      "fieldName": "registration_address",
+      "fileOrdinal": 1,
+      "pageNumber": 1,
+      "x": 0.048,
+      "y": 0.525,
+      "width": 0.79,
+      "height": 0.057352941176470586,
+      "text": "Тестовый город, ул. Образцовая, д. 1"
+    }
+  ]
 }
