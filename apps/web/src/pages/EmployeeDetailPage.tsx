@@ -2,6 +2,7 @@ import { useGetEmployee } from '@edo/api-client';
 import { Card, CardContent } from '@edo/ui';
 import { PageHeader } from '@edo/ui';
 import { StatusBadge } from '@edo/ui';
+import { EmployeeDocuments } from '../components/EmployeeDocuments';
 
 export function EmployeeDetailPage({ id }: { id: string }) {
   const { data, isLoading, isError } = useGetEmployee(id);
@@ -23,6 +24,7 @@ export function EmployeeDetailPage({ id }: { id: string }) {
           )}
         </CardContent>
       </Card>
+      {data && <EmployeeDocuments employeeId={id} />}
     </div>
   );
 }

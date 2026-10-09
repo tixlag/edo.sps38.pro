@@ -1,0 +1,21 @@
+{
+  "outcome": "SUCCEEDED",
+  "source": "STUB",
+  "fields": {
+    "holder_name": "Иванов Иван Иванович",
+    "document_series": "0000",
+    "document_number": "000000",
+    "date_of_birth": "1990-01-15",
+    "birth_place": "ТЕСТОВЫЙ ГОРОД",
+    "citizenship": "Россия",
+    "issued_at": "2020-02-20",
+    "issued_by": "ТЕСТОВОЕ ПОДРАЗДЕЛЕНИЕ — ОБРАЗЕЦ",
+    "department_code": "000-000",
+    "registration_address": "Тестовый город, ул. Образцовая, д. 1"
+  },
+  "raw": {
+    "synthetic": true,
+    "note": "Учебный пример. Это не ответ внешнего OCR и не действительный паспорт.",
+    "documentTypeCode": "PASSPORT"
+  }
+}

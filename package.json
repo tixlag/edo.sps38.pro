@@ -19,6 +19,7 @@
     "local:up": "node scripts/local-stand.mjs up",
     "local:down": "node scripts/local-stand.mjs down",
     "local:status": "node scripts/local-stand.mjs status",
+    "local:example": "pnpm --filter @edo/api demo:passport",
     "docker:down": "docker compose down"
   },
   "devDependencies": {
