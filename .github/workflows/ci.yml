@@ -48,6 +48,10 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=15
+      s3:
+        image: motoserver/moto:latest
+        ports:
+          - 5001:5000
     env:
       DATABASE_URL: mysql://edo:edo@localhost:3307/edo
       REDIS_URL: redis://localhost:6380
@@ -56,6 +60,8 @@ jobs:
       # and never fall back to shared infrastructure).
       EDO_TEST_DATABASE_URL: mysql://edo:edo@localhost:3307/edo
       EDO_TEST_RABBITMQ_URL: amqp://edo:edo@localhost:5673/
+      EDO_TEST_S3_ENDPOINT: http://localhost:5001
+      OCR_WORKER_ENABLED: 'false'
       LK_EVENTS_EXCHANGE: lk.events
       EDO_LK_QUEUE: edo.lk-reference-sync
       JWT_SECRET: ci-only-insecure-secret
@@ -81,20 +87,22 @@ jobs:
       - run: pnpm db:migrate
       - run: pnpm lint
       - run: pnpm test
-      - name: Infrastructure suites (isolated MariaDB + RabbitMQ, skips fail this step)
+      - name: Infrastructure suites (isolated MariaDB + RabbitMQ + S3, skips fail this step)
         run: |
+          mkdir -p apps/api/.cache
           pnpm --filter @edo/api exec vitest run \
             test/lk-fencing-mariadb.spec.ts \
             test/lk-retry-chain-rabbit.spec.ts \
             test/lk-consumer-recovery-rabbit.spec.ts \
-            --reporter=json --outputFile=/tmp/edo-infra-tests.json
+            test/documents-infra.spec.ts \
+            --reporter=json --outputFile=.cache/edo-infra-tests.json
           node -e "
             const fs = require('fs');
-            const r = JSON.parse(fs.readFileSync('/tmp/edo-infra-tests.json', 'utf8'));
+            const r = JSON.parse(fs.readFileSync('apps/api/.cache/edo-infra-tests.json', 'utf8'));
             const files = r.testResults || [];
             const names = files.map((f) => String(f.name).split('/').pop()).sort();
             console.log('files: ' + JSON.stringify(names));
-            const expected = ['lk-consumer-recovery-rabbit.spec.ts', 'lk-fencing-mariadb.spec.ts', 'lk-retry-chain-rabbit.spec.ts'];
+            const expected = ['documents-infra.spec.ts', 'lk-consumer-recovery-rabbit.spec.ts', 'lk-fencing-mariadb.spec.ts', 'lk-retry-chain-rabbit.spec.ts'];
             if (JSON.stringify(names) !== JSON.stringify(expected)) throw new Error('infra file set mismatch: environment miswired?');
             let passed = 0, failed = 0, skipped = 0, pending = 0;
             for (const f of files) for (const a of (f.assertionResults || [])) {

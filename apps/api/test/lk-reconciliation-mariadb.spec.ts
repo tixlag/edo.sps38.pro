@@ -1,14 +1,15 @@
-import { join } from 'node:path';
-import { config as dotenvConfig } from 'dotenv';
 import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { LkReferenceSyncService } from '../src/lk-sync/lk-reference-sync.service';
 import { noopFencing } from './helpers/noop-fencing';
 
-// Load root .env so DATABASE_URL resolves for local `pnpm test` (CI sets it explicitly).
-dotenvConfig({ path: join(__dirname, '..', '..', '..', '.env') });
-
-const prisma = new PrismaClient();
+// Snapshot tests change absence/deletion markers for the entire projection.
+// Explicit disposable DB only: never load root .env or fall back to DATABASE_URL.
+const testUrl = process.env.EDO_TEST_DATABASE_URL ?? '';
+if (testUrl && !/^mysql:\/\/[^@/]+@(127\.0\.0\.1|localhost):(3307|3308)\/edo(\?|$)/.test(testUrl)) {
+  throw new Error('Refusing: reconciliation tests require disposable MariaDB :3307/:3308, db edo');
+}
+const prisma = new PrismaClient({ datasourceUrl: testUrl || 'mysql://unused:unused@127.0.0.1:3308/edo' });
 let dbAvailable = false;
 
 function emp(code1c: string, overrides: Record<string, unknown> = {}) {
@@ -93,6 +94,7 @@ async function cleanup() {
 }
 
 beforeAll(async () => {
+  if (!testUrl) return;
   try {
     await prisma.$queryRaw`SELECT 1`;
     dbAvailable = true;
@@ -103,13 +105,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   try {
-    await cleanup();
+    if (dbAvailable) await cleanup();
   } finally {
     await prisma.$disconnect().catch(() => undefined);
   }
 });
 
-describe('LK reconciliation against real MariaDB (NULL marking regression)', () => {
+describe.skipIf(!testUrl)('LK reconciliation against real MariaDB (NULL marking regression)', () => {
   it('marks NULL stale employee sourcePresent=false and NULL reference deleted=true, keeps fired', async () => {
     if (!dbAvailable) {
       console.warn('MariaDB unavailable, skipping real-DB reconciliation test');

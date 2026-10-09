@@ -37,6 +37,10 @@ enum TaskStatus {
 enum AuditAction {
   EMPLOYEE_CREATED
   DOCUMENT_UPLOADED
+  DOCUMENT_UPLOAD_STARTED
+  DOCUMENT_OCR_COMPLETED
+  DOCUMENT_FIELDS_UPDATED
+  CANDIDATE_LINKED
   DOCUMENT_RETURNED
   DOCUMENT_APPROVED
   DOCUMENT_SIGNED
@@ -61,7 +65,7 @@ model Employee {
   lkEmployeeCode1c String? @db.VarChar(64)
   // Access object for the case: explicitly fixed location (object) of the case.
   // Null means "no object set" and is NOT visible to scoped (20007) users.
-  locationId Int?
+  locationId       Int?
 
   documents Document[]
   tasks     Task[]
@@ -85,32 +89,44 @@ model DocumentType {
 
 model Document {
   id             String         @id @default(cuid()) @db.VarChar(64)
-  employeeId     String         @db.VarChar(64)
+  employeeId     String?        @db.VarChar(64)
+  candidateId    String?        @db.VarChar(64)
   documentTypeId String?        @db.VarChar(64)
   status         DocumentStatus @default(DRAFT)
   currentVersion Int            @default(1)
   createdAt      DateTime       @default(now()) @db.DateTime(3)
   updatedAt      DateTime       @updatedAt @db.DateTime(3)
 
-  employee     Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  documentType DocumentType?  @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+  employee     Employee?         @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  candidate    Candidate?        @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  documentType DocumentType?     @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
   versions     DocumentVersion[]
-  auditLogs    AuditLog[]     @relation("AuditEntityDocument")
+  auditLogs    AuditLog[]        @relation("AuditEntityDocument")
 
+  @@unique([candidateId, documentTypeId])
   @@index([employeeId])
   @@index([status])
   @@map("documents")
 }
 
 model DocumentVersion {
-  id         String   @id @default(cuid()) @db.VarChar(64)
-  documentId String   @db.VarChar(64)
+  id         String                 @id @default(cuid()) @db.VarChar(64)
+  documentId String                 @db.VarChar(64)
   version    Int
-  storageKey String   @db.VarChar(1024)
-  mimeType   String?  @db.VarChar(128)
+  storageKey String                 @db.VarChar(1024)
+  mimeType   String?                @db.VarChar(128)
   sizeBytes  Int?
   ocrRaw     Json?
-  createdAt  DateTime @default(now()) @db.DateTime(3)
+  status     DocumentStatus         @default(DRAFT)
+  revision   Int                    @default(0)
+  ocrSource  String?                @db.VarChar(16)
+  approvedAt DateTime?              @db.DateTime(3)
+  approvedBy String?                @db.VarChar(64)
+  files      DocumentVersionFile[]
+  fields     DocumentVersionField[]
+  issues     OcrIssue[]
+  job        OcrJob?
+  createdAt  DateTime               @default(now()) @db.DateTime(3)
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
@@ -145,10 +161,10 @@ model AuditLog {
   correlationId String?     @db.VarChar(64)
   createdAt     DateTime    @default(now()) @db.DateTime(3)
 
-  employee Employee? @relation("AuditEntityEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
-  employeeId String? @db.VarChar(64)
-  document Document? @relation("AuditEntityDocument", fields: [documentId], references: [id], onDelete: SetNull)
-  documentId String? @db.VarChar(64)
+  employee   Employee? @relation("AuditEntityEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  employeeId String?   @db.VarChar(64)
+  document   Document? @relation("AuditEntityDocument", fields: [documentId], references: [id], onDelete: SetNull)
+  documentId String?   @db.VarChar(64)
 
   @@index([entityType, entityId])
   @@index([createdAt])
@@ -168,31 +184,31 @@ model AuditLog {
 // ---------------------------------------------------------------------------
 
 model LkEmployee {
-  code1c               String    @id @map("code1c") @db.VarChar(64)
-  uuid                 String    @db.VarChar(64)
-  fullName             String    @db.VarChar(512)
-  birthday             DateTime? @db.DateTime(3)
-  citizenship          String?   @db.VarChar(128)
-  organizationCode     String?   @db.VarChar(64)
-  organizationName     String?   @db.VarChar(512)
-  positionCode1c       String?   @db.VarChar(64)
-  positionName         String?   @db.VarChar(512)
-  departmentCode1c     String?   @db.VarChar(64)
-  departmentName       String?   @db.VarChar(512)
-  divisionCode1c       String?   @db.VarChar(64)
-  divisionName         String?   @db.VarChar(512)
-  lastLocationId       Int?
-  lastLocationCode1c   String?   @db.VarChar(64)
-  lastLocationName     String?   @db.VarChar(512)
-  hireDate             DateTime? @db.DateTime(3)
-  fired                Boolean   @default(false)
-  contractor           Boolean   @default(false)
-  sourceUpdatedAt      DateTime? @db.DateTime(3)
-  syncedAt             DateTime  @default(now()) @db.DateTime(3)
-  createdAt            DateTime  @default(now()) @db.DateTime(3)
-  updatedAt            DateTime  @updatedAt @db.DateTime(3)
-  lastSeenSyncId       String?   @db.VarChar(64)
-  sourcePresent        Boolean   @default(true)
+  code1c             String    @id @map("code1c") @db.VarChar(64)
+  uuid               String    @db.VarChar(64)
+  fullName           String    @db.VarChar(512)
+  birthday           DateTime? @db.DateTime(3)
+  citizenship        String?   @db.VarChar(128)
+  organizationCode   String?   @db.VarChar(64)
+  organizationName   String?   @db.VarChar(512)
+  positionCode1c     String?   @db.VarChar(64)
+  positionName       String?   @db.VarChar(512)
+  departmentCode1c   String?   @db.VarChar(64)
+  departmentName     String?   @db.VarChar(512)
+  divisionCode1c     String?   @db.VarChar(64)
+  divisionName       String?   @db.VarChar(512)
+  lastLocationId     Int?
+  lastLocationCode1c String?   @db.VarChar(64)
+  lastLocationName   String?   @db.VarChar(512)
+  hireDate           DateTime? @db.DateTime(3)
+  fired              Boolean   @default(false)
+  contractor         Boolean   @default(false)
+  sourceUpdatedAt    DateTime? @db.DateTime(3)
+  syncedAt           DateTime  @default(now()) @db.DateTime(3)
+  createdAt          DateTime  @default(now()) @db.DateTime(3)
+  updatedAt          DateTime  @updatedAt @db.DateTime(3)
+  lastSeenSyncId     String?   @db.VarChar(64)
+  sourcePresent      Boolean   @default(true)
 
   @@index([uuid])
   @@index([fired])
@@ -245,12 +261,12 @@ model LkDepartment {
 
 /// Idempotency inbox for RabbitMQ lk.reference.* events. eventId is globally unique.
 model LkProcessedEvent {
-  eventId     String    @id @map("eventId") @db.VarChar(64)
-  eventType   String    @db.VarChar(128)
-  version     Int       @default(1)
-  occurredAt  DateTime? @db.DateTime(3)
-  receivedAt  DateTime  @default(now()) @db.DateTime(3)
-  entityCode  String?   @db.VarChar(64)
+  eventId    String    @id @map("eventId") @db.VarChar(64)
+  eventType  String    @db.VarChar(128)
+  version    Int       @default(1)
+  occurredAt DateTime? @db.DateTime(3)
+  receivedAt DateTime  @default(now()) @db.DateTime(3)
+  entityCode String?   @db.VarChar(64)
 
   @@index([eventType])
   @@index([receivedAt])
@@ -302,4 +318,110 @@ model LkSyncState {
   updatedAt   DateTime  @updatedAt @db.DateTime(3)
 
   @@map("lk_sync_state")
+}
+
+model Candidate {
+  id         String     @id @default(cuid()) @db.VarChar(64)
+  chatUuid   String     @unique @db.VarChar(36)
+  locationId Int?
+  code1c     String?    @db.VarChar(64)
+  createdAt  DateTime   @default(now()) @db.DateTime(3)
+  updatedAt  DateTime   @updatedAt @db.DateTime(3)
+  documents  Document[]
+  jobs       OcrJob[]
+
+  @@index([locationId])
+  @@index([code1c])
+  @@map("candidates")
+}
+
+model DocumentVersionFile {
+  id         String          @id @default(cuid()) @db.VarChar(64)
+  versionId  String          @db.VarChar(64)
+  ordinal    Int
+  storageKey String          @db.VarChar(1024)
+  filename   String          @db.VarChar(255)
+  mimeType   String          @db.VarChar(128)
+  sizeBytes  Int
+  sha256     String?         @db.VarChar(64)
+  pageCount  Int             @default(1)
+  deletedAt  DateTime?       @db.DateTime(3)
+  version    DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, ordinal])
+  @@map("document_version_files")
+}
+
+model DocumentVersionField {
+  id            String          @id @default(cuid()) @db.VarChar(64)
+  versionId     String          @db.VarChar(64)
+  name          String          @db.VarChar(128)
+  originalValue String?         @db.Text
+  value         String?         @db.Text
+  editedBy      String?         @db.VarChar(64)
+  updatedAt     DateTime        @updatedAt @db.DateTime(3)
+  version       DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, name])
+  @@map("document_version_fields")
+}
+
+enum OcrJobStatus {
+  UPLOADING
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  REJECTED
+  FAILED
+}
+
+model OcrJob {
+  id             String          @id @default(cuid()) @db.VarChar(64)
+  candidateId    String          @db.VarChar(64)
+  versionId      String          @unique @db.VarChar(64)
+  idempotencyKey String          @db.VarChar(128)
+  fingerprint    String          @db.VarChar(64)
+  status         OcrJobStatus    @default(UPLOADING)
+  attempts       Int             @default(0)
+  leaseToken     String?         @db.VarChar(36)
+  leaseUntil     DateTime?       @db.DateTime(3)
+  errorCode      String?         @db.VarChar(64)
+  cleanupPending Boolean         @default(false)
+  correlationId  String          @db.VarChar(64)
+  createdAt      DateTime        @default(now()) @db.DateTime(3)
+  updatedAt      DateTime        @updatedAt @db.DateTime(3)
+  candidate      Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  version        DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  outbox         OcrOutbox?
+
+  @@unique([candidateId, idempotencyKey])
+  @@index([status, leaseUntil])
+  @@index([cleanupPending])
+  @@map("ocr_jobs")
+}
+
+model OcrIssue {
+  id          String          @id @default(cuid()) @db.VarChar(64)
+  versionId   String          @db.VarChar(64)
+  code        String          @db.VarChar(64)
+  message     String          @db.VarChar(1024)
+  fileOrdinal Int?
+  pageNumber  Int?
+  version     DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId])
+  @@map("ocr_issues")
+}
+
+model OcrOutbox {
+  id          String    @id @default(cuid()) @db.VarChar(64)
+  jobId       String    @unique @db.VarChar(64)
+  availableAt DateTime  @default(now()) @db.DateTime(3)
+  publishedAt DateTime? @db.DateTime(3)
+  leaseToken  String?   @db.VarChar(36)
+  leaseUntil  DateTime? @db.DateTime(3)
+  job         OcrJob    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([availableAt, publishedAt])
+  @@map("ocr_outbox")
 }

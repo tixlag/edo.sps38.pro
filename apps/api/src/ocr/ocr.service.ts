@@ -1,23 +1,53 @@
-/**
- * Integration boundary for the external OCR service.
- * The OCR engine lives outside this repo — do NOT implement it here.
- *
- * Async model: upload -> save metadata/file -> RabbitMQ `edo.ocr.requested.v1` -> OCR service -> result -> document status.
- * TODO(ocr): plug the real OCR contract (endpoint, payload, auth) once provided.
- */
-export interface OcrRequest {
-  documentId: string;
-  version: number;
-  storageKey: string;
+import { z } from "zod";
+
+export interface OcrInputFile {
+  id: string;
+  ordinal: number;
+  mimeType: string;
+  pageCount: number;
+  downloadUrl: string;
 }
 
-export interface OcrResult {
+/** EDO's internal adapter input; this is NOT the external vendor's wire contract. */
+export interface OcrRequest {
+  jobId: string;
   documentId: string;
   version: number;
-  raw: unknown;
-  ok: boolean;
+  documentTypeCode: string;
+  files: OcrInputFile[];
 }
+
+export const ocrIssueSchema = z.object({
+  code: z.enum(["DOCUMENT_TYPE_MISMATCH", "POOR_IMAGE_QUALITY"]),
+  message: z.string().min(1).max(1024),
+  fileOrdinal: z.number().int().nonnegative().nullable().default(null),
+  pageNumber: z.number().int().positive().nullable().default(null),
+});
+
+const fieldsSchema = z
+  .record(z.string().min(1).max(128), z.string().max(16_384).nullable())
+  .refine((v) => Object.keys(v).length <= 200, "Too many fields");
+
+export const ocrResultSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("SUCCEEDED"),
+    source: z.enum(["STUB", "EXTERNAL"]),
+    fields: fieldsSchema,
+    raw: z.record(z.unknown()),
+  }),
+  z.object({
+    outcome: z.literal("REJECTED"),
+    source: z.enum(["STUB", "EXTERNAL"]),
+    issues: z.array(ocrIssueSchema).min(1).max(100),
+    raw: z.record(z.unknown()),
+  }),
+]);
+export type OcrResult = z.infer<typeof ocrResultSchema>;
 
 export abstract class OcrService {
-  abstract enqueue(request: OcrRequest): Promise<void>;
+  abstract isAvailable(): boolean;
+  abstract recognize(
+    request: OcrRequest,
+    signal: AbortSignal,
+  ): Promise<OcrResult>;
 }

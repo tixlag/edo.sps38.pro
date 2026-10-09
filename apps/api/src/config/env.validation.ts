@@ -27,6 +27,10 @@ const envSchema = z.object({
   LK_EVENTS_EXCHANGE: z.string().default('lk.events'),
   EDO_LK_QUEUE: z.string().default('edo.lk-reference-sync'),
   REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
+  EDO_LK_INTERNAL_TOKEN: z.string().optional(),
+  OCR_MODE: z.enum(['disabled', 'stub']).default('disabled'),
+  OCR_WORKER_ENABLED: z.enum(['true', 'false']).default('true'),
+  EDO_OCR_QUEUE: z.string().regex(/^edo\.[a-zA-Z0-9._-]+$/).default('edo.ocr'),
   S3_ENDPOINT: z.string().default('http://localhost:9000'),
   S3_REGION: z.string().default('us-east-1'),
   S3_BUCKET: z.string().default('edo-documents'),
@@ -41,6 +45,7 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
   const nodeEnv = String(config['NODE_ENV'] ?? parsed.NODE_ENV ?? 'development');
   // Fail closed: production must have a real JWT secret and no dev bypass.
   if (nodeEnv === 'production') {
+    if (parsed.OCR_MODE === 'stub') throw new Error('OCR_MODE=stub is forbidden in production');
     const secret = String(config['JWT_SECRET'] ?? '');
     if (!secret || secret === 'dev-only-insecure-secret-change-me') {
       throw new Error('JWT_SECRET must be set to a real value in production');

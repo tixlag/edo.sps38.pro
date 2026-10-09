@@ -46,6 +46,7 @@ No runtime direct DB access to LK. No full LK OpenAPI import. Frontend never cal
 ## Integrations (adapters, not implementations)
 
 - `OcrService` interface (external OCR, async upload → metadata → RabbitMQ `edo.ocr.requested.v1` → status, no long HTTP waits).
+- Candidate documents: chat UUID ownership before hiring; images/PDF in private S3, raw OCR JSON and relational editable fields in MariaDB. Transactional outbox, dedicated OCR queue, version/lease fencing and durable cleanup. Integration and review API: [candidate documents](../integrations/edo-candidate-documents.md).
 - `StorageService` S3-compatible (MinIO local), binary never in MariaDB, Document->DocumentVersion chain.
 - LK sync: `LkReferenceSyncService` + `pnpm --filter @edo/api lk:sync` (idempotent, cursor-paginated, soft deletes preserved). Events: `LkEventHandler`/`LkEventConsumer` (idempotent by `eventId`, malformed/unknown-version acked, transient errors requeued). Full snapshot required periodically (LK event coverage is partial — see ADR-002).
 - 1C ERP, signing rules, workflow rules: backend is source of truth (stage/docs/actions/blockers); frontend renders what backend returns, no `if (country===...)` hardcode.

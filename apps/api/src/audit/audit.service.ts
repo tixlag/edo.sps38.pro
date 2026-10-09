@@ -1,18 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { AuditAction, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface AuditEvent {
   actorId?: string;
-  action:
-    | 'EMPLOYEE_CREATED'
-    | 'DOCUMENT_UPLOADED'
-    | 'DOCUMENT_RETURNED'
-    | 'DOCUMENT_APPROVED'
-    | 'DOCUMENT_SIGNED'
-    | 'WORKFLOW_STAGE_CHANGED'
-    | 'DATA_IMPORTED'
-    | 'LK_REFERENCE_SYNCED'
-    | 'LK_EVENT_APPLIED';
+  action: AuditAction;
   entityType: string;
   entityId: string;
   before?: unknown;
@@ -20,9 +12,7 @@ export interface AuditEvent {
   correlationId?: string;
 }
 
-type PrismaTx = Omit<PrismaService, '$connect' | '$disconnect' | '$transaction' | '$queryRaw'> & {
-  auditLog: PrismaService['auditLog'];
-};
+type PrismaTx = Pick<Prisma.TransactionClient, 'auditLog'>;
 
 /**
  * Audit is core: critical domain mutations must write state + audit atomically

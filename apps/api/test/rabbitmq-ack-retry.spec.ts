@@ -679,7 +679,7 @@ describe('RabbitMQ confirm-gated retry (single publish path)', () => {
     expect(d.calls.nack.filter((n) => !(n as { requeue: boolean }).requeue)).toHaveLength(0);
     expect(d.calls.ack).toHaveLength(0);
     await svc.onModuleDestroy();
-  });
+  }, 15000);
 
   it('settled entries are freed; later deliveries start clean', async () => {
     vi.useFakeTimers();

@@ -14,6 +14,7 @@ import { RedisModule } from './redis/redis.module';
 import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
 import { LkSyncModule } from './lk-sync/lk-sync.module';
 import { LkEventsModule } from './lk-events/lk-events.module';
+import { DocumentsModule } from './documents/documents.module';
 import { MeModule } from './me/me.module';
 
 // Root .env is loaded explicitly: do not rely on process cwd.
@@ -40,6 +41,7 @@ const ROOT_ENV = join(__dirname, '..', '..', '..', '.env');
     LkSyncModule,
     LkEventsModule,
     MeModule,
+    DocumentsModule,
   ],
 })
 export class AppModule {}

@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule, type OpenAPIObject } from '@nestjs/swagger';
+import fastifyMultipart from '@fastify/multipart';
 import fastifyCors from '@fastify/cors';
 import { randomUUID } from 'crypto';
 import { join } from 'path';
@@ -17,6 +18,8 @@ export async function createApp(): Promise<{ app: NestFastifyApplication; docume
     AppModule,
     new FastifyAdapter({ logger: false }),
   );
+
+  await app.register(fastifyMultipart, { limits: { files: 10, fileSize: 10 * 1024 * 1024, fields: 2, parts: 12 } });
 
   const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
   await app.register(fastifyCors, {
@@ -46,6 +49,7 @@ export async function createApp(): Promise<{ app: NestFastifyApplication; docume
     .setDescription('Internal employee onboarding service: employees, documents, tasks, dashboard, audit.')
     .setVersion('0.1.0')
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'access-jwt')
+    .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'Server-to-server credential: EDO_LK_INTERNAL_TOKEN' }, 'lk-service-token')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
