@@ -1,3 +1,5 @@
+# check=skip=SecretsUsedInArgOrEnv
+# (ложное срабатывание на VITE_AUTH_* — это публичные адреса и флаг, не секреты)
 # ЭДО: образы api и web из монорепо (pnpm + turbo).
 # Контекст сборки — корень репозитория:
 #   docker build -f docker/Dockerfile --target api -t edo-api .
