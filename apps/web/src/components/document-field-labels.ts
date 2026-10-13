@@ -1,0 +1,16 @@
+export const DOCUMENT_FIELD_LABELS: Record<string, string> = {
+  holder_name: "ФИО",
+  last_name: "Фамилия",
+  first_name: "Имя",
+  middle_name: "Отчество",
+  document_series: "Серия",
+  document_number: "Номер",
+  date_of_birth: "Дата рождения",
+  birth_place: "Место рождения",
+  citizenship: "Гражданство",
+  issued_at: "Дата выдачи",
+  issued_by: "Кем выдан",
+  department_code: "Код подразделения",
+  registration_address: "Адрес регистрации",
+  document_type: "Тип документа",
+};

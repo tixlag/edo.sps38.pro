@@ -1,0 +1,73 @@
+# Installed into the existing lk_nginx by pnpm local:up.
+# __HOST_GATEWAY__ and __API_PORT__ are filled from the running local stack.
+map $http_upgrade $edo_local_connection {
+    default upgrade;
+    '' close;
+}
+
+# Extra CORS headers are emitted only for EDO's local origin. Existing LK origins
+# retain their auth-service headers. No wildcard and no cookie/domain rewriting.
+map "$upstream_http_access_control_allow_origin:$http_origin" $edo_local_refresh_origin {
+    default '';
+    ':https://edo.localhost:12443' 'https://edo.localhost:12443';
+}
+map $edo_local_refresh_origin $edo_local_refresh_credentials {
+    default '';
+    'https://edo.localhost:12443' 'true';
+}
+map $edo_local_refresh_origin $edo_local_refresh_methods {
+    default '';
+    'https://edo.localhost:12443' 'POST, OPTIONS';
+}
+map $edo_local_refresh_origin $edo_local_refresh_headers {
+    default '';
+    'https://edo.localhost:12443' 'Content-Type';
+}
+map $edo_local_refresh_origin $edo_local_refresh_expose {
+    default '';
+    'https://edo.localhost:12443' 'Authorization, X-Request-ID';
+}
+map "$request_method:$http_origin" $edo_local_refresh_preflight {
+    default 0;
+    'OPTIONS:https://edo.localhost:12443' 1;
+}
+
+server {
+    listen 80;
+    server_name edo.localhost;
+    return 301 https://edo.localhost:12443$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name edo.localhost;
+    ssl_certificate /etc/nginx/edo.localhost.pem;
+    ssl_certificate_key /etc/nginx/edo.localhost-key.pem;
+
+    client_max_body_size 55M;
+    large_client_header_buffers 4 128k;
+    proxy_buffer_size 128k;
+    proxy_buffers 4 128k;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    location ^~ /api/ {
+        proxy_pass http://__HOST_GATEWAY__:__API_PORT__;
+        proxy_set_header Connection "";
+        proxy_read_timeout 150s;
+    }
+    location = /api-json {
+        proxy_pass http://__HOST_GATEWAY__:__API_PORT__;
+        proxy_set_header Connection "";
+    }
+    location / {
+        proxy_pass http://__HOST_GATEWAY__:5174;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $edo_local_connection;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
+}

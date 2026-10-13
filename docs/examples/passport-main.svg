@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="680" viewBox="0 0 1000 680">
+  <rect width="1000" height="680" fill="white"/>
+  <g font-family="DejaVu Sans, sans-serif" fill="black">
+    <text x="50" y="60" font-size="28" font-weight="bold">ПАСПОРТ · УЧЕБНЫЙ ОБРАЗЕЦ</text>
+    <text x="50" y="100" font-size="18">ВЫМЫШЛЕННЫЕ ДАННЫЕ — НЕ ЯВЛЯЕТСЯ ДОКУМЕНТОМ</text>
+    <path d="M50 125H950" stroke="black"/>
+    <text x="50" y="175" font-size="16">ФАМИЛИЯ, ИМЯ, ОТЧЕСТВО</text>
+    <text x="50" y="215" font-size="29" font-weight="bold">Иванов Иван Иванович</text>
+    <text x="50" y="270" font-size="16">СЕРИЯ / НОМЕР</text>
+    <text x="50" y="306" font-size="26">0000 / 000000</text>
+    <text x="530" y="270" font-size="16">ДАТА РОЖДЕНИЯ</text>
+    <text x="530" y="306" font-size="26">15.01.1990</text>
+    <text x="50" y="360" font-size="16">МЕСТО РОЖДЕНИЯ</text>
+    <text x="50" y="395" font-size="24">ТЕСТОВЫЙ ГОРОД</text>
+    <text x="530" y="360" font-size="16">ГРАЖДАНСТВО</text>
+    <text x="530" y="395" font-size="24">Россия</text>
+    <text x="50" y="450" font-size="16">КЕМ ВЫДАН</text>
+    <text x="50" y="485" font-size="22">ТЕСТОВОЕ ПОДРАЗДЕЛЕНИЕ — ОБРАЗЕЦ</text>
+    <text x="50" y="540" font-size="16">ДАТА ВЫДАЧИ</text>
+    <text x="50" y="575" font-size="24">20.02.2020</text>
+    <text x="530" y="540" font-size="16">КОД ПОДРАЗДЕЛЕНИЯ</text>
+    <text x="530" y="575" font-size="24">000-000</text>
+    <text x="50" y="640" font-size="17">Страница 1 из 2 · Только для просмотра интерфейса EDO</text>
+  </g>
+</svg>

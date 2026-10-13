@@ -1,0 +1,144 @@
+name: CI
+
+# Manual quality tool (was green on 368645c). Local development uses the SHARED
+# LK infrastructure; CI intentionally stays isolated with its own disposable
+# MariaDB service and never touches local/production LK containers.
+on:
+  workflow_dispatch:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: edo
+          MARIADB_USER: edo
+          MARIADB_USER_PASSWORD: edo
+          MARIADB_PASSWORD: edo
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h localhost -uedo -pedo"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd="redis-cli ping | grep PONG"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+      rabbitmq:
+        image: rabbitmq:4-management-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: edo
+          RABBITMQ_DEFAULT_PASS: edo
+          RABBITMQ_DEFAULT_VHOST: /
+        ports:
+          - 5673:5672
+          - 15673:15672
+        options: >-
+          --health-cmd="rabbitmq-diagnostics ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+      s3:
+        image: motoserver/moto:latest
+        ports:
+          - 5001:5000
+    env:
+      DATABASE_URL: mysql://edo:edo@localhost:3307/edo
+      REDIS_URL: redis://localhost:6380
+      RABBITMQ_URL: amqp://edo:edo@localhost:5673/
+      # Disposable-test DSNs (loopback CI ports only; specs refuse anything else
+      # and never fall back to shared infrastructure).
+      EDO_TEST_DATABASE_URL: mysql://edo:edo@localhost:3307/edo
+      EDO_TEST_RABBITMQ_URL: amqp://edo:edo@localhost:5673/
+      EDO_TEST_S3_ENDPOINT: http://localhost:5001
+      OCR_WORKER_ENABLED: 'false'
+      LK_EVENTS_EXCHANGE: lk.events
+      EDO_LK_QUEUE: edo.lk-reference-sync
+      JWT_SECRET: ci-only-insecure-secret
+      JWT_ALG: HS256
+      JWT_ISSUER: lk-auth-service
+      ALLOW_INSECURE_DEV_AUTH: false
+      NODE_ENV: test
+      LK_EVENTS_CONSUME: '0'
+      VITE_API_BASE_URL: http://localhost:3001
+      VITE_AUTH_REFRESH_URL: ''
+      VITE_ALLOW_INSECURE_DEV_AUTH: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @edo/api exec prisma generate --schema ../../prisma/schema.prisma
+      - run: pnpm db:migrate
+      - run: pnpm lint
+      - run: pnpm test
+      - name: Infrastructure suites (isolated MariaDB + RabbitMQ + S3, skips fail this step)
+        run: |
+          mkdir -p apps/api/.cache
+          pnpm --filter @edo/api exec vitest run \
+            test/lk-fencing-mariadb.spec.ts \
+            test/lk-retry-chain-rabbit.spec.ts \
+            test/lk-consumer-recovery-rabbit.spec.ts \
+            test/documents-infra.spec.ts \
+            --reporter=json --outputFile=.cache/edo-infra-tests.json
+          node -e "
+            const fs = require('fs');
+            const r = JSON.parse(fs.readFileSync('apps/api/.cache/edo-infra-tests.json', 'utf8'));
+            const files = r.testResults || [];
+            const names = files.map((f) => String(f.name).split('/').pop()).sort();
+            console.log('files: ' + JSON.stringify(names));
+            const expected = ['documents-infra.spec.ts', 'lk-consumer-recovery-rabbit.spec.ts', 'lk-fencing-mariadb.spec.ts', 'lk-retry-chain-rabbit.spec.ts'];
+            if (JSON.stringify(names) !== JSON.stringify(expected)) throw new Error('infra file set mismatch: environment miswired?');
+            let passed = 0, failed = 0, skipped = 0, pending = 0;
+            for (const f of files) for (const a of (f.assertionResults || [])) {
+              if (a.status === 'passed') passed++;
+              else if (a.status === 'failed') failed++;
+              else if (a.status === 'skipped') skipped++;
+              else pending++;
+            }
+            console.log(JSON.stringify({ passed, failed, skipped, pending }));
+            if (failed > 0 || pending > 0) throw new Error('infra tests failed/incomplete');
+            if (skipped > 0) throw new Error(skipped + ' infra tests SKIPPED: disposable environment missing or miswired (see EDO_TEST_* env)');
+            if (passed < 10) throw new Error('expected at least 10 passing infra tests, got ' + passed);
+            console.log('infra suites: ' + passed + ' passed, 0 skipped/failed');
+          "
+      - name: OpenAPI + Orval regenerate (EDO API client)
+        run: pnpm --filter @edo/api api:generate
+      - name: LK client regenerate (narrow spec only)
+        run: pnpm --filter @edo/lk-client generate
+      - name: Generated drift check (reproducible gate)
+        run: |
+          git add -N -- apps/api/openapi.json packages/api-client/src/generated packages/lk-client/src/generated packages/lk-client/openapi/edo.json
+          git diff --exit-code -- apps/api/openapi.json packages/api-client/src/generated packages/lk-client/src/generated packages/lk-client/openapi/edo.json
+      - run: pnpm build
+      - name: Seed for e2e
+        run: pnpm db:seed
+      - name: Install Playwright browser
+        run: pnpm --filter @edo/web exec playwright install chromium --with-deps
+      - name: E2E (API + web, explicit dev bypass only)
+        run: |
+          ALLOW_INSECURE_DEV_AUTH=true NODE_ENV=test LK_EVENTS_CONSUME=0 pnpm --filter @edo/api dev &
+          API_PID=$!
+          VITE_ALLOW_INSECURE_DEV_AUTH=true VITE_AUTH_REFRESH_URL= VITE_API_BASE_URL=http://localhost:3001 pnpm --filter @edo/web dev -- --port 5173 &
+          WEB_PID=$!
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3001/api/health/live && curl -sf http://localhost:5173 && break
+            sleep 2
+          done
+          ALLOW_INSECURE_DEV_AUTH=true EDO_E2E_JWT_SECRET=ci-only-insecure-secret pnpm --filter @edo/web test:e2e
+          kill $API_PID $WEB_PID || true

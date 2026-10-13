@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.turbo/
+*.log
+.env
+.env.local
+coverage/
+playwright-report/
+test-results/
+tmp/
+
+.cache/

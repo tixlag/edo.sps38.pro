@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Semantic design tokens mapped from Pencil variables (zabor.pen). */
+:root {
+  --background: #f4f6f8;
+  --card: #ffffff;
+  --card-foreground: #171717;
+  --foreground: #171717;
+  --muted: #f8f8f8;
+  --muted-foreground: #737373;
+  --border: #e5e7eb;
+  --primary: #b31b1b;
+  --primary-foreground: #ffffff;
+  --primary-soft: #fbeAEA;
+  --info: #3b82f6;
+  --info-soft: #eaf2ff;
+  --success: #22a35a;
+  --success-soft: #eaf8f0;
+  --warning: #f59e0b;
+  --warning-soft: #fff7e6;
+  --danger: #b31b1b;
+  --purple: #7c3aed;
+  --purple-soft: #f1ebff;
+  --avatar: #eceff3;
+  --crumb: #b0b0b0;
+  --toast-bg: #18201c;
+  --toast-sub: #b7c2bb;
+  --success-tint: #22a35a33;
+  --success-bright: #51d88a;
+  --sidebar: #ffffffe8;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}

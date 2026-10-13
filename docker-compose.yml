@@ -1,0 +1,60 @@
+# EDO local infrastructure.
+#
+# ARCHITECTURE: EDO uses the SHARED LK infrastructure containers for
+# MariaDB/Redis/RabbitMQ — it does NOT run its own copies.
+#
+#   shared LK MariaDB (lk_mariadb, host 12002)  -> separate database `edo`
+#   shared LK Redis   (host 6379, no auth)      -> EDO keys under `edo:*`
+#   shared LK RabbitMQ (host 5672, vhost /)     -> EDO owns ONLY its queues:
+#     edo.lk-reference-sync (+ .retry, .dlq, .dlx), exchange lk.events is LK-owned
+#
+# Same container/server != same application database: EDO never reads LK
+# tables, migrations apply ONLY to `edo` (see scripts/assert-edo-database.js).
+#
+# This compose file therefore contains ONLY EDO-specific storage (S3 mock).
+# Start the LK stack first (LK repo), then `docker compose up -d` here for S3.
+services:
+  # Default local S3-compatible storage (moto mock, Docker Hub friendly).
+  s3:
+    image: motoserver/moto:latest
+    container_name: edo-s3
+    restart: unless-stopped
+    environment:
+      MOTO_S3_DEFAULT_KEY_BUFFER_SIZE: "8388608"
+    ports:
+      - "5000:5000"
+
+  # Optional prod-like MinIO. Requires registry access to minio/minio
+  # (unavailable in some sandboxes) -> enabled only via profile:
+  #   docker compose --profile minio up -d
+  # Then set S3_ENDPOINT=http://localhost:9000 .
+  minio:
+    image: minio/minio:latest
+    container_name: edo-minio
+    restart: unless-stopped
+    profiles: ["minio"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  createbucket:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    profiles: ["minio"]
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc alias set local http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb local/edo-documents --ignore-existing;
+      exit 0;
+      "
+
+volumes:
+  minio-data:

@@ -1,0 +1,24 @@
+    # BEGIN EDO LOCAL REFRESH CORS
+    # The existing auth-service still validates the HttpOnly LK refresh cookie.
+    # This exact route permits only the local EDO origin to restore an LK session.
+    location = /api/auth/v1/refresh-tokens {
+        set $edo_local_auth_service http://auth-service:8095;
+        proxy_pass $edo_local_auth_service;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffer_size 128k;
+        proxy_buffers 4 128k;
+        proxy_read_timeout 60s;
+        if ($edo_local_refresh_preflight) { return 204; }
+        add_header Access-Control-Allow-Origin $edo_local_refresh_origin always;
+        add_header Access-Control-Allow-Credentials $edo_local_refresh_credentials always;
+        add_header Access-Control-Allow-Methods $edo_local_refresh_methods always;
+        add_header Access-Control-Allow-Headers $edo_local_refresh_headers always;
+        add_header Access-Control-Expose-Headers $edo_local_refresh_expose always;
+        add_header Vary Origin always;
+    }
+    # END EDO LOCAL REFRESH CORS

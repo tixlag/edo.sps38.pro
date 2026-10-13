@@ -1,0 +1,61 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "globalPassThroughEnv": [
+    "DATABASE_URL",
+    "JWT_SECRET",
+    "JWT_ALG",
+    "JWT_ISSUER",
+    "ALLOW_INSECURE_DEV_AUTH",
+    "NODE_ENV",
+    "LK_EVENTS_CONSUME",
+    "LK_BASE_URL",
+    "LK_EDO_INTERNAL_TOKEN",
+    "LK_EDO_OPENAPI_URL",
+    "LK_EVENTS_EXCHANGE",
+    "EDO_LK_QUEUE",
+    "EDO_LK_INTERNAL_TOKEN",
+    "OCR_MODE",
+    "OCR_WORKER_ENABLED",
+    "EDO_OCR_QUEUE",
+    "S3_ENDPOINT",
+    "S3_REGION",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY",
+    "S3_SECRET_KEY",
+    "EDO_TEST_DATABASE_URL",
+    "EDO_TEST_RABBITMQ_URL",
+    "EDO_TEST_S3_ENDPOINT",
+    "RABBITMQ_URL",
+    "REDIS_URL",
+    "EDO_E2E_JWT_SECRET",
+    "VITE_API_BASE_URL",
+    "VITE_AUTH_REFRESH_URL",
+    "VITE_ALLOW_INSECURE_DEV_AUTH",
+    "API_PORT",
+    "API_PREFIX",
+    "CORS_ORIGIN"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "api:generate": {
+      "outputs": ["../../packages/api-client/src/generated/**"]
+    },
+    "generate": {},
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {},
+    "test": {
+      "dependsOn": ["^build"]
+    },
+    "test:e2e": {
+      "cache": false
+    }
+  }
+}

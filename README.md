@@ -1,93 +1,92 @@
-# edo.sps38.pro
+# EDO (edo.sps38.pro)
 
+Internal employee onboarding service: employees, documents, tasks, dashboard, audit.
+Local LK master-data projection (employees/locations/positions/departments) synced
+from `lk.sps38.pro` via compact S2S API + RabbitMQ events.
 
+Stack: React + Vite + TanStack Router/Query (apps/web) · NestJS + Fastify (apps/api) ·
+Prisma + MariaDB · RabbitMQ · Redis · Orval-generated clients.
 
-## Getting started
+## Local development (shared LK infrastructure)
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+Local HTTPS stand: **https://edo.localhost:12443** · `pnpm local:up` /
+`pnpm local:status` / `pnpm local:down`.
+See [local stand and login instructions](docs/local/stand.md) for demo auth,
+shared nginx, S3 configuration and the currently implemented screens.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+EDO runs **no** MariaDB/Redis/RabbitMQ of its own. Local dev uses the shared LK
+containers; only data ownership is isolated:
 
-## Add your files
+| Service | Shared container | EDO usage |
+|---|---|---|
+| MariaDB | `lk_mariadb` (host `12002`) | separate database **`edo`** (never LK tables) |
+| Redis | LK Redis (host `6379`, no auth) | keys under **`edo:*`** |
+| RabbitMQ | `lk_rabbitmq` (host `5672`, vhost `/`) | EDO owns `edo.lk-reference-sync` (+`.retry`/`.dlq`/`.dlx`); `lk.events` is LK-owned |
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+Same container/server != same application database.
 
-```
-cd existing_repo
-git remote add origin https://glab.sps38.pro/webdevs/edo.sps38.pro.git
-git branch -M main
-git push -uf origin main
-```
+1. Start the usual LK stack (LK repo) — MariaDB/Redis/RabbitMQ must be up.
+2. Create the isolated database/user **once** (dedicated `edo` user, rights on `edo.*` only):
+   ```sql
+   CREATE DATABASE IF NOT EXISTS edo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   CREATE USER IF NOT EXISTS 'edo'@'%' IDENTIFIED BY '<password>';
+   GRANT ALL PRIVILEGES ON edo.* TO 'edo'@'%';
+   ```
+   (Real passwords live only in your gitignored `.env`, never in git.)
+3. RabbitMQ: EDO needs a user with permissions on `edo.lk-reference-sync*` and
+   `lk.events` (operator-created, e.g. via `rabbitmqctl`). If host `5672` is
+   occupied by another local stack, the operator remaps the LK broker **host**
+   port (container port stays `5672`; the LK app uses container DNS).
+4. Copy `.env.example` to `.env` and fill secrets (DB/Rabbit passwords, JWT secret,
+   `LK_EDO_INTERNAL_TOKEN` from the LK operator).
+5. `pnpm install --frozen-lockfile`
+6. `pnpm infra:check` — read-only: MariaDB database must be `edo`, Redis PING,
+   RabbitMQ `lk.events` check, optional LK API probe. No mutations, no credentials printed.
+7. `pnpm db:migrate` (guarded: refuses any database except `edo`) · `pnpm db:seed`
+8. `pnpm --filter @edo/api lk:topology` — assert EDO queues/bindings (buffers events)
+9. `pnpm --filter @edo/api lk:sync` — coordinated snapshot (Redis lock; fails closed
+   without Redis; refuses concurrent runs)
+10. `pnpm dev`
 
-## Integrate with your tools
+EDO `docker-compose.yml` contains only EDO-specific storage (S3 mock on `:5000`):
+`pnpm docker:up` / `pnpm s3:up`. Never `docker compose up mariadb/redis/rabbitmq` here.
 
-* [Set up project integrations](https://glab.sps38.pro/webdevs/edo.sps38.pro/-/settings/integrations)
+## Key flows
 
-## Collaborate with your team
+- Bootstrap: `lk:topology` → `lk:sync` → boot API (consumer replays buffered events).
+- Periodic reconciliation (REQUIRED — LK event coverage is partial): distributed
+  Redis lock `edo:lk-reconciliation-lock` pauses live event apply; snapshot runs
+  with DB fencing (`lk_sync_runs` generation, atomic with writes); `markMissing`
+  only on success with lock still owned + latest RUNNING is us; lock released;
+  queue replays.
+- `lk:sync` exit codes: `0` ok · `2` another sync holds the lock · `3` Redis
+  unavailable (fail closed) · `1` other failure (incl. lock lost mid-snapshot,
+  fencing conflict, shrinkage guard, cancellation/deadline).
+- Retry (confirm-gated, no hot loop): transient → `*.retry` (TTL 5s → main) with
+  `x-retry-count+1` + validated `x-original-routing-key`, ack only after publisher
+  confirm (ConfirmChannel); max 5 → DLQ. Old-format messages (queue-name key, no
+  header) poison deterministically; recover via `lk:recover --dry-run/--apply
+  --limit --from=dlq|retry` (bounded, never automatic mass replay).
+- Integration health: `GET /api/health/integration` (Redis, consumer, bootstrap,
+  freshness 24h, queue depths; never gates reads). Durable `lk_sync_runs` ledger
+  for started/finished/status/counts/error. See `docs/integrations/edo-runbook.md`
+  (example cron + alerts + rollback; schedule not installed) and
+  `docs/integrations/edo-lk-contract-status.md` (LK contract SHA blocked stage).
+- Recovery for a 406-mismatched EDO queue (broker already has it with stale
+  arguments): `CONFIRM_EDO_QUEUE_RESET=I_UNDERSTAND_QUEUED_EVENTS_WILL_BE_LOST
+  pnpm --filter @edo/api lk:queues:reset` (EDO queues only, never LK objects).
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+## Quality
 
-## Test and Deploy
+- `pnpm lint` · `pnpm test` (turbo builds workspace deps first) · `pnpm build`
+- Generation drift: `pnpm --filter @edo/api api:generate` +
+  `pnpm --filter @edo/lk-client generate` must leave a clean tree
+  (prettier is pinned for reproducible Orval output).
+- E2E: `pnpm test:e2e` (Playwright, dev-bypass JWT only).
+- CI (`.github/workflows/ci.yml`) is a **manual** quality tool (`workflow_dispatch`)
+  with its own disposable MariaDB + Redis + RabbitMQ; it never touches shared LK
+  containers. Destructive fault-injection uses only CI isolated services, never
+  the shared LK broker (local retry tests use isolated `edo.lk-reference-sync.test.*`
+  queues).
 
-Use the built-in continuous integration in GitLab.
-
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+See `docs/architecture/overview.md` and `docs/decisions/ADR-002-lk-master-data-sync.md`.
