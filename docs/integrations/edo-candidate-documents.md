@@ -128,7 +128,17 @@ chatUid, PDF в base64 и замороженные documentFields. Любой 2x
 ## Развёртывание и контракты
 
 EDO: `pnpm db:migrate` применяет 0008 только к БД edo, затем `pnpm api:generate`.
-ЛК: собственной штатной Phinx-командой применить `20261013120000` к БД ЛК.
+ЛК: миграция `next/src/Integrations/Edo/Entities/migrations/20261013120000.php`
+обнаруживается штатным доменным pipeline `next` и создаёт только
+`sps_next.edo_candidate_link_outbox`. Корневой `db/migrations` для этой интеграции
+не используется. Миграция требует подключение к `sps_next`; она не переносит
+данные и не меняет существующие таблицы чатов или общий `queue_outbox`.
+
+Chat-server сохраняет прежние `DB_NAME` и подключение к таблицам чатов. Его
+`DB_USER` нужны `SELECT`, `INSERT`, `UPDATE` только на
+`sps_next.edo_candidate_link_outbox` дополнительно к существующим правам.
+Обе схемы находятся на одном MariaDB-сервере: обновление чата в старой схеме и
+запись outbox в `sps_next` выполняются одной транзакцией InnoDB.
 Перезапустить API, surveys и chat-server с согласованными env; профиль сотрудника
 будет использовать этот же backend-контракт, его UI пока не подключён.
 
