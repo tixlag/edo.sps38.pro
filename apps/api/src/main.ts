@@ -20,11 +20,11 @@ export async function createApp(): Promise<{ app: NestFastifyApplication; docume
     new FastifyAdapter({ logger: false, http: { maxHeaderSize: 128 * 1024 } }),
   );
 
-  await app.register(fastifyMultipart, { limits: { files: 10, fileSize: 10 * 1024 * 1024, fields: 2, parts: 12 } });
+  await app.register(fastifyMultipart, { limits: { files: 10, fileSize: 10 * 1024 * 1024, fields: 3, parts: 13, fieldSize: 65536 } });
 
   const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
   await app.register(fastifyCors, {
-    origin: corsOrigin,
+    origin: corsOrigin.split(',').map(origin => origin.trim()),
     credentials: true,
   });
 

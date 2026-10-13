@@ -13,6 +13,10 @@ import { mkdir, mkdtemp, readFile, rm, readdir, stat } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import {
+  documentMetadataSchema,
+  type DocumentMetadata,
+} from "./document-contract";
 
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
@@ -34,6 +38,7 @@ export interface StagedUpload {
   directory: string;
   documentTypeCode: string;
   locationId?: number;
+  metadata?: DocumentMetadata;
   files: StagedFile[];
 }
 
@@ -51,15 +56,17 @@ export class DocumentUploadService {
       for await (const part of req.parts({
         limits: {
           files: 10,
-          fields: 2,
-          parts: 12,
+          fields: 3,
+          parts: 13,
           fileSize: MAX_FILE_BYTES,
-          fieldSize: 128,
+          fieldSize: 65536,
         },
       })) {
         if (part.type === "field") {
           if (
-            !["documentTypeCode", "locationId"].includes(part.fieldname) ||
+            !["documentTypeCode", "locationId", "metadata"].includes(
+              part.fieldname,
+            ) ||
             fields.has(part.fieldname) ||
             typeof part.value !== "string" ||
             part.valueTruncated
@@ -112,9 +119,19 @@ export class DocumentUploadService {
           pageCount,
         });
       }
-      const documentTypeCode = fields.get("documentTypeCode");
+      let metadata: DocumentMetadata | undefined;
+      if (fields.has("metadata")) {
+        try {
+          metadata = documentMetadataSchema.parse(
+            JSON.parse(fields.get("metadata")!),
+          );
+        } catch {
+          throw new BadRequestException("Invalid document metadata");
+        }
+      }
+      const documentTypeCode = fields.get("documentTypeCode") ?? "";
       if (
-        !documentTypeCode ||
+        (!documentTypeCode && !metadata) ||
         documentTypeCode.length > 64 ||
         files.length === 0
       )
@@ -136,6 +153,7 @@ export class DocumentUploadService {
       return {
         directory,
         documentTypeCode,
+        metadata,
         ...(loc !== undefined ? { locationId: Number(loc) } : {}),
         files,
       };

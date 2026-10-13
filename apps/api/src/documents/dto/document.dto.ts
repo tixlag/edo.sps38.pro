@@ -5,6 +5,9 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
+  IsIn,
+  MinLength,
   Matches,
   Max,
   MaxLength,
@@ -23,7 +26,9 @@ export class ApiErrorDto {
 }
 export class CandidateDto {
   @ApiProperty() id!: string;
-  @ApiProperty({ format: "uuid" }) chatUuid!: string;
+  @ApiProperty({ type: String, nullable: true, format: "uuid" }) chatUuid!:
+    | string
+    | null;
   @ApiProperty({ type: Number, nullable: true }) locationId!: number | null;
   @ApiProperty({ type: String, nullable: true }) code1c!: string | null;
   @ApiProperty({ format: "date-time" }) createdAt!: string;
@@ -97,6 +102,11 @@ export class DocumentFieldDto {
   @ApiProperty({ type: String, nullable: true }) originalValue!: string | null;
   @ApiProperty({ type: String, nullable: true }) value!: string | null;
   @ApiProperty({ type: String, nullable: true }) editedBy!: string | null;
+  @ApiProperty({ type: String, nullable: true }) submittedValue!: string | null;
+  @ApiProperty() label!: string;
+  @ApiProperty({ enum: ["text", "date", "boolean"] }) kind!: string;
+  @ApiProperty() required!: boolean;
+  @ApiProperty() mismatch!: boolean;
   @ApiProperty({ type: [OcrRegionDto] }) regions!: OcrRegionDto[];
 }
 export class OcrIssueDto {
@@ -124,6 +134,22 @@ export class OcrJobDto {
   @ApiProperty({ type: String, nullable: true }) errorCode!: string | null;
   @ApiProperty() cleanupPending!: boolean;
 }
+export class DocumentDeliveryAttemptDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() actorId!: string;
+  @ApiProperty() startedAt!: string;
+  @ApiProperty({ type: String, nullable: true }) finishedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) errorCode!: string | null;
+}
+export class DocumentDeliveryDto {
+  @ApiProperty({
+    enum: ["PENDING", "SENDING", "SENT", "REQUIRES_MANUAL", "WAITING_CONTRACT"],
+  })
+  status!: string;
+  @ApiProperty({ type: String, nullable: true }) errorCode!: string | null;
+  @ApiProperty({ type: [DocumentDeliveryAttemptDto] })
+  attempts!: DocumentDeliveryAttemptDto[];
+}
 export class DocumentVersionDto {
   @ApiProperty() documentId!: string;
   @ApiProperty() version!: number;
@@ -141,8 +167,18 @@ export class DocumentVersionDto {
   @ApiProperty({ type: String, nullable: true, format: "date-time" })
   approvedAt!: string | null;
   @ApiProperty({ type: String, nullable: true }) approvedBy!: string | null;
+  @ApiProperty({ type: String, nullable: true }) rejectionReason!:
+    | string
+    | null;
+  @ApiProperty({ type: () => DocumentDeliveryDto, nullable: true })
+  delivery!: DocumentDeliveryDto | null;
 }
 export class DocumentDto {
+  @ApiProperty({
+    type: [Number],
+    description: "Approved versions awaiting manual ERP delivery",
+  })
+  pendingDeliveryVersions!: number[];
   @ApiProperty() id!: string;
   @ApiProperty({ type: String, nullable: true }) documentTypeCode!:
     | string
@@ -150,6 +186,13 @@ export class DocumentDto {
   @ApiProperty({ enum: DocumentStatus, enumName: "DocumentStatus" })
   status!: DocumentStatus;
   @ApiProperty() currentVersion!: number;
+  @ApiProperty() revision!: number;
+  @ApiProperty() title!: string;
+  @ApiProperty({ type: String, nullable: true }) documentUid!: string | null;
+  @ApiProperty({ type: String, nullable: true }) candidateId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) chatUuid!: string | null;
+  @ApiProperty({ type: String, nullable: true }) code1c!: string | null;
+  @ApiProperty({ type: String, nullable: true }) deliveryStatus!: string | null;
 }
 export class DocumentListDto {
   @ApiProperty({ type: [DocumentDto] }) items!: DocumentDto[];
@@ -158,6 +201,22 @@ export class DocumentTypeDto {
   @ApiProperty() code!: string;
   @ApiProperty() title!: string;
 }
+export class DocumentDefinitionDto {
+  @ApiProperty() name!: string;
+  @ApiProperty() label!: string;
+  @ApiProperty({ enum: ["text", "date", "boolean"] }) kind!: string;
+  @ApiProperty() required!: boolean;
+  @ApiProperty() ordinal!: number;
+}
+export class CatalogDocumentTypeDto extends DocumentTypeDto {
+  @ApiProperty({ format: "uuid" }) documentUid!: string;
+  @ApiProperty({ type: [DocumentDefinitionDto] })
+  fields!: DocumentDefinitionDto[];
+}
+export class CatalogDocumentTypesDto {
+  @ApiProperty({ type: [CatalogDocumentTypeDto] })
+  items!: CatalogDocumentTypeDto[];
+}
 export class DocumentTypeListDto {
   @ApiProperty({ type: [DocumentTypeDto] }) items!: DocumentTypeDto[];
 }
@@ -165,7 +224,9 @@ export class UploadAcceptedDto {
   @ApiProperty() candidateId!: string;
   @ApiProperty() documentId!: string;
   @ApiProperty() version!: number;
-  @ApiProperty() jobId!: string;
+  @ApiProperty({ type: String, nullable: true }) jobId!: string | null;
+  @ApiPropertyOptional() submissionId?: string;
+  @ApiPropertyOptional({ enum: DocumentStatus }) status?: DocumentStatus;
 }
 export class EmployeeLinkDto {
   @ApiProperty({ maxLength: 64 })
@@ -180,14 +241,61 @@ export class ReviewRevisionDto {
 export class EditDocumentFieldsDto extends ReviewRevisionDto {
   @ApiProperty({
     type: "object",
-    additionalProperties: { type: "string", nullable: true },
+    additionalProperties: {
+      oneOf: [{ type: "string", nullable: true }, { type: "boolean" }],
+    },
     description:
       "Field names mapped to new values; null clears a value. Maximum 200 fields, 16384 characters per value.",
   })
   @IsObject()
-  fields!: Record<string, string | null>;
+  fields!: Record<string, string | boolean | null>;
 }
 export class DownloadDto {
   @ApiProperty({ format: "uri" }) url!: string;
   @ApiProperty({ format: "date-time" }) expiresAt!: string;
+}
+export class RejectDocumentDto extends ReviewRevisionDto {
+  @ApiProperty({ maxLength: 1024, minLength: 1 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1024)
+  reason!: string;
+}
+export class DocumentScopeDto {
+  @ApiPropertyOptional({ format: "uuid" })
+  @IsOptional()
+  @IsUUID()
+  chat_uuid?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  code_1c?: string;
+}
+export class CatalogQueryDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  position_code_1c!: string;
+  @ApiPropertyOptional({ default: "ru" })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-zA-Z]{2}$/)
+  citizenship = "ru";
+}
+export class DocumentStreamGrantDto {
+  @ApiProperty() token!: string;
+  @ApiProperty() url!: string;
+  @ApiProperty({ format: "date-time" }) expiresAt!: string;
+}
+export class ReviewDocumentsQueryDto extends CandidateQueryDto {
+  @ApiPropertyOptional({ enum: ["IN_REVIEW", "ERP_PENDING", "ALL"] })
+  @IsOptional()
+  @IsIn(["IN_REVIEW", "ERP_PENDING", "ALL"])
+  status?: string;
+}
+export class ReviewDocumentsDto extends DocumentListDto {
+  @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
 }

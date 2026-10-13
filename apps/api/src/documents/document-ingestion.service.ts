@@ -2,7 +2,6 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -165,7 +164,11 @@ export class DocumentIngestionService {
           const candidate = await tx.candidate.upsert({
             where: { chatUuid },
             update: {},
-            create: { chatUuid, locationId: upload.locationId ?? null },
+            create: {
+              chatUuid,
+              identityKey: `chat:${chatUuid}`,
+              locationId: upload.locationId ?? null,
+            },
           });
           await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${candidate.id} FOR UPDATE`;
           const existing = await tx.ocrJob.findUnique({
@@ -325,30 +328,49 @@ export class DocumentIngestionService {
   }
 
   async link(chatUuid: string, code1c: string, correlationId: string) {
-    const candidate = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM candidates WHERE chatUuid = ${chatUuid} FOR UPDATE`;
-      const row = await tx.candidate.findUnique({ where: { chatUuid } });
-      if (!row) throw new NotFoundException("Candidate not found");
-      if (row.code1c && row.code1c !== code1c)
-        throw new ConflictException(
-          "Candidate already linked to another code1c",
-        );
-      if (row.code1c === code1c) return row;
-      const updated = await tx.candidate.update({
-        where: { id: row.id },
-        data: { code1c },
-      });
-      await this.audit.logInTransaction(tx, {
-        actorId: "lk-service",
-        action: "CANDIDATE_LINKED",
-        entityType: "Candidate",
-        entityId: row.id,
-        correlationId: correlationId.slice(0, 64),
-        before: { code1c: row.code1c },
-        after: { code1c },
-      });
-      return updated;
-    });
-    return this.reads.candidateDto(candidate);
+    chatUuid = chatUuid.toLowerCase();
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const candidate = await this.prisma.$transaction(async (tx) => {
+          const reserved = await tx.candidate.upsert({
+            where: { chatUuid },
+            update: {},
+            create: { chatUuid, identityKey: `chat:${chatUuid}` },
+          });
+          await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${reserved.id} FOR UPDATE`;
+          const row = await tx.candidate.findUniqueOrThrow({
+            where: { id: reserved.id },
+          });
+          if (row.code1c && row.code1c !== code1c)
+            throw new ConflictException(
+              "Candidate already linked to another code1c",
+            );
+          if (row.code1c === code1c) return row;
+          const updated = await tx.candidate.update({
+            where: { id: row.id },
+            data: { code1c },
+          });
+          await this.audit.logInTransaction(tx, {
+            actorId: "lk-service",
+            action: "CANDIDATE_LINKED",
+            entityType: "Candidate",
+            entityId: row.id,
+            correlationId: correlationId.slice(0, 64),
+            before: { code1c: row.code1c },
+            after: { code1c },
+          });
+          return updated;
+        });
+        return this.reads.candidateDto(candidate);
+      } catch (error) {
+        if (
+          attempt < 2 &&
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          ["P2002", "P2034"].includes(error.code)
+        )
+          continue;
+        throw error;
+      }
+    }
   }
 }

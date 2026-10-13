@@ -1,9 +1,14 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { StorageService } from "../storage/storage.service";
 import { DocumentAccessService } from "./document-access.service";
+import { FIELD_LABELS } from "./document-contract";
 import type {
   CandidateDto,
   CandidateListDto,
@@ -16,7 +21,7 @@ import type {
 const versionInclude = {
   files: { orderBy: { ordinal: "asc" as const } },
   fields: {
-    orderBy: { name: "asc" as const },
+    orderBy: [{ ordinal: "asc" as const }, { name: "asc" as const }],
     include: {
       regions: {
         include: { file: { select: { ordinal: true } } },
@@ -30,6 +35,9 @@ const versionInclude = {
   },
   issues: true,
   job: true,
+  delivery: {
+    include: { attempts: { orderBy: { startedAt: "desc" as const } } },
+  },
 } satisfies Prisma.DocumentVersionInclude;
 
 @Injectable()
@@ -42,7 +50,7 @@ export class DocumentReadService {
 
   candidateDto(c: {
     id: string;
-    chatUuid: string;
+    chatUuid: string | null;
     locationId: number | null;
     code1c: string | null;
     createdAt: Date;
@@ -75,12 +83,20 @@ export class DocumentReadService {
     };
   }
 
-  private async documents(
-    where: Prisma.DocumentWhereInput,
-  ): Promise<DocumentListDto> {
+  async documents(where: Prisma.DocumentWhereInput): Promise<DocumentListDto> {
     const rows = await this.prisma.document.findMany({
       where,
-      include: { documentType: true },
+      include: {
+        documentType: true,
+        candidate: true,
+        versions: {
+          select: {
+            version: true,
+            revision: true,
+            delivery: { select: { status: true } },
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
     return {
@@ -90,6 +106,27 @@ export class DocumentReadService {
           documentTypeCode: d.documentType?.code ?? null,
           status: d.status,
           currentVersion: d.currentVersion,
+          revision:
+            d.versions.find((v) => v.version === d.currentVersion)?.revision ??
+            0,
+          title: d.documentType?.title ?? "Документ",
+          documentUid: d.documentType?.erpUid ?? null,
+          candidateId: d.candidateId,
+          chatUuid: d.candidate?.chatUuid ?? null,
+          code1c: d.candidate?.code1c ?? null,
+          deliveryStatus:
+            d.versions.find((v) => v.version === d.currentVersion)?.delivery
+              ?.status ?? null,
+          pendingDeliveryVersions: d.versions
+            .filter(
+              (v) =>
+                v.delivery &&
+                ["REQUIRES_MANUAL", "WAITING_CONTRACT"].includes(
+                  v.delivery.status,
+                ),
+            )
+            .map((v) => v.version)
+            .sort((a, b) => b - a),
         }),
       ),
     };
@@ -155,6 +192,14 @@ export class DocumentReadService {
         originalValue: f.originalValue,
         value: f.value,
         editedBy: f.editedBy,
+        submittedValue: f.submittedValue,
+        label: FIELD_LABELS[f.name] ?? f.name,
+        kind: f.kind,
+        required: f.required,
+        mismatch:
+          f.submittedValue !== null &&
+          f.originalValue !== null &&
+          f.submittedValue !== f.originalValue,
         regions: f.regions.map((region) => ({
           id: region.id,
           fileId: region.fileId,
@@ -184,6 +229,20 @@ export class DocumentReadService {
       raw: row.ocrRaw,
       approvedAt: row.approvedAt?.toISOString() ?? null,
       approvedBy: row.approvedBy,
+      rejectionReason: row.rejectionReason,
+      delivery: row.delivery
+        ? {
+            status: row.delivery.status,
+            errorCode: row.delivery.errorCode,
+            attempts: row.delivery.attempts.map((a) => ({
+              id: a.id,
+              actorId: a.actorId,
+              startedAt: a.startedAt.toISOString(),
+              finishedAt: a.finishedAt?.toISOString() ?? null,
+              errorCode: a.errorCode,
+            })),
+          }
+        : null,
     };
   }
 
@@ -219,8 +278,14 @@ export class DocumentReadService {
     const file = await this.prisma.documentVersionFile.findFirst({
       where: {
         id: fileId,
-        version: { documentId, version },
         deletedAt: null,
+        version: {
+          documentId,
+          version,
+          status: { not: "RETURNED" },
+          cleanupPending: false,
+          OR: [{ submission: null }, { submission: { status: "SUCCEEDED" } }],
+        },
         // Rejected/incomplete uploads are unavailable even while cleanup is pending.
         OR: [
           { version: { job: null } },
@@ -254,6 +319,67 @@ export class DocumentReadService {
         select: { code: true, title: true },
         orderBy: { code: "asc" },
       }),
+    };
+  }
+  scopeWhere(scope: {
+    chat_uuid?: string;
+    code_1c?: string;
+  }): Prisma.DocumentWhereInput {
+    if (!scope.chat_uuid && !scope.code_1c)
+      throw new BadRequestException("Document owner is required");
+    return {
+      candidate: {
+        ...(scope.chat_uuid
+          ? { chatUuid: scope.chat_uuid.toLowerCase() }
+          : { code1c: scope.code_1c }),
+      },
+    };
+  }
+  async internalDocuments(scope: { chat_uuid?: string; code_1c?: string }) {
+    return this.documents({
+      ...this.scopeWhere(scope),
+      currentVersion: { gt: 0 },
+    });
+  }
+  async documentInfo(id: string, principal: AuthPrincipal) {
+    await this.access.document(id, principal);
+    return (await this.documents({ id })).items[0];
+  }
+  async reviewDocuments(
+    principal: AuthPrincipal,
+    limit = 50,
+    cursor?: string,
+    status?: string,
+  ) {
+    const where: Prisma.DocumentWhereInput = {
+      ...this.access.documentWhere(principal),
+      currentVersion: { gt: 0 },
+      ...(cursor ? { id: { gt: cursor } } : {}),
+      ...(status === "ALL"
+        ? {}
+        : status === "ERP_PENDING"
+          ? {
+              versions: {
+                some: {
+                  delivery: {
+                    status: { in: ["REQUIRES_MANUAL", "WAITING_CONTRACT"] },
+                  },
+                },
+              },
+            }
+          : { status: "IN_REVIEW" }),
+    };
+    const rows = await this.prisma.document.findMany({
+      where,
+      select: { id: true },
+      orderBy: { id: "asc" },
+      take: limit + 1,
+    });
+    const ids = rows.slice(0, limit).map((r) => r.id);
+    const documents = await this.documents({ id: { in: ids } });
+    return {
+      items: ids.map((id) => documents.items.find((d) => d.id === id)!),
+      nextCursor: rows.length > limit ? ids[ids.length - 1] : null,
     };
   }
 }

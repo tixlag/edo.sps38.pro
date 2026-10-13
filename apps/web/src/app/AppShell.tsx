@@ -4,6 +4,7 @@ import { AppSidebar } from '../components/AppSidebar';
 import { AppHeader } from '../components/AppHeader';
 import { useGetMe } from '@edo/api-client';
 import { Button } from '@edo/ui';
+import { useDocumentEvents } from '../lib/document-events';
 
 const CRUMBS: Record<string, string> = {
   '/': 'Дашборд',
@@ -18,11 +19,13 @@ const CRUMBS: Record<string, string> = {
 };
 
 function crumbFor(pathname: string): string {
+  if (pathname.startsWith('/review/')) return CRUMBS['/review'] ?? '';
   if (pathname.startsWith('/employees/')) return CRUMBS['/employee'] ?? '';
   return CRUMBS[pathname] ?? CRUMBS['/'] ?? '';
 }
 
 function activeFor(pathname: string): string {
+  if (pathname.startsWith('/review')) return '/review';
   if (pathname.startsWith('/employees')) return '/employees';
   return pathname;
 }
@@ -30,6 +33,7 @@ function activeFor(pathname: string): string {
 /** Layout shell: real URL routing via TanStack Router (back/forward + deep links work). */
 export function AppShell() {
   const profile = useGetMe();
+  useDocumentEvents(!!profile.data);
   const [collapsed, setCollapsed] = React.useState(true);
   const navigate = useNavigate();
   const location = useLocation();

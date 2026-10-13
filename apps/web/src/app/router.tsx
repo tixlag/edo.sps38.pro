@@ -3,6 +3,7 @@ import { AppShell } from './AppShell';
 import { DashboardPage } from '../pages/DashboardPage';
 import { EmployeesPage } from '../pages/EmployeesPage';
 import { EmployeeDetailPage } from '../pages/EmployeeDetailPage';
+import { ReviewPage, ReviewDocumentPage } from '../pages/ReviewPage';
 import { useEmployeeRouteId } from './AppShell';
 
 function Placeholder({ title }: { title: string }) {
@@ -54,8 +55,10 @@ const tasksRoute = createRoute({
 const reviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/review',
-  component: () => <Placeholder title="Проверка документов" />,
+  component: ReviewPage,
 });
+
+const reviewDocumentRoute = createRoute({ getParentRoute: () => rootRoute, path: '/review/$documentId', component: ReviewDocumentPage });
 
 const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -87,6 +90,7 @@ const routeTree = rootRoute.addChildren([
   employeeDetailRoute,
   tasksRoute,
   reviewRoute,
+  reviewDocumentRoute,
   onboardingRoute,
   signingRoute,
   participantsRoute,

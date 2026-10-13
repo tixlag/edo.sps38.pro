@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Clock, Check, X } from "lucide-react";
 import {
   getGetDocumentVersionQueryKey,
   useGetDocumentVersion,
@@ -56,7 +57,7 @@ function DocumentViewer({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <StatusBadge status={data.status} />
+          <StatusBadge status={data.status} document icon={data.status === "IN_REVIEW" ? <Clock size={14} /> : data.status === "APPROVED" ? <Check size={14} /> : data.status === "RETURNED" ? <X size={14} /> : undefined} />
           <span className="text-sm text-[var(--muted-foreground)]">
             Версия {data.version}
           </span>
@@ -120,7 +121,7 @@ function DocumentViewer({
         </section>
       )}
       <DocumentReviewWorkspace data={data} employeeId={employeeId} />
-      <details className="border-t border-[var(--border)] pt-4">
+      {data.raw !== null && <details className="border-t border-[var(--border)] pt-4">
         <summary className="cursor-pointer text-sm font-semibold focus-visible:outline focus-visible:outline-2">
           Исходный JSON OCR
         </summary>
@@ -130,7 +131,7 @@ function DocumentViewer({
         <pre className="mt-3 max-h-[420px] overflow-auto rounded-[10px] bg-[var(--muted)] p-4 text-xs">
           {JSON.stringify(data.raw ?? {}, null, 2)}
         </pre>
-      </details>
+      </details>}
     </div>
   );
 }

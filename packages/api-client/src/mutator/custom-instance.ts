@@ -25,6 +25,11 @@ export interface ApiAuthAdapter {
 }
 
 let authAdapter: ApiAuthAdapter | null = null;
+export async function getDocumentStreamConnection(reconnecting: boolean): Promise<{ url: string; token: string }> {
+  const token = reconnecting ? await authAdapter?.refreshAccessToken() : authAdapter?.getAccessToken();
+  if (!token) throw new Error('Authentication required');
+  return { url: `${AXIOS_INSTANCE.defaults.baseURL?.replace(/\/$/, '') ?? ''}/api/v1/document-status-events`, token };
+}
 // Shared single-flight refresh promise for concurrent 401s.
 let refreshPromise: Promise<string | null> | null = null;
 

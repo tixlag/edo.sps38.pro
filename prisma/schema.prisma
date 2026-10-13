@@ -38,11 +38,14 @@ enum AuditAction {
   EMPLOYEE_CREATED
   DOCUMENT_UPLOADED
   DOCUMENT_UPLOAD_STARTED
+  DOCUMENT_UPLOAD_FAILED
   DOCUMENT_OCR_COMPLETED
   DOCUMENT_FIELDS_UPDATED
   CANDIDATE_LINKED
   DOCUMENT_RETURNED
   DOCUMENT_APPROVED
+  DOCUMENT_ERP_SEND_REQUESTED
+  DOCUMENT_ERP_SEND_COMPLETED
   DOCUMENT_SIGNED
   WORKFLOW_STAGE_CHANGED
   DATA_IMPORTED
@@ -81,6 +84,12 @@ model DocumentType {
   code      String   @unique @db.VarChar(64)
   title     String   @db.VarChar(255)
   createdAt DateTime @default(now()) @db.DateTime(3)
+  erpUid String? @unique @db.VarChar(36)
+  allRu Boolean @default(false)
+  allForeign Boolean @default(false)
+  catalogSyncedAt DateTime? @db.DateTime(3)
+  definitions DocumentTypeField[]
+  positions DocumentTypePosition[]
 
   documents Document[]
 
@@ -122,6 +131,15 @@ model DocumentVersion {
   ocrSource  String?                @db.VarChar(16)
   approvedAt DateTime?              @db.DateTime(3)
   approvedBy String?                @db.VarChar(64)
+  positionCode1c String? @db.VarChar(64)
+  citizenship String? @db.VarChar(2)
+  approvedStorageKey String? @db.VarChar(1024)
+  pendingApprovalStorageKey String? @db.VarChar(1024)
+  approvalLeaseUntil DateTime? @db.DateTime(3)
+  rejectionReason String? @db.VarChar(1024)
+  cleanupPending Boolean @default(false)
+  submission DocumentSubmission?
+  delivery ErpDocumentDelivery?
   files      DocumentVersionFile[]
   fields     DocumentVersionField[]
   issues     OcrIssue[]
@@ -322,7 +340,8 @@ model LkSyncState {
 
 model Candidate {
   id         String     @id @default(cuid()) @db.VarChar(64)
-  chatUuid   String     @unique @db.VarChar(36)
+  chatUuid   String?    @unique @db.VarChar(36)
+  identityKey String @unique @db.VarChar(80)
   locationId Int?
   code1c     String?    @db.VarChar(64)
   createdAt  DateTime   @default(now()) @db.DateTime(3)
@@ -358,6 +377,10 @@ model DocumentVersionField {
   versionId     String          @db.VarChar(64)
   name          String          @db.VarChar(128)
   originalValue String?         @db.Text
+  submittedValue String?        @db.Text
+  kind String @default("text") @db.VarChar(16)
+  required Boolean @default(false)
+  ordinal Int @default(0)
   value         String?         @db.Text
   editedBy      String?         @db.VarChar(64)
   updatedAt     DateTime        @updatedAt @db.DateTime(3)
@@ -366,6 +389,82 @@ model DocumentVersionField {
 
   @@unique([versionId, name])
   @@map("document_version_fields")
+}
+
+model DocumentTypeField {
+  id String @id @default(cuid()) @db.VarChar(64)
+  documentTypeId String @db.VarChar(64)
+  name String @db.VarChar(64)
+  kind String @db.VarChar(16)
+  required Boolean
+  ordinal Int
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
+  @@unique([documentTypeId, name])
+  @@map("document_type_fields")
+}
+
+model DocumentTypePosition {
+  id String @id @default(cuid()) @db.VarChar(64)
+  documentTypeId String @db.VarChar(64)
+  code1c String @db.VarChar(64)
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
+  @@unique([documentTypeId, code1c])
+  @@map("document_type_positions")
+}
+
+model DocumentSubmission {
+  id String @id @default(cuid()) @db.VarChar(64)
+  identityKey String @db.VarChar(80)
+  idempotencyKey String @db.VarChar(128)
+  fingerprint String @db.VarChar(64)
+  versionId String @unique @db.VarChar(64)
+  status String @default("UPLOADING") @db.VarChar(16)
+  leaseToken String? @db.VarChar(36)
+  leaseUntil DateTime? @db.DateTime(3)
+  errorCode String? @db.VarChar(64)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  version DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  @@unique([identityKey, idempotencyKey])
+  @@index([status, leaseUntil])
+  @@map("document_submissions")
+}
+
+model ErpDocumentDelivery {
+  id String @id @default(cuid()) @db.VarChar(64)
+  versionId String @unique @db.VarChar(64)
+  status String @default("PENDING") @db.VarChar(32)
+  payload Json
+  errorCode String? @db.VarChar(64)
+  leaseToken String? @db.VarChar(36)
+  leaseUntil DateTime? @db.DateTime(3)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  version DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  attempts ErpDocumentAttempt[]
+  @@index([status, leaseUntil])
+  @@map("erp_document_deliveries")
+}
+
+model ErpDocumentAttempt {
+  id String @id @default(cuid()) @db.VarChar(64)
+  deliveryId String @db.VarChar(64)
+  actorId String @db.VarChar(64)
+  startedAt DateTime @default(now()) @db.DateTime(3)
+  finishedAt DateTime? @db.DateTime(3)
+  errorCode String? @db.VarChar(64)
+  delivery ErpDocumentDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  @@index([deliveryId])
+  @@map("erp_document_attempts")
+}
+
+model DocumentStreamGrant {
+  id String @id @default(cuid()) @db.VarChar(64)
+  tokenHash String @unique @db.VarChar(64)
+  chatUuid String? @db.VarChar(36)
+  code1c String? @db.VarChar(64)
+  expiresAt DateTime @db.DateTime(3)
+  @@index([expiresAt])
+  @@map("document_stream_grants")
 }
 
 // Immutable OCR geometry in normalized coordinates of the displayed page,

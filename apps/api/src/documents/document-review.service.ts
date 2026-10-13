@@ -11,6 +11,8 @@ import { AuditService } from "../audit/audit.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { DocumentAccessService } from "./document-access.service";
 import { DocumentReadService } from "./document-read.service";
+import { DocumentPdfService } from "./document-pdf.service";
+import { textValue, typedValue, validateFields } from "./document-contract";
 
 const editsSchema = z
   .record(
@@ -19,7 +21,7 @@ const editsSchema = z
       .min(1)
       .max(128)
       .refine((v) => !["__proto__", "constructor", "prototype"].includes(v)),
-    z.string().max(16_384).nullable(),
+    z.union([z.string().max(16_384), z.boolean()]).nullable(),
   )
   .refine((v) => Object.keys(v).length > 0 && Object.keys(v).length <= 200);
 
@@ -30,6 +32,7 @@ export class DocumentReviewService {
     private readonly access: DocumentAccessService,
     private readonly audit: AuditService,
     private readonly reads: DocumentReadService,
+    private readonly pdf: DocumentPdfService,
   ) {}
 
   async edit(
@@ -60,7 +63,71 @@ export class DocumentReviewService {
     principal: AuthPrincipal,
     correlationId: string,
   ) {
-    return this.change(documentId, number, revision, principal, correlationId);
+    await this.access.document(documentId, principal);
+    const version = await this.prisma.documentVersion.findUnique({
+      where: { documentId_version: { documentId, version: number } },
+      include: { fields: true, submission: true },
+    });
+    if (
+      !version ||
+      version.status !== "IN_REVIEW" ||
+      version.revision !== revision
+    )
+      throw new ConflictException("Document version or revision has changed");
+    if (!version.submission)
+      return this.change(
+        documentId,
+        number,
+        revision,
+        principal,
+        correlationId,
+      );
+    validateFields(
+      version.fields,
+      Object.fromEntries(
+        version.fields.map((f) => [f.name, typedValue(f.value, f.kind)]),
+      ),
+    );
+    const key = await this.pdf.prepare(version.id, revision);
+    try {
+      await this.change(
+        documentId,
+        number,
+        revision,
+        principal,
+        correlationId,
+        undefined,
+        key,
+      );
+    } catch (error) {
+      const current = await this.prisma.documentVersion.findUnique({
+        where: { id: version.id },
+      });
+      if (current?.approvedStorageKey !== key)
+        await this.pdf.discard(version.id, key);
+      throw error;
+    }
+    return this.reads.version(documentId, number);
+  }
+
+  async reject(
+    documentId: string,
+    number: number,
+    revision: number,
+    reason: string,
+    principal: AuthPrincipal,
+    correlationId: string,
+  ) {
+    return this.change(
+      documentId,
+      number,
+      revision,
+      principal,
+      correlationId,
+      undefined,
+      undefined,
+      reason,
+    );
   }
 
   private async change(
@@ -69,7 +136,9 @@ export class DocumentReviewService {
     revision: number,
     principal: AuthPrincipal,
     correlationId: string,
-    edits?: Record<string, string | null>,
+    edits?: Record<string, string | boolean | null>,
+    approvedKey?: string,
+    rejectionReason?: string,
   ) {
     await this.prisma.$transaction(
       async (tx) => {
@@ -89,7 +158,11 @@ export class DocumentReviewService {
         }
         const version = await tx.documentVersion.findUnique({
           where: { documentId_version: { documentId, version: number } },
-          include: { fields: true },
+          include: {
+            fields: true,
+            submission: true,
+            document: { include: { documentType: true, candidate: true } },
+          },
         });
         if (
           !version ||
@@ -101,6 +174,21 @@ export class DocumentReviewService {
             "Document version or review revision has changed",
           );
         }
+        if (
+          approvedKey &&
+          (version.pendingApprovalStorageKey !== approvedKey ||
+            !version.approvalLeaseUntil ||
+            version.approvalLeaseUntil <= new Date())
+        )
+          throw new ConflictException("Approval lease expired");
+        if (edits && version.submission) {
+          if (
+            "positionUid" in edits &&
+            edits.positionUid !== version.positionCode1c
+          )
+            throw new BadRequestException("Position is server-owned");
+          validateFields(version.fields, edits, false);
+        }
         const changed = await tx.documentVersion.updateMany({
           where: { id: version.id, revision, status: "IN_REVIEW" },
           data: {
@@ -108,9 +196,17 @@ export class DocumentReviewService {
             ...(edits
               ? {}
               : {
-                  status: "APPROVED",
-                  approvedAt: new Date(),
-                  approvedBy: principal.uuid,
+                  status: rejectionReason ? "RETURNED" : "APPROVED",
+                  ...(rejectionReason
+                    ? { rejectionReason, cleanupPending: true }
+                    : { approvedAt: new Date(), approvedBy: principal.uuid }),
+                  ...(approvedKey
+                    ? {
+                        approvedStorageKey: approvedKey,
+                        pendingApprovalStorageKey: null,
+                        approvalLeaseUntil: null,
+                      }
+                    : {}),
                 }),
           },
         });
@@ -130,21 +226,43 @@ export class DocumentReviewService {
                 versionId: version.id,
                 name,
                 originalValue: null,
-                value,
+                value: textValue(value),
                 editedBy: principal.uuid,
               },
-              update: { value, editedBy: principal.uuid },
+              update: { value: textValue(value), editedBy: principal.uuid },
             });
           }
         } else {
           await tx.document.update({
             where: { id: documentId },
-            data: { status: "APPROVED" },
+            data: { status: rejectionReason ? "RETURNED" : "APPROVED" },
           });
+          if (approvedKey) {
+            const uid = version.document.documentType?.erpUid;
+            const chatUid = version.document.candidate?.chatUuid;
+            const documentFields = Object.fromEntries(
+              version.fields.map((f) => [
+                f.name,
+                typedValue(f.value, f.kind) ??
+                  (f.kind === "boolean" ? false : ""),
+              ]),
+            );
+            await tx.erpDocumentDelivery.create({
+              data: {
+                versionId: version.id,
+                status: uid && chatUid ? "PENDING" : "WAITING_CONTRACT",
+                payload: { documentUid: uid, chatUid, documentFields },
+              },
+            });
+          }
         }
         await this.audit.logInTransaction(tx, {
           actorId: principal.uuid,
-          action: edits ? "DOCUMENT_FIELDS_UPDATED" : "DOCUMENT_APPROVED",
+          action: edits
+            ? "DOCUMENT_FIELDS_UPDATED"
+            : rejectionReason
+              ? "DOCUMENT_RETURNED"
+              : "DOCUMENT_APPROVED",
           entityType: "Document",
           entityId: documentId,
           correlationId: correlationId.slice(0, 64),
@@ -156,7 +274,12 @@ export class DocumentReviewService {
           after: {
             version: number,
             revision: revision + 1,
-            ...(edits ? { fields: edits } : { status: "APPROVED" }),
+            ...(edits
+              ? { fields: edits }
+              : {
+                  status: rejectionReason ? "RETURNED" : "APPROVED",
+                  rejectionReason,
+                }),
           },
         });
       },

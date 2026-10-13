@@ -14,9 +14,29 @@ import { DocumentIngestionService } from "./document-ingestion.service";
 import { DocumentUploadService } from "./document-upload.service";
 import { LkInternalGuard } from "./lk-internal.guard";
 
+import { ManualDocumentService } from "./manual-document.service";
+import { DocumentCatalogService } from "./document-catalog.service";
+import { DocumentPdfService } from "./document-pdf.service";
+import { DocumentDeliveryService } from "./document-delivery.service";
+import {
+  DocumentEventsService,
+  DocumentStreamGuard,
+} from "./document-events.service";
+import {
+  ManualDocumentIntegrationController,
+  ManualDocumentReviewController,
+  CandidateDocumentEventsController,
+} from "./manual-documents.controller";
+
 @Module({
   imports: [PrismaModule, AuditModule, StorageModule, OcrModule],
-  controllers: [CandidateIntegrationController, DocumentsController],
+  controllers: [
+    CandidateIntegrationController,
+    DocumentsController,
+    ManualDocumentIntegrationController,
+    ManualDocumentReviewController,
+    CandidateDocumentEventsController,
+  ],
   providers: [
     DocumentAccessService,
     DocumentReadService,
@@ -24,6 +44,12 @@ import { LkInternalGuard } from "./lk-internal.guard";
     DocumentIngestionService,
     DocumentUploadService,
     LkInternalGuard,
+    ManualDocumentService,
+    DocumentCatalogService,
+    DocumentPdfService,
+    DocumentDeliveryService,
+    DocumentEventsService,
+    DocumentStreamGuard,
   ],
 })
 export class DocumentsModule {}

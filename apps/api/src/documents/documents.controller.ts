@@ -1,5 +1,6 @@
 import {
   applyDecorators,
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -31,6 +32,7 @@ import type { AuthPrincipal } from "../auth/auth-principal";
 import { EdoAccessRule } from "../auth/edo-access-rule";
 import { LkInternalGuard } from "./lk-internal.guard";
 import { DocumentUploadService } from "./document-upload.service";
+import { ManualDocumentService } from "./manual-document.service";
 import { DocumentIngestionService } from "./document-ingestion.service";
 import { DocumentReadService } from "./document-read.service";
 import { DocumentReviewService } from "./document-review.service";
@@ -68,6 +70,7 @@ export class CandidateIntegrationController {
     private readonly uploads: DocumentUploadService,
     private readonly ingestion: DocumentIngestionService,
     private readonly reads: DocumentReadService,
+    private readonly manual: ManualDocumentService,
   ) {}
 
   @Post(":chatUuid/documents")
@@ -89,6 +92,11 @@ export class CandidateIntegrationController {
       required: ["documentTypeCode", "files[]"],
       properties: {
         documentTypeCode: { type: "string", maxLength: 64 },
+        metadata: {
+          type: "string",
+          description:
+            "JSON metadata for manual review, with matching chat_uuid",
+        },
         locationId: { type: "integer", minimum: 1 },
         "files[]": {
           type: "array",
@@ -106,10 +114,20 @@ export class CandidateIntegrationController {
     @Param("chatUuid", new ParseUUIDPipe()) chatUuid: string,
     @Req() req: Request,
   ): Promise<UploadAcceptedDto> {
-    this.ingestion.ensureAvailable();
     const key = req.headers["idempotency-key"];
     const upload = await this.uploads.parse(req);
     try {
+      if (upload.metadata) {
+        if (upload.metadata.chat_uuid !== chatUuid.toLowerCase())
+          throw new BadRequestException(
+            "metadata.chat_uuid must match the route",
+          );
+        return await this.manual.upload(
+          upload,
+          typeof key === "string" ? key : undefined,
+          req.correlationId ?? "",
+        );
+      }
       return await this.ingestion.upload(
         chatUuid.toLowerCase(),
         typeof key === "string" ? key : undefined,

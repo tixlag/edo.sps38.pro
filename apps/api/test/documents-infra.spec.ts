@@ -216,6 +216,7 @@ beforeAll(async () => {
     EDO_LK_INTERNAL_TOKEN: "lk-documents-test-token",
     OCR_MODE: "stub",
     OCR_WORKER_ENABLED: "false",
+    DOCUMENT_WORKER_ENABLED: "false",
     RABBITMQ_URL: rabbitUrl,
     EDO_OCR_QUEUE: `edo.ocr.${prefix}`,
     LK_EVENTS_EXCHANGE: "lk.events",
