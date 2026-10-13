@@ -557,9 +557,12 @@ export interface RejectDocumentDto {
   reason: string;
 }
 
+/**
+ * Provide metadata for manual review or documentTypeCode for legacy OCR; at least one is required.
+ */
 export type UploadCandidateDocumentBody = {
   /** @maxLength 64 */
-  documentTypeCode: string;
+  documentTypeCode?: string;
   /** JSON metadata for manual review, with matching chat_uuid */
   metadata?: string;
   /** @minimum 1 */
@@ -1167,7 +1170,7 @@ export function useGetMe<
 }
 
 /**
- * @summary Upload images/PDF of one candidate document for asynchronous OCR
+ * @summary Upload candidate document metadata for manual review, or use the legacy OCR contract
  */
 export const uploadCandidateDocument = (
   chatUuid: string,
@@ -1175,10 +1178,12 @@ export const uploadCandidateDocument = (
   signal?: AbortSignal,
 ) => {
   const formData = new FormData();
-  formData.append(
-    "documentTypeCode",
-    uploadCandidateDocumentBody.documentTypeCode,
-  );
+  if (uploadCandidateDocumentBody.documentTypeCode !== undefined) {
+    formData.append(
+      "documentTypeCode",
+      uploadCandidateDocumentBody.documentTypeCode,
+    );
+  }
   if (uploadCandidateDocumentBody.metadata !== undefined) {
     formData.append("metadata", uploadCandidateDocumentBody.metadata);
   }
@@ -1245,7 +1250,7 @@ export type UploadCandidateDocumentMutationBody = UploadCandidateDocumentBody;
 export type UploadCandidateDocumentMutationError = ApiErrorDto;
 
 /**
- * @summary Upload images/PDF of one candidate document for asynchronous OCR
+ * @summary Upload candidate document metadata for manual review, or use the legacy OCR contract
  */
 export const useUploadCandidateDocument = <
   TError = ApiErrorDto,

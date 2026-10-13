@@ -76,7 +76,7 @@ export class CandidateIntegrationController {
   @Post(":chatUuid/documents")
   @HttpCode(202)
   @ApiOperation({
-    summary: "Upload images/PDF of one candidate document for asynchronous OCR",
+    summary: "Upload candidate document metadata for manual review, or use the legacy OCR contract",
     operationId: "uploadCandidateDocument",
   })
   @ApiConsumes("multipart/form-data")
@@ -89,7 +89,8 @@ export class CandidateIntegrationController {
   @ApiBody({
     schema: {
       type: "object",
-      required: ["documentTypeCode", "files[]"],
+      required: ["files[]"],
+      description: "Provide metadata for manual review or documentTypeCode for legacy OCR; at least one is required.",
       properties: {
         documentTypeCode: { type: "string", maxLength: 64 },
         metadata: {
