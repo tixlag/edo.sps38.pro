@@ -25,8 +25,8 @@ export interface ApiAuthAdapter {
 }
 
 let authAdapter: ApiAuthAdapter | null = null;
-export async function getDocumentStreamConnection(reconnecting: boolean): Promise<{ url: string; token: string }> {
-  const token = reconnecting ? await authAdapter?.refreshAccessToken() : authAdapter?.getAccessToken();
+export async function getDocumentStreamConnection(refreshToken: boolean): Promise<{ url: string; token: string }> {
+  const token = refreshToken ? await authAdapter?.refreshAccessToken() : authAdapter?.getAccessToken();
   if (!token) throw new Error('Authentication required');
   return { url: `${AXIOS_INSTANCE.defaults.baseURL?.replace(/\/$/, '') ?? ''}/api/v1/document-status-events`, token };
 }
