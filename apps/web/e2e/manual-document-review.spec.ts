@@ -26,7 +26,7 @@ for (const width of [1440, 390]) {
     await expect(page.getByText('Ожидает проверки', { exact: true })).toBeVisible();
     await page.getByRole('link', { name: 'Паспорт', exact: true }).click();
     await expect(page.locator('textarea[id$="-number"]')).toHaveValue('000123');
-    await expect(page.locator('input[type="checkbox"]')).not.toBeChecked();
+    await expect(page.locator('[data-field-row="isInvalid"]')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Подтвердить документ' })).toBeVisible();
     await page.screenshot({ path: `../../.cache/manual-review-${width}.png`, fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

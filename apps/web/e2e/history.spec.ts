@@ -275,11 +275,12 @@ test('history deep link opens the historic version, locked', async ({ page }) =>
   await row.getByRole('link').click();
   await expect(page).toHaveURL(/\/review\/docA-1111\?version=1/);
   await expect(page.getByText('Историческая версия 1')).toBeVisible();
-  // Stale IN_REVIEW v1 would be editable by itself: the historic lock
-  // (disabled fieldset) forbids edit/approve/reject/send.
-  await expect(page.locator('textarea[id$="-number"]')).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Подтвердить' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Отклонить' })).toBeDisabled();
+  // Historic values stay readable without mutation controls; preview tools
+  // remain available for inspecting the requested version.
+  await expect(page.locator('textarea[id$="-number"]')).toHaveCount(0);
+  await expect(page.locator('[data-field-row="number"]')).toContainText('A1-stale');
+  await expect(page.getByRole('button', { name: 'Подтвердить документ' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Отклонить документ' })).toHaveCount(0);
   expect(mutations).toBe(0);
   // Back to the current version: the lock is gone.
   await page.getByRole('button', { name: 'Перейти к актуальной версии' }).click();
