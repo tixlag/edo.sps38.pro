@@ -61,9 +61,14 @@ export interface AuditLogItemDto {
    * @nullable
    */
   rejectionReason: string | null;
+  /**
+   * Document version the action applied to (from after.version); null for non-document rows and legacy rows without a version
+   * @nullable
+   */
+  version: number | null;
   createdAt: string;
   /**
-   * Frontend deep-link hint, e.g. /documents/<id>; null when no route is known
+   * Frontend deep-link hint, e.g. /review/<id>; null when no route is known. The web client appends ?version=N for versioned rows.
    * @nullable
    */
   linkHint: string | null;
@@ -756,6 +761,7 @@ export type ListReviewDocumentsStatus =
 export const ListReviewDocumentsStatus = {
   IN_REVIEW: "IN_REVIEW",
   ERP_PENDING: "ERP_PENDING",
+  RETURNED: "RETURNED",
   ALL: "ALL",
 } as const;
 
