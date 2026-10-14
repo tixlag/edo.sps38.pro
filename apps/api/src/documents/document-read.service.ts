@@ -10,6 +10,7 @@ import { StorageService } from "../storage/storage.service";
 import { DocumentAccessService } from "./document-access.service";
 import { FIELD_LABELS } from "./document-contract";
 import type {
+  CandidateDocumentDraftDto,
   CandidateDto,
   CandidateListDto,
   DocumentDto,
@@ -340,6 +341,48 @@ export class DocumentReadService {
       ...this.scopeWhere(scope),
       currentVersion: { gt: 0 },
     });
+  }
+  async internalDraft(
+    scope: { chat_uuid?: string; code_1c?: string },
+    documentUid: string,
+  ): Promise<CandidateDocumentDraftDto> {
+    const document = await this.prisma.document.findFirst({
+      where: {
+        ...this.scopeWhere(scope),
+        documentType: { erpUid: documentUid },
+        status: "RETURNED",
+        currentVersion: { gt: 0 },
+      },
+      select: {
+        currentVersion: true,
+        versions: {
+          where: { status: "RETURNED" },
+          select: {
+            version: true,
+            fields: {
+              select: { name: true, kind: true, submittedValue: true },
+            },
+          },
+        },
+      },
+    });
+    const version = document?.versions.find(
+      (v) => v.version === document.currentVersion,
+    );
+    if (!version) throw new NotFoundException("Returned document not found");
+    return {
+      documentUid,
+      version: version.version,
+      fields: version.fields.map((field) => ({
+        name: field.name,
+        value:
+          field.submittedValue === null
+            ? null
+            : field.kind === "boolean"
+              ? field.submittedValue === "true"
+              : field.submittedValue,
+      })),
+    };
   }
   async documentInfo(id: string, principal: AuthPrincipal) {
     await this.access.document(id, principal);

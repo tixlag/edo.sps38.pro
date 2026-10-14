@@ -331,3 +331,17 @@ export class ReviewDocumentsQueryDto extends CandidateQueryDto {
 export class ReviewDocumentsDto extends DocumentListDto {
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
 }
+
+export class CandidateDocumentDraftFieldDto {
+  @ApiProperty() name!: string;
+  @ApiProperty({
+    oneOf: [{ type: "string", nullable: true }, { type: "boolean" }],
+  })
+  value!: string | boolean | null;
+}
+export class CandidateDocumentDraftDto {
+  @ApiProperty({ format: "uuid" }) documentUid!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty({ type: [CandidateDocumentDraftFieldDto] })
+  fields!: CandidateDocumentDraftFieldDto[];
+}

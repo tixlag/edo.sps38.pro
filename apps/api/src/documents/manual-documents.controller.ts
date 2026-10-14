@@ -7,6 +7,8 @@ import {
   Req,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
+  Header,
   HttpCode,
   UseGuards,
   Sse,
@@ -42,6 +44,7 @@ import { EdoAccessRule } from "../auth/edo-access-rule";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import {
   ApiErrorDto,
+  CandidateDocumentDraftDto,
   CatalogQueryDto,
   CatalogDocumentTypesDto,
   DocumentScopeDto,
@@ -149,6 +152,20 @@ export class ManualDocumentIntegrationController {
   @ApiResponse({ status: 200, type: DocumentListDto })
   statuses(@Query() scope: DocumentScopeDto) {
     return this.reads.internalDocuments(scope);
+  }
+  @Get("document-drafts/:documentUid")
+  @Header("Cache-Control", "no-store")
+  @ApiOperation({
+    operationId: "getCandidateDocumentDraft",
+    summary:
+      "Previously submitted values of the current returned document of one owner",
+  })
+  @ApiResponse({ status: 200, type: CandidateDocumentDraftDto })
+  draft(
+    @Query() scope: DocumentScopeDto,
+    @Param("documentUid", ParseUUIDPipe) uid: string,
+  ) {
+    return this.reads.internalDraft(scope, uid.toLowerCase());
   }
   @Post("document-stream-grants")
   @HttpCode(200)

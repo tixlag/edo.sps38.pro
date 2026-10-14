@@ -340,6 +340,55 @@ suite("manual documents with isolated MariaDB/S3 and ERP stub", () => {
       ).status,
     ).toBe(409);
   });
+  it("blocks a new bundle during review and restores only the current returned owner's submitted fields", async () => {
+    const chat = randomUUID();
+    const first = await json(await upload(requestForm(chat)));
+    expect((await upload(requestForm(chat))).status).toBe(409);
+    const draftUrl = `/api/internal/edo/v1/document-drafts/${typeUid}?chat_uuid=${chat}`;
+    expect(
+      (await app.inject({ method: "GET", url: draftUrl, headers: service }))
+        .statusCode,
+    ).toBe(404);
+    const rejected = await app.inject({
+      method: "POST",
+      url: `/api/v1/documents/${first.documentId}/versions/1/reject`,
+      headers: reviewer(),
+      payload: { revision: 0, reason: "Better photo" },
+    });
+    expect(rejected.statusCode).toBe(200);
+    const draft = await app.inject({
+      method: "GET",
+      url: draftUrl,
+      headers: service,
+    });
+    expect(draft.statusCode).toBe(200);
+    expect(draft.headers["cache-control"]).toBe("no-store");
+    expect(draft.json()).toMatchObject({
+      documentUid: typeUid,
+      version: 1,
+      fields: expect.arrayContaining([
+        { name: "number", value: "000123" },
+        { name: "isInvalid", value: false },
+      ]),
+    });
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/internal/edo/v1/document-drafts/${typeUid}?chat_uuid=${randomUUID()}`,
+          headers: service,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (await app.inject({ method: "GET", url: draftUrl })).statusCode,
+    ).toBe(401);
+    expect((await json(await upload(requestForm(chat)))).version).toBe(2);
+    expect(
+      (await app.inject({ method: "GET", url: draftUrl, headers: service }))
+        .statusCode,
+    ).toBe(404);
+  });
   it("stores approval PDF, retains approval on ERP failure and sends again only manually", async () => {
     const body = await json(await upload(requestForm()));
     const approve = await app.inject({
