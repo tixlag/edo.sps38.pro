@@ -530,6 +530,19 @@ export interface CatalogDocumentTypesDto {
   items: CatalogDocumentTypeDto[];
 }
 
+export type CandidateDocumentDraftFieldDtoValue = string | null | boolean;
+
+export interface CandidateDocumentDraftFieldDto {
+  name: string;
+  value: CandidateDocumentDraftFieldDtoValue;
+}
+
+export interface CandidateDocumentDraftDto {
+  documentUid: string;
+  version: number;
+  fields: CandidateDocumentDraftFieldDto[];
+}
+
 export interface DocumentScopeDto {
   chat_uuid?: string;
   code_1c?: string;
@@ -620,6 +633,11 @@ export type SubmitCandidateDocumentBody = {
 };
 
 export type GetCandidateDocumentStatusesParams = {
+  chat_uuid?: string;
+  code_1c?: string;
+};
+
+export type GetCandidateDocumentDraftParams = {
   chat_uuid?: string;
   code_1c?: string;
 };
@@ -2441,6 +2459,106 @@ export function useGetCandidateDocumentStatuses<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetCandidateDocumentStatusesQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Previously submitted values of the current returned document of one owner
+ */
+export const getCandidateDocumentDraft = (
+  documentUid: string,
+  params?: GetCandidateDocumentDraftParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateDocumentDraftDto>({
+    url: `/api/internal/edo/v1/document-drafts/${documentUid}`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentDraftQueryKey = (
+  documentUid: string,
+  params?: GetCandidateDocumentDraftParams,
+) => {
+  return [
+    `/api/internal/edo/v1/document-drafts/${documentUid}`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetCandidateDocumentDraftQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateDocumentDraft>>,
+  TError = ApiErrorDto,
+>(
+  documentUid: string,
+  params?: GetCandidateDocumentDraftParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentDraft>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetCandidateDocumentDraftQueryKey(documentUid, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateDocumentDraft>>
+  > = ({ signal }) => getCandidateDocumentDraft(documentUid, params, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!documentUid,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentDraft>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateDocumentDraftQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocumentDraft>>
+>;
+export type GetCandidateDocumentDraftQueryError = ApiErrorDto;
+
+/**
+ * @summary Previously submitted values of the current returned document of one owner
+ */
+
+export function useGetCandidateDocumentDraft<
+  TData = Awaited<ReturnType<typeof getCandidateDocumentDraft>>,
+  TError = ApiErrorDto,
+>(
+  documentUid: string,
+  params?: GetCandidateDocumentDraftParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentDraft>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateDocumentDraftQueryOptions(
+    documentUid,
     params,
     options,
   );

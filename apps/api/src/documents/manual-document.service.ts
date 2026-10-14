@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { Prisma, type DocumentStatus } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
+import { assertDocumentUploadAllowed } from "./document-upload-policy";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { AuditService } from "../audit/audit.service";
@@ -257,6 +258,7 @@ export class ManualDocumentService {
                 currentVersion: 0,
               },
             });
+            await assertDocumentUploadAllowed(tx, doc);
             const last = await tx.documentVersion.aggregate({
               where: { documentId: doc.id },
               _max: { version: true },
