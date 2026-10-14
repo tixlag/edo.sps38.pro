@@ -48,6 +48,14 @@ export class AuditLogItemDto {
   })
   rejectionReason!: string | null;
 
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Document version the action applied to (from after.version); null for non-document rows and legacy rows without a version',
+  })
+  version!: number | null;
+
   @ApiProperty({ format: 'date-time' })
   createdAt!: string;
 
@@ -55,7 +63,7 @@ export class AuditLogItemDto {
     type: String,
     nullable: true,
     description:
-      'Frontend deep-link hint, e.g. /documents/<id>; null when no route is known',
+      'Frontend deep-link hint, e.g. /review/<id>; null when no route is known. The web client appends ?version=N for versioned rows.',
   })
   linkHint!: string | null;
 }
