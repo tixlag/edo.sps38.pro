@@ -1,0 +1,16 @@
+.git
+.github
+.gitlab-ci.yml
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/playwright-report
+**/test-results
+.cache
+tmp
+*.log
+.env
+.env.*
+!.env.example
+docs
