@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearch,
+} from "@tanstack/react-router";
 import {
   useListReviewDocuments,
   useGetDocumentInfo,
@@ -18,7 +23,9 @@ const VERSION_STATUS_LABEL: Record<string, string> = {
 };
 
 export function ReviewPage() {
-  const [tab, setTab] = useState<"IN_REVIEW" | "ERP_PENDING" | "RETURNED">("IN_REVIEW");
+  const [tab, setTab] = useState<"IN_REVIEW" | "ERP_PENDING" | "RETURNED">(
+    "IN_REVIEW",
+  );
   const [cursor, setCursor] = useState<string | undefined>();
   const list = useListReviewDocuments({ status: tab, limit: 50, cursor });
   const pickTab = (next: typeof tab) => {
@@ -58,7 +65,11 @@ export function ReviewPage() {
       {list.isError && (
         <div role="alert">
           Не удалось загрузить очередь.{" "}
-          <Button size="sm" variant="outline" onClick={() => void list.refetch()}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void list.refetch()}
+          >
             Повторить
           </Button>
         </div>
@@ -195,7 +206,7 @@ export function ReviewDocumentPage() {
     ? new Date(version.data.approvedAt).toLocaleString("ru-RU")
     : null;
   return (
-    <div className="h-full overflow-auto p-7">
+    <div className="flex h-full min-h-0 flex-col overflow-auto p-3 sm:p-4 lg:overflow-hidden">
       <Link
         to="/review"
         className="mb-2 inline-block text-[13px] text-[var(--muted-foreground)] underline underline-offset-4 hover:text-[var(--foreground)]"
@@ -206,14 +217,31 @@ export function ReviewDocumentPage() {
         title={info.data?.title ?? "Проверка документа"}
         subtitle={
           info.data?.code1c
-            ? `Сотрудник ${info.data.code1c}`
-            : `Чат ${info.data?.chatUuid ?? ""}`
+            ? `Сотрудник ${info.data.code1c} · Версия ${number}`
+            : `Чат ${info.data?.chatUuid ?? ""} · Версия ${number || "—"}`
+        }
+        actions={
+          version.data && (
+            <StatusBadge
+              status={version.data.status}
+              document
+              icon={
+                version.data.status === "IN_REVIEW" ? (
+                  <Clock size={14} />
+                ) : version.data.status === "APPROVED" ? (
+                  <Check size={14} />
+                ) : (
+                  <X size={14} />
+                )
+              }
+            />
+          )
         }
       />
       {historic && version.data && (
         <div
           role="status"
-          className="mt-3 rounded-[10px] border border-[var(--border)] bg-[var(--primary-soft)] p-3 text-[13px]"
+          className="mt-2 rounded-md border border-[var(--border)] bg-[var(--primary-soft)] p-2 text-xs"
         >
           <p className="font-semibold">
             Историческая версия {version.data.version}
@@ -226,10 +254,6 @@ export function ReviewDocumentPage() {
               ? ` · причина: ${version.data.rejectionReason}`
               : ""}
           </p>
-          <p className="mt-1">
-            Подтверждение, отклонение, исправление полей и отправка в ERP
-            доступны только для актуальной версии.
-          </p>
           <Button
             size="sm"
             variant="outline"
@@ -241,13 +265,16 @@ export function ReviewDocumentPage() {
           </Button>
         </div>
       )}
-      {!historic && unknownVersionFallback && !info.isLoading && currentVersion ? (
+      {!historic &&
+      unknownVersionFallback &&
+      !info.isLoading &&
+      currentVersion ? (
         <p
           role="status"
-          className="mt-3 rounded-[10px] bg-[var(--muted)] p-3 text-[13px]"
+          className="mt-2 rounded-md bg-[var(--muted)] px-2 py-1 text-xs"
         >
-          Точная версия неизвестна (ссылка без версии) — показана текущая
-          версия {currentVersion}.
+          Точная версия неизвестна (ссылка без версии) — показана текущая версия{" "}
+          {currentVersion}.
         </p>
       ) : null}
       {info.data &&
@@ -304,47 +331,13 @@ export function ReviewDocumentPage() {
         </div>
       )}
       {version.data && (
-        <Card className="mt-4">
-          <CardContent className="p-4">
-            <div className="mb-3">
-              <StatusBadge
-                status={version.data.status}
-                document
-                icon={
-                  version.data.status === "IN_REVIEW" ? (
-                    <Clock size={14} />
-                  ) : version.data.status === "APPROVED" ? (
-                    <Check size={14} />
-                  ) : (
-                    <X size={14} />
-                  )
-                }
-              />
-            </div>
-            {/*
-              Historic lock without touching DocumentReviewWorkspace (agent E):
-              a disabled fieldset disables every nested control (edit inputs,
-              save/approve/reject/send buttons) while the banner above explains
-              why. The backend also rejects non-current mutations with 409
-              (doc.currentVersion check), so this is UX-level enforcement.
-              DocumentPreview below keeps using data.version (the requested
-              one, never current): cleaned-up rejected originals surface
-              honestly as "Оригиналы недоступны" + preview error, never as
-              another version's file.
-            */}
-            {historic ? (
-              <fieldset
-                disabled
-                className="m-0 min-w-0 border-0 p-0"
-                aria-label="Историческая версия: изменение запрещено"
-              >
-                <DocumentReviewWorkspace data={version.data} />
-              </fieldset>
-            ) : (
-              <DocumentReviewWorkspace data={version.data} />
-            )}
-          </CardContent>
-        </Card>
+        <div className="mt-3 min-h-0 lg:flex-1">
+          <DocumentReviewWorkspace
+            data={version.data}
+            readOnly={historic}
+            fitContainer
+          />
+        </div>
       )}
     </div>
   );

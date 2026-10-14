@@ -14,15 +14,21 @@ import {
   type OcrRegionDto,
 } from "@edo/api-client";
 import { Badge, Button } from "@edo/ui";
+import { Check, Save, X } from "lucide-react";
 import { DocumentPreview } from "./DocumentPreview";
 import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
+import { getRequiredReviewFields } from "./document-review-fields";
 
 export function DocumentReviewWorkspace({
   data,
   employeeId,
+  readOnly = false,
+  fitContainer = false,
 }: {
   data: DocumentVersionDto;
   employeeId?: string;
+  readOnly?: boolean;
+  fitContainer?: boolean;
 }) {
   const client = useQueryClient();
   const profile = useGetMe();
@@ -59,6 +65,7 @@ export function DocumentReviewWorkspace({
   const fieldsContainer = useRef<HTMLDivElement>(null);
   const permissions = profile.data?.permissions;
   const canReview =
+    !readOnly &&
     !!permissions &&
     ["20002", "20009"].some((rule) =>
       Object.prototype.hasOwnProperty.call(permissions, rule),
@@ -66,16 +73,7 @@ export function DocumentReviewWorkspace({
   const canEdit = canReview && data.status === "IN_REVIEW";
   const file = files.find((item) => item.id === fileId) ?? files[0];
   const visiblePage = Math.max(1, Math.min(pageNumber, file?.pageCount ?? 1));
-  const order = Object.keys(DOCUMENT_FIELD_LABELS);
-  const fields = data.ocrSource
-    ? [...data.fields].sort((a, b) => {
-        const rank = (name: string) =>
-          order.includes(name) ? order.indexOf(name) : order.length;
-        return (
-          rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, "ru")
-        );
-      })
-    : data.fields;
+  const fields = getRequiredReviewFields(data);
   const mismatchCount = fields.filter((field) => field.mismatch).length;
   const visibleFields = mismatchOnly
     ? fields.filter((field) => field.mismatch)
@@ -86,7 +84,7 @@ export function DocumentReviewWorkspace({
           .filter(([name, value]) => value !== draft.original[name])
           .map(([name, value]) => [
             name,
-            data.fields.find((f) => f.name === name)?.kind === "boolean"
+            fields.find((f) => f.name === name)?.kind === "boolean"
               ? value === "true"
               : value || null,
           ]),
@@ -160,6 +158,7 @@ export function DocumentReviewWorkspace({
     },
   });
   const canSend =
+    !readOnly &&
     !!permissions &&
     ["20006", "20009"].some((rule) =>
       Object.prototype.hasOwnProperty.call(permissions, rule),
@@ -170,7 +169,7 @@ export function DocumentReviewWorkspace({
     const values =
       draft?.values ??
       Object.fromEntries(
-        data.fields.map((field) => [field.name, field.value ?? ""]),
+        fields.map((field) => [field.name, field.value ?? ""]),
       );
     setDraft({
       revision: draft?.revision ?? data.revision,
@@ -187,7 +186,8 @@ export function DocumentReviewWorkspace({
     explicitRegion?: OcrRegionDto,
     revealPreview = false,
   ) => {
-    const field = data.fields.find((item) => item.name === name);
+    const field = fields.find((item) => item.name === name);
+    if (mismatchOnly && field && !field.mismatch) setMismatchOnly(false);
     const region =
       explicitRegion ??
       field?.regions.find(
@@ -260,7 +260,7 @@ export function DocumentReviewWorkspace({
       for (const input of Object.values(inputs.current)) {
         if (!(input instanceof HTMLTextAreaElement)) continue;
         input.style.height = "auto";
-        input.style.height = `${Math.min(160, input.scrollHeight + 2)}px`;
+        input.style.height = `${Math.min(96, Math.max(32, input.scrollHeight + 2))}px`;
       }
     };
     resize();
@@ -279,65 +279,74 @@ export function DocumentReviewWorkspace({
   const beginDraft = () => {
     if (!draft) {
       const values = Object.fromEntries(
-        data.fields.map((field) => [field.name, field.value ?? ""]),
+        fields.map((field) => [field.name, field.value ?? ""]),
       );
       setDraft({ revision: data.revision, values, original: values });
     }
   };
   return (
-    <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+    <div
+      className={`grid min-w-0 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:items-stretch ${fitContainer ? "lg:h-full" : "lg:h-[calc(100dvh-12rem)] lg:min-h-[360px]"}`}
+    >
       <section
         ref={previewSection}
-        className="flex min-w-0 flex-col gap-3 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-y-auto xl:pr-1"
+        className="flex min-h-0 min-w-0 flex-col gap-2 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] p-3"
         aria-label="Превью документа"
       >
-        <h3 className="text-[13px] font-semibold">Оригинал документа</h3>
-        {files.length > 1 && (
-          <div className="flex flex-wrap gap-2">
-            {files.map((item, index) => (
-              <Button
-                key={item.id}
-                size="sm"
-                variant={item.id === file?.id ? "secondary" : "outline"}
-                aria-pressed={item.id === file?.id}
-                onClick={() => {
-                  setFileId(item.id);
-                  setPageNumber(1);
-                  setSelection(null);
-                }}
-              >
-                Файл {index + 1}
-              </Button>
-            ))}
-          </div>
-        )}
-        {file && file.pageCount > 1 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={visiblePage <= 1}
-              onClick={() => {
-                setPageNumber(visiblePage - 1);
-                setSelection(null);
-              }}
-            >
-              Назад
-            </Button>
-            <span className="text-[13px] tabular-nums">
-              Страница {visiblePage} из {file.pageCount}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={visiblePage >= file.pageCount}
-              onClick={() => {
-                setPageNumber(visiblePage + 1);
-                setSelection(null);
-              }}
-            >
-              Далее
-            </Button>
+        {(files.length > 1 || (file && file.pageCount > 1)) && (
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+            {files.length > 1 && (
+              <div className="flex min-w-0 flex-wrap gap-1">
+                {files.map((item, index) => (
+                  <Button
+                    key={item.id}
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    variant={item.id === file?.id ? "secondary" : "outline"}
+                    title={item.filename}
+                    aria-pressed={item.id === file?.id}
+                    onClick={() => {
+                      setFileId(item.id);
+                      setPageNumber(1);
+                      setSelection(null);
+                    }}
+                  >
+                    Файл {index + 1}
+                  </Button>
+                ))}
+              </div>
+            )}
+            {file && file.pageCount > 1 && (
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  variant="outline"
+                  disabled={visiblePage <= 1}
+                  onClick={() => {
+                    setPageNumber(visiblePage - 1);
+                    setSelection(null);
+                  }}
+                >
+                  Назад
+                </Button>
+                <span className="text-xs tabular-nums">
+                  Страница {visiblePage} из {file.pageCount}
+                </span>
+                <Button
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  variant="outline"
+                  disabled={visiblePage >= file.pageCount}
+                  onClick={() => {
+                    setPageNumber(visiblePage + 1);
+                    setSelection(null);
+                  }}
+                >
+                  Далее
+                </Button>
+              </div>
+            )}
           </div>
         )}
         {file ? (
@@ -347,7 +356,7 @@ export function DocumentReviewWorkspace({
             version={data.version}
             file={file}
             pageNumber={visiblePage}
-            fields={data.fields}
+            fields={fields}
             selectedField={selection?.fieldName ?? null}
             selectedRegionId={selection?.regionId ?? null}
             hoveredField={hoveredField}
@@ -361,39 +370,36 @@ export function DocumentReviewWorkspace({
         )}
       </section>
       <section
-        className="flex min-w-0 flex-col gap-3"
+        className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]"
         aria-label="Поля документа"
       >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-[13px] font-semibold">
-            Поля документа · {visibleFields.length}
-          </h3>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="shrink-0 border-b border-[var(--border)] px-3 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">
+              Обязательные поля · {visibleFields.length}
+            </h3>
+            {changedCount > 0 && (
+              <Badge tone="warning">Не сохранено: {changedCount}</Badge>
+            )}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-xs text-[var(--muted-foreground)]">
+            <p>Сверьте значения с оригиналом документа.</p>
             {mismatchCount > 0 && (
-              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+              <label className="flex cursor-pointer items-center gap-1.5">
                 <input
                   type="checkbox"
+                  className="accent-[var(--primary)]"
                   checked={mismatchOnly}
                   onChange={(event) => setMismatchOnly(event.target.checked)}
                 />
                 Только расхождения ({mismatchCount})
               </label>
             )}
-            {changedCount > 0 && (
-              <Badge tone="warning">Не сохранено: {changedCount}</Badge>
-            )}
           </div>
         </div>
-        {canEdit && (
-          <p className="text-xs text-[var(--muted-foreground)]">
-            {data.ocrSource
-              ? "Наведите на поле или область на превью, исправьте значение и сохраните."
-              : "Сверьте значения с документом. При необходимости исправьте их и сохраните."}
-          </p>
-        )}
         <div
           ref={fieldsContainer}
-          className="min-w-0 overflow-x-hidden xl:max-h-[620px] xl:overflow-y-auto xl:pr-2"
+          className="max-h-[60dvh] min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 lg:max-h-none"
         >
           <dl className="divide-y divide-[var(--border)]">
             {visibleFields.map((field) => {
@@ -408,6 +414,16 @@ export function DocumentReviewWorkspace({
                 : -1;
               const isHovered = hoveredField === field.name;
               const isSelected = selection?.fieldName === field.name;
+              const label =
+                DOCUMENT_FIELD_LABELS[field.name] ?? field.label ?? field.name;
+              const value = draft?.values[field.name] ?? field.value ?? "";
+              const displayValue = (text: string | null) =>
+                field.kind === "boolean"
+                  ? text === "true"
+                    ? "Да"
+                    : "Нет"
+                  : text || "—";
+              const inputClass = `block min-h-8 w-full min-w-0 rounded-md border bg-[var(--card)] px-2 py-1 text-[13px] leading-5 caret-[var(--primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] ${field.mismatch ? "border-[var(--primary)]" : "border-[var(--border)]"}`;
               return (
                 <div
                   key={field.name}
@@ -417,188 +433,290 @@ export function DocumentReviewWorkspace({
                   data-field-row={field.name}
                   onMouseEnter={() => hoverField(field.name)}
                   onMouseLeave={unhoverField}
-                  className={`min-w-0 rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--muted)] ${field.mismatch ? "border border-[var(--primary)] bg-[var(--primary-soft)]" : isSelected ? "bg-[var(--muted)]" : ""} ${isHovered && !field.mismatch ? "bg-[var(--muted)] outline outline-1 outline-[var(--primary)]" : isHovered ? "outline outline-1 outline-[var(--primary)]" : ""}`}
+                  className={`grid min-w-0 gap-1 py-2 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3 ${field.mismatch ? "bg-[var(--primary-soft)]" : isSelected ? "bg-[var(--muted)]" : ""} ${isHovered ? `${field.mismatch ? "" : "bg-[var(--muted)]"} outline outline-1 outline-[var(--primary)]` : ""}`}
                 >
-                  <dt className="mb-0.5 flex flex-wrap items-center justify-between gap-2 break-words text-[13px] font-semibold">
+                  <dt className="min-w-0 text-[13px] leading-5 sm:pt-1.5">
                     {canEdit ? (
                       <label
-                        className="min-w-0 break-all"
+                        className="break-words"
                         htmlFor={`field-${data.documentId}-${field.name}`}
                       >
-                        {DOCUMENT_FIELD_LABELS[field.name] ??
-                          field.label ??
-                          field.name}
+                        {label}
                       </label>
                     ) : (
-                      <span className="min-w-0 break-all">
-                        {DOCUMENT_FIELD_LABELS[field.name] ??
-                          field.label ??
-                          field.name}
-                      </span>
+                      <span className="break-words">{label}</span>
                     )}
                     {field.regions.length > 0 && (
-                      <span className="flex items-center gap-1.5">
-                        <Badge tone="info">OCR</Badge>
-                        {isHovered && !onCurrentPage && firstRegion && (
-                          <Badge tone="info">
-                            Область на стр. {firstRegion.pageNumber}
-                            {firstRegion.fileId !== file?.id &&
-                            firstFileIndex >= 0
-                              ? ` · файл ${firstFileIndex + 1}`
-                              : ""}
-                          </Badge>
-                        )}
+                      <div className="flex flex-wrap items-center gap-1">
                         <Button
                           size="sm"
                           variant="ghost"
-                          aria-label={`Показать область: ${DOCUMENT_FIELD_LABELS[field.name] ?? field.label ?? field.name}`}
+                          className="h-6 px-0 text-xs font-normal text-[var(--muted-foreground)] underline underline-offset-2 hover:text-[var(--foreground)]"
+                          aria-label={`Показать область: ${label}`}
                           onClick={() =>
                             selectField(field.name, false, undefined, true)
                           }
                         >
                           На превью
                         </Button>
-                      </span>
+                        {isHovered && !onCurrentPage && firstRegion && (
+                          <span className="text-xs text-[var(--muted-foreground)]">
+                            Область на стр. {firstRegion.pageNumber}
+                            {firstRegion.fileId !== file?.id &&
+                            firstFileIndex >= 0
+                              ? ` · файл ${firstFileIndex + 1}`
+                              : ""}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </dt>
-                <dd className="min-w-0 break-words text-[13px]">
-                  {canEdit && field.name !== "positionUid" ? (
-                    field.kind === "boolean" || field.kind === "date" ? (
-                      <input
-                        ref={(node) => {
-                          inputs.current[field.name] = node;
-                        }}
-                        id={`field-${data.documentId}-${field.name}`}
-                        type={field.kind === "boolean" ? "checkbox" : "date"}
-                        disabled={busy}
-                        checked={
-                          field.kind === "boolean"
-                            ? (draft?.values[field.name] ?? field.value) ===
-                              "true"
-                            : undefined
-                        }
-                        value={
-                          field.kind === "date"
-                            ? (draft?.values[field.name] ?? field.value ?? "")
-                            : undefined
-                        }
-                        aria-required={field.required}
-                        className="rounded-[6px] border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-[13px]"
-                        onFocus={() => {
-                          beginDraft();
-                          if (selection?.fieldName !== field.name)
-                            selectField(field.name, false);
-                        }}
-                        onChange={(event) =>
-                          setField(
-                            field.name,
+                  <dd className="min-w-0 break-words text-[13px]">
+                    {canEdit && field.name !== "positionUid" ? (
+                      field.kind === "boolean" || field.kind === "date" ? (
+                        <input
+                          ref={(node) => {
+                            inputs.current[field.name] = node;
+                          }}
+                          id={`field-${data.documentId}-${field.name}`}
+                          type={field.kind === "boolean" ? "checkbox" : "date"}
+                          disabled={busy}
+                          checked={
                             field.kind === "boolean"
-                              ? String(event.target.checked)
-                              : event.target.value,
-                          )
-                        }
-                      />
+                              ? value === "true"
+                              : undefined
+                          }
+                          value={field.kind === "date" ? value : undefined}
+                          aria-required={field.required}
+                          className={
+                            field.kind === "boolean"
+                              ? "mt-2 h-4 w-4 accent-[var(--primary)]"
+                              : inputClass
+                          }
+                          onFocus={() => {
+                            beginDraft();
+                            if (selection?.fieldName !== field.name)
+                              selectField(field.name, false);
+                          }}
+                          onChange={(event) =>
+                            setField(
+                              field.name,
+                              field.kind === "boolean"
+                                ? String(event.target.checked)
+                                : event.target.value,
+                            )
+                          }
+                        />
+                      ) : (
+                        <textarea
+                          ref={(node) => {
+                            inputs.current[field.name] = node;
+                          }}
+                          id={`field-${data.documentId}-${field.name}`}
+                          rows={1}
+                          maxLength={16384}
+                          disabled={busy}
+                          aria-required={field.required}
+                          className={`${inputClass} max-h-24 resize-y`}
+                          value={value}
+                          onFocus={() => {
+                            beginDraft();
+                            if (selection?.fieldName !== field.name)
+                              selectField(field.name, false);
+                          }}
+                          onChange={(event) =>
+                            setField(field.name, event.target.value)
+                          }
+                        />
+                      )
                     ) : (
-                      <textarea
-                        ref={(node) => {
-                          inputs.current[field.name] = node;
-                        }}
-                        id={`field-${data.documentId}-${field.name}`}
-                        rows={1}
-                        maxLength={16384}
-                        disabled={busy}
-                        className="block w-full min-w-0 max-w-full resize-y rounded-[6px] border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-[13px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
-                        value={draft?.values[field.name] ?? field.value ?? ""}
-                        onFocus={() => {
-                          beginDraft();
-                          if (selection?.fieldName !== field.name)
-                            selectField(field.name, false);
-                        }}
-                        onChange={(event) => {
-                          const values =
-                            draft?.values ??
-                            Object.fromEntries(
-                              data.fields.map((item) => [
-                                item.name,
-                                item.value ?? "",
-                              ]),
-                            );
-                          setDraft({
-                            revision: draft?.revision ?? data.revision,
-                            original: draft?.original ?? values,
-                            values: {
-                              ...values,
-                              [field.name]: event.target.value,
-                            },
-                          });
-                          setMessage("");
-                        }}
-                      />
-                    )
-                  ) : (
-                    <p className="whitespace-pre-wrap">
-                      {field.kind === "boolean"
-                        ? (draft?.values[field.name] ?? field.value) === "true"
-                          ? "Да"
-                          : "Нет"
-                        : (draft?.values[field.name] ?? field.value ?? "—")}
-                    </p>
-                  )}
-                  {field.submittedValue !== null && (
-                    <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
-                      Кандидат:{" "}
-                      {field.kind === "boolean"
-                        ? field.submittedValue === "true"
-                          ? "Да"
-                          : "Нет"
-                        : field.submittedValue || "—"}
-                      {field.required ? " · обязательное поле" : ""}
-                    </p>
-                  )}
-                  {field.mismatch && (
-                    <p className="mt-0.5 text-xs text-[var(--primary)]">
-                      Значение кандидата отличается от результата OCR. Сверьте с
-                      оригиналом.
-                    </p>
-                  )}
-                  {data.ocrSource &&
-                    (field.editedBy ||
-                      (draft &&
-                        draft.values[field.name] !==
-                          (field.originalValue ?? ""))) && (
-                      <p className="mt-0.5 whitespace-pre-wrap text-xs text-[var(--muted-foreground)]">
-                        OCR: {field.originalValue ?? "не распознано"}
-                        {field.editedBy && " · исправлено вручную"}
+                      <p className="py-1.5 whitespace-pre-wrap">
+                        {displayValue(value)}
                       </p>
                     )}
-                </dd>
-              </div>
+                    <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs leading-4 text-[var(--muted-foreground)]">
+                      {field.submittedValue !== null &&
+                        (field.mismatch || field.submittedValue !== value) && (
+                          <p className="min-w-0 break-words">
+                            Кандидат: {displayValue(field.submittedValue)}
+                          </p>
+                        )}
+                      {data.ocrSource &&
+                        (field.mismatch ||
+                          field.editedBy ||
+                          value !== (field.originalValue ?? "")) && (
+                          <p className="min-w-0 break-words">
+                            OCR: {displayValue(field.originalValue)}
+                            {field.editedBy && " · исправлено вручную"}
+                          </p>
+                        )}
+                      {field.mismatch && (
+                        <p className="mt-0.5 text-xs leading-4 text-[var(--primary)]">
+                          Расхождение с OCR — сверьте с оригиналом.
+                        </p>
+                      )}
+                    </div>
+                  </dd>
+                </div>
               );
             })}
           </dl>
-        </div>
-        {!fields.length && (
-          <p className="text-[13px] text-[var(--muted-foreground)]">
-            Полей документа пока нет.
-          </p>
-        )}
-        {mismatchOnly && !visibleFields.length && !!fields.length && (
-          <p className="text-[13px] text-[var(--muted-foreground)]">
-            Расхождений нет — показаны все поля после снятия фильтра.
-          </p>
-        )}
-        {stale && changedCount > 0 && (
-          <p role="alert" className="text-[13px]">
-            Документ изменён другим проверяющим. Скопируйте нужные исправления,
-            нажмите «Отменить правки» и начните с актуальных данных.
-          </p>
-        )}
-        {(canReview || canEdit) && (
-          <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 border-t border-[var(--border)] bg-[var(--card)] py-2">
-            {canReview && (
-              <>
+          {!fields.length && (
+            <p className="py-3 text-[13px] text-[var(--muted-foreground)]">
+              В документе нет обязательных полей для ручной проверки.
+            </p>
+          )}
+          {mismatchOnly && !visibleFields.length && !!fields.length && (
+            <p className="py-3 text-[13px] text-[var(--muted-foreground)]">
+              Расхождений нет — снимите фильтр, чтобы увидеть все обязательные
+              поля.
+            </p>
+          )}
+          {data.delivery && (
+            <div
+              role="status"
+              className="my-2 rounded-md bg-[var(--muted)] p-2 text-xs"
+            >
+              <p className="font-semibold">
+                {data.delivery.status === "SENT"
+                  ? "Документ отправлен в ERP"
+                  : data.delivery.status === "WAITING_CONTRACT"
+                    ? "Ожидается контракт ERP для отправки по code_1c"
+                    : data.delivery.status === "REQUIRES_MANUAL"
+                      ? "Требует отправки в ERP"
+                      : "Отправка в ERP"}
+              </p>
+              {data.delivery.errorCode && (
+                <p className="mt-1">
+                  ERP недоступна или не приняла документ. Документ сохранён в
+                  ЭДО. Код: {data.delivery.errorCode}
+                </p>
+              )}
+              {canSend && data.delivery.status === "REQUIRES_MANUAL" && (
                 <Button
                   size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  disabled={busy}
+                  onClick={() =>
+                    send.mutate({
+                      documentId: data.documentId,
+                      version: data.version,
+                    })
+                  }
+                >
+                  {send.isPending ? "Отправка…" : "Отправить в ERP"}
+                </Button>
+              )}
+              {!!data.delivery.attempts.length && (
+                <details className="mt-2">
+                  <summary>История отправок</summary>
+                  <ul>
+                    {data.delivery.attempts.map((attempt) => (
+                      <li key={attempt.id}>
+                        {new Date(attempt.startedAt).toLocaleString("ru-RU")} ·{" "}
+                        {attempt.errorCode ??
+                          (attempt.finishedAt ? "Отправлено" : "Выполняется")}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
+          {data.rejectionReason && (
+            <p role="status" className="py-2 text-xs text-[var(--primary)]">
+              {data.rejectionReason}
+            </p>
+          )}
+          {data.status === "IN_REVIEW" && !canReview && (
+            <p className="py-2 text-xs text-[var(--muted-foreground)]">
+              {readOnly
+                ? "Историческая версия доступна только для просмотра."
+                : "Для исправления и подтверждения нужно право проверки документов."}
+            </p>
+          )}
+          {data.approvedAt && (
+            <p className="py-2 text-xs text-[var(--muted-foreground)]">
+              Подтверждён {new Date(data.approvedAt).toLocaleString("ru-RU")}.
+            </p>
+          )}
+        </div>
+        {(canReview || message || (stale && changedCount > 0)) && (
+          <div
+            className="sticky bottom-0 z-10 shrink-0 border-t border-[var(--border)] bg-[var(--card)] p-3"
+            aria-label="Действия проверки"
+          >
+            {canEdit && showReject && (
+              <div className="mb-2 flex flex-col gap-1.5">
+                <label
+                  className="text-xs font-semibold"
+                  htmlFor="document-rejection-reason"
+                >
+                  Причина отклонения
+                </label>
+                <textarea
+                  id="document-rejection-reason"
+                  value={rejectionReason}
+                  rows={2}
+                  maxLength={1024}
+                  className="max-h-24 min-h-12 resize-y rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-[13px] caret-[var(--primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+                  onChange={(event) => setRejectionReason(event.target.value)}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={busy || !rejectionReason.trim()}
+                    onClick={() =>
+                      reject.mutate({
+                        documentId: data.documentId,
+                        version: data.version,
+                        data: {
+                          revision: data.revision,
+                          reason: rejectionReason,
+                        },
+                      })
+                    }
+                  >
+                    Вернуть кандидату
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => setShowReject(false)}
+                  >
+                    Отмена
+                  </Button>
+                </div>
+              </div>
+            )}
+            {stale && changedCount > 0 && (
+              <p role="alert" className="mb-2 text-xs">
+                Документ изменён другим проверяющим. Скопируйте нужные
+                исправления, нажмите «Отменить правки» и начните с актуальных
+                данных.
+              </p>
+            )}
+            {canReview && (
+              <div className="flex flex-wrap items-center gap-2">
+                {canEdit && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-[var(--primary)]"
+                    aria-label="Отклонить документ"
+                    disabled={busy || changedCount > 0}
+                    onClick={() => setShowReject(!showReject)}
+                  >
+                    <X size={14} />
+                    Отклонить
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1"
                   disabled={busy || !changedCount || stale}
                   onClick={() => {
                     if (draft)
@@ -609,160 +727,55 @@ export function DocumentReviewWorkspace({
                       });
                   }}
                 >
+                  <Save size={14} />
                   {edit.isPending ? "Сохранение…" : "Сохранить исправления"}
                 </Button>
-                {draft && (
+                {canEdit && (
                   <Button
                     size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => {
-                      setDraft(null);
-                      setMessage("");
-                    }}
+                    aria-label="Подтвердить документ"
+                    disabled={busy || changedCount > 0}
+                    onClick={() =>
+                      approve.mutate({
+                        documentId: data.documentId,
+                        version: data.version,
+                        data: { revision: data.revision },
+                      })
+                    }
                   >
-                    Отменить правки
+                    <Check size={14} />
+                    {approve.isPending ? "Подтверждение…" : "Подтвердить"}
                   </Button>
                 )}
-              </>
+              </div>
             )}
-            {canEdit && (
-              <>
+            {draft && (
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-1">
                 <span className="text-xs text-[var(--muted-foreground)]">
                   {changedCount
                     ? "Сначала сохраните исправления."
-                    : "Сверьте поля с оригиналом."}
+                    : "Изменений нет."}
                 </span>
                 <Button
                   size="sm"
-                  variant="outline"
-                  disabled={busy || changedCount > 0}
-                  onClick={() =>
-                    approve.mutate({
-                      documentId: data.documentId,
-                      version: data.version,
-                      data: { revision: data.revision },
-                    })
-                  }
+                  className="h-6 px-1 text-xs font-normal"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => {
+                    setDraft(null);
+                    setMessage("");
+                  }}
                 >
-                  {approve.isPending ? "Подтверждение…" : "Подтвердить документ"}
+                  Отменить правки
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy || changedCount > 0}
-                  onClick={() => setShowReject(!showReject)}
-                >
-                  Отклонить документ
-                </Button>
-              </>
+              </div>
             )}
-          </div>
-        )}
-        {canEdit && showReject && (
-          <div className="flex w-full flex-col gap-2">
-            <label
-              className="text-[13px] font-semibold"
-              htmlFor="document-rejection-reason"
-            >
-              Причина отклонения
-            </label>
-            <textarea
-              id="document-rejection-reason"
-              value={rejectionReason}
-              maxLength={1024}
-              className="rounded-[6px] border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-[13px]"
-              onChange={(event) => setRejectionReason(event.target.value)}
-            />
-            <Button
-              size="sm"
-              disabled={busy || !rejectionReason.trim()}
-              onClick={() =>
-                reject.mutate({
-                  documentId: data.documentId,
-                  version: data.version,
-                  data: {
-                    revision: data.revision,
-                    reason: rejectionReason,
-                  },
-                })
-              }
-            >
-              Вернуть кандидату
-            </Button>
-          </div>
-        )}
-        {data.delivery && (
-          <div
-            role="status"
-            className={`rounded-[10px] p-3 text-[13px] ${["REQUIRES_MANUAL", "WAITING_CONTRACT"].includes(data.delivery.status) ? "bg-[var(--primary-soft)] text-[var(--primary)]" : "bg-[var(--muted)]"}`}
-          >
-            <p className="font-semibold">
-              {data.delivery.status === "SENT"
-                ? "Документ отправлен в ERP"
-                : data.delivery.status === "WAITING_CONTRACT"
-                  ? "Ожидается контракт ERP для отправки по code_1c"
-                  : data.delivery.status === "REQUIRES_MANUAL"
-                    ? "Требует отправки в ERP"
-                    : "Отправка в ERP"}
-            </p>
-            {data.delivery.errorCode && (
-              <p className="mt-1">
-                ERP недоступна или не приняла документ. Документ сохранён в ЭДО.
-                Код: {data.delivery.errorCode}
+            {message && (
+              <p role="status" className="mt-2 text-xs">
+                {message}
               </p>
             )}
-            {canSend && data.delivery.status === "REQUIRES_MANUAL" && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2"
-                disabled={busy}
-                onClick={() =>
-                  send.mutate({
-                    documentId: data.documentId,
-                    version: data.version,
-                  })
-                }
-              >
-                {send.isPending ? "Отправка…" : "Отправить в ERP"}
-              </Button>
-            )}
-            {!!data.delivery.attempts.length && (
-              <details className="mt-2">
-                <summary>История отправок</summary>
-                <ul>
-                  {data.delivery.attempts.map((attempt) => (
-                    <li key={attempt.id}>
-                      {new Date(attempt.startedAt).toLocaleString("ru-RU")} ·{" "}
-                      {attempt.errorCode ??
-                        (attempt.finishedAt ? "Отправлено" : "Выполняется")}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
           </div>
-        )}
-        {data.rejectionReason && (
-          <p role="status" className="text-[13px] text-[var(--primary)]">
-            {data.rejectionReason}
-          </p>
-        )}
-        {data.status === "IN_REVIEW" && !canReview && (
-          <p className="text-[13px] text-[var(--muted-foreground)]">
-            Для исправления и подтверждения нужно право проверки документов.
-          </p>
-        )}
-        {data.approvedAt && (
-          <p className="text-xs text-[var(--muted-foreground)]">
-            Подтверждён {new Date(data.approvedAt).toLocaleString("ru-RU")}.
-          </p>
-        )}
-        {message && (
-          <p role="status" className="text-[13px]">
-            {message}
-          </p>
         )}
       </section>
     </div>

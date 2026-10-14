@@ -244,8 +244,73 @@ function pageLabel(container: Element): string {
 describe("DocumentReviewWorkspace hover vs select", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-      true;
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+  });
+
+  it("скрывает необязательные поля и их OCR-области", () => {
+    const { container, cleanup } = renderWorkspace(buildData());
+    try {
+      expect(
+        container.querySelector('[data-field-row="citizenship"]'),
+      ).toBeNull();
+      expect(container.querySelector('[data-region="r-bool"]')).toBeNull();
+      expect(container.textContent).toContain("Обязательные поля · 3");
+      expect(container.textContent).toContain("Только расхождения (1)");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("в исторической версии оставляет инструменты превью и запрещает правки", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() =>
+      root.render(
+        <QueryClientProvider client={new QueryClient()}>
+          <DocumentReviewWorkspace data={buildData()} readOnly />
+        </QueryClientProvider>,
+      ),
+    );
+    try {
+      expect(
+        container.querySelector('[aria-label="Действия проверки"]'),
+      ).toBeNull();
+      expect(container.querySelector("textarea")).toBeNull();
+      const next = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "Далее",
+      );
+      expect(next?.disabled).toBe(false);
+      click(next!);
+      expect(pageLabel(container)).toContain("Страница 2 из 2");
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it("клик по OCR-области открывает поле, скрытое фильтром расхождений", () => {
+    const { container, cleanup } = renderWorkspace(buildData());
+    try {
+      const filter = container.querySelector(
+        '[aria-label="Поля документа"] input[type="checkbox"]',
+      )!;
+      click(filter);
+      expect(
+        container.querySelector('[data-field-row="last_name"]'),
+      ).toBeNull();
+      click(container.querySelector('[data-region="r-last"]')!);
+      expect(
+        container.querySelector('[data-field-row="last_name"]'),
+      ).not.toBeNull();
+      expect(document.activeElement).toBe(
+        container.querySelector("#field-doc-1-last_name"),
+      );
+    } finally {
+      cleanup();
+    }
   });
 
   it("hover справа не меняет страницу/файл и не отнимает фокус, показывает бейдж", () => {
@@ -294,9 +359,7 @@ describe("DocumentReviewWorkspace hover vs select", () => {
       expect(row!.className).not.toContain("outline");
       mouseOver(region!);
       expect(
-        container
-          .querySelector('[data-field-row="last_name"]')!
-          .className,
+        container.querySelector('[data-field-row="last_name"]')!.className,
       ).toContain("outline");
       // Страница не переключилась, фокус не начался.
       expect(pageLabel(container)).toContain("Страница 1 из 2");
@@ -348,7 +411,9 @@ describe("DocumentReviewWorkspace hover vs select", () => {
   });
 
   it("клик слева по чекбоксу фокусит input type=checkbox", () => {
-    const { container, cleanup } = renderWorkspace(buildData());
+    const data = buildData();
+    data.fields.find((field) => field.name === "citizenship")!.required = true;
+    const { container, cleanup } = renderWorkspace(data);
     try {
       click(container.querySelector('[data-region="r-bool"]')!);
       const input = container.querySelector(
