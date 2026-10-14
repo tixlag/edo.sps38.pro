@@ -12,6 +12,8 @@ const CRUMBS: Record<string, string> = {
   '/employee': 'Карточка работника',
   '/tasks': 'Мои задачи',
   '/review': 'Проверка документов',
+  '/history': 'История',
+  '/my-reviews': 'Мои проверки',
   '/onboarding': 'Оформление',
   '/signing': 'Подписание',
   '/participants': 'Участники',
@@ -26,6 +28,8 @@ function crumbFor(pathname: string): string {
 
 function activeFor(pathname: string): string {
   if (pathname.startsWith('/review')) return '/review';
+  if (pathname.startsWith('/history')) return '/history';
+  if (pathname.startsWith('/my-reviews')) return '/my-reviews';
   if (pathname.startsWith('/employees')) return '/employees';
   return pathname;
 }

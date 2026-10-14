@@ -80,7 +80,10 @@ export function DocumentPreview({
   fields,
   selectedField,
   selectedRegionId,
+  hoveredField,
+  hoveredRegionId,
   onSelectRegion,
+  onHoverRegion,
 }: {
   documentId: string;
   version: number;
@@ -89,7 +92,10 @@ export function DocumentPreview({
   fields: DocumentFieldDto[];
   selectedField: string | null;
   selectedRegionId: string | null;
+  hoveredField?: string | null;
+  hoveredRegionId?: string | null;
   onSelectRegion: (fieldName: string, region: OcrRegionDto) => void;
+  onHoverRegion?: (fieldName: string | null, region: OcrRegionDto | null) => void;
 }) {
   const [zoom, setZoom] = useState(1);
   const [showBoxes, setShowBoxes] = useState(true);
@@ -255,45 +261,62 @@ export function DocumentPreview({
                 preserveAspectRatio="none"
                 aria-label="Распознанные области"
               >
-                {regions.map(({ field, region }) => (
-                  <rect
-                    key={region.id}
-                    role="button"
-                    tabIndex={0}
-                    aria-pressed={field.name === selectedField}
-                    aria-label={`${DOCUMENT_FIELD_LABELS[field.name] ?? field.name}. OCR: ${region.text ?? field.originalValue ?? "Не распознано"}`}
-                    x={region.x * 1000}
-                    y={region.y * 1000}
-                    width={region.width * 1000}
-                    height={region.height * 1000}
-                    fill={
-                      field.name === selectedField
-                        ? "var(--primary)"
-                        : "var(--info)"
-                    }
-                    fillOpacity={field.name === selectedField ? 0.18 : 0.06}
-                    stroke={
-                      field.name === selectedField
-                        ? "var(--primary)"
-                        : "var(--info)"
-                    }
-                    strokeWidth={field.name === selectedField ? 3 : 1.5}
-                    vectorEffect="non-scaling-stroke"
-                    className="pointer-events-auto cursor-pointer focus:outline focus:outline-2 focus:outline-[var(--primary)]"
-                    onClick={() => onSelectRegion(field.name, region)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        onSelectRegion(field.name, region);
+                {regions.map(({ field, region }) => {
+                  const isSelected =
+                    field.name === selectedField ||
+                    region.id === selectedRegionId;
+                  const isHovered =
+                    !isSelected &&
+                    (field.name === hoveredField ||
+                      region.id === hoveredRegionId);
+                  return (
+                    <rect
+                      key={region.id}
+                      role="button"
+                      tabIndex={0}
+                      data-region={region.id}
+                      data-field={field.name}
+                      aria-pressed={field.name === selectedField}
+                      aria-label={`${DOCUMENT_FIELD_LABELS[field.name] ?? field.name}. OCR: ${region.text ?? field.originalValue ?? "Не распознано"}`}
+                      x={region.x * 1000}
+                      y={region.y * 1000}
+                      width={region.width * 1000}
+                      height={region.height * 1000}
+                      fill={
+                        isSelected || isHovered
+                          ? "var(--primary)"
+                          : "var(--info)"
                       }
-                    }}
-                  >
-                    <title>
-                      {DOCUMENT_FIELD_LABELS[field.name] ?? field.name}:{" "}
-                      {region.text ?? field.originalValue ?? "—"}
-                    </title>
-                  </rect>
-                ))}
+                      fillOpacity={isSelected ? 0.18 : isHovered ? 0.12 : 0.06}
+                      stroke={
+                        isSelected || isHovered
+                          ? "var(--primary)"
+                          : "var(--info)"
+                      }
+                      strokeWidth={isSelected ? 3 : isHovered ? 2.5 : 1.5}
+                      vectorEffect="non-scaling-stroke"
+                      className="pointer-events-auto cursor-pointer focus:outline focus:outline-2 focus:outline-[var(--primary)]"
+                      onClick={() => onSelectRegion(field.name, region)}
+                      onMouseEnter={() =>
+                        onHoverRegion?.(field.name, region)
+                      }
+                      onMouseLeave={() => onHoverRegion?.(null, null)}
+                      onFocus={() => onHoverRegion?.(field.name, region)}
+                      onBlur={() => onHoverRegion?.(null, null)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onSelectRegion(field.name, region);
+                        }
+                      }}
+                    >
+                      <title>
+                        {DOCUMENT_FIELD_LABELS[field.name] ?? field.name}:{" "}
+                        {region.text ?? field.originalValue ?? "—"}
+                      </title>
+                    </rect>
+                  );
+                })}
               </svg>
             )}
           </div>

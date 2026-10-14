@@ -16,6 +16,73 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 import { customInstance } from "../mutator/custom-instance";
+export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AuditAction = {
+  EMPLOYEE_CREATED: "EMPLOYEE_CREATED",
+  DOCUMENT_UPLOADED: "DOCUMENT_UPLOADED",
+  DOCUMENT_UPLOAD_STARTED: "DOCUMENT_UPLOAD_STARTED",
+  DOCUMENT_UPLOAD_FAILED: "DOCUMENT_UPLOAD_FAILED",
+  DOCUMENT_OCR_COMPLETED: "DOCUMENT_OCR_COMPLETED",
+  DOCUMENT_FIELDS_UPDATED: "DOCUMENT_FIELDS_UPDATED",
+  CANDIDATE_LINKED: "CANDIDATE_LINKED",
+  DOCUMENT_RETURNED: "DOCUMENT_RETURNED",
+  DOCUMENT_APPROVED: "DOCUMENT_APPROVED",
+  DOCUMENT_ERP_SEND_REQUESTED: "DOCUMENT_ERP_SEND_REQUESTED",
+  DOCUMENT_ERP_SEND_COMPLETED: "DOCUMENT_ERP_SEND_COMPLETED",
+  DOCUMENT_SIGNED: "DOCUMENT_SIGNED",
+  WORKFLOW_STAGE_CHANGED: "WORKFLOW_STAGE_CHANGED",
+  DATA_IMPORTED: "DATA_IMPORTED",
+  LK_REFERENCE_SYNCED: "LK_REFERENCE_SYNCED",
+  LK_EVENT_APPLIED: "LK_EVENT_APPLIED",
+} as const;
+
+export interface AuditLogItemDto {
+  /** Audit row id */
+  id: string;
+  /**
+   * Author uuid (JWT sub); null for system rows without actor
+   * @nullable
+   */
+  actorId: string | null;
+  /**
+   * Author display name from the local LK projection (by uuid, fallback by code1c); never matched by full name
+   * @nullable
+   */
+  actorName: string | null;
+  action: AuditAction;
+  /** Audited entity type, e.g. Document or Employee */
+  entityType: string;
+  /** Audited entity id */
+  entityId: string;
+  /**
+   * Return reason for DOCUMENT_RETURNED rows (taken from after.rejectionReason)
+   * @nullable
+   */
+  rejectionReason: string | null;
+  /**
+   * Document version the action applied to (from after.version); null for non-document rows and legacy rows without a version
+   * @nullable
+   */
+  version: number | null;
+  createdAt: string;
+  /**
+   * Frontend deep-link hint, e.g. /review/<id>; null when no route is known. The web client appends ?version=N for versioned rows.
+   * @nullable
+   */
+  linkHint: string | null;
+}
+
+export interface AuditLogListDto {
+  items: AuditLogItemDto[];
+  /**
+   * Opaque cursor for the next page; null when exhausted
+   * @nullable
+   */
+  nextCursor: string | null;
+}
+
 export interface HealthResponseDto {
   status: string;
   version: string;
@@ -49,11 +116,21 @@ export interface IntegrationHealthDto {
   lastSyncFinishedAt?: string;
 }
 
+export type KpiDtoGroup = (typeof KpiDtoGroup)[keyof typeof KpiDtoGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const KpiDtoGroup = {
+  review: "review",
+  signing: "signing",
+  general: "general",
+} as const;
+
 export interface KpiDto {
   key: string;
   label: string;
   value: string;
   hint: string;
+  group: KpiDtoGroup;
 }
 
 export interface WeeklyBarDto {
@@ -141,6 +218,16 @@ export interface MeResponseDto {
    * @nullable
    */
   fullName: string | null;
+  /**
+   * Compact display name ("Фамилия И.О.") derived from fullName
+   * @nullable
+   */
+  shortName: string | null;
+  /**
+   * User avatar URL enriched server-side from LK, null when unavailable
+   * @nullable
+   */
+  avatarUrl: string | null;
   /** @nullable */
   positionName: string | null;
   /** @nullable */
@@ -594,6 +681,25 @@ export interface RejectDocumentDto {
   reason: string;
 }
 
+export type ListAuditLogsParams = {
+  /**
+   * Filter by author uuid; the literal "me" means the caller
+   */
+  actorId?: string;
+  /**
+   * When true, show only the caller actions
+   */
+  mine?: boolean;
+  action?: AuditAction;
+  entityType?: string;
+  entityId?: string;
+  limit?: number;
+  /**
+   * Opaque cursor from a previous AuditLogListDto.nextCursor
+   */
+  cursor?: string;
+};
+
 /**
  * Provide metadata for manual review or documentTypeCode for legacy OCR; at least one is required.
  */
@@ -655,6 +761,7 @@ export type ListReviewDocumentsStatus =
 export const ListReviewDocumentsStatus = {
   IN_REVIEW: "IN_REVIEW",
   ERP_PENDING: "ERP_PENDING",
+  RETURNED: "RETURNED",
   ALL: "ALL",
 } as const;
 
@@ -667,6 +774,86 @@ export type SubmitCandidateDocumentDirectBody = {
    */
   "files[]": Blob[];
 };
+
+/**
+ * @summary List audit history within user location scope
+ */
+export const listAuditLogs = (
+  params?: ListAuditLogsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AuditLogListDto>({
+    url: `/api/v1/audit-logs`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListAuditLogsQueryKey = (params?: ListAuditLogsParams) => {
+  return [`/api/v1/audit-logs`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAuditLogsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAuditLogs>>,
+  TError = void,
+>(
+  params?: ListAuditLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAuditLogs>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAuditLogsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAuditLogs>>> = ({
+    signal,
+  }) => listAuditLogs(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAuditLogs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAuditLogsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAuditLogs>>
+>;
+export type ListAuditLogsQueryError = void;
+
+/**
+ * @summary List audit history within user location scope
+ */
+
+export function useListAuditLogs<
+  TData = Awaited<ReturnType<typeof listAuditLogs>>,
+  TError = void,
+>(
+  params?: ListAuditLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAuditLogs>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAuditLogsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
 
 /**
  * @summary Service health check (legacy, same as live)
@@ -941,7 +1128,7 @@ export function useGetHealthIntegration<
 }
 
 /**
- * @summary Current dashboard summary within user location scope
+ * @summary Current dashboard summary with grouped KPIs within user location scope
  */
 export const getDashboard = (signal?: AbortSignal) => {
   return customInstance<DashboardResponseDto>({
@@ -986,7 +1173,7 @@ export type GetDashboardQueryResult = NonNullable<
 export type GetDashboardQueryError = void;
 
 /**
- * @summary Current dashboard summary within user location scope
+ * @summary Current dashboard summary with grouped KPIs within user location scope
  */
 
 export function useGetDashboard<

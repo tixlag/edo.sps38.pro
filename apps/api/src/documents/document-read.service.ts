@@ -410,7 +410,12 @@ export class DocumentReadService {
                 },
               },
             }
-          : { status: "IN_REVIEW" }),
+          // Returned documents share the same location scope as the queue
+          // (documentWhere above): the dashboard rework KPI counts exactly
+          // this set, so the KPI link and the list can never diverge.
+          : status === "RETURNED"
+            ? { status: "RETURNED" }
+            : { status: "IN_REVIEW" }),
     };
     const rows = await this.prisma.document.findMany({
       where,

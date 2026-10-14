@@ -323,9 +323,9 @@ export class DocumentUploadGrantDto {
   @ApiProperty({ format: "date-time" }) expiresAt!: string;
 }
 export class ReviewDocumentsQueryDto extends CandidateQueryDto {
-  @ApiPropertyOptional({ enum: ["IN_REVIEW", "ERP_PENDING", "ALL"] })
+  @ApiPropertyOptional({ enum: ["IN_REVIEW", "ERP_PENDING", "RETURNED", "ALL"] })
   @IsOptional()
-  @IsIn(["IN_REVIEW", "ERP_PENDING", "ALL"])
+  @IsIn(["IN_REVIEW", "ERP_PENDING", "RETURNED", "ALL"])
   status?: string;
 }
 export class ReviewDocumentsDto extends DocumentListDto {

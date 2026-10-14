@@ -15,7 +15,7 @@ export class DashboardController {
 
   @Get()
   @RequireAccessRule(EdoAccessRule.ACCESS)
-  @ApiOperation({ summary: 'Current dashboard summary within user location scope', operationId: 'getDashboard' })
+  @ApiOperation({ summary: 'Current dashboard summary with grouped KPIs within user location scope', operationId: 'getDashboard' })
   @ApiResponse({ status: 200, type: DashboardResponseDto })
   @ApiResponse({ status: 401, description: 'Missing or invalid bearer token' })
   @ApiResponse({ status: 403, description: 'Missing required EDO access rule' })

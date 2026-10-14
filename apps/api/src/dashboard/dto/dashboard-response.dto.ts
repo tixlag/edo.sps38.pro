@@ -12,6 +12,9 @@ export class KpiDto {
 
   @ApiProperty({ example: 'документов ждут проверки' })
   hint!: string;
+
+  @ApiProperty({ enum: ['review', 'signing', 'general'], example: 'review' })
+  group!: 'review' | 'signing' | 'general';
 }
 
 export class WeeklyBarDto {
