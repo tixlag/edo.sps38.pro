@@ -11,12 +11,20 @@ type KpiGroup = 'review' | 'signing' | 'general';
 
 // Key-based card meta (never index-based: backend KPI order must not swap icons).
 // Groups mirror the backend KpiDto.group values ('review' | 'signing' | 'general').
-const KPI_META: Record<string, { icon: typeof FileCheck2; accent: string; group: KpiGroup; to?: '/review' | '/employees' | '/history' }> = {
+// Exported for unit tests asserting KPI -> list transitions.
+// Transition rules: every `to` target must show the SAME scoped set the KPI
+// counts. `queue` counts IN_REVIEW documents -> /review queue (same
+// documentWhere scope). `rework` counts RETURNED documents in the same scope
+// -> /review with the RETURNED tab (queue filter `status=RETURNED`; the tab
+// itself lands with agent B). Never link to /history: for a plain 20002
+// reviewer it shows only own actions (mine=true), while the KPI counts every
+// in-scope document. `in_review` counts employee cases, not documents, and
+// /employees has no status filter -> not clickable (never link a case KPI to
+// the document queue).
+export const KPI_META: Record<string, { icon: typeof FileCheck2; accent: string; group: KpiGroup; to?: '/review' | '/employees' | '/history' }> = {
   queue: { icon: FileCheck2, accent: 'var(--info-soft)', group: 'review', to: '/review' },
-  in_review: { icon: Clock, accent: 'var(--info-soft)', group: 'review', to: '/review' },
-  // Returned documents leave the /review IN_REVIEW queue, so rework lands on
-  // the history journal where DOCUMENT_RETURNED («Возвращено») is filterable.
-  rework: { icon: CheckCircle2, accent: 'var(--purple-soft)', group: 'review', to: '/history' },
+  in_review: { icon: Clock, accent: 'var(--info-soft)', group: 'review' },
+  rework: { icon: CheckCircle2, accent: 'var(--purple-soft)', group: 'review', to: '/review' },
   expired: { icon: RefreshCw, accent: 'var(--warning-soft)', group: 'review' },
   signing: { icon: PenLine, accent: 'var(--primary-soft)', group: 'signing' },
   hired: { icon: Award, accent: 'var(--success-soft)', group: 'signing' },

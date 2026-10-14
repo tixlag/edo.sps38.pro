@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DashboardService } from '../src/dashboard/dashboard.service';
 import { DocumentAccessService } from '../src/documents/document-access.service';
+import { DocumentReadService } from '../src/documents/document-read.service';
 import type { AuthPrincipal } from '../src/auth/auth-principal';
 
 const scopedPrincipal = {
   uuid: 'dashboard-user', code1c: null, sid: null, deviceId: null,
-  accessRules: { '20000': [], '20007': ['98'] }, expiresAt: null,
+  accessRules: { '20000': [], '20002': [], '20003': [], '20007': ['98'] }, expiresAt: null,
 } as unknown as AuthPrincipal;
+
+const principalWith = (accessRules: Record<string, string[]>) =>
+  ({ uuid: 'matrix-user', code1c: null, sid: null, deviceId: null, accessRules, expiresAt: null }) as unknown as AuthPrincipal;
 
 function mockPrisma(overrides: Record<string, unknown> = {}) {
   return {
@@ -78,6 +82,64 @@ describe('DashboardService', () => {
     const access = new DocumentAccessService(null as never);
     expect(prisma.document.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({ where: access.documentWhere(scopedPrincipal) }),
+    );
+  });
+
+  it.each([
+    ['bare ACCESS sees general only', { '20000': [] }, ['stuck']],
+    ['DOCUMENT_REVIEW sees review + general', { '20000': [], '20002': [], '20007': ['98'] }, ['queue', 'in_review', 'rework', 'expired', 'stuck']],
+    ['SIGNING sees signing + general', { '20000': [], '20003': [], '20007': ['98'] }, ['signing', 'hired', 'stuck']],
+    ['review + signing sees all', { '20000': [], '20002': [], '20003': [], '20007': ['98'] }, ['queue', 'in_review', 'rework', 'expired', 'signing', 'hired', 'stuck']],
+    ['FULL_ACCESS sees all', { '20009': [] }, ['queue', 'in_review', 'rework', 'expired', 'signing', 'hired', 'stuck']],
+    // Key presence grants (never truthiness): non-empty values grant too.
+    ['non-empty rule values still grant', { '20000': ['98'], '20002': ['98'], '20003': ['98'], '20007': ['98'] }, ['queue', 'in_review', 'rework', 'expired', 'signing', 'hired', 'stuck']],
+  ])('filters KPIs server-side by rights: %s', async (_title, rules, keys) => {
+    const dto = await new DashboardService(mockPrisma() as never).get(principalWith(rules));
+    expect(dto.kpis.map(kpi => kpi.key).sort()).toEqual([...keys].sort());
+  });
+
+  it('keeps the KpiDto shape (key/label/value/hint/group) after filtering', async () => {
+    for (const rules of [{ '20000': [] }, { '20000': [], '20002': [], '20007': ['98'] }, { '20009': [] }] as Record<string, string[]>[]) {
+      const dto = await new DashboardService(mockPrisma() as never).get(principalWith(rules));
+      expect(dto.kpis.length).toBeGreaterThan(0);
+      for (const kpi of dto.kpis) {
+        expect(typeof kpi.key).toBe('string');
+        expect(typeof kpi.label).toBe('string');
+        expect(typeof kpi.value).toBe('string');
+        expect(typeof kpi.hint).toBe('string');
+        expect(['review', 'signing', 'general']).toContain(kpi.group);
+      }
+    }
+  });
+
+  it('lists RETURNED documents through the same scope as the rework KPI counts', async () => {
+    const access = new DocumentAccessService(null as never);
+    const findMany = vi.fn(async (args: { select?: unknown }) => {
+      if (args.select) return [{ id: 'd1' }];
+      return [{
+        id: 'd1', status: 'RETURNED', currentVersion: 1,
+        documentType: { code: 'PASSPORT', title: 'Паспорт', erpUid: null },
+        candidate: { chatUuid: 'chat', code1c: null },
+        versions: [{ version: 1, revision: 1, delivery: null }],
+      }];
+    });
+    const reads = new DocumentReadService({ document: { findMany } } as never, access, null as never);
+    const page = await reads.reviewDocuments(scopedPrincipal, 50, undefined, 'RETURNED');
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0].status).toBe('RETURNED');
+    const scopeWhere = access.documentWhere(scopedPrincipal);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ ...scopeWhere, status: 'RETURNED', currentVersion: { gt: 0 } }) }),
+    );
+  });
+
+  it('keeps the default review queue on IN_REVIEW', async () => {
+    const access = new DocumentAccessService(null as never);
+    const findMany = vi.fn(async (args: { select?: unknown }) => (args.select ? [] : []));
+    const reads = new DocumentReadService({ document: { findMany } } as never, access, null as never);
+    await reads.reviewDocuments(scopedPrincipal, 50);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ status: 'IN_REVIEW' }) }),
     );
   });
 });

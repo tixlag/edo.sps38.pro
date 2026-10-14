@@ -2,7 +2,8 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { AuditAction, EmployeeStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthPrincipal } from '../auth/auth-principal';
-import { resolveLocationScope } from '../auth/access-rules';
+import { EdoAccessRule } from '../auth/edo-access-rule';
+import { hasAccessRule, resolveLocationScope } from '../auth/access-rules';
 import type { DashboardResponseDto, KpiDto } from './dto/dashboard-response.dto';
 
 const STAGES: Array<[EmployeeStatus, string]> = [
@@ -68,7 +69,9 @@ export class DashboardService {
     // filters on), never DocumentVersion.status: reject()/approve() always
     // write the decision to both the version and the parent Document.
     const documentCount = (status: typeof documents[number]['status']) => documents.find(row => row.status === status)?._count._all ?? 0;
-    const kpis: KpiDto[] = [
+    // (The annotation sits on the literal itself so contextual typing keeps
+    // the group literals narrow; .filter() would otherwise widen them.)
+    const allKpis: KpiDto[] = [
       { key: 'queue', label: 'Очередь проверки', value: String(documentCount('IN_REVIEW')), hint: 'документов ждут проверки', group: 'review' },
       { key: 'in_review', label: 'Дела на проверке', value: String(employeeCount('IN_REVIEW')), hint: 'дела на этапе проверки', group: 'review' },
       { key: 'rework', label: 'Возвращены', value: String(documentCount('RETURNED')), hint: 'документов возвращено на исправление', group: 'review' },
@@ -77,6 +80,19 @@ export class DashboardService {
       { key: 'hired', label: 'Оформлены', value: String(employeeCount('HIRED')), hint: 'дела в статусе «Оформлен»', group: 'signing' },
       { key: 'stuck', label: 'Застряли в оформлении', value: String(employeeCount('BLOCKED')), hint: 'дела требуют внимания', group: 'general' },
     ];
+    const kpis = allKpis.filter((kpi) =>
+      // Server-side KPI filtering by action rights (key presence, never
+      // truthiness; FULL_ACCESS implies every rule via hasAccessRule):
+      // DOCUMENT_REVIEW (20002) -> review + general, SIGNING (20003) ->
+      // signing + general, both/20009 -> all, bare ACCESS (20000) -> general
+      // only. The frontend still hides groups client-side as defense in depth,
+      // but unentitled numbers must never leave the API.
+      kpi.group === 'general'
+        ? true
+        : kpi.group === 'review'
+          ? hasAccessRule(principal.accessRules, EdoAccessRule.DOCUMENT_REVIEW)
+          : hasAccessRule(principal.accessRules, EdoAccessRule.SIGNING),
+    );
     return {
       source: 'database',
       kpis,
