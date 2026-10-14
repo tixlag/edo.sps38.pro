@@ -6,7 +6,11 @@ import {
   auditActionLabel,
   auditEntityLabel,
   auditLogLink,
+  canOpenAuditObject,
+  canReadDocuments,
   hasAccessRule,
+  resolveEffectiveMine,
+  type AuditLink,
   type AuditLogItem,
 } from '../lib/audit-types';
 
@@ -29,35 +33,41 @@ const FILTER_CONTROL =
 const TH = 'px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]';
 const TD = 'px-4 py-3';
 
-function goToItem(navigate: ReturnType<typeof useNavigate>, item: AuditLogItem) {
-  if (item.entityType === 'Document') {
-    void navigate({ to: '/review/$documentId', params: { documentId: item.entityId } });
-  } else if (item.entityType === 'Employee') {
-    void navigate({ to: '/employees/$employeeId', params: { employeeId: item.entityId } });
+function goToItem(
+  navigate: ReturnType<typeof useNavigate>,
+  link: AuditLink,
+  canOpen: boolean,
+) {
+  if (!canOpen) return;
+  if (link.to === '/review/$documentId') {
+    void navigate({ to: link.to, params: link.params, search: link.search });
+  } else {
+    void navigate({ to: link.to, params: link.params });
   }
 }
 
-function ObjectCell({ item }: { item: AuditLogItem }) {
+function ObjectCell({ item, canOpen }: { item: AuditLogItem; canOpen: boolean }) {
   const label = `${auditEntityLabel(item.entityType)} · ${item.entityId.slice(0, 8)}…`;
   const title = `${auditEntityLabel(item.entityType)} ${item.entityId}`;
-  if (item.entityType === 'Document') {
+  const link = auditLogLink(item);
+  // UI-only gating (backend re-checks per object): without the base read right
+  // the row stays visible (author/action/date/reason) but not clickable.
+  if (!link || !canOpen) {
     return (
-      <Link
-        to="/review/$documentId"
-        params={{ documentId: item.entityId }}
-        onClick={(e) => e.stopPropagation()}
-        title={title}
-        className="font-medium text-[var(--primary)] underline-offset-4 hover:underline"
+      <span
+        title={!link ? title : 'Нет доступа к содержимому'}
+        className={!link ? 'text-[var(--muted-foreground)]' : 'text-[var(--muted-foreground)]'}
       >
         {label}
-      </Link>
+      </span>
     );
   }
-  if (item.entityType === 'Employee') {
+  if (link.to === '/review/$documentId') {
     return (
       <Link
-        to="/employees/$employeeId"
-        params={{ employeeId: item.entityId }}
+        to={link.to}
+        params={link.params}
+        search={link.search}
         onClick={(e) => e.stopPropagation()}
         title={title}
         className="font-medium text-[var(--primary)] underline-offset-4 hover:underline"
@@ -67,9 +77,15 @@ function ObjectCell({ item }: { item: AuditLogItem }) {
     );
   }
   return (
-    <span title={title} className="text-[var(--muted-foreground)]">
+    <Link
+      to={link.to}
+      params={link.params}
+      onClick={(e) => e.stopPropagation()}
+      title={title}
+      className="font-medium text-[var(--primary)] underline-offset-4 hover:underline"
+    >
       {label}
-    </span>
+    </Link>
   );
 }
 
@@ -91,16 +107,33 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
   const [items, setItems] = React.useState<AuditLogItem[]>([]);
 
   // Fail closed until the profile confirms AUDIT_VIEW: reviewers only see theirs.
-  const effectiveMine = lockMine || !canViewAll || scope === 'mine';
+  const effectiveMine = resolveEffectiveMine(lockMine, canViewAll, scope);
+  // Base read right for object cards (20000 base reading, 20009 implies it).
+  // Fail-closed: until useGetMe resolves, links stay non-clickable.
+  // UI-hiding only — the backend re-checks every object read.
+  const canOpenObject = profileReady && canReadDocuments(profile.data);
 
+  // Debounced entityId search: commit the trimmed value only when it actually
+  // changes. The timer MUST NOT unconditionally clear cursor/items (a 300ms
+  // timer firing after data arrived would wipe loaded rows forever with no
+  // refetch); page resets on committed changes via the effect below.
+  const trimmedEntityId = entityId.trim();
   React.useEffect(() => {
     const timer = window.setTimeout(() => {
-      setDebouncedEntityId(entityId.trim());
-      setCursor(undefined);
-      setItems([]);
+      setDebouncedEntityId((prev) => (prev === trimmedEntityId ? prev : trimmedEntityId));
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [entityId]);
+  }, [trimmedEntityId]);
+
+  // Safety net: any filter switch (scope/mine, action tab/select, entityId)
+  // drops the cursor + accumulated items, so pages of different filters never
+  // mix. The queryKey (built from params below) already isolates React Query
+  // caches per filter set; cursor changes ("Показать ещё") are excluded here
+  // so pagination appends keep working.
+  React.useEffect(() => {
+    setCursor(undefined);
+    setItems([]);
+  }, [effectiveMine, action, debouncedEntityId]);
 
   const resetPage = () => {
     setCursor(undefined);
@@ -277,11 +310,14 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
                 </thead>
                 <tbody>
                   {items.map((item) => {
-                    const linkable = auditLogLink(item) !== null;
+                    const link = auditLogLink(item);
+                    const linkable =
+                      link !== null && canOpenAuditObject(profile.data, item.entityType) && canOpenObject;
                     return (
                       <tr
                         key={item.id}
-                        onClick={linkable ? () => goToItem(navigate, item) : undefined}
+                        onClick={link && linkable ? () => goToItem(navigate, link, true) : undefined}
+                        title={link && !linkable ? 'Нет доступа к содержимому' : undefined}
                         className={
                           linkable
                             ? 'cursor-pointer border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/60'
@@ -294,7 +330,7 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
                         <td className={TD}>{item.actorName ?? item.actorId ?? '—'}</td>
                         <td className={TD}>{auditActionLabel(item.action)}</td>
                         <td className={TD}>
-                          <ObjectCell item={item} />
+                          <ObjectCell item={item} canOpen={linkable} />
                         </td>
                         <td className={`${TD} max-w-[280px] truncate`} title={item.rejectionReason ?? ''}>
                           {item.rejectionReason ?? '—'}
