@@ -2,6 +2,7 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  Logger,
   OnModuleDestroy,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -42,6 +43,7 @@ export class DocumentStreamGuard implements CanActivate {
 }
 @Injectable()
 export class DocumentEventsService implements OnModuleDestroy {
+  private readonly logger = new Logger(DocumentEventsService.name);
   private readonly channels = new Map<
     string,
     {
@@ -50,6 +52,8 @@ export class DocumentEventsService implements OnModuleDestroy {
       principal?: AuthPrincipal;
       last: string;
       busy: boolean;
+      retryAt: number;
+      retryDelay: number;
     }
   >();
   private timer?: ReturnType<typeof setInterval>;
@@ -95,6 +99,8 @@ export class DocumentEventsService implements OnModuleDestroy {
           principal,
           last: "",
           busy: false,
+          retryAt: 0,
+          retryDelay: 1000,
         };
         this.channels.set(key, channel);
       }
@@ -116,10 +122,18 @@ export class DocumentEventsService implements OnModuleDestroy {
         (principal?.expiresAt
           ? new Date(principal.expiresAt)
           : new Date(Date.now() + 300000));
-      const timeout = setTimeout(
-        () => subscriber.complete(),
-        Math.max(0, expires.getTime() - Date.now()),
-      );
+      let timeout: ReturnType<typeof setTimeout>;
+      const expire = () => {
+        const remaining = expires.getTime() - Date.now();
+        if (!Number.isFinite(remaining) || remaining <= 0) {
+          subscriber.complete();
+          return;
+        }
+        // Node clamps overflowing delays to 1 ms. Long-lived JWTs need several
+        // bounded waits, each checking the original expiry again.
+        timeout = setTimeout(expire, Math.min(remaining, 2 ** 31 - 1));
+      };
+      expire();
       return () => {
         clearTimeout(timeout);
         channel!.subscribers.delete(subscriber);
@@ -133,7 +147,7 @@ export class DocumentEventsService implements OnModuleDestroy {
   }
   private async refresh(key: string): Promise<void> {
     const channel = this.channels.get(key);
-    if (!channel || channel.busy) return;
+    if (!channel || channel.busy || Date.now() < channel.retryAt) return;
     channel.busy = true;
     try {
       const result = channel.scope
@@ -143,14 +157,22 @@ export class DocumentEventsService implements OnModuleDestroy {
             currentVersion: { gt: 0 },
           });
       const json = JSON.stringify(result);
+      channel.retryAt = 0;
+      channel.retryDelay = 1000;
       if (json !== channel.last) {
         channel.last = json;
         for (const s of channel.subscribers)
           s.next({ type: "documents", data: result });
       }
     } catch {
-      for (const s of channel.subscribers)
-        s.error(new Error("Document status unavailable"));
+      // Headers are already 200 here. Keep SSE and its heartbeat alive while
+      // retrying reads, rather than making every subscriber reconnect.
+      if (!channel.retryAt)
+        this.logger.warn(
+          "Document status read failed; retrying within the open stream",
+        );
+      channel.retryAt = Date.now() + channel.retryDelay;
+      channel.retryDelay = Math.min(channel.retryDelay * 2, 60000);
     } finally {
       channel.busy = false;
     }

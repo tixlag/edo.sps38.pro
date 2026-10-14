@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { RedisModule } from "../redis/redis.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { AuditModule } from "../audit/audit.module";
 import { StorageModule } from "../storage/storage.module";
@@ -26,16 +27,22 @@ import {
   ManualDocumentIntegrationController,
   ManualDocumentReviewController,
   CandidateDocumentEventsController,
+  CandidateDocumentUploadController,
 } from "./manual-documents.controller";
+import {
+  DocumentUploadGrantGuard,
+  DocumentUploadGrantService,
+} from "./document-upload-grant.service";
 
 @Module({
-  imports: [PrismaModule, AuditModule, StorageModule, OcrModule],
+  imports: [PrismaModule, AuditModule, StorageModule, OcrModule, RedisModule],
   controllers: [
     CandidateIntegrationController,
     DocumentsController,
     ManualDocumentIntegrationController,
     ManualDocumentReviewController,
     CandidateDocumentEventsController,
+    CandidateDocumentUploadController,
   ],
   providers: [
     DocumentAccessService,
@@ -50,6 +57,8 @@ import {
     DocumentDeliveryService,
     DocumentEventsService,
     DocumentStreamGuard,
+    DocumentUploadGrantService,
+    DocumentUploadGrantGuard,
   ],
 })
 export class DocumentsModule {}

@@ -26,6 +26,8 @@ export async function createApp(): Promise<{ app: NestFastifyApplication; docume
   await app.register(fastifyCors, {
     origin: corsOrigin.split(',').map(origin => origin.trim()),
     credentials: true,
+    allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key', 'X-Request-ID', 'X-Correlation-ID'],
+    exposedHeaders: ['X-Request-ID'],
   });
 
   const prefix = process.env.API_PREFIX ?? '/api';
@@ -51,6 +53,7 @@ export async function createApp(): Promise<{ app: NestFastifyApplication; docume
     .setVersion('0.1.0')
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'access-jwt')
     .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'Server-to-server credential: EDO_LK_INTERNAL_TOKEN' }, 'lk-service-token')
+    .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'Owner-scoped, short-lived direct document upload grant' }, 'document-upload-token')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);

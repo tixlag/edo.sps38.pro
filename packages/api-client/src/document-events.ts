@@ -2,7 +2,7 @@ import type { DocumentListDto } from "./generated/api";
 
 /** SSE transport only; REST requests and contract types come from generated clients. */
 export function subscribeDocumentStatuses(options: {
-  connect: (reconnecting: boolean) => Promise<{ url: string; token: string }>;
+  connect: (refreshToken: boolean) => Promise<{ url: string; token: string }>;
   onDocuments: (documents: DocumentListDto) => void;
   onState?: (state: "connecting" | "connected" | "reconnecting") => void;
 }): () => void {
@@ -10,11 +10,21 @@ export function subscribeDocumentStatuses(options: {
   let controller: AbortController | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let reconnecting = false;
+  let retryDelay = 3000;
+  let refreshToken = false;
   const run = async () => {
     options.onState?.(reconnecting ? "reconnecting" : "connecting");
     try {
-      const connection = await options.connect(reconnecting);
+      let connection: { url: string; token: string };
+      try {
+        connection = await options.connect(refreshToken);
+      } catch {
+        // Missing credentials or a failed refresh must not start an auth loop.
+        return;
+      }
       if (stopped) return;
+      const refreshedToken = refreshToken;
+      refreshToken = false;
       controller = new AbortController();
       const response = await fetch(connection.url, {
         headers: {
@@ -24,12 +34,36 @@ export function subscribeDocumentStatuses(options: {
         signal: controller.signal,
         cache: "no-store",
       });
+      if (stopped) {
+        controller.abort();
+        return;
+      }
+      if (response.status === 401) {
+        await response.body?.cancel();
+        if (refreshedToken) return;
+        refreshToken = true;
+        reconnecting = true;
+        timer = setTimeout(() => void run(), 0);
+        return;
+      }
+      if (
+        response.status >= 400 &&
+        response.status < 500 &&
+        response.status !== 408 &&
+        response.status !== 429
+      ) {
+        await response.body?.cancel();
+        return;
+      }
       if (
         !response.ok ||
         !response.body ||
         !response.headers.get("content-type")?.includes("text/event-stream")
-      )
+      ) {
+        await response.body?.cancel();
         throw new Error("Document stream unavailable");
+      }
+      const connectedAt = Date.now();
       options.onState?.("connected");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -65,14 +99,17 @@ export function subscribeDocumentStatuses(options: {
         }
       } finally {
         await reader.cancel().catch(() => undefined);
+        // A 200 response or an initial snapshot alone does not prove stability.
+        if (Date.now() - connectedAt >= 60000) retryDelay = 3000;
       }
     } catch {
-      /* Status reads remain available; reconnect with a new token. */
+      /* Status reads remain available while the stream reconnects. */
     }
     if (!stopped) {
       reconnecting = true;
       options.onState?.("reconnecting");
-      timer = setTimeout(() => void run(), 3000);
+      timer = setTimeout(() => void run(), retryDelay);
+      retryDelay = Math.min(retryDelay * 2, 60000);
     }
   };
   void run();

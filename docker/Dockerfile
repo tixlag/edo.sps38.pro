@@ -42,7 +42,10 @@ FROM api-build AS api
 ENV NODE_ENV=production \
     API_PORT=3001
 COPY docker/api-entrypoint.sh /usr/local/bin/edo-entrypoint
-RUN chmod +x /usr/local/bin/edo-entrypoint
+RUN chmod +x /usr/local/bin/edo-entrypoint \
+ && mkdir -p /app/.cache/document-uploads \
+ && chown -R node:node /app/.cache \
+ && chmod 700 /app/.cache /app/.cache/document-uploads
 USER node
 EXPOSE 3001
 # live — процесс жив; ready (MariaDB + RabbitMQ) проверяет деплой, а не docker:

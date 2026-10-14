@@ -24,6 +24,8 @@ import { sign } from "jsonwebtoken";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { AuthModule } from "../src/auth/auth.module";
 import { DocumentsModule } from "../src/documents/documents.module";
+import { RedisService } from "../src/redis/redis.module";
+import { createCatalogRedisDouble } from "./helpers/catalog-redis";
 import { HttpErrorFilter } from "../src/common/http-error.filter";
 import {
   OcrService,
@@ -233,6 +235,8 @@ beforeAll(async () => {
       AuthModule,
     ],
   })
+    .overrideProvider(RedisService)
+    .useValue(createCatalogRedisDouble())
     .overrideProvider(PrismaService)
     .useValue(prisma)
     .overrideProvider(ConfigService)

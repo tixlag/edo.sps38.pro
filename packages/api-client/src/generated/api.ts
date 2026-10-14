@@ -541,6 +541,30 @@ export interface DocumentStreamGrantDto {
   expiresAt: string;
 }
 
+export type DocumentUploadGrantRequestDtoCitizenship = {
+  [key: string]: unknown;
+};
+
+export interface DocumentUploadGrantRequestDto {
+  chat_uuid?: string;
+  code_1c?: string;
+  documentUid: string;
+  /** @maxLength 128 */
+  idempotencyKey: string;
+  /** @maxLength 64 */
+  position_code_1c: string;
+  citizenship?: DocumentUploadGrantRequestDtoCitizenship;
+  /** @maxLength 64 */
+  project_code_1c?: string;
+}
+
+export interface DocumentUploadGrantDto {
+  /** Five-minute upload capability; keep in memory only */
+  token: string;
+  url: string;
+  expiresAt: string;
+}
+
 export interface ReviewDocumentsDto {
   items: DocumentDto[];
   /** @nullable */
@@ -615,6 +639,16 @@ export const ListReviewDocumentsStatus = {
   ERP_PENDING: "ERP_PENDING",
   ALL: "ALL",
 } as const;
+
+export type SubmitCandidateDocumentDirectBody = {
+  /** JSON with documentUid and documentFields only; owner and candidate context come from the upload grant */
+  metadata: string;
+  /**
+   * @minItems 1
+   * @maxItems 10
+   */
+  "files[]": Blob[];
+};
 
 /**
  * @summary Service health check (legacy, same as live)
@@ -2504,6 +2538,91 @@ export const useCreateDocumentStreamGrant = <
 };
 
 /**
+ * @summary Mint a five-minute upload grant bound to owner, document and bundle key
+ */
+export const createCandidateDocumentUploadGrant = (
+  documentUploadGrantRequestDto: DocumentUploadGrantRequestDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentUploadGrantDto>({
+    url: `/api/internal/edo/v1/document-upload-grants`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: documentUploadGrantRequestDto,
+    signal,
+  });
+};
+
+export const getCreateCandidateDocumentUploadGrantMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCandidateDocumentUploadGrant>>,
+    TError,
+    { data: DocumentUploadGrantRequestDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCandidateDocumentUploadGrant>>,
+  TError,
+  { data: DocumentUploadGrantRequestDto },
+  TContext
+> => {
+  const mutationKey = ["createCandidateDocumentUploadGrant"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCandidateDocumentUploadGrant>>,
+    { data: DocumentUploadGrantRequestDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createCandidateDocumentUploadGrant(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCandidateDocumentUploadGrantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCandidateDocumentUploadGrant>>
+>;
+export type CreateCandidateDocumentUploadGrantMutationBody =
+  DocumentUploadGrantRequestDto;
+export type CreateCandidateDocumentUploadGrantMutationError = ApiErrorDto;
+
+/**
+ * @summary Mint a five-minute upload grant bound to owner, document and bundle key
+ */
+export const useCreateCandidateDocumentUploadGrant = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCandidateDocumentUploadGrant>>,
+    TError,
+    { data: DocumentUploadGrantRequestDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCandidateDocumentUploadGrant>>,
+  TError,
+  { data: DocumentUploadGrantRequestDto },
+  TContext
+> => {
+  const mutationOptions =
+    getCreateCandidateDocumentUploadGrantMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
  * @summary Review queue or documents requiring ERP delivery
  */
 export const listReviewDocuments = (
@@ -2976,3 +3095,94 @@ export function useStreamCandidateDocumentStatuses<
 
   return query;
 }
+
+/**
+ * @summary Upload files directly using a scoped upload grant
+ */
+export const submitCandidateDocumentDirect = (
+  submitCandidateDocumentDirectBody: SubmitCandidateDocumentDirectBody,
+  signal?: AbortSignal,
+) => {
+  const formData = new FormData();
+  formData.append("metadata", submitCandidateDocumentDirectBody.metadata);
+  submitCandidateDocumentDirectBody["files[]"].forEach((value) =>
+    formData.append("files[]", value),
+  );
+
+  return customInstance<UploadAcceptedDto>({
+    url: `/api/candidate-documents`,
+    method: "POST",
+    headers: { "Content-Type": "multipart/form-data" },
+    data: formData,
+    signal,
+  });
+};
+
+export const getSubmitCandidateDocumentDirectMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitCandidateDocumentDirect>>,
+    TError,
+    { data: SubmitCandidateDocumentDirectBody },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitCandidateDocumentDirect>>,
+  TError,
+  { data: SubmitCandidateDocumentDirectBody },
+  TContext
+> => {
+  const mutationKey = ["submitCandidateDocumentDirect"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitCandidateDocumentDirect>>,
+    { data: SubmitCandidateDocumentDirectBody }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return submitCandidateDocumentDirect(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitCandidateDocumentDirectMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitCandidateDocumentDirect>>
+>;
+export type SubmitCandidateDocumentDirectMutationBody =
+  SubmitCandidateDocumentDirectBody;
+export type SubmitCandidateDocumentDirectMutationError = ApiErrorDto;
+
+/**
+ * @summary Upload files directly using a scoped upload grant
+ */
+export const useSubmitCandidateDocumentDirect = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitCandidateDocumentDirect>>,
+    TError,
+    { data: SubmitCandidateDocumentDirectBody },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitCandidateDocumentDirect>>,
+  TError,
+  { data: SubmitCandidateDocumentDirectBody },
+  TContext
+> => {
+  const mutationOptions =
+    getSubmitCandidateDocumentDirectMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
