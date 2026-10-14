@@ -1,20 +1,34 @@
-import { useGetDashboard } from '@edo/api-client';
+import { useGetDashboard, useGetMe } from '@edo/api-client';
 import { Card, CardContent, CardHeader } from '@edo/ui';
 import { MetricCard } from '@edo/ui';
 import { PageHeader } from '@edo/ui';
 import { Button } from '@edo/ui';
 import { ActivityItem } from '../components/ActivityItem';
-import { CheckCircle2, FileCheck2, AlertTriangle, PenLine, Award, RefreshCw } from 'lucide-react';
+import { CheckCircle2, FileCheck2, AlertTriangle, Clock, PenLine, Award, RefreshCw } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
 
-const KPI_ICONS = [FileCheck2, AlertTriangle, PenLine, Award, RefreshCw, CheckCircle2];
-const KPI_ACCENTS = [
-  'var(--info-soft)',
-  'var(--warning-soft)',
-  'var(--primary-soft)',
-  'var(--success-soft)',
-  'var(--warning-soft)',
-  'var(--purple-soft)',
+type KpiGroup = 'review' | 'signing' | 'general';
+
+// Key-based card meta (never index-based: backend KPI order must not swap icons).
+// Groups mirror the backend KpiDto.group values ('review' | 'signing' | 'general').
+const KPI_META: Record<string, { icon: typeof FileCheck2; accent: string; group: KpiGroup; to?: '/review' | '/employees' | '/history' }> = {
+  queue: { icon: FileCheck2, accent: 'var(--info-soft)', group: 'review', to: '/review' },
+  in_review: { icon: Clock, accent: 'var(--info-soft)', group: 'review', to: '/review' },
+  // Returned documents leave the /review IN_REVIEW queue, so rework lands on
+  // the history journal where DOCUMENT_RETURNED («Возвращено») is filterable.
+  rework: { icon: CheckCircle2, accent: 'var(--purple-soft)', group: 'review', to: '/history' },
+  expired: { icon: RefreshCw, accent: 'var(--warning-soft)', group: 'review' },
+  signing: { icon: PenLine, accent: 'var(--primary-soft)', group: 'signing' },
+  hired: { icon: Award, accent: 'var(--success-soft)', group: 'signing' },
+  stuck: { icon: AlertTriangle, accent: 'var(--warning-soft)', group: 'general', to: '/employees' },
+};
+
+const FALLBACK_META = { icon: CheckCircle2, accent: 'var(--info-soft)', group: 'general' as KpiGroup };
+
+const KPI_GROUPS: Array<{ key: KpiGroup; title: string }> = [
+  { key: 'review', title: 'Проверка документов' },
+  { key: 'signing', title: 'Подписание' },
+  { key: 'general', title: 'Общее' },
 ];
 
 const STAGE_COLORS = [
@@ -51,7 +65,21 @@ function Donut({ slices }: { slices: { value: number; color: string }[] }) {
 
 export function DashboardPage() {
   const { data, isLoading, isError } = useGetDashboard();
+  const { data: profile } = useGetMe();
   const navigate = useNavigate();
+
+  // 20002 = DOCUMENT_REVIEW, 20003 = SIGNING, 20009 = FULL_ACCESS.
+  // Key presence grants (never truthiness: `[]` means granted).
+  const permissions = profile?.permissions;
+  const hasRule = (...rules: string[]) =>
+    !!permissions && rules.some((rule) => Object.prototype.hasOwnProperty.call(permissions, rule));
+  const canReview = hasRule('20002', '20009');
+  const canSign = hasRule('20003', '20009');
+
+  const groupVisible = (group: KpiGroup) =>
+    group === 'review' ? canReview : group === 'signing' ? canSign : true;
+  const kpisOf = (group: KpiGroup) =>
+    (data?.kpis ?? []).filter((kpi) => (KPI_META[kpi.key] ?? FALLBACK_META).group === group);
 
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-[26px_28px_28px_28px]">
@@ -75,21 +103,29 @@ export function DashboardPage() {
 
       {data && (
         <>
-          <div className="grid h-[142px] grid-cols-6 gap-[14px]">
-            {data.kpis.map((kpi, i) => {
-              const Icon = KPI_ICONS[i % KPI_ICONS.length];
-              return (
-                <MetricCard
-                  key={kpi.key}
-                  label={kpi.label}
-                  value={kpi.value}
-                  hint={kpi.hint}
-                  accent={KPI_ACCENTS[i % KPI_ACCENTS.length]}
-                  icon={<Icon size={18} />}
-                />
-              );
-            })}
-          </div>
+          {KPI_GROUPS.filter((group) => groupVisible(group.key) && kpisOf(group.key).length > 0).map((group) => (
+            <section key={group.key} aria-label={group.title} className="flex flex-col gap-2">
+              <h2 className="text-[15px] font-bold">{group.title}</h2>
+              <div className="grid grid-cols-4 gap-[14px]">
+                {kpisOf(group.key).map((kpi) => {
+                  const meta = KPI_META[kpi.key] ?? FALLBACK_META;
+                  const Icon = meta.icon;
+                  const to = meta.to;
+                  return (
+                    <MetricCard
+                      key={kpi.key}
+                      label={kpi.label}
+                      value={kpi.value}
+                      hint={kpi.hint}
+                      accent={meta.accent}
+                      icon={<Icon size={18} />}
+                      onClick={to ? () => void navigate({ to }) : undefined}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+          ))}
 
           <div className="flex h-[300px] gap-5">
             <Card className="flex w-[1100px] max-w-[60%] flex-col">
@@ -114,7 +150,10 @@ export function DashboardPage() {
 
             <Card className="flex flex-1 flex-col">
               <CardHeader>
-                <span className="text-[15px] font-bold">Работники по этапам</span>
+                <div className="flex flex-col">
+                  <span className="text-[15px] font-bold" title="Статус дела в ЭДО; не связан с шагами адаптации в ЛК">Дела по статусам</span>
+                  <span className="text-[12px] text-[var(--muted-foreground)]">Статусы дел в ЭДО</span>
+                </div>
               </CardHeader>
               <CardContent className="flex items-center gap-4">
                 <Donut slices={data.stages.map((s, i) => ({ value: s.value, color: STAGE_COLORS[i % STAGE_COLORS.length] }))} />

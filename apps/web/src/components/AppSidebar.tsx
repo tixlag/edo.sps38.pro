@@ -7,13 +7,15 @@ import {
   PenLine,
   Users,
   Settings,
+  History as HistoryIcon,
+  UserCheck,
   PanelLeftOpen,
   PanelLeftClose,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@edo/ui';
 import type { MeResponseDto } from '@edo/api-client';
-import { profileLabel, profileInitials } from '../lib/profile';
+import { profileAvatar, profileLabel, profileInitials, profileShortName } from '../lib/profile';
 
 export interface NavItem {
   key: string;
@@ -37,11 +39,6 @@ export const CONFIG_NAV: NavItem[] = [
   { key: 'settings', label: 'Настройки', icon: Settings, to: '/settings' },
 ];
 
-const CONTROL_SECTIONS = [
-  { title: 'Работа', items: WORK_NAV },
-  { title: 'Конфигурация', items: CONFIG_NAV },
-];
-
 export function AppSidebar({
   collapsed,
   active,
@@ -55,9 +52,30 @@ export function AppSidebar({
   onNavigate: (to: string) => void;
   profile?: MeResponseDto;
 }) {
-  const name = profileLabel(profile);
+  const fullName = profileLabel(profile);
+  const shortName = profileShortName(profile);
+  const avatarUrl = profileAvatar(profile);
+  const avatarTitle = fullName;
+  // EDO access rules: key presence grants (value may be `[]`), never truthiness.
+  // UI-only visibility; the backend re-checks every action.
+  const permissions = (profile?.permissions ?? {}) as Record<string, unknown>;
+  const hasRule = (rule: number) => Object.prototype.hasOwnProperty.call(permissions, String(rule));
+  const canAudit = hasRule(20005) || hasRule(20009);
+  const canReview = hasRule(20002) || hasRule(20009);
+  const extraWorkNav: NavItem[] = [];
+  if (canAudit || hasRule(20002)) {
+    extraWorkNav.push({ key: 'history', label: 'История', icon: HistoryIcon, to: '/history' });
+  }
+  if (canReview || canAudit) {
+    extraWorkNav.push({ key: 'my-reviews', label: 'Мои проверки', icon: UserCheck, to: '/my-reviews' });
+  }
+  const workNav = [...WORK_NAV, ...extraWorkNav];
+  const sections = [
+    { title: 'Работа', items: workNav },
+    { title: 'Конфигурация', items: CONFIG_NAV },
+  ];
   if (collapsed) {
-    const all = [...WORK_NAV, ...CONFIG_NAV];
+    const all = [...workNav, ...CONFIG_NAV];
     return (
       <aside className="relative flex h-full w-[84px] flex-col items-center justify-between border-r border-[var(--border)] bg-[var(--sidebar)] px-[14px] py-[22px]">
         <div className="flex w-full flex-col items-center gap-[22px]">
@@ -65,7 +83,7 @@ export function AppSidebar({
             ЕЗД
           </div>
           <nav className="flex w-full flex-col items-center gap-2">
-            {all.slice(0, 8).map((item) => {
+            {all.slice(0, 10).map((item) => {
               const Icon = item.icon;
               const isActive = active === item.to || (item.to === '/' && active === '/');
               return (
@@ -90,9 +108,19 @@ export function AppSidebar({
           </nav>
         </div>
         <div className="flex flex-col items-center gap-3">
-          <div title={name} aria-label={name} className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
-            {profileInitials(profile)}
-          </div>
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={avatarTitle}
+              title={avatarTitle}
+              aria-label={avatarTitle}
+              className="h-[42px] w-[42px] rounded-full object-cover"
+            />
+          ) : (
+            <div title={avatarTitle} aria-label={avatarTitle} className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
+              {profileInitials(profile)}
+            </div>
+          )}
         </div>
         <button
           aria-label="Развернуть меню"
@@ -126,7 +154,7 @@ export function AppSidebar({
             <PanelLeftClose size={18} />
           </button>
         </div>
-        {CONTROL_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <div key={section.title} className="flex flex-col gap-1">
             <div className="px-[14px] pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
               {section.title}
@@ -162,11 +190,20 @@ export function AppSidebar({
       </div>
       <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
         <div className="flex items-center gap-3 px-2">
-          <div title={name} className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
-            {profileInitials(profile)}
-          </div>
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={avatarTitle}
+              title={avatarTitle}
+              className="h-[42px] w-[42px] shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <div title={avatarTitle} className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
+              {profileInitials(profile)}
+            </div>
+          )}
           <div className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-semibold" title={name}>{name}</span>
+            <span className="truncate text-sm font-semibold" title={fullName}>{shortName}</span>
             <span className="truncate text-xs text-[var(--muted-foreground)]">{profile?.positionName ?? 'Учётная запись ЛК'}</span>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { EmployeesPage } from '../pages/EmployeesPage';
 import { EmployeeDetailPage } from '../pages/EmployeeDetailPage';
 import { ReviewPage, ReviewDocumentPage } from '../pages/ReviewPage';
+import { HistoryPage, MyReviews } from '../pages/HistoryPage';
 import { useEmployeeRouteId } from './AppShell';
 
 function Placeholder({ title }: { title: string }) {
@@ -78,6 +79,18 @@ const participantsRoute = createRoute({
   component: () => <Placeholder title="Участники" />,
 });
 
+const historyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/history',
+  component: HistoryPage,
+});
+
+const myReviewsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/my-reviews',
+  component: MyReviews,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
@@ -91,6 +104,8 @@ const routeTree = rootRoute.addChildren([
   tasksRoute,
   reviewRoute,
   reviewDocumentRoute,
+  historyRoute,
+  myReviewsRoute,
   onboardingRoute,
   signingRoute,
   participantsRoute,

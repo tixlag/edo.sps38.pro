@@ -1,9 +1,11 @@
 import { Bell, Search } from 'lucide-react';
 import type { MeResponseDto } from '@edo/api-client';
-import { profileLabel, profileInitials } from '../lib/profile';
+import { profileAvatar, profileLabel, profileInitials, profileShortName } from '../lib/profile';
 
 export function AppHeader({ crumb, profile }: { crumb: string; profile?: MeResponseDto }) {
-  const name = profileLabel(profile);
+  const fullName = profileLabel(profile);
+  const shortName = profileShortName(profile);
+  const avatarUrl = profileAvatar(profile);
   const scope = profile?.locationScope;
   const locationLabel = !scope ? 'Область доступа…' : scope.all ? 'Все объекты' : `Доступно объектов: ${scope.locationIds.length}`;
   return (
@@ -34,10 +36,20 @@ export function AppHeader({ crumb, profile }: { crumb: string; profile?: MeRespo
         >
           <Bell size={18} />
         </button>
-        <span className="hidden max-w-[260px] truncate text-sm font-semibold sm:inline" title={name}>{name}</span>
-        <div title={name} aria-label={name} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-sm font-bold text-white">
-          {profileInitials(profile)}
-        </div>
+        <span className="hidden max-w-[140px] truncate text-sm font-semibold sm:inline" title={fullName}>{shortName}</span>
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={fullName}
+            title={fullName}
+            aria-label={fullName}
+            className="h-8 w-8 shrink-0 rounded-full object-cover"
+          />
+        ) : (
+          <div title={fullName} aria-label={fullName} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-xs font-bold text-white">
+            {profileInitials(profile)}
+          </div>
+        )}
       </div>
     </header>
   );

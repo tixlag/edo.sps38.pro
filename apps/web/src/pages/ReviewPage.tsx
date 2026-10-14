@@ -20,8 +20,9 @@ export function ReviewPage() {
         title="Проверка документов"
         subtitle="Документы кандидатов и сотрудников"
       />
-      <div className="my-5 flex gap-2">
+      <div className="my-4 flex gap-2">
         <Button
+          size="sm"
           variant={tab === "IN_REVIEW" ? "default" : "outline"}
           onClick={() => {
             setTab("IN_REVIEW");
@@ -31,6 +32,7 @@ export function ReviewPage() {
           Ожидают проверки
         </Button>
         <Button
+          size="sm"
           variant={tab === "ERP_PENDING" ? "default" : "outline"}
           onClick={() => {
             setTab("ERP_PENDING");
@@ -44,7 +46,7 @@ export function ReviewPage() {
       {list.isError && (
         <div role="alert">
           Не удалось загрузить очередь.{" "}
-          <Button variant="outline" onClick={() => void list.refetch()}>
+          <Button size="sm" variant="outline" onClick={() => void list.refetch()}>
             Повторить
           </Button>
         </div>
@@ -63,24 +65,24 @@ export function ReviewPage() {
               {list.data.items.map((doc) => (
                 <li
                   key={doc.id}
-                  className="flex flex-wrap items-center justify-between gap-3 py-4"
+                  className="flex flex-wrap items-center justify-between gap-3 py-2.5"
                 >
                   <div>
                     <Link
                       to="/review/$documentId"
                       params={{ documentId: doc.id }}
-                      className="font-semibold underline-offset-4 hover:underline"
+                      className="text-[13px] font-semibold underline-offset-4 hover:underline"
                     >
                       {doc.title}
                     </Link>
-                    <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                    <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
                       {doc.code1c
                         ? `Сотрудник ${doc.code1c}`
                         : `Чат ${doc.chatUuid ?? "—"}`}{" "}
                       · Версия {doc.currentVersion}
                     </p>
                     {tab === "ERP_PENDING" && (
-                      <p className="mt-1 text-sm text-[var(--destructive)]">
+                      <p className="mt-0.5 text-xs text-[var(--destructive)]">
                         Ожидают отправки версии:{" "}
                         {doc.pendingDeliveryVersions.join(", ")}
                       </p>
@@ -104,6 +106,7 @@ export function ReviewPage() {
             </ul>
             {list.data.nextCursor && (
               <Button
+                size="sm"
                 variant="outline"
                 onClick={() => setCursor(list.data!.nextCursor ?? undefined)}
               >
@@ -111,7 +114,11 @@ export function ReviewPage() {
               </Button>
             )}
             {cursor && (
-              <Button variant="ghost" onClick={() => setCursor(undefined)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setCursor(undefined)}
+              >
                 В начало списка
               </Button>
             )}
@@ -140,8 +147,11 @@ export function ReviewDocumentPage() {
   });
   return (
     <div className="h-full overflow-auto p-7">
-      <Link to="/review" className="mb-4 inline-block text-sm underline">
-        Очередь проверки
+      <Link
+        to="/review"
+        className="mb-2 inline-block text-[13px] text-[var(--muted-foreground)] underline underline-offset-4 hover:text-[var(--foreground)]"
+      >
+        ← Очередь проверки
       </Link>
       <PageHeader
         title={info.data?.title ?? "Проверка документа"}
@@ -155,10 +165,10 @@ export function ReviewDocumentPage() {
         info.data.pendingDeliveryVersions.some(
           (v) => v !== info.data!.currentVersion,
         ) && (
-          <label className="mt-4 flex items-center gap-3 text-sm">
+          <label className="mt-3 flex items-center gap-2 text-[13px]">
             Версия документа
             <select
-              className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2"
+              className="rounded-[6px] border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[13px]"
               value={number}
               onChange={(event) =>
                 setSelectedVersion(Number(event.target.value))
@@ -189,6 +199,7 @@ export function ReviewDocumentPage() {
         <div role="alert" className="py-6">
           Не удалось загрузить документ.{" "}
           <Button
+            size="sm"
             variant="outline"
             onClick={() => {
               void info.refetch();
@@ -200,9 +211,9 @@ export function ReviewDocumentPage() {
         </div>
       )}
       {version.data && (
-        <Card className="mt-5">
-          <CardContent>
-            <div className="mb-5">
+        <Card className="mt-4">
+          <CardContent className="p-4">
+            <div className="mb-3">
               <StatusBadge
                 status={version.data.status}
                 document

@@ -1,6 +1,109 @@
 {
   "openapi": "3.0.0",
   "paths": {
+    "/api/v1/audit-logs": {
+      "get": {
+        "operationId": "listAuditLogs",
+        "parameters": [
+          {
+            "name": "actorId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by author uuid; the literal \"me\" means the caller",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "mine",
+            "required": false,
+            "in": "query",
+            "description": "When true, show only the caller actions",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "action",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/AuditAction"
+            }
+          },
+          {
+            "name": "entityType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "entityId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "Opaque cursor from a previous AuditLogListDto.nextCursor",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditLogListDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query or cursor"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Missing required EDO access rule"
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "List audit history within user location scope",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "getHealth",
@@ -126,7 +229,7 @@
             "access-jwt": []
           }
         ],
-        "summary": "Current dashboard summary within user location scope",
+        "summary": "Current dashboard summary with grouped KPIs within user location scope",
         "tags": [
           "dashboard"
         ]
@@ -213,7 +316,16 @@
     "/api/v1/me": {
       "get": {
         "operationId": "getMe",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "authorization",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -3553,6 +3665,106 @@
       }
     },
     "schemas": {
+      "AuditAction": {
+        "type": "string",
+        "enum": [
+          "EMPLOYEE_CREATED",
+          "DOCUMENT_UPLOADED",
+          "DOCUMENT_UPLOAD_STARTED",
+          "DOCUMENT_UPLOAD_FAILED",
+          "DOCUMENT_OCR_COMPLETED",
+          "DOCUMENT_FIELDS_UPDATED",
+          "CANDIDATE_LINKED",
+          "DOCUMENT_RETURNED",
+          "DOCUMENT_APPROVED",
+          "DOCUMENT_ERP_SEND_REQUESTED",
+          "DOCUMENT_ERP_SEND_COMPLETED",
+          "DOCUMENT_SIGNED",
+          "WORKFLOW_STAGE_CHANGED",
+          "DATA_IMPORTED",
+          "LK_REFERENCE_SYNCED",
+          "LK_EVENT_APPLIED"
+        ]
+      },
+      "AuditLogItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Audit row id"
+          },
+          "actorId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Author uuid (JWT sub); null for system rows without actor"
+          },
+          "actorName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Author display name from the local LK projection (by uuid, fallback by code1c); never matched by full name"
+          },
+          "action": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AuditAction"
+              }
+            ]
+          },
+          "entityType": {
+            "type": "string",
+            "description": "Audited entity type, e.g. Document or Employee"
+          },
+          "entityId": {
+            "type": "string",
+            "description": "Audited entity id"
+          },
+          "rejectionReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Return reason for DOCUMENT_RETURNED rows (taken from after.rejectionReason)"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "linkHint": {
+            "type": "string",
+            "nullable": true,
+            "description": "Frontend deep-link hint, e.g. /documents/<id>; null when no route is known"
+          }
+        },
+        "required": [
+          "id",
+          "actorId",
+          "actorName",
+          "action",
+          "entityType",
+          "entityId",
+          "rejectionReason",
+          "createdAt",
+          "linkHint"
+        ]
+      },
+      "AuditLogListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditLogItemDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "Opaque cursor for the next page; null when exhausted"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
       "HealthResponseDto": {
         "type": "object",
         "properties": {
@@ -3696,13 +3908,23 @@
           "hint": {
             "type": "string",
             "example": "документов ждут проверки"
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "review",
+              "signing",
+              "general"
+            ],
+            "example": "review"
           }
         },
         "required": [
           "key",
           "label",
           "value",
-          "hint"
+          "hint",
+          "group"
         ]
       },
       "WeeklyBarDto": {
@@ -3968,6 +4190,16 @@
             "nullable": true,
             "description": "Name from the LK projection, matched only by JWT code1c/uuid"
           },
+          "shortName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Compact display name (\"Фамилия И.О.\") derived from fullName"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "User avatar URL enriched server-side from LK, null when unavailable"
+          },
           "positionName": {
             "type": "string",
             "nullable": true
@@ -3998,6 +4230,8 @@
           "uuid",
           "code1c",
           "fullName",
+          "shortName",
+          "avatarUrl",
           "positionName",
           "departmentName",
           "organizationName",
