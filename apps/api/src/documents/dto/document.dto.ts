@@ -290,6 +290,38 @@ export class DocumentStreamGrantDto {
   @ApiProperty() url!: string;
   @ApiProperty({ format: "date-time" }) expiresAt!: string;
 }
+export class DocumentUploadGrantRequestDto extends DocumentScopeDto {
+  @ApiProperty({ format: "uuid" }) @IsUUID() documentUid!: string;
+  @ApiProperty({ maxLength: 128 })
+  @IsString()
+  @MaxLength(128)
+  @Matches(/^[\x21-\x7e]{1,128}$/)
+  idempotencyKey!: string;
+  @ApiProperty({ maxLength: 64 })
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  position_code_1c!: string;
+  @ApiPropertyOptional({ default: "ru" })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-zA-Z]{2}$/)
+  citizenship = "ru";
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  project_code_1c?: string;
+}
+export class DocumentUploadGrantDto {
+  @ApiProperty({
+    description: "Five-minute upload capability; keep in memory only",
+  })
+  token!: string;
+  @ApiProperty({ format: "uri" }) url!: string;
+  @ApiProperty({ format: "date-time" }) expiresAt!: string;
+}
 export class ReviewDocumentsQueryDto extends CandidateQueryDto {
   @ApiPropertyOptional({ enum: ["IN_REVIEW", "ERP_PENDING", "ALL"] })
   @IsOptional()

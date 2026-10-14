@@ -26,7 +26,12 @@ import {
   ManualDocumentIntegrationController,
   ManualDocumentReviewController,
   CandidateDocumentEventsController,
+  CandidateDocumentUploadController,
 } from "./manual-documents.controller";
+import {
+  DocumentUploadGrantGuard,
+  DocumentUploadGrantService,
+} from "./document-upload-grant.service";
 
 @Module({
   imports: [PrismaModule, AuditModule, StorageModule, OcrModule],
@@ -36,6 +41,7 @@ import {
     ManualDocumentIntegrationController,
     ManualDocumentReviewController,
     CandidateDocumentEventsController,
+    CandidateDocumentUploadController,
   ],
   providers: [
     DocumentAccessService,
@@ -50,6 +56,8 @@ import {
     DocumentDeliveryService,
     DocumentEventsService,
     DocumentStreamGuard,
+    DocumentUploadGrantService,
+    DocumentUploadGrantGuard,
   ],
 })
 export class DocumentsModule {}

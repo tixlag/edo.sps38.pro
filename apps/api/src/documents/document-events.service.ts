@@ -122,10 +122,18 @@ export class DocumentEventsService implements OnModuleDestroy {
         (principal?.expiresAt
           ? new Date(principal.expiresAt)
           : new Date(Date.now() + 300000));
-      const timeout = setTimeout(
-        () => subscriber.complete(),
-        Math.max(0, expires.getTime() - Date.now()),
-      );
+      let timeout: ReturnType<typeof setTimeout>;
+      const expire = () => {
+        const remaining = expires.getTime() - Date.now();
+        if (!Number.isFinite(remaining) || remaining <= 0) {
+          subscriber.complete();
+          return;
+        }
+        // Node clamps overflowing delays to 1 ms. Long-lived JWTs need several
+        // bounded waits, each checking the original expiry again.
+        timeout = setTimeout(expire, Math.min(remaining, 2 ** 31 - 1));
+      };
+      expire();
       return () => {
         clearTimeout(timeout);
         channel!.subscribers.delete(subscriber);

@@ -48,6 +48,8 @@ import {
   UploadAcceptedDto,
   DocumentListDto,
   DocumentStreamGrantDto,
+  DocumentUploadGrantDto,
+  DocumentUploadGrantRequestDto,
   RejectDocumentDto,
   DocumentVersionDto,
   DocumentDto,
@@ -55,6 +57,11 @@ import {
   ReviewDocumentsDto,
 } from "./dto/document.dto";
 import { applyDecorators } from "@nestjs/common";
+import {
+  DocumentUploadGrantGuard,
+  DocumentUploadGrantService,
+  type DocumentUploadCapability,
+} from "./document-upload-grant.service";
 
 const Errors = () =>
   applyDecorators(
@@ -66,6 +73,7 @@ type Request = FastifyRequest & {
   correlationId?: string;
   documentScope?: DocumentEventScope;
   documentGrantExpiry?: Date;
+  documentUploadCapability?: DocumentUploadCapability;
 };
 @ApiTags("candidate-documents")
 @ApiBearerAuth("lk-service-token")
@@ -80,6 +88,7 @@ export class ManualDocumentIntegrationController {
     private readonly reads: DocumentReadService,
     private readonly catalog: DocumentCatalogService,
     private readonly events: DocumentEventsService,
+    private readonly uploadGrants: DocumentUploadGrantService,
   ) {}
   @Get("document-catalog")
   @ApiOperation({
@@ -150,6 +159,71 @@ export class ManualDocumentIntegrationController {
   @ApiResponse({ status: 200, type: DocumentStreamGrantDto })
   grant(@Body() scope: DocumentScopeDto) {
     return this.events.grant(scope);
+  }
+  @Post("document-upload-grants")
+  @HttpCode(200)
+  @ApiOperation({
+    operationId: "createCandidateDocumentUploadGrant",
+    summary:
+      "Mint a five-minute upload grant bound to owner, document and bundle key",
+  })
+  @ApiResponse({ status: 200, type: DocumentUploadGrantDto })
+  uploadGrant(@Body() scope: DocumentUploadGrantRequestDto) {
+    return this.uploadGrants.grant(scope);
+  }
+}
+
+@ApiTags("candidate-document-uploads")
+@ApiBearerAuth("document-upload-token")
+@Errors()
+@Public()
+@UseGuards(DocumentUploadGrantGuard)
+@Controller("candidate-documents")
+export class CandidateDocumentUploadController {
+  constructor(
+    private readonly uploads: DocumentUploadService,
+    private readonly manual: ManualDocumentService,
+  ) {}
+  @Post()
+  @HttpCode(202)
+  @ApiOperation({
+    operationId: "submitCandidateDocumentDirect",
+    summary: "Upload files directly using a scoped upload grant",
+  })
+  @ApiConsumes("multipart/form-data")
+  @ApiHeader({ name: "Idempotency-Key", required: true })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["metadata", "files[]"],
+      properties: {
+        metadata: {
+          type: "string",
+          description:
+            "JSON with documentUid and documentFields only; owner and candidate context come from the upload grant",
+        },
+        "files[]": {
+          type: "array",
+          minItems: 1,
+          maxItems: 10,
+          items: { type: "string", format: "binary" },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 202, type: UploadAcceptedDto })
+  async upload(@Req() req: Request) {
+    const grant = req.documentUploadCapability!;
+    const staged = await this.uploads.parse(req, grant.context);
+    try {
+      return await this.manual.upload(
+        staged,
+        grant.idempotencyKey,
+        req.correlationId ?? "",
+      );
+    } finally {
+      await this.uploads.dispose(staged);
+    }
   }
 }
 @ApiTags("documents")

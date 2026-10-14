@@ -14,9 +14,11 @@ import { join, basename } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
+  browserDocumentMetadataSchema,
   documentMetadataSchema,
   type DocumentMetadata,
 } from "./document-contract";
+import type { UploadContext } from "./document-upload-grant.service";
 
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
@@ -44,7 +46,10 @@ export interface StagedUpload {
 
 @Injectable()
 export class DocumentUploadService {
-  async parse(req: FastifyRequest): Promise<StagedUpload> {
+  async parse(
+    req: FastifyRequest,
+    context?: UploadContext,
+  ): Promise<StagedUpload> {
     if (!req.isMultipart())
       throw new UnsupportedMediaTypeException("Expected multipart/form-data");
     await mkdir(UPLOAD_CACHE, { recursive: true, mode: 0o700 });
@@ -64,9 +69,11 @@ export class DocumentUploadService {
       })) {
         if (part.type === "field") {
           if (
-            !["documentTypeCode", "locationId", "metadata"].includes(
-              part.fieldname,
-            ) ||
+            (context
+              ? part.fieldname !== "metadata"
+              : !["documentTypeCode", "locationId", "metadata"].includes(
+                  part.fieldname,
+                )) ||
             fields.has(part.fieldname) ||
             typeof part.value !== "string" ||
             part.valueTruncated
@@ -122,9 +129,18 @@ export class DocumentUploadService {
       let metadata: DocumentMetadata | undefined;
       if (fields.has("metadata")) {
         try {
-          metadata = documentMetadataSchema.parse(
-            JSON.parse(fields.get("metadata")!),
-          );
+          const input = JSON.parse(fields.get("metadata")!);
+          if (context) {
+            const browser = browserDocumentMetadataSchema.parse(input);
+            if (browser.documentUid.toLowerCase() !== context.documentUid)
+              throw new Error("Document type does not match the upload grant");
+            metadata = documentMetadataSchema.parse({
+              ...context,
+              documentFields: browser.documentFields,
+            });
+          } else {
+            metadata = documentMetadataSchema.parse(input);
+          }
         } catch {
           throw new BadRequestException("Invalid document metadata");
         }

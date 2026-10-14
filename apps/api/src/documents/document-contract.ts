@@ -30,6 +30,12 @@ const values = z.record(
   z.string().max(64),
   z.union([z.string().max(16384), z.boolean(), z.null()]),
 );
+export const browserDocumentMetadataSchema = z
+  .object({
+    documentUid: z.string().uuid(),
+    documentFields: values,
+  })
+  .strict();
 export const documentMetadataSchema = z
   .object({
     documentUid: z
