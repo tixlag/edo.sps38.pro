@@ -1,6 +1,31 @@
+import * as React from 'react';
 import { Bell, Search } from 'lucide-react';
 import type { MeResponseDto } from '@edo/api-client';
 import { profileAvatar, profileLabel, profileInitials, profileShortName } from '../lib/profile';
+
+function HeaderAvatar({ avatarUrl, label, initials }: { avatarUrl: string | null; label: string; initials: string }) {
+  const [broken, setBroken] = React.useState(false);
+  React.useEffect(() => {
+    setBroken(false);
+  }, [avatarUrl]);
+  if (avatarUrl && !broken) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={label}
+        title={label}
+        aria-label={label}
+        onError={() => setBroken(true)}
+        className="h-8 w-8 shrink-0 rounded-full object-cover"
+      />
+    );
+  }
+  return (
+    <div title={label} aria-label={label} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-xs font-bold text-white">
+      {initials}
+    </div>
+  );
+}
 
 export function AppHeader({ crumb, profile }: { crumb: string; profile?: MeResponseDto }) {
   const fullName = profileLabel(profile);
@@ -37,19 +62,7 @@ export function AppHeader({ crumb, profile }: { crumb: string; profile?: MeRespo
           <Bell size={18} />
         </button>
         <span className="hidden max-w-[140px] truncate text-sm font-semibold sm:inline" title={fullName}>{shortName}</span>
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt={fullName}
-            title={fullName}
-            aria-label={fullName}
-            className="h-8 w-8 shrink-0 rounded-full object-cover"
-          />
-        ) : (
-          <div title={fullName} aria-label={fullName} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-xs font-bold text-white">
-            {profileInitials(profile)}
-          </div>
-        )}
+        <HeaderAvatar avatarUrl={avatarUrl} label={fullName} initials={profileInitials(profile)} />
       </div>
     </header>
   );

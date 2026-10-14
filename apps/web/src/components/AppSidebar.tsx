@@ -39,6 +39,35 @@ export const CONFIG_NAV: NavItem[] = [
   { key: 'settings', label: 'Настройки', icon: Settings, to: '/settings' },
 ];
 
+/**
+ * Avatar with onError fallback to initials: a broken image URL hides the
+ * <img> and shows the initials instead (never a leftover empty img).
+ * Same behavior is used in AppHeader and in both AppSidebar spots.
+ */
+function SidebarAvatar({ avatarUrl, label, initials }: { avatarUrl: string | null; label: string; initials: string }) {
+  const [broken, setBroken] = React.useState(false);
+  React.useEffect(() => {
+    setBroken(false);
+  }, [avatarUrl]);
+  if (avatarUrl && !broken) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={label}
+        title={label}
+        aria-label={label}
+        onError={() => setBroken(true)}
+        className="h-[42px] w-[42px] shrink-0 rounded-full object-cover"
+      />
+    );
+  }
+  return (
+    <div title={label} aria-label={label} className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
+      {initials}
+    </div>
+  );
+}
+
 export function AppSidebar({
   collapsed,
   active,
@@ -108,19 +137,7 @@ export function AppSidebar({
           </nav>
         </div>
         <div className="flex flex-col items-center gap-3">
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt={avatarTitle}
-              title={avatarTitle}
-              aria-label={avatarTitle}
-              className="h-[42px] w-[42px] rounded-full object-cover"
-            />
-          ) : (
-            <div title={avatarTitle} aria-label={avatarTitle} className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
-              {profileInitials(profile)}
-            </div>
-          )}
+          <SidebarAvatar avatarUrl={avatarUrl} label={avatarTitle} initials={profileInitials(profile)} />
         </div>
         <button
           aria-label="Развернуть меню"
@@ -190,18 +207,7 @@ export function AppSidebar({
       </div>
       <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
         <div className="flex items-center gap-3 px-2">
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt={avatarTitle}
-              title={avatarTitle}
-              className="h-[42px] w-[42px] shrink-0 rounded-full object-cover"
-            />
-          ) : (
-            <div title={avatarTitle} className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
-              {profileInitials(profile)}
-            </div>
-          )}
+          <SidebarAvatar avatarUrl={avatarUrl} label={avatarTitle} initials={profileInitials(profile)} />
           <div className="flex min-w-0 flex-col">
             <span className="truncate text-sm font-semibold" title={fullName}>{shortName}</span>
             <span className="truncate text-xs text-[var(--muted-foreground)]">{profile?.positionName ?? 'Учётная запись ЛК'}</span>
