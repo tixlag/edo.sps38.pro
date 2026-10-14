@@ -36,6 +36,10 @@ export function DocumentReviewWorkspace({
     revealPreview: boolean;
     request: number;
   } | null>(null);
+  // Hover-preview: временная подсветка без смены файла/страницы, без
+  // фокуса и без скролла. Отличается от selection (явный выбор кликом,
+  // фокусом или кнопкой «На превью»).
+  const [hoveredField, setHoveredField] = useState<string | null>(null);
   const [draft, setDraft] = useState<{
     revision: number;
     values: Record<string, string>;
@@ -175,6 +179,8 @@ export function DocumentReviewWorkspace({
     });
     setMessage("");
   };
+  // Явный выбор: клик по области, фокус поля, кнопка «На превью».
+  // Единственное место, где разрешено менять файл/страницу.
   const selectField = (
     name: string,
     focus: boolean,
@@ -200,10 +206,17 @@ export function DocumentReviewWorkspace({
       request: (current?.request ?? 0) + 1,
     }));
   };
-  // Двусторонний ховер без focus/scroll: подсветка preview, selection остаётся
-  // после mouseLeave (резкий сброс не делаем, чтобы не мигало при движении).
+  // Hover-preview справа (поле → область) и слева (область → поле):
+  // только подсветка в пределах текущей страницы, без смены fileId/page,
+  // без scrollIntoView и без focus. Явный переход — клик/«На превью».
   const hoverField = (name: string) => {
-    if (selection?.fieldName !== name) selectField(name, false);
+    setHoveredField((current) => (current === name ? current : name));
+  };
+  const unhoverField = () => {
+    setHoveredField(null);
+  };
+  const hoverRegion = (name: string | null) => {
+    setHoveredField(name);
   };
   useEffect(() => {
     if (selection?.revealPreview)
@@ -218,8 +231,27 @@ export function DocumentReviewWorkspace({
       });
     if (selection?.focus && canEdit) {
       const input = inputs.current[selection.fieldName];
-      input?.focus({ preventScroll: true });
-      input?.select();
+      if (input) {
+        input.focus({ preventScroll: true });
+        try {
+          if (
+            input instanceof HTMLInputElement &&
+            input.type === "date" &&
+            typeof (input as HTMLInputElement & { showPicker?: () => void })
+              .showPicker === "function"
+          ) {
+            (
+              input as HTMLInputElement & { showPicker: () => void }
+            ).showPicker();
+          } else if (
+            !(input instanceof HTMLInputElement && input.type === "checkbox")
+          ) {
+            input.select?.();
+          }
+        } catch {
+          // showPicker требует жеста пользователя — игнорируем.
+        }
+      }
     }
   }, [selection, canEdit]);
   useEffect(() => {
@@ -318,7 +350,9 @@ export function DocumentReviewWorkspace({
             fields={data.fields}
             selectedField={selection?.fieldName ?? null}
             selectedRegionId={selection?.regionId ?? null}
+            hoveredField={hoveredField}
             onSelectRegion={(name, region) => selectField(name, true, region)}
+            onHoverRegion={(name) => hoverRegion(name)}
           />
         ) : (
           <p className="text-[13px] text-[var(--muted-foreground)]">
@@ -362,52 +396,78 @@ export function DocumentReviewWorkspace({
           className="min-w-0 overflow-x-hidden xl:max-h-[620px] xl:overflow-y-auto xl:pr-2"
         >
           <dl className="divide-y divide-[var(--border)]">
-            {visibleFields.map((field) => (
-              <div
-                key={field.name}
-                ref={(node) => {
-                  rows.current[field.name] = node;
-                }}
-                onMouseEnter={() => hoverField(field.name)}
-                className={`min-w-0 rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--muted)] ${field.mismatch ? "border border-[var(--primary)] bg-[var(--primary-soft)]" : field.name === selection?.fieldName ? "bg-[var(--muted)]" : ""}`}
-              >
-                <dt className="mb-0.5 flex flex-wrap items-center justify-between gap-2 break-words text-[13px] font-semibold">
-                  {canEdit ? (
-                    <label
-                      className="min-w-0 break-all"
-                      htmlFor={`field-${data.documentId}-${field.name}`}
-                    >
-                      {DOCUMENT_FIELD_LABELS[field.name] ??
-                        field.label ??
-                        field.name}
-                    </label>
-                  ) : (
-                    <span className="min-w-0 break-all">
-                      {DOCUMENT_FIELD_LABELS[field.name] ??
-                        field.label ??
-                        field.name}
-                    </span>
-                  )}
-                  {field.regions.length > 0 && (
-                    <span className="flex items-center gap-1.5">
-                      <Badge tone="info">OCR</Badge>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Показать область: ${DOCUMENT_FIELD_LABELS[field.name] ?? field.label ?? field.name}`}
-                        onClick={() =>
-                          selectField(field.name, false, undefined, true)
-                        }
+            {visibleFields.map((field) => {
+              const onCurrentPage = field.regions.some(
+                (region) =>
+                  region.fileId === file?.id &&
+                  region.pageNumber === visiblePage,
+              );
+              const firstRegion = field.regions[0];
+              const firstFileIndex = firstRegion
+                ? files.findIndex((item) => item.id === firstRegion.fileId)
+                : -1;
+              const isHovered = hoveredField === field.name;
+              const isSelected = selection?.fieldName === field.name;
+              return (
+                <div
+                  key={field.name}
+                  ref={(node) => {
+                    rows.current[field.name] = node;
+                  }}
+                  data-field-row={field.name}
+                  onMouseEnter={() => hoverField(field.name)}
+                  onMouseLeave={unhoverField}
+                  className={`min-w-0 rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--muted)] ${field.mismatch ? "border border-[var(--primary)] bg-[var(--primary-soft)]" : isSelected ? "bg-[var(--muted)]" : ""} ${isHovered && !field.mismatch ? "bg-[var(--muted)] outline outline-1 outline-[var(--primary)]" : isHovered ? "outline outline-1 outline-[var(--primary)]" : ""}`}
+                >
+                  <dt className="mb-0.5 flex flex-wrap items-center justify-between gap-2 break-words text-[13px] font-semibold">
+                    {canEdit ? (
+                      <label
+                        className="min-w-0 break-all"
+                        htmlFor={`field-${data.documentId}-${field.name}`}
                       >
-                        На превью
-                      </Button>
-                    </span>
-                  )}
-                </dt>
+                        {DOCUMENT_FIELD_LABELS[field.name] ??
+                          field.label ??
+                          field.name}
+                      </label>
+                    ) : (
+                      <span className="min-w-0 break-all">
+                        {DOCUMENT_FIELD_LABELS[field.name] ??
+                          field.label ??
+                          field.name}
+                      </span>
+                    )}
+                    {field.regions.length > 0 && (
+                      <span className="flex items-center gap-1.5">
+                        <Badge tone="info">OCR</Badge>
+                        {isHovered && !onCurrentPage && firstRegion && (
+                          <Badge tone="info">
+                            Область на стр. {firstRegion.pageNumber}
+                            {firstRegion.fileId !== file?.id &&
+                            firstFileIndex >= 0
+                              ? ` · файл ${firstFileIndex + 1}`
+                              : ""}
+                          </Badge>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Показать область: ${DOCUMENT_FIELD_LABELS[field.name] ?? field.label ?? field.name}`}
+                          onClick={() =>
+                            selectField(field.name, false, undefined, true)
+                          }
+                        >
+                          На превью
+                        </Button>
+                      </span>
+                    )}
+                  </dt>
                 <dd className="min-w-0 break-words text-[13px]">
                   {canEdit && field.name !== "positionUid" ? (
                     field.kind === "boolean" || field.kind === "date" ? (
                       <input
+                        ref={(node) => {
+                          inputs.current[field.name] = node;
+                        }}
                         id={`field-${data.documentId}-${field.name}`}
                         type={field.kind === "boolean" ? "checkbox" : "date"}
                         disabled={busy}
@@ -424,6 +484,11 @@ export function DocumentReviewWorkspace({
                         }
                         aria-required={field.required}
                         className="rounded-[6px] border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-[13px]"
+                        onFocus={() => {
+                          beginDraft();
+                          if (selection?.fieldName !== field.name)
+                            selectField(field.name, false);
+                        }}
                         onChange={(event) =>
                           setField(
                             field.name,
@@ -508,7 +573,8 @@ export function DocumentReviewWorkspace({
                     )}
                 </dd>
               </div>
-            ))}
+              );
+            })}
           </dl>
         </div>
         {!fields.length && (
@@ -543,7 +609,7 @@ export function DocumentReviewWorkspace({
                       });
                   }}
                 >
-                  {edit.isPending ? "Сохранение…" : "Сохранить"}
+                  {edit.isPending ? "Сохранение…" : "Сохранить исправления"}
                 </Button>
                 {draft && (
                   <Button
@@ -579,7 +645,7 @@ export function DocumentReviewWorkspace({
                     })
                   }
                 >
-                  {approve.isPending ? "Подтверждение…" : "Подтвердить"}
+                  {approve.isPending ? "Подтверждение…" : "Подтвердить документ"}
                 </Button>
                 <Button
                   size="sm"
@@ -587,7 +653,7 @@ export function DocumentReviewWorkspace({
                   disabled={busy || changedCount > 0}
                   onClick={() => setShowReject(!showReject)}
                 >
-                  Отклонить
+                  Отклонить документ
                 </Button>
               </>
             )}
