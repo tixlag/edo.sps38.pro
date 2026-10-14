@@ -23,6 +23,8 @@ import sharp from "sharp";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { AuthModule } from "../src/auth/auth.module";
 import { DocumentsModule } from "../src/documents/documents.module";
+import { RedisService } from "../src/redis/redis.module";
+import { createCatalogRedisDouble } from "./helpers/catalog-redis";
 import { DocumentDeliveryService } from "../src/documents/document-delivery.service";
 import { StorageService } from "../src/storage/storage.service";
 import { AuditService } from "../src/audit/audit.service";
@@ -244,6 +246,8 @@ suite("manual documents with isolated MariaDB/S3 and ERP stub", () => {
         AuthModule,
       ],
     })
+      .overrideProvider(RedisService)
+      .useValue(createCatalogRedisDouble())
       .overrideProvider(PrismaService)
       .useValue(prisma)
       .overrideProvider(ConfigService)
