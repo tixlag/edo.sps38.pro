@@ -534,6 +534,47 @@ export interface CandidateListDto {
   nextCursor: string | null;
 }
 
+export interface CandidateProfileDto {
+  id: string;
+  /** @nullable */
+  chatUuid: string | null;
+  /** @nullable */
+  code1c: string | null;
+  /** @nullable */
+  fullName: string | null;
+  /** @nullable */
+  birthDate: string | null;
+  /** @nullable */
+  citizenship: string | null;
+  /** @nullable */
+  positionCode: string | null;
+  /** @nullable */
+  positionName: string | null;
+  /** @nullable */
+  projectCode: string | null;
+  /** @nullable */
+  projectName: string | null;
+  /** @nullable */
+  managerName: string | null;
+  /** @nullable */
+  managerCode1c: string | null;
+  /** @nullable */
+  mentorName: string | null;
+  /** @nullable */
+  mentorPosition: string | null;
+  /** @nullable */
+  mentorCode1c: string | null;
+  isReemployment: boolean;
+  /** @nullable */
+  profileSyncedAt: string | null;
+}
+
+/**
+ * LK candidate profile snapshot, if one was provided
+ * @nullable
+ */
+export type DocumentDtoCandidate = CandidateProfileDto | null;
+
 export interface DocumentDto {
   /** Approved versions awaiting manual ERP delivery */
   pendingDeliveryVersions: number[];
@@ -554,6 +595,11 @@ export interface DocumentDto {
   code1c: string | null;
   /** @nullable */
   deliveryStatus: string | null;
+  /**
+   * LK candidate profile snapshot, if one was provided
+   * @nullable
+   */
+  candidate: DocumentDtoCandidate;
 }
 
 export interface DocumentListDto {
@@ -641,6 +687,62 @@ export interface DocumentStreamGrantDto {
   expiresAt: string;
 }
 
+export interface CandidateSnapshotPositionDto {
+  /** @maxLength 512 */
+  name?: string;
+  /** @maxLength 64 */
+  code?: string;
+}
+
+export interface CandidateSnapshotMentorDto {
+  /** @maxLength 512 */
+  name?: string;
+  /** @maxLength 512 */
+  position?: string;
+  /** @maxLength 64 */
+  code1C?: string;
+  /** @maxLength 64 */
+  code1c?: string;
+  /** @maxLength 64 */
+  code_1c?: string;
+}
+
+export interface CandidateSnapshotDto {
+  /** @maxLength 512 */
+  fullName?: string;
+  /** @maxLength 512 */
+  name?: string;
+  birthDate?: string;
+  /** @maxLength 2 */
+  citizenship?: string;
+  position?: CandidateSnapshotPositionDto;
+  project?: CandidateSnapshotPositionDto;
+  /** @maxLength 64 */
+  positionCode?: string;
+  /** @maxLength 512 */
+  positionName?: string;
+  /** @maxLength 64 */
+  projectCode?: string;
+  /** @maxLength 512 */
+  projectName?: string;
+  /** @maxLength 512 */
+  managerName?: string;
+  /** @maxLength 512 */
+  manager?: string;
+  /** @maxLength 64 */
+  managerCode1C?: string;
+  /** @maxLength 64 */
+  managerCode1c?: string;
+  mentor?: CandidateSnapshotMentorDto;
+  /** @maxLength 512 */
+  mentorName?: string;
+  /** @maxLength 512 */
+  mentorPosition?: string;
+  /** @maxLength 64 */
+  mentorCode1c?: string;
+  isReemployment?: boolean;
+}
+
 export type DocumentUploadGrantRequestDtoCitizenship = {
   [key: string]: unknown;
 };
@@ -656,6 +758,13 @@ export interface DocumentUploadGrantRequestDto {
   citizenship?: DocumentUploadGrantRequestDtoCitizenship;
   /** @maxLength 64 */
   project_code_1c?: string;
+  /** Optional LK candidate profile stored on the candidate and shown in the review queue */
+  candidateSnapshot?: CandidateSnapshotDto;
+  /**
+   * Legacy alias of candidateSnapshot
+   * @deprecated
+   */
+  candidate_profile?: CandidateSnapshotDto;
 }
 
 export interface DocumentUploadGrantDto {
@@ -752,6 +861,25 @@ export type ListReviewDocumentsParams = {
   limit?: number;
   cursor?: string;
   status?: ListReviewDocumentsStatus;
+  /**
+   * Case-insensitive fullName search
+   */
+  q?: string;
+  documentTypeCode?: string;
+  citizenship?: string;
+  /**
+   * Manager name or code contains
+   */
+  manager?: string;
+  /**
+   * Mentor name or code contains
+   */
+  mentor?: string;
+  hasMentor?: boolean;
+  birthDateFrom?: string;
+  birthDateTo?: string;
+  positionCode?: string;
+  projectCode?: string;
 };
 
 export type ListReviewDocumentsStatus =
@@ -2928,7 +3056,7 @@ export const useCreateCandidateDocumentUploadGrant = <
 };
 
 /**
- * @summary Review queue or documents requiring ERP delivery
+ * @summary Review queue with candidate profile: q, documentTypeCode, citizenship, manager, mentor, hasMentor, birthDateFrom/To, positionCode, projectCode
  */
 export const listReviewDocuments = (
   params?: ListReviewDocumentsParams,
@@ -2983,7 +3111,7 @@ export type ListReviewDocumentsQueryResult = NonNullable<
 export type ListReviewDocumentsQueryError = ApiErrorDto;
 
 /**
- * @summary Review queue or documents requiring ERP delivery
+ * @summary Review queue with candidate profile: q, documentTypeCode, citizenship, manager, mentor, hasMentor, birthDateFrom/To, positionCode, projectCode
  */
 
 export function useListReviewDocuments<

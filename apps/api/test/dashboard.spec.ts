@@ -124,7 +124,7 @@ describe('DashboardService', () => {
       }];
     });
     const reads = new DocumentReadService({ document: { findMany } } as never, access, null as never);
-    const page = await reads.reviewDocuments(scopedPrincipal, 50, undefined, 'RETURNED');
+    const page = await reads.reviewDocuments(scopedPrincipal, { limit: 50, status: 'RETURNED' });
     expect(page.items).toHaveLength(1);
     expect(page.items[0].status).toBe('RETURNED');
     const scopeWhere = access.documentWhere(scopedPrincipal);
@@ -137,7 +137,7 @@ describe('DashboardService', () => {
     const access = new DocumentAccessService(null as never);
     const findMany = vi.fn(async (args: { select?: unknown }) => (args.select ? [] : []));
     const reads = new DocumentReadService({ document: { findMany } } as never, access, null as never);
-    await reads.reviewDocuments(scopedPrincipal, 50);
+    await reads.reviewDocuments(scopedPrincipal, { limit: 50 });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ status: 'IN_REVIEW' }) }),
     );

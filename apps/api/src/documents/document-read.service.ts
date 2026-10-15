@@ -9,6 +9,11 @@ import type { AuthPrincipal } from "../auth/auth-principal";
 import { StorageService } from "../storage/storage.service";
 import { DocumentAccessService } from "./document-access.service";
 import { FIELD_LABELS } from "./document-contract";
+import {
+  buildCandidateProfileWhere,
+  toCandidateProfile,
+  type ReviewProfileFilters,
+} from "./candidate-profile";
 import type {
   CandidateDocumentDraftDto,
   CandidateDto,
@@ -128,6 +133,7 @@ export class DocumentReadService {
             )
             .map((v) => v.version)
             .sort((a, b) => b - a),
+          candidate: toCandidateProfile(d.candidate),
         }),
       ),
     };
@@ -390,14 +396,23 @@ export class DocumentReadService {
   }
   async reviewDocuments(
     principal: AuthPrincipal,
-    limit = 50,
-    cursor?: string,
-    status?: string,
+    query: {
+      limit?: number;
+      cursor?: string;
+      status?: string;
+      documentTypeCode?: string;
+    } & ReviewProfileFilters = {},
   ) {
+    const { limit = 50, cursor, status, documentTypeCode, ...profile } = query;
+    const candidate = buildCandidateProfileWhere(profile);
     const where: Prisma.DocumentWhereInput = {
       ...this.access.documentWhere(principal),
       currentVersion: { gt: 0 },
       ...(cursor ? { id: { gt: cursor } } : {}),
+      ...(documentTypeCode
+        ? { documentType: { code: documentTypeCode } }
+        : {}),
+      ...(candidate ? { candidate } : {}),
       ...(status === "ALL"
         ? {}
         : status === "ERP_PENDING"

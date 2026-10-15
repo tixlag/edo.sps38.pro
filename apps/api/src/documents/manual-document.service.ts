@@ -12,6 +12,7 @@ import { StorageService } from "../storage/storage.service";
 import { AuditService } from "../audit/audit.service";
 import { DocumentCatalogService } from "./document-catalog.service";
 import { applicable, textValue, validateFields } from "./document-contract";
+import { snapshotUpdateInput } from "./candidate-profile";
 import type { StagedUpload } from "./document-upload.service";
 
 @Injectable()
@@ -190,14 +191,19 @@ export class ManualDocumentService {
       try {
         return await this.prisma.$transaction(
           async (tx) => {
+            // LK profile snapshot: only keys actually present in the upload
+            // update the stored profile; uploads without a snapshot (or with
+            // an empty one) never clear previously stored fields.
+            const profile = snapshotUpdateInput(metadata.candidateSnapshot);
             const owner = await tx.candidate.upsert({
               where: { identityKey },
-              update: {},
+              update: profile ?? {},
               create: {
                 identityKey,
                 chatUuid: metadata.chat_uuid ?? null,
                 code1c: metadata.code_1c ?? null,
                 locationId: locationId ?? null,
+                ...(profile ?? {}),
               },
             });
             await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${owner.id} FOR UPDATE`;

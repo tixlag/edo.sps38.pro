@@ -258,19 +258,15 @@ export class ManualDocumentReviewController {
   @RequireAccessRule(EdoAccessRule.ACCESS)
   @ApiOperation({
     operationId: "listReviewDocuments",
-    summary: "Review queue or documents requiring ERP delivery",
+    summary:
+      "Review queue with candidate profile: q, documentTypeCode, citizenship, manager, mentor, hasMentor, birthDateFrom/To, positionCode, projectCode",
   })
   @ApiResponse({ status: 200, type: ReviewDocumentsDto })
   list(
     @CurrentPrincipal() principal: AuthPrincipal,
     @Query() query: ReviewDocumentsQueryDto,
   ) {
-    return this.reads.reviewDocuments(
-      principal,
-      query.limit,
-      query.cursor,
-      query.status,
-    );
+    return this.reads.reviewDocuments(principal, query);
   }
   @Get("documents/:documentId")
   @RequireAccessRule(EdoAccessRule.ACCESS)
