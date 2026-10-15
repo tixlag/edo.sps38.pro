@@ -13,6 +13,9 @@ for (const width of [1440, 390]) {
       if (path === '/api/v1/me') response = { uuid: 'operator', code1c: '001', fullName: 'Проверяющий', permissions: { '20000': [], '20002': [], '20006': [], '20009': [] }, locationScope: { all: true, locationIds: [] } };
       else if (path.endsWith('document-status-events')) return route.fulfill({ status: 200, contentType: 'text/event-stream', body: ': heartbeat\n\n' });
       else if (path === '/api/v1/review-documents') response = { items: [doc], nextCursor: null };
+      else if (path === '/api/v1/review-documents/facets') response = { managers: [], mentors: [], projects: [], citizenships: [] };
+      else if (path === '/api/v1/candidates/candidate/documents') response = { items: [doc] };
+      else if (['/api/v1/document-types', '/api/v1/positions', '/api/v1/review-candidates'].includes(path)) response = { items: [] };
       else if (path === '/api/v1/documents/manual-doc') response = doc;
       else if (path.endsWith('/approve')) {
         version = { ...version, status: 'APPROVED', revision: 1, approvedAt: new Date().toISOString(), approvedBy: 'operator', delivery: { status: 'REQUIRES_MANUAL', errorCode: 'ERP_HTTP_503', attempts: [] } };
@@ -23,8 +26,9 @@ for (const width of [1440, 390]) {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(response) });
     });
     await gotoAuthed(page, '/review');
+    await page.getByRole('button', { name: /Открыть документы/ }).click();
     await expect(page.getByText('Ожидает проверки', { exact: true })).toBeVisible();
-    await page.getByRole('link', { name: 'Открыть →' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Паспорт, версия 1' }).click();
     await expect(page.locator('textarea[id$="-number"]')).toHaveValue('000123');
     await expect(page.locator('[data-field-row="isInvalid"]')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Подтвердить документ' })).toBeVisible();

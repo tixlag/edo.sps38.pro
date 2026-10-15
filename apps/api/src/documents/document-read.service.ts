@@ -148,10 +148,12 @@ export class DocumentReadService {
     principal: AuthPrincipal,
   ): Promise<DocumentListDto> {
     await this.access.candidate(id, principal);
-    return this.documents({
+    const documents = await this.documents({
       candidateId: id,
       ...this.access.documentWhere(principal),
     });
+    await this.enrichReviewCandidates(principal, documents.items);
+    return documents;
   }
 
   async employeeDocuments(
@@ -339,7 +341,10 @@ export class DocumentReadService {
    * data: the location scope does not apply to positions, only REQUIRE ACCESS
    * on the controller guards this endpoint.
    */
-  async positions(query: { q?: string; limit?: number }): Promise<PositionListDto> {
+  async positions(query: {
+    q?: string;
+    limit?: number;
+  }): Promise<PositionListDto> {
     const { limit = 50 } = query;
     const needle = query.q?.trim();
     const rows = await this.prisma.lkPosition.findMany({
@@ -389,19 +394,23 @@ export class DocumentReadService {
     for (const c of candidates) {
       const manager = c.managerName?.trim();
       if (manager) {
-        const key = `${manager} ${c.managerCode1c ?? ""}`;
+        const key = c.managerCode1c
+          ? `code:${c.managerCode1c}`
+          : `name:${manager}`;
         if (!managers.has(key))
           managers.set(key, { name: manager, code1c: c.managerCode1c });
       }
       const mentor = c.mentorName?.trim();
       if (mentor) {
-        const key = `${mentor} ${c.mentorCode1c ?? ""}`;
+        const key = c.mentorCode1c
+          ? `code:${c.mentorCode1c}`
+          : `name:${mentor}`;
         if (!mentors.has(key))
           mentors.set(key, { name: mentor, code1c: c.mentorCode1c });
       }
       const project = c.projectName?.trim();
       if (project) {
-        const key = `${project} ${c.projectCode ?? ""}`;
+        const key = c.projectCode ? `code:${c.projectCode}` : `name:${project}`;
         if (!projects.has(key))
           projects.set(key, { name: project, code: c.projectCode });
       }
@@ -443,7 +452,9 @@ export class DocumentReadService {
   }
 
   /** Distinct candidate ids owning live (currentVersion > 0) scoped documents. */
-  private async reviewCandidateIds(principal: AuthPrincipal): Promise<string[]> {
+  private async reviewCandidateIds(
+    principal: AuthPrincipal,
+  ): Promise<string[]> {
     const docs = await this.prisma.document.findMany({
       where: {
         ...this.access.documentWhere(principal),
@@ -542,9 +553,7 @@ export class DocumentReadService {
       ...this.access.documentWhere(principal),
       currentVersion: { gt: 0 },
       ...(cursor ? { id: { gt: cursor } } : {}),
-      ...(documentTypeCode
-        ? { documentType: { code: documentTypeCode } }
-        : {}),
+      ...(documentTypeCode ? { documentType: { code: documentTypeCode } } : {}),
       ...(candidate ? { candidate } : {}),
       ...(status === "ALL"
         ? {}
@@ -558,10 +567,10 @@ export class DocumentReadService {
                 },
               },
             }
-          // Returned documents share the same location scope as the queue
-          // (documentWhere above): the dashboard rework KPI counts exactly
-          // this set, so the KPI link and the list can never diverge.
-          : status === "RETURNED"
+          : // Returned documents share the same location scope as the queue
+            // (documentWhere above): the dashboard rework KPI counts exactly
+            // this set, so the KPI link and the list can never diverge.
+            status === "RETURNED"
             ? { status: "RETURNED" }
             : { status: "IN_REVIEW" }),
     };

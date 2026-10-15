@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Link,
   useNavigate,
@@ -6,12 +6,14 @@ import {
   useSearch,
 } from "@tanstack/react-router";
 import {
+  useGetReviewDocumentFacets,
   useListDocumentTypes,
+  useListPositions,
+  useListReviewCandidates,
   useListReviewDocuments,
   useGetDocumentInfo,
   useGetDocumentVersion,
   getGetDocumentVersionQueryKey,
-  type DocumentDto,
 } from "@edo/api-client";
 import {
   PageHeader,
@@ -22,8 +24,14 @@ import {
   StatusBadge,
   EmptyState,
 } from "@edo/ui";
-import { Clock, Check, X, ChevronDown } from "lucide-react";
+import { Clock, Check, X, ChevronRight } from "lucide-react";
 import { DocumentReviewWorkspace } from "../components/DocumentReviewWorkspace";
+import {
+  SearchSelect,
+  type SearchSelectOption,
+} from "../components/SearchSelect";
+import { CandidateDrawer } from "../components/CandidateDrawer";
+import { LkLink } from "../components/LkLink";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
 import {
   candidateInitials,
@@ -33,7 +41,6 @@ import {
   formatDocumentProgress,
   groupReviewItems,
   hasActiveReviewFilters,
-  lkEmployeeUrl,
   parseReviewSearchParams,
   type ReviewCandidateGroup,
   type ReviewTab,
@@ -46,6 +53,8 @@ const VERSION_STATUS_LABEL: Record<string, string> = {
 };
 
 const PAGE_LIMIT = 50;
+const CANDIDATE_SELECTOR_LIMIT = 20;
+const POSITION_SELECTOR_LIMIT = 50;
 
 const FILTER_CONTROL =
   "rounded-[6px] border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[13px] text-[var(--foreground)]";
@@ -56,97 +65,104 @@ const TABS: { value: ReviewTab; label: string }[] = [
   { value: "ERP_PENDING", label: "Требуют отправки в ERP" },
 ];
 
-function LkLink({ code1c, children }: { code1c: string; children: ReactNode }) {
-  const url = lkEmployeeUrl(code1c);
-  if (!url) return <span>{children}</span>;
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      title={`Профиль в ЛК: ${code1c}`}
-      className="text-[var(--primary)] underline-offset-4 hover:underline"
-    >
-      {children}
-    </a>
-  );
-}
-
-function DebouncedTextFilter({
+/**
+ * Search selector over a static (facet/directory) option list: the dropdown
+ * search text filters the already loaded options client-side.
+ */
+function StaticSearchSelect({
   label,
   placeholder,
   value,
-  onCommit,
-  type,
+  selectedLabel,
+  allOptions,
+  onChange,
+  className,
+  isLoading,
+  isError,
+  onRetry,
 }: {
   label: string;
   placeholder?: string;
-  value: string;
-  onCommit: (next: string | undefined) => void;
-  type?: string;
+  value?: string | null;
+  selectedLabel?: string;
+  allOptions: SearchSelectOption[];
+  onChange: (next: string | undefined) => void;
+  className?: string;
+  isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-  useEffect(() => {
-    if (draft === value) return;
-    const timer = window.setTimeout(() => {
-      onCommit(draft.trim() || undefined);
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [draft, onCommit, value]);
+  const [query, setQuery] = useState("");
+  const options = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return allOptions;
+    return allOptions.filter((option) =>
+      option.label.toLowerCase().includes(needle),
+    );
+  }, [allOptions, query]);
   return (
-    <input
-      aria-label={label}
-      type={type ?? "search"}
-      className={`${FILTER_CONTROL} min-w-[140px]`}
-      placeholder={placeholder ?? label}
-      value={draft}
-      onChange={(event) => setDraft(event.target.value)}
+    <SearchSelect
+      label={label}
+      placeholder={placeholder}
+      value={value}
+      selectedLabel={selectedLabel}
+      options={options}
+      onSearchChange={setQuery}
+      onChange={onChange}
+      className={className}
+      isLoading={isLoading}
+      isError={isError}
+      onRetry={onRetry}
     />
   );
 }
 
-function CandidateGroup({
+/**
+ * One queue row: candidate profile summary. Clicking opens the candidate
+ * drawer (profile + all documents); there is no inline expansion.
+ */
+function CandidateRow({
   group,
-  tab,
-  collapsed,
-  onToggle,
+  onOpen,
 }: {
   group: ReviewCandidateGroup;
-  tab: ReviewTab;
-  collapsed: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
 }) {
   const candidate = group.candidate;
   const heading = candidate?.fullName?.trim() || "Без имени в профиле";
   const count = group.documents.length;
   const progressPercent = candidate
-    ? documentProgressPercent(candidate.approvedDocuments, candidate.requiredDocuments)
+    ? documentProgressPercent(
+        candidate.approvedDocuments,
+        candidate.requiredDocuments,
+      )
     : null;
   return (
     <section
       aria-label={heading}
       className="overflow-hidden rounded-[10px] border border-[var(--border)]"
     >
-      <button
-        type="button"
-        aria-expanded={!collapsed}
-        onClick={onToggle}
-        className="flex w-full flex-wrap items-center gap-3 bg-[var(--muted)]/40 px-3 py-2.5 text-left hover:bg-[var(--muted)]/70"
-      >
+      <div className="relative flex w-full flex-wrap items-center gap-3 bg-[var(--muted)] px-3 py-2.5">
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          aria-label={`Открыть документы: ${heading}`}
+          onClick={onOpen}
+          className="absolute inset-0 rounded-[10px] hover:bg-[var(--border)]/30 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--primary)]"
+        />
         <span
           aria-hidden
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--muted)] text-[13px] font-semibold text-[var(--foreground)]"
+          className="pointer-events-none relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-semibold text-[var(--foreground)]"
         >
           {candidateInitials(candidate?.fullName)}
         </span>
-        <span className="min-w-[180px] flex-1">
+        <span className="pointer-events-none relative min-w-0 flex-1 basis-[180px]">
           <span className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
             {heading}
             {candidate?.citizenship && (
-              <Badge title="Гражданство">{candidate.citizenship.toUpperCase()}</Badge>
+              <Badge title="Гражданство">
+                {candidate.citizenship.toUpperCase()}
+              </Badge>
             )}
             {candidate?.isReemployment === true && (
               <Badge tone="warning">Повторный найм</Badge>
@@ -156,23 +172,25 @@ function CandidateGroup({
             <span title="Дата рождения">
               {formatBirthDateRu(candidate?.birthDate)}
             </span>
-            {(candidate?.positionName ?? candidate?.positionCode) && (
-              <span title="Должность">
-                {candidate.positionName ?? "—"}
-                {candidate.positionCode ? ` (${candidate.positionCode})` : ""}
-              </span>
+            {candidate?.positionName && (
+              <span title="Должность">{candidate.positionName}</span>
             )}
             <span title="Объект">
-              {formatCandidateObject(candidate?.projectName, candidate?.projectCode)}
+              {formatCandidateObject(
+                candidate?.projectName,
+                candidate?.projectCode,
+              )}
             </span>
           </span>
           <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[var(--muted-foreground)]">
             <span>
               Менеджер:{" "}
               {candidate?.managerCode1c ? (
-                <LkLink code1c={candidate.managerCode1c}>
-                  {candidate.managerName ?? candidate.managerCode1c}
-                </LkLink>
+                <span className="pointer-events-auto">
+                  <LkLink code1c={candidate.managerCode1c}>
+                    {candidate.managerName ?? candidate.managerCode1c}
+                  </LkLink>
+                </span>
               ) : (
                 (candidate?.managerName ?? "—")
               )}
@@ -180,10 +198,14 @@ function CandidateGroup({
             <span>
               Наставник:{" "}
               {candidate?.mentorCode1c ? (
-                <LkLink code1c={candidate.mentorCode1c}>
-                  {candidate.mentorName ?? candidate.mentorCode1c}
-                  {candidate.mentorPosition ? ` · ${candidate.mentorPosition}` : ""}
-                </LkLink>
+                <span className="pointer-events-auto">
+                  <LkLink code1c={candidate.mentorCode1c}>
+                    {candidate.mentorName ?? candidate.mentorCode1c}
+                    {candidate.mentorPosition
+                      ? ` · ${candidate.mentorPosition}`
+                      : ""}
+                  </LkLink>
+                </span>
               ) : (
                 (candidate?.mentorName ?? "—")
               )}
@@ -216,72 +238,11 @@ function CandidateGroup({
             </span>
           )}
         </span>
-        <span className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+        <span className="pointer-events-none relative flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
           документов: {count}
-          <ChevronDown
-            size={16}
-            aria-hidden
-            className={collapsed ? "-rotate-90 transition-transform" : "transition-transform"}
-          />
+          <ChevronRight size={16} aria-hidden />
         </span>
-      </button>
-      {!collapsed && (
-        <ul className="divide-y divide-[var(--border)]">
-          {group.documents.map((doc: DocumentDto) => (
-            <li
-              key={doc.id}
-              className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5"
-            >
-              <div className="min-w-0">
-                <p className="text-[13px] font-semibold">
-                  {doc.title}
-                  {doc.documentTypeCode && (
-                    <span className="ml-2 font-normal text-[var(--muted-foreground)]">
-                      {doc.documentTypeCode}
-                    </span>
-                  )}
-                </p>
-                <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
-                  Версия {doc.currentVersion}
-                  {doc.code1c
-                    ? ` · Сотрудник ${doc.code1c}`
-                    : doc.chatUuid
-                      ? ` · Чат ${doc.chatUuid}`
-                      : ""}
-                </p>
-                {tab === "ERP_PENDING" && (
-                  <p className="mt-0.5 text-xs text-[var(--destructive)]">
-                    Ожидают отправки версии: {doc.pendingDeliveryVersions.join(", ")}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                <StatusBadge
-                  status={doc.status}
-                  document
-                  icon={
-                    doc.status === "IN_REVIEW" ? (
-                      <Clock size={14} />
-                    ) : doc.status === "APPROVED" ? (
-                      <Check size={14} />
-                    ) : (
-                      <X size={14} />
-                    )
-                  }
-                />
-                <Link
-                  to="/review/$documentId"
-                  params={{ documentId: doc.id }}
-                  search={{ version: doc.currentVersion }}
-                  className="text-[13px] font-semibold text-[var(--primary)] underline-offset-4 hover:underline"
-                >
-                  Открыть →
-                </Link>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      </div>
     </section>
   );
 }
@@ -289,13 +250,20 @@ function CandidateGroup({
 export function ReviewPage() {
   const rawSearch = useSearch({ strict: false }) as Record<string, unknown>;
   const navigate = useNavigate();
-  const filters = useMemo(() => parseReviewSearchParams(rawSearch), [rawSearch]);
+  const filters = useMemo(
+    () => parseReviewSearchParams(rawSearch),
+    [rawSearch],
+  );
 
-  // Functional search update: debounced text commits always apply on top
-  // of the latest URL, so typing "иван" while toggling a select cannot
-  // drop the other filter (stale-closure overwrite).
+  // Functional search update: selector commits always apply on top of the
+  // latest URL, so concurrent changes cannot drop each other (stale-closure
+  // overwrite). Every filter change resets pagination (cursor); opening the
+  // drawer keeps it.
   const setFilters = useCallback(
-    (patch: Record<string, string | undefined>, opts?: { keepCursor?: boolean }) => {
+    (
+      patch: Record<string, string | undefined>,
+      opts?: { keepCursor?: boolean },
+    ) => {
       void navigate({
         to: "/review",
         search: (prev: Record<string, unknown>) => {
@@ -313,7 +281,8 @@ export function ReviewPage() {
   );
 
   const commit = useCallback(
-    (key: string) => (value: string | undefined) => setFilters({ [key]: value }),
+    (key: string) => (value: string | undefined) =>
+      setFilters({ [key]: value }),
     [setFilters],
   );
 
@@ -323,29 +292,78 @@ export function ReviewPage() {
 
   const resetFilters = () => {
     setFilters({
-      q: undefined,
+      candidateId: undefined,
       documentTypeCode: undefined,
       citizenship: undefined,
-      manager: undefined,
-      mentor: undefined,
+      managerCode1c: undefined,
+      mentorCode1c: undefined,
       hasMentor: undefined,
       birthDateFrom: undefined,
       birthDateTo: undefined,
       positionCode: undefined,
       projectCode: undefined,
+      candidate: undefined,
+      q: undefined,
+      manager: undefined,
+      mentor: undefined,
     });
   };
+
+  const openCandidate = useCallback(
+    (id: string) => {
+      void navigate({
+        to: "/review",
+        search: (prev: Record<string, unknown>) => ({ ...prev, candidate: id }),
+      });
+    },
+    [navigate],
+  );
+
+  const closeCandidate = useCallback(() => {
+    void navigate({
+      to: "/review",
+      replace: true,
+      search: (prev: Record<string, unknown>) => {
+        const next: Record<string, unknown> = { ...prev };
+        delete next.candidate;
+        return next;
+      },
+    });
+  }, [navigate]);
+
+  // Async selector sources: candidates (ФИО) and the LK position directory.
+  const [candidateQuery, setCandidateQuery] = useState("");
+  const [positionQuery, setPositionQuery] = useState("");
+  const candidateParams = useMemo(
+    () => ({
+      q: candidateQuery.trim() || undefined,
+      limit: CANDIDATE_SELECTOR_LIMIT,
+    }),
+    [candidateQuery],
+  );
+  const positionParams = useMemo(
+    () => ({
+      q: positionQuery.trim() || undefined,
+      limit: POSITION_SELECTOR_LIMIT,
+    }),
+    [positionQuery],
+  );
+  const candidates = useListReviewCandidates(candidateParams);
+  const positions = useListPositions(positionParams);
+  const facets = useGetReviewDocumentFacets();
+  const docTypesParams = useMemo(() => ({ catalogOnly: true as const }), []);
+  const docTypes = useListDocumentTypes(docTypesParams);
 
   const queryParams = useMemo(
     () => ({
       status: filters.status,
       limit: PAGE_LIMIT,
       cursor: filters.cursor,
-      q: filters.q,
+      candidateId: filters.candidateId,
       documentTypeCode: filters.documentTypeCode,
       citizenship: filters.citizenship,
-      manager: filters.manager,
-      mentor: filters.mentor,
+      managerCode1c: filters.managerCode1c,
+      mentorCode1c: filters.mentorCode1c,
       hasMentor: filters.hasMentor,
       birthDateFrom: filters.birthDateFrom,
       birthDateTo: filters.birthDateTo,
@@ -355,21 +373,114 @@ export function ReviewPage() {
     [filters],
   );
   const list = useListReviewDocuments(queryParams);
-  const docTypes = useListDocumentTypes();
 
-  const groups = useMemo(() => groupReviewItems(list.data?.items ?? []), [list.data]);
+  const groups = useMemo(
+    () => groupReviewItems(list.data?.items ?? []),
+    [list.data],
+  );
 
-  // Local accordion state only (never in the URL): everything expanded
-  // by default, toggles survive refetches because keys are candidate-stable.
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const toggleGroup = useCallback((key: string) => {
-    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
-  }, []);
+  // Selector options. Facet entries without an exact code cannot feed an
+  // exact backend filter, so they are not selectable.
+  const candidateOptions: SearchSelectOption[] = useMemo(
+    () =>
+      (candidates.data?.items ?? []).map((item) => ({
+        value: item.id,
+        label: item.fullName?.trim() || "Без имени в профиле",
+      })),
+    [candidates.data],
+  );
+  const positionOptions: SearchSelectOption[] = useMemo(
+    () =>
+      (positions.data?.items ?? []).map((item) => ({
+        value: item.code,
+        label: item.name,
+      })),
+    [positions.data],
+  );
+  const docTypeOptions: SearchSelectOption[] = useMemo(
+    () =>
+      (docTypes.data?.items ?? []).map((type) => ({
+        value: type.code,
+        label: type.title,
+      })),
+    [docTypes.data],
+  );
+  const citizenshipOptions: SearchSelectOption[] = useMemo(
+    () =>
+      (facets.data?.citizenships ?? []).map((code) => ({
+        value: code,
+        label: code,
+      })),
+    [facets.data],
+  );
+  const managerOptions: SearchSelectOption[] = useMemo(
+    () =>
+      (facets.data?.managers ?? []).flatMap((person) =>
+        person.code1c ? [{ value: person.code1c, label: person.name }] : [],
+      ),
+    [facets.data],
+  );
+  const mentorOptions: SearchSelectOption[] = useMemo(
+    () =>
+      (facets.data?.mentors ?? []).flatMap((person) =>
+        person.code1c ? [{ value: person.code1c, label: person.name }] : [],
+      ),
+    [facets.data],
+  );
+  const projectOptions: SearchSelectOption[] = useMemo(
+    () =>
+      (facets.data?.projects ?? []).flatMap((project) =>
+        project.code ? [{ value: project.code, label: project.name }] : [],
+      ),
+    [facets.data],
+  );
+
+  // Labels for values set via deep links when the current option window does
+  // not contain them yet (filtered candidate/position lists).
+  const candidateLabel = groups
+    .find((group) => group.candidate?.id === filters.candidateId)
+    ?.candidate?.fullName?.trim();
+  const managerLabel = facets.data?.managers.find(
+    (person) => person.code1c === filters.managerCode1c,
+  )?.name;
+  const mentorLabel = facets.data?.mentors.find(
+    (person) => person.code1c === filters.mentorCode1c,
+  )?.name;
+  const positionLabel =
+    positions.data?.items.find((item) => item.code === filters.positionCode)
+      ?.name ??
+    groups.find(
+      (group) => group.candidate?.positionCode === filters.positionCode,
+    )?.candidate?.positionName ??
+    undefined;
+  const projectLabel = facets.data?.projects.find(
+    (project) => project.code === filters.projectCode,
+  )?.name;
+  const docType = docTypes.data?.items.find(
+    (type) => type.code === filters.documentTypeCode,
+  );
+  const docTypeLabel = docType?.title;
+
+  // Drawer target: the queue group for ?candidate=<id>, falling back to any
+  // document-level candidateId. A stale id still opens the drawer with the
+  // document list but without the profile snapshot.
+  const drawerGroup = filters.candidate
+    ? (groups.find((group) => group.candidate?.id === filters.candidate) ??
+      groups.find((group) =>
+        group.documents.some((doc) => doc.candidateId === filters.candidate),
+      ) ??
+      null)
+    : null;
+  const drawerCandidateId =
+    drawerGroup?.candidate?.id ??
+    drawerGroup?.documents.find((doc) => doc.candidateId)?.candidateId ??
+    filters.candidate ??
+    null;
 
   const filtersActive = hasActiveReviewFilters(filters);
 
   return (
-    <div className="h-full overflow-auto p-7">
+    <div className="h-full overflow-auto p-3 sm:p-7">
       <PageHeader
         title="Проверка документов"
         subtitle="Документы кандидатов и сотрудников"
@@ -393,42 +504,65 @@ export function ReviewPage() {
             aria-label="Фильтры очереди проверки"
             className="flex flex-wrap items-center gap-2 pb-4"
           >
-            <DebouncedTextFilter
-              label="Поиск по ФИО"
-              placeholder="Поиск по ФИО…"
-              value={filters.q ?? ""}
-              onCommit={commit("q")}
+            <SearchSelect
+              label="ФИО кандидата"
+              placeholder="ФИО кандидата…"
+              value={filters.candidateId}
+              selectedLabel={candidateLabel}
+              options={candidateOptions}
+              onSearchChange={setCandidateQuery}
+              onChange={commit("candidateId")}
+              isLoading={candidates.isLoading}
+              isError={candidates.isError}
+              onRetry={() => void candidates.refetch()}
+              className="min-w-[180px]"
             />
-            <select
-              aria-label="Тип документа"
-              className={`${FILTER_CONTROL} max-w-[220px]`}
-              value={filters.documentTypeCode ?? ""}
-              onChange={(event) => commit("documentTypeCode")(event.target.value || undefined)}
-            >
-              <option value="">Все типы</option>
-              {(docTypes.data?.items ?? []).map((type) => (
-                <option key={type.code} value={type.code}>
-                  {type.title} ({type.code})
-                </option>
-              ))}
-            </select>
-            <DebouncedTextFilter
+            <StaticSearchSelect
+              label="Тип документа"
+              placeholder="Все типы"
+              value={filters.documentTypeCode}
+              selectedLabel={docTypeLabel}
+              allOptions={docTypeOptions}
+              onChange={commit("documentTypeCode")}
+              className="min-w-[180px]"
+              isLoading={docTypes.isLoading}
+              isError={docTypes.isError}
+              onRetry={() => void docTypes.refetch()}
+            />
+            <StaticSearchSelect
               label="Гражданство"
-              placeholder="Гражданство (ru)…"
-              value={filters.citizenship ?? ""}
-              onCommit={commit("citizenship")}
+              placeholder="Все гражданства"
+              value={filters.citizenship}
+              allOptions={citizenshipOptions}
+              isLoading={facets.isLoading}
+              isError={facets.isError}
+              onRetry={() => void facets.refetch()}
+              onChange={commit("citizenship")}
+              className="min-w-[140px]"
             />
-            <DebouncedTextFilter
+            <StaticSearchSelect
               label="Менеджер"
-              placeholder="Менеджер…"
-              value={filters.manager ?? ""}
-              onCommit={commit("manager")}
+              placeholder="Все менеджеры"
+              value={filters.managerCode1c}
+              selectedLabel={managerLabel}
+              allOptions={managerOptions}
+              isLoading={facets.isLoading}
+              isError={facets.isError}
+              onRetry={() => void facets.refetch()}
+              onChange={commit("managerCode1c")}
+              className="min-w-[160px]"
             />
-            <DebouncedTextFilter
+            <StaticSearchSelect
               label="Наставник"
-              placeholder="Наставник…"
-              value={filters.mentor ?? ""}
-              onCommit={commit("mentor")}
+              placeholder="Все наставники"
+              value={filters.mentorCode1c}
+              selectedLabel={mentorLabel}
+              allOptions={mentorOptions}
+              isLoading={facets.isLoading}
+              isError={facets.isError}
+              onRetry={() => void facets.refetch()}
+              onChange={commit("mentorCode1c")}
+              className="min-w-[160px]"
             />
             <select
               aria-label="Наличие наставника"
@@ -444,6 +578,31 @@ export function ReviewPage() {
               <option value="true">Только с наставником</option>
               <option value="false">Только без наставника</option>
             </select>
+            <SearchSelect
+              label="Должность"
+              placeholder="Все должности"
+              value={filters.positionCode}
+              selectedLabel={positionLabel}
+              options={positionOptions}
+              onSearchChange={setPositionQuery}
+              onChange={commit("positionCode")}
+              isLoading={positions.isLoading}
+              isError={positions.isError}
+              onRetry={() => void positions.refetch()}
+              className="min-w-[160px]"
+            />
+            <StaticSearchSelect
+              label="Объект"
+              placeholder="Все объекты"
+              value={filters.projectCode}
+              selectedLabel={projectLabel}
+              allOptions={projectOptions}
+              isLoading={facets.isLoading}
+              isError={facets.isError}
+              onRetry={() => void facets.refetch()}
+              onChange={commit("projectCode")}
+              className="min-w-[160px]"
+            />
             <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
               Рожд. с
               <input
@@ -451,7 +610,9 @@ export function ReviewPage() {
                 type="date"
                 className={FILTER_CONTROL}
                 value={filters.birthDateFrom ?? ""}
-                onChange={(event) => commit("birthDateFrom")(event.target.value || undefined)}
+                onChange={(event) =>
+                  commit("birthDateFrom")(event.target.value || undefined)
+                }
               />
             </label>
             <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
@@ -461,21 +622,11 @@ export function ReviewPage() {
                 type="date"
                 className={FILTER_CONTROL}
                 value={filters.birthDateTo ?? ""}
-                onChange={(event) => commit("birthDateTo")(event.target.value || undefined)}
+                onChange={(event) =>
+                  commit("birthDateTo")(event.target.value || undefined)
+                }
               />
             </label>
-            <DebouncedTextFilter
-              label="Код должности"
-              placeholder="Код должности…"
-              value={filters.positionCode ?? ""}
-              onCommit={commit("positionCode")}
-            />
-            <DebouncedTextFilter
-              label="Код проекта"
-              placeholder="Код проекта…"
-              value={filters.projectCode ?? ""}
-              onCommit={commit("projectCode")}
-            />
             {filtersActive && (
               <Button size="sm" variant="ghost" onClick={resetFilters}>
                 Сбросить
@@ -523,12 +674,24 @@ export function ReviewPage() {
           {groups.length > 0 && (
             <div className="flex flex-col gap-3">
               {groups.map((group) => (
-                <CandidateGroup
+                <CandidateRow
                   key={group.key}
                   group={group}
-                  tab={filters.status}
-                  collapsed={Boolean(collapsed[group.key])}
-                  onToggle={() => toggleGroup(group.key)}
+                  onOpen={() => {
+                    const candidateId =
+                      group.candidate?.id ??
+                      group.documents.find((doc) => doc.candidateId)
+                        ?.candidateId;
+                    if (candidateId) openCandidate(candidateId);
+                    else {
+                      const document = group.documents[0];
+                      void navigate({
+                        to: "/review/$documentId",
+                        params: { documentId: document.id },
+                        search: { version: document.currentVersion },
+                      });
+                    }
+                  }}
                 />
               ))}
             </div>
@@ -539,7 +702,10 @@ export function ReviewPage() {
                 size="sm"
                 variant="outline"
                 onClick={() =>
-                  setFilters({ cursor: list.data!.nextCursor ?? undefined }, { keepCursor: true })
+                  setFilters(
+                    { cursor: list.data!.nextCursor ?? undefined },
+                    { keepCursor: true },
+                  )
                 }
               >
                 Следующая страница
@@ -551,7 +717,9 @@ export function ReviewPage() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => setFilters({ cursor: undefined }, { keepCursor: true })}
+                onClick={() =>
+                  setFilters({ cursor: undefined }, { keepCursor: true })
+                }
               >
                 В начало списка
               </Button>
@@ -559,6 +727,14 @@ export function ReviewPage() {
           )}
         </CardContent>
       </Card>
+      {drawerCandidateId && (
+        <CandidateDrawer
+          key={drawerCandidateId}
+          candidateId={drawerCandidateId}
+          profile={drawerGroup?.candidate ?? null}
+          onClose={closeCandidate}
+        />
+      )}
     </div>
   );
 }

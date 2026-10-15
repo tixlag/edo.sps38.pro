@@ -28,9 +28,7 @@ const readsWith = (prisma: Record<string, unknown>) =>
 
 describe("positions directory", () => {
   it("lists non-deleted positions ordered by name with default limit", async () => {
-    const findMany = vi.fn(async () => [
-      { code1c: "P1", name: "Водитель" },
-    ]);
+    const findMany = vi.fn(async () => [{ code1c: "P1", name: "Водитель" }]);
     const page = await readsWith({
       lkPosition: { findMany },
     } as never).positions({});
@@ -196,6 +194,30 @@ describe("reviewDocumentFacets scope", () => {
     } as never).reviewDocumentFacets(fullAccess);
     expect(facets.managers).toHaveLength(500);
     expect(facets.mentors).toEqual([]);
+  });
+  it("deduplicates exact selector values when snapshots have different names for the same code", async () => {
+    const facets = await readsWith({
+      document: {
+        findMany: vi.fn(async () => [
+          { candidateId: "c1" },
+          { candidateId: "c2" },
+        ]),
+      },
+      candidate: {
+        findMany: vi.fn(async () => [
+          candidateRows[0],
+          {
+            ...candidateRows[0],
+            managerName: "Другое имя",
+            mentorName: "Новое имя",
+            projectName: "Другое название",
+          },
+        ]),
+      },
+    } as never).reviewDocumentFacets(fullAccess);
+    expect(facets.managers).toEqual([{ name: "Сидоров", code1c: "M1" }]);
+    expect(facets.mentors).toEqual([{ name: "Наставник", code1c: "N9" }]);
+    expect(facets.projects).toEqual([{ name: "Проект Север", code: "PRJ" }]);
   });
 });
 

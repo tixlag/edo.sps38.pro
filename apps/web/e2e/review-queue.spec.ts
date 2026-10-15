@@ -1,5 +1,5 @@
-import { test, expect, gotoAuthed, type Page } from './fixture';
-import type { DocumentDto } from '@edo/api-client';
+import { test, expect, gotoAuthed, type Page } from "./fixture";
+import type { DocumentDto } from "@edo/api-client";
 
 function profile(id: string, rest: Record<string, unknown>) {
   return {
@@ -26,19 +26,19 @@ function profile(id: string, rest: Record<string, unknown>) {
   };
 }
 
-const IVANOV = profile('cand-ivanov', {
-  fullName: 'Иванов Иван Иванович',
-  birthDate: '1990-05-17',
-  citizenship: 'ru',
-  positionCode: 'POS1',
-  positionName: 'Продавец',
-  projectCode: 'PRJ1',
-  projectName: 'ТЦ Север',
-  managerName: 'Петров Пётр',
-  managerCode1c: 'M001',
-  mentorName: 'Сидоров Сидор',
-  mentorPosition: 'Наставник',
-  mentorCode1c: 'N001',
+const IVANOV = profile("cand-ivanov", {
+  fullName: "Иванов Иван Иванович",
+  birthDate: "1990-05-17",
+  citizenship: "ru",
+  positionCode: "POS1",
+  positionName: "Продавец",
+  projectCode: "PRJ1",
+  projectName: "ТЦ Север",
+  managerName: "Петров Пётр",
+  managerCode1c: "M001",
+  mentorName: "Сидоров Сидор",
+  mentorPosition: "Наставник",
+  mentorCode1c: "N001",
   isReemployment: true,
   approvedDocuments: 3,
   requiredDocuments: 5,
@@ -46,15 +46,15 @@ const IVANOV = profile('cand-ivanov', {
 
 const DOCS: DocumentDto[] = [
   {
-    id: 'doc-pass-ivanov',
-    title: 'Паспорт',
-    documentTypeCode: 'PASSPORT',
-    documentUid: 'uid-1',
-    status: 'IN_REVIEW',
+    id: "doc-pass-ivanov",
+    title: "Паспорт",
+    documentTypeCode: "PASSPORT",
+    documentUid: "uid-1",
+    status: "IN_REVIEW",
     currentVersion: 2,
     revision: 0,
-    candidateId: 'cand-ivanov',
-    chatUuid: 'chat-ivanov',
+    candidateId: "cand-ivanov",
+    chatUuid: "chat-ivanov",
     code1c: null,
     deliveryStatus: null,
     pendingDeliveryVersions: [],
@@ -63,38 +63,38 @@ const DOCS: DocumentDto[] = [
     candidate: IVANOV,
   },
   {
-    id: 'doc-snils-ivanov',
-    title: 'СНИЛС',
-    documentTypeCode: 'SNILS',
-    documentUid: 'uid-2',
-    status: 'IN_REVIEW',
+    id: "doc-snils-ivanov",
+    title: "СНИЛС",
+    documentTypeCode: "SNILS",
+    documentUid: "uid-2",
+    status: "IN_REVIEW",
     currentVersion: 1,
     revision: 0,
-    candidateId: 'cand-ivanov',
-    chatUuid: 'chat-ivanov',
+    candidateId: "cand-ivanov",
+    chatUuid: "chat-ivanov",
     code1c: null,
     deliveryStatus: null,
     pendingDeliveryVersions: [],
     candidate: IVANOV,
   },
   {
-    id: 'doc-pass-anna',
-    title: 'Паспорт',
-    documentTypeCode: 'PASSPORT',
-    documentUid: 'uid-3',
-    status: 'IN_REVIEW',
+    id: "doc-pass-anna",
+    title: "Паспорт",
+    documentTypeCode: "PASSPORT",
+    documentUid: "uid-3",
+    status: "IN_REVIEW",
     currentVersion: 1,
     revision: 0,
-    candidateId: 'cand-anna',
-    chatUuid: 'chat-anna',
+    candidateId: "cand-anna",
+    chatUuid: "chat-anna",
     code1c: null,
     deliveryStatus: null,
     pendingDeliveryVersions: [],
-    candidate: profile('cand-anna', {
-      fullName: 'Аннова Анна',
-      birthDate: '1995-11-02',
-      citizenship: 'kz',
-      managerName: 'Без кода',
+    candidate: profile("cand-anna", {
+      fullName: "Аннова Анна",
+      birthDate: "1995-11-02",
+      citizenship: "kz",
+      managerName: "Без кода",
       mentorName: null,
       approvedDocuments: 1,
       requiredDocuments: null,
@@ -102,148 +102,332 @@ const DOCS: DocumentDto[] = [
   },
 ];
 
+const ALL_IVANOV_DOCS: DocumentDto[] = [
+  ...DOCS.filter((doc) => doc.candidateId === IVANOV.id),
+  {
+    ...DOCS[0],
+    id: "doc-approved",
+    title: "ИНН",
+    status: "APPROVED",
+    currentVersion: 3,
+  },
+];
+
 async function mockQueue(page: Page) {
-  await page.route('**/api/**', async (route) => {
+  await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
     let response: unknown = {};
-    if (path === '/api/v1/me')
+    if (path === "/api/v1/me")
       response = {
-        uuid: 'operator',
-        code1c: '001',
-        fullName: 'Проверяющий',
-        permissions: { '20000': [], '20002': [], '20009': [] },
+        uuid: "operator",
+        code1c: "001",
+        fullName: "Проверяющий",
+        permissions: { "20000": [], "20002": [], "20009": [] },
         locationScope: { all: true, locationIds: [] },
       };
-    else if (path === '/api/v1/document-types')
+    else if (path === "/api/v1/document-types") {
+      expect(url.searchParams.get("catalogOnly")).toBe("true");
       response = {
         items: [
-          { code: 'PASSPORT', title: 'Паспорт' },
-          { code: 'SNILS', title: 'СНИЛС' },
+          { code: "PASSPORT", title: "Паспорт" },
+          { code: "SNILS", title: "СНИЛС" },
         ],
       };
-    else if (path === '/api/v1/review-documents') {
-      // Emulate server-side AND filtering like the backend does.
-      const q = url.searchParams.get('q')?.toLowerCase();
-      const documentTypeCode = url.searchParams.get('documentTypeCode');
-      const hasMentor = url.searchParams.get('hasMentor');
+    } else if (path === "/api/v1/positions") {
+      const q = url.searchParams.get("q")?.toLowerCase() ?? "";
+      response = {
+        items: [
+          { code: "POS1", name: "Продавец" },
+          { code: "POS2", name: "Водитель" },
+        ].filter((p) => p.name.toLowerCase().includes(q)),
+      };
+    } else if (path === "/api/v1/review-documents/facets") {
+      response = {
+        managers: [{ code1c: "M001", name: "Петров Пётр" }],
+        mentors: [{ code1c: "N001", name: "Сидоров Сидор" }],
+        projects: [{ code: "PRJ1", name: "ТЦ Север" }],
+        citizenships: ["KZ", "RU"],
+      };
+    } else if (path === "/api/v1/review-candidates") {
+      const q = url.searchParams.get("q")?.toLowerCase() ?? "";
+      response = {
+        items: [IVANOV, DOCS[2].candidate!]
+          .filter((c) => c.fullName?.toLowerCase().includes(q))
+          .map(({ id, fullName }) => ({ id, fullName })),
+      };
+    } else if (path === "/api/v1/review-documents") {
       const items = DOCS.filter((d) => {
-        const c = d.candidate;
-        if (q && !(c?.fullName ?? '').toLowerCase().includes(q)) return false;
-        if (documentTypeCode && d.documentTypeCode !== documentTypeCode) return false;
-        if (hasMentor === 'true' && !c?.mentorName) return false;
-        if (hasMentor === 'false' && c?.mentorName) return false;
+        const c = d.candidate!;
+        for (const field of ["candidateId", "documentTypeCode"] as const) {
+          const filter = url.searchParams.get(field);
+          if (filter && d[field] !== filter) return false;
+        }
+        for (const field of [
+          "managerCode1c",
+          "mentorCode1c",
+          "positionCode",
+          "projectCode",
+        ] as const) {
+          const filter = url.searchParams.get(field);
+          if (filter && c[field] !== filter) return false;
+        }
+        const citizenship = url.searchParams.get("citizenship");
+        if (citizenship && c.citizenship?.toUpperCase() !== citizenship)
+          return false;
+        const hasMentor = url.searchParams.get("hasMentor");
+        if (hasMentor === "true" && !c.mentorName) return false;
+        if (hasMentor === "false" && c.mentorName) return false;
         return true;
       });
       response = { items, nextCursor: null };
-    } else if (path.endsWith('document-status-events'))
+    } else if (path === "/api/v1/candidates/cand-ivanov/documents") {
+      response = { items: ALL_IVANOV_DOCS };
+    } else if (path === "/api/v1/candidates/cand-anna/documents") {
+      response = { items: [DOCS[2]] };
+    } else if (/\/documents\/[^/]+\/versions\//.test(path)) {
+      return route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: "{}",
+      });
+    } else if (path.startsWith("/api/v1/documents/")) {
+      response = ALL_IVANOV_DOCS.find((d) => path.endsWith(d.id)) ?? DOCS[0];
+    } else if (path.endsWith("document-status-events"))
       return route.fulfill({
         status: 200,
-        contentType: 'text/event-stream',
-        body: ': heartbeat\n\n',
+        contentType: "text/event-stream",
+        body: ": heartbeat\n\n",
       });
     await route.fulfill({
       status: 200,
-      contentType: 'application/json',
+      contentType: "application/json",
       body: JSON.stringify(response),
     });
   });
 }
 
-test('review queue groups documents by candidate with LK links', async ({ page }) => {
+const ivanovRow = (page: Page) =>
+  page.getByRole("region", { name: IVANOV.fullName as string });
+const openIvanov = (page: Page) =>
+  ivanovRow(page)
+    .getByRole("button", { name: /Открыть документы/ })
+    .click();
+
+async function selectOption(
+  page: Page,
+  label: string,
+  query: string,
+  option: string,
+) {
+  const input = page.getByRole("combobox", { name: label, exact: true });
+  await input.fill(query);
+  await page.getByRole("option", { name: option, exact: true }).click();
+}
+
+test("queue shows candidate profiles and separate LK links without inline documents", async ({
+  page,
+}) => {
   await mockQueue(page);
-  await gotoAuthed(page, '/review');
-  // Groups sorted by fullName (ru): Аннова before Иванов.
-  const groups = page.locator('section[aria-label]');
+  await gotoAuthed(page, "/review");
+  const groups = page.locator("section[aria-label]");
   await expect(groups).toHaveCount(2);
-  await expect(groups.first()).toContainText('Аннова Анна');
-  await expect(groups.nth(1)).toContainText('Иванов Иван Иванович');
-  // Ivanov group: two documents, RU badge, birth date, position, project.
-  const ivanov = groups.nth(1);
-  await expect(ivanov.getByRole('link', { name: 'Открыть →' })).toHaveCount(2);
-  await expect(ivanov).toContainText('17.05.1990');
-  await expect(ivanov).toContainText('Продавец (POS1)');
-  await expect(ivanov).toContainText('ТЦ Север (PRJ1)');
-  // Manager/mentor with a 1C code link to the LK profile; Anna's plain
-  // manager name stays text, missing mentor renders as em dash.
-  const managerLink = ivanov.getByRole('link', { name: 'Петров Пётр' });
-  await expect(managerLink).toHaveAttribute(
-    'href',
-    'https://lk.sps38.pro/public/employee/M001?size_width=WIDE_1200',
+  await expect(groups.first()).toContainText("Аннова Анна");
+  const ivanov = ivanovRow(page);
+  await expect(ivanov).toContainText("17.05.1990");
+  await expect(ivanov).toContainText("Продавец");
+  await expect(ivanov).not.toContainText("POS1");
+  await expect(ivanov).toContainText("Объект: ТЦ Север (PRJ1)");
+  await expect(ivanov).toContainText("Подтверждено 3 из 5");
+  await expect(ivanov.getByText("Повторный найм")).toBeVisible();
+  await expect(ivanov.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "60",
   );
-  await expect(managerLink).toHaveAttribute('target', '_blank');
-  await expect(ivanov.getByRole('link', { name: /Сидоров Сидор/ })).toHaveAttribute(
-    'href',
-    'https://lk.sps38.pro/public/employee/N001?size_width=WIDE_1200',
+  await expect(ivanov.getByText("Паспорт", { exact: true })).toHaveCount(0);
+  await expect(ivanov.locator("button a")).toHaveCount(0);
+  const manager = ivanov.getByRole("link", { name: "Петров Пётр" });
+  await expect(manager).toHaveAttribute(
+    "href",
+    "https://lk.sps38.pro/public/employee/M001?size_width=WIDE_1200",
   );
-  await expect(groups.first()).toContainText('Без кода');
-  await expect(groups.first()).toContainText('Наставник: —');
-  // Document rows open the versioned review page.
-  await ivanov.getByRole('link', { name: 'Открыть →' }).first().click();
-  await expect(page).toHaveURL(/\/review\/doc-pass-ivanov\?version=2/);
+  await expect(manager).toHaveAttribute("target", "_blank");
+  await expect(
+    ivanov.getByRole("link", { name: /Сидоров Сидор/ }),
+  ).toHaveAttribute(
+    "href",
+    "https://lk.sps38.pro/public/employee/N001?size_width=WIDE_1200",
+  );
+  await expect(groups.first()).toContainText("Без кода");
+  await expect(groups.first()).toContainText("Наставник: —");
+  await expect(groups.first()).toContainText(
+    "Подтверждено 1 · всего ожидается: неизвестно (нет должности)",
+  );
+  await expect(groups.first().getByRole("progressbar")).toHaveCount(0);
 });
 
-test('review queue shows candidate object, document progress and reemployment badge', async ({
+test("candidate selector searches remotely and commits only the exact id to the URL", async ({
   page,
 }) => {
   await mockQueue(page);
-  await gotoAuthed(page, '/review');
-  const groups = page.locator('section[aria-label]');
-  const ivanov = groups.nth(1);
-  // Object from the ERP snapshot, approved-vs-required progress + bar.
-  await expect(ivanov).toContainText('Объект: ТЦ Север (PRJ1)');
-  await expect(ivanov).toContainText('Подтверждено 3 из 5');
-  await expect(ivanov.getByText('Повторный найм')).toBeVisible();
-  const bar = ivanov.locator('[role="progressbar"]');
-  await expect(bar).toHaveAttribute('aria-valuenow', '60');
-  // Unknown catalog total (no position): short notice, no bar, no badge.
-  const anna = groups.first();
-  await expect(anna).toContainText('Объект: —');
-  await expect(anna).toContainText(
-    'Подтверждено 1 · всего ожидается: неизвестно (нет должности)',
+  await gotoAuthed(page, "/review");
+  const input = page.getByRole("combobox", { name: "ФИО кандидата" });
+  const search = page.waitForRequest(
+    (req) =>
+      new URL(req.url()).pathname === "/api/v1/review-candidates" &&
+      new URL(req.url()).searchParams.get("q") === "иван",
   );
-  await expect(anna.getByText('Повторный найм')).toHaveCount(0);
-  await expect(anna.locator('[role="progressbar"]')).toHaveCount(0);
-});
-
-test('review queue filters live in the URL and reset cleanly', async ({ page }) => {
-  await mockQueue(page);
-  await gotoAuthed(page, '/review');
-  await expect(page.locator('section[aria-label]')).toHaveCount(2);
-  // ФИО search narrows to one group and lands in the URL (deep-linkable).
-  await page.getByLabel('Поиск по ФИО').fill('иванов');
-  await expect(page.locator('section[aria-label]')).toHaveCount(1);
-  await expect(page.url()).toContain('q=%D0%B8%D0%B2%D0%B0%D0%BD%D0%BE%D0%B2');
-  // Back/forward keeps the filter: reload the deep link directly.
+  await input.fill("иван");
+  await expect.poll(() => page.url()).not.toContain("candidateId=");
+  await expect(page.locator("section[aria-label]")).toHaveCount(2);
+  await search;
+  await page.getByRole("option", { name: IVANOV.fullName as string }).click();
+  await expect(page).toHaveURL(/candidateId=cand-ivanov/);
+  await expect(page.locator("section[aria-label]")).toHaveCount(1);
+  await expect(input).toHaveValue(IVANOV.fullName as string);
   await page.reload();
-  await expect(page.locator('section[aria-label]')).toHaveCount(1);
-  await expect(page.getByLabel('Поиск по ФИО')).toHaveValue('иванов');
-  // Tri-state mentor filter to "without mentor": empty state + reset.
-  await page.getByLabel('Поиск по ФИО').fill('');
-  await expect(page.locator('section[aria-label]')).toHaveCount(2);
-  await page.getByLabel('Наличие наставника').selectOption('false');
-  await expect(page.locator('section[aria-label]')).toHaveCount(1);
-  await expect(page.getByText('Аннова Анна')).toBeVisible();
-  await page.getByRole('button', { name: 'Сбросить', exact: true }).click();
-  await expect(page.locator('section[aria-label]')).toHaveCount(2);
-  expect(page.url()).not.toContain('hasMentor');
-  // Type select filters server-side too.
-  await page.getByLabel('Тип документа').selectOption('SNILS');
-  await expect(page.locator('section[aria-label]')).toHaveCount(1);
-  await expect(page.getByText('Иванов Иван Иванович')).toBeVisible();
+  await expect(input).toHaveValue(IVANOV.fullName as string);
+  await expect(page.locator("section[aria-label]")).toHaveCount(1);
+  await page.getByRole("button", { name: "Очистить: ФИО кандидата" }).click();
+  await expect(page.locator("section[aria-label]")).toHaveCount(2);
 });
 
-test('review queue accordion collapses locally without losing filters', async ({
+test("all searchable selectors send exact filters and can be reset", async ({
   page,
 }) => {
   await mockQueue(page);
-  await gotoAuthed(page, '/review?q=%D0%B8%D0%B2%D0%B0%D0%BD%D0%BE%D0%B2');
-  const group = page.locator('section[aria-label]').first();
-  await expect(group.getByRole('link', { name: 'Открыть →' })).toHaveCount(2);
-  await group.getByRole('button', { expanded: true }).click();
-  await expect(group.getByRole('link', { name: 'Открыть →' })).toHaveCount(0);
-  // Collapsing is local UI state: the URL filter is untouched.
-  expect(page.url()).toContain('q=');
-  await group.getByRole('button', { expanded: false }).click();
-  await expect(group.getByRole('link', { name: 'Открыть →' })).toHaveCount(2);
+  await gotoAuthed(page, "/review?cursor=old");
+  for (const [label, query, option, field, code] of [
+    ["Должность", "Продав", "Продавец", "positionCode", "POS1"],
+    ["Менеджер", "Петров", "Петров Пётр", "managerCode1c", "M001"],
+    ["Наставник", "Сидоров", "Сидоров Сидор", "mentorCode1c", "N001"],
+    ["Объект", "Север", "ТЦ Север", "projectCode", "PRJ1"],
+    ["Гражданство", "RU", "RU", "citizenship", "RU"],
+    ["Тип документа", "СНИЛС", "СНИЛС", "documentTypeCode", "SNILS"],
+  ]) {
+    await selectOption(page, label, query, option);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get(field))
+      .toBe(code);
+    expect(new URL(page.url()).searchParams.has("cursor")).toBe(false);
+    await expect(
+      page.getByRole("combobox", { name: label, exact: true }),
+    ).toHaveValue(option);
+  }
+  await expect(page.locator("section[aria-label]")).toHaveCount(1);
+  await page.getByRole("button", { name: "Сбросить", exact: true }).click();
+  await expect(page.locator("section[aria-label]")).toHaveCount(2);
+  expect(new URL(page.url()).search).toBe("");
+  await page.getByLabel("Наличие наставника").selectOption("false");
+  await expect(page.locator("section[aria-label]")).toHaveCount(1);
+  await expect(page.getByRole("region", { name: "Аннова Анна" })).toBeVisible();
+});
+
+test("drawer shows all documents, traps focus, closes with Escape and restores focus", async ({
+  page,
+}) => {
+  await mockQueue(page);
+  await gotoAuthed(page, "/review?positionCode=POS1");
+  await openIvanov(page);
+  const drawer = page.getByRole("dialog", { name: IVANOV.fullName as string });
+  await expect(drawer).toBeVisible();
+  await expect(page).toHaveURL(/candidate=cand-ivanov/);
+  await expect(
+    drawer.getByText("Документы (3)", { exact: true }),
+  ).toBeVisible();
+  await expect(drawer.getByText("ИНН", { exact: true })).toBeVisible();
+  await expect(
+    drawer.getByText("Документ принят", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    drawer.getByRole("button", { name: "Закрыть профиль кандидата" }),
+  ).toBeFocused();
+  for (let i = 0; i < 10; i++) await page.keyboard.press("Tab");
+  expect(
+    await drawer.evaluate((el) => el.contains(document.activeElement)),
+  ).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  await expect(
+    ivanovRow(page).getByRole("button", { name: /Открыть документы/ }),
+  ).toBeFocused();
+  expect(new URL(page.url()).searchParams.get("positionCode")).toBe("POS1");
+});
+
+test("drawer URL supports reload, back/forward and navigation to a document version", async ({
+  page,
+}) => {
+  await mockQueue(page);
+  await gotoAuthed(page, "/review");
+  await openIvanov(page);
+  await page.goBack();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.goForward();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("dialog", { name: IVANOV.fullName as string }),
+  ).toBeVisible();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Паспорт, версия 2" })
+    .click();
+  await expect(page).toHaveURL(/\/review\/doc-pass-ivanov\?version=2/);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("direct drawer link resolves profile outside the current queue and closes on backdrop", async ({
+  page,
+}) => {
+  await mockQueue(page);
+  await gotoAuthed(page, "/review?hasMentor=false&candidate=cand-ivanov");
+  await expect(page.getByRole("region", { name: "Аннова Анна" })).toBeVisible();
+  const drawer = page.getByRole("dialog", { name: IVANOV.fullName as string });
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toContainText("Подтверждено 3 из 5");
+  await page.mouse.click(20, 150);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.get("hasMentor")).toBe("false");
+});
+
+test("drawer handles document errors with retry and an empty document list", async ({
+  page,
+}) => {
+  await mockQueue(page);
+  let failed = true;
+  await page.route("**/api/v1/candidates/cand-ivanov/documents", (route) =>
+    route.fulfill({
+      status: failed ? 403 : 200,
+      contentType: "application/json",
+      body: JSON.stringify(failed ? {} : { items: [] }),
+    }),
+  );
+  await gotoAuthed(page, "/review?candidate=cand-ivanov");
+  const drawer = page.getByRole("dialog");
+  await expect(drawer.getByRole("alert")).toContainText(
+    "Не удалось загрузить документы.",
+  );
+  failed = false;
+  await drawer.getByRole("button", { name: "Повторить", exact: true }).click();
+  await expect(drawer).toContainText("У кандидата нет документов.");
+});
+
+test("mobile drawer fills the screen without horizontal overflow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockQueue(page);
+  await gotoAuthed(page, "/review?candidate=cand-ivanov");
+  const drawer = page.getByRole("dialog", { name: IVANOV.fullName as string });
+  await expect(drawer).toBeVisible();
+  const box = await drawer.locator(".candidate-drawer-panel").boundingBox();
+  expect(box?.width).toBeCloseTo(390, 1);
+  expect(box?.height).toBeCloseTo(844, 1);
+  await expect
+    .poll(() => drawer.evaluate((el) => el.scrollWidth <= el.clientWidth))
+    .toBe(true);
+  await drawer
+    .getByRole("button", { name: "Закрыть профиль кандидата" })
+    .click();
+  await expect(drawer).toHaveCount(0);
 });

@@ -13,7 +13,9 @@ import {
   reviewGroupKey,
 } from "./review-groups";
 
-function candidate(overrides: Partial<CandidateProfileDto>): CandidateProfileDto {
+function candidate(
+  overrides: Partial<CandidateProfileDto>,
+): CandidateProfileDto {
   return {
     id: "cand-1",
     chatUuid: null,
@@ -86,13 +88,19 @@ describe("groupReviewItems", () => {
     ];
     const groups = groupReviewItems(items);
     expect(groups.map((g) => g.key)).toEqual(["c1", "c2", "lonely-chat"]);
-    expect(groups[0]!.documents.map((d) => d.title)).toEqual(["Паспорт", "СНИЛС"]);
+    expect(groups[0]!.documents.map((d) => d.title)).toEqual([
+      "Паспорт",
+      "СНИЛС",
+    ]);
     expect(groups[0]!.documents).toHaveLength(2);
     expect(groups[2]!.candidate).toBeNull();
   });
 
   it("merges documents that share chatUuid/code1c fallbacks", () => {
-    const items = [doc("d1", { code1c: "0007" }), doc("d2", { code1c: "0007" })];
+    const items = [
+      doc("d1", { code1c: "0007" }),
+      doc("d2", { code1c: "0007" }),
+    ];
     const groups = groupReviewItems(items);
     expect(groups).toHaveLength(1);
     expect(groups[0]!.key).toBe("0007");
@@ -138,7 +146,9 @@ describe("lkEmployeeUrl", () => {
 
 describe("formatCandidateObject", () => {
   it("renders the full object line and an em dash when unknown", () => {
-    expect(formatCandidateObject("ТЦ Север", "PRJ1")).toBe("Объект: ТЦ Север (PRJ1)");
+    expect(formatCandidateObject("ТЦ Север", "PRJ1")).toBe(
+      "Объект: ТЦ Север (PRJ1)",
+    );
     expect(formatCandidateObject("ТЦ Север", null)).toBe("Объект: ТЦ Север");
     expect(formatCandidateObject(null, "PRJ1")).toBe("Объект: (PRJ1)");
     expect(formatCandidateObject(null, null)).toBe("Объект: —");
@@ -177,46 +187,65 @@ describe("parseReviewSearchParams", () => {
   it("parses every filter field and rejects invalid status/dates", () => {
     const filters = parseReviewSearchParams({
       status: "RETURNED",
-      q: "  Иван  ",
+      candidateId: "cand-1",
       documentTypeCode: "PASSPORT",
-      citizenship: "ru",
-      manager: "Петров",
-      mentor: "Сидоров",
+      citizenship: "RU",
+      managerCode1c: "M001",
+      mentorCode1c: "N001",
       hasMentor: "true",
       birthDateFrom: "1990-01-01",
       birthDateTo: "not-a-date",
-      positionCode: "pos1",
-      projectCode: "prj1",
+      positionCode: "POS1",
+      projectCode: "PRJ1",
       cursor: "abc",
+      candidate: "cand-1",
     });
     expect(filters).toEqual({
       status: "RETURNED",
-      q: "Иван",
+      candidateId: "cand-1",
       documentTypeCode: "PASSPORT",
-      citizenship: "ru",
-      manager: "Петров",
-      mentor: "Сидоров",
+      citizenship: "RU",
+      managerCode1c: "M001",
+      mentorCode1c: "N001",
       hasMentor: true,
       birthDateFrom: "1990-01-01",
       birthDateTo: undefined,
-      positionCode: "pos1",
-      projectCode: "prj1",
+      positionCode: "POS1",
+      projectCode: "PRJ1",
       cursor: "abc",
+      candidate: "cand-1",
     });
   });
 
   it("falls back to IN_REVIEW and maps hasMentor=false", () => {
-    const filters = parseReviewSearchParams({ status: "BOGUS", hasMentor: "false", q: "   " });
+    const filters = parseReviewSearchParams({
+      status: "BOGUS",
+      hasMentor: "false",
+      candidateId: "   ",
+    });
     expect(filters.status).toBe("IN_REVIEW");
     expect(filters.hasMentor).toBe(false);
-    expect(filters.q).toBeUndefined();
+    expect(filters.candidateId).toBeUndefined();
     expect(hasActiveReviewFilters(filters)).toBe(true);
   });
 
   it("reports no active filters for a clean queue request", () => {
     expect(hasActiveReviewFilters(parseReviewSearchParams({}))).toBe(false);
     expect(
-      hasActiveReviewFilters(parseReviewSearchParams({ status: "IN_REVIEW", cursor: "x" })),
+      hasActiveReviewFilters(
+        parseReviewSearchParams({ status: "IN_REVIEW", cursor: "x" }),
+      ),
     ).toBe(false);
+  });
+
+  it("ignores the drawer selection when detecting active filters", () => {
+    expect(
+      hasActiveReviewFilters(parseReviewSearchParams({ candidate: "cand-1" })),
+    ).toBe(false);
+    expect(
+      hasActiveReviewFilters(
+        parseReviewSearchParams({ candidate: "cand-1", citizenship: "RU" }),
+      ),
+    ).toBe(true);
   });
 });

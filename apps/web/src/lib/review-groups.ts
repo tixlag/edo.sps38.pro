@@ -16,7 +16,9 @@ export function lkBaseUrl(): string {
  * Public LK employee card URL, or null when there is no 1C code.
  * Format: {base}/public/employee/{encodeURIComponent(code1C)}?size_width=WIDE_1200
  */
-export function lkEmployeeUrl(code1c: string | null | undefined): string | null {
+export function lkEmployeeUrl(
+  code1c: string | null | undefined,
+): string | null {
   if (!code1c) return null;
   return `${lkBaseUrl()}/public/employee/${encodeURIComponent(code1c)}?size_width=WIDE_1200`;
 }
@@ -35,7 +37,9 @@ export function candidateInitials(fullName: string | null | undefined): string {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** "1990-05-17" -> "17.05.1990". Anything else passes through (or "—"). */
-export function formatBirthDateRu(birthDate: string | null | undefined): string {
+export function formatBirthDateRu(
+  birthDate: string | null | undefined,
+): string {
   if (!birthDate) return "—";
   const match = DATE_RE.exec(birthDate.trim());
   if (!match) return birthDate;
@@ -120,9 +124,14 @@ export function groupReviewItems(items: DocumentDto[]): ReviewCandidateGroup[] {
     const existing = groups.get(key);
     if (existing) {
       existing.documents.push(doc);
-      if (!existing.candidate && doc.candidate) existing.candidate = doc.candidate;
+      if (!existing.candidate && doc.candidate)
+        existing.candidate = doc.candidate;
     } else {
-      groups.set(key, { key, candidate: doc.candidate ?? null, documents: [doc] });
+      groups.set(key, {
+        key,
+        candidate: doc.candidate ?? null,
+        documents: [doc],
+      });
     }
   }
   const list = [...groups.values()];
@@ -146,17 +155,28 @@ const REVIEW_TABS: ReviewTab[] = ["IN_REVIEW", "ERP_PENDING", "RETURNED"];
 
 export interface ReviewQueueFilters {
   status: ReviewTab;
-  q?: string;
+  /** Exact candidate id (ФИО selector over review-candidates). */
+  candidateId?: string;
   documentTypeCode?: string;
+  /** Exact citizenship code (review facets). */
   citizenship?: string;
-  manager?: string;
-  mentor?: string;
+  /** Exact manager code_1c (review facets). */
+  managerCode1c?: string;
+  /** Exact mentor code_1c (review facets). */
+  mentorCode1c?: string;
   hasMentor?: boolean;
   birthDateFrom?: string;
   birthDateTo?: string;
+  /** Exact LK position code_1c (positions directory). */
   positionCode?: string;
+  /** Exact project code (review facets). */
   projectCode?: string;
   cursor?: string;
+  /**
+   * Open candidate drawer (view state only: never sent to the API, never a
+   * filter, ignored by {@link hasActiveReviewFilters}).
+   */
+  candidate?: string;
 }
 
 function textParam(value: unknown): string | undefined {
@@ -177,36 +197,41 @@ function booleanParam(value: unknown): boolean | undefined {
 }
 
 /** Parse untrusted TanStack Router search params into review-queue filters. */
-export function parseReviewSearchParams(raw: Record<string, unknown>): ReviewQueueFilters {
+export function parseReviewSearchParams(
+  raw: Record<string, unknown>,
+): ReviewQueueFilters {
   const status = String(raw.status ?? "IN_REVIEW");
   return {
-    status: (REVIEW_TABS as string[]).includes(status) ? (status as ReviewTab) : "IN_REVIEW",
-    q: textParam(raw.q),
+    status: (REVIEW_TABS as string[]).includes(status)
+      ? (status as ReviewTab)
+      : "IN_REVIEW",
+    candidateId: textParam(raw.candidateId),
     documentTypeCode: textParam(raw.documentTypeCode),
     citizenship: textParam(raw.citizenship),
-    manager: textParam(raw.manager),
-    mentor: textParam(raw.mentor),
+    managerCode1c: textParam(raw.managerCode1c),
+    mentorCode1c: textParam(raw.mentorCode1c),
     hasMentor: booleanParam(raw.hasMentor),
     birthDateFrom: dateParam(raw.birthDateFrom),
     birthDateTo: dateParam(raw.birthDateTo),
     positionCode: textParam(raw.positionCode),
     projectCode: textParam(raw.projectCode),
     cursor: textParam(raw.cursor),
+    candidate: textParam(raw.candidate),
   };
 }
 
-/** True when any server-side filter (besides status tab and cursor) is set. */
+/** True when any server-side filter (besides status tab, cursor, drawer) is set. */
 export function hasActiveReviewFilters(filters: ReviewQueueFilters): boolean {
   return Boolean(
-    filters.q ??
-      filters.documentTypeCode ??
-      filters.citizenship ??
-      filters.manager ??
-      filters.mentor ??
-      filters.birthDateFrom ??
-      filters.birthDateTo ??
-      filters.positionCode ??
-      filters.projectCode ??
-      (filters.hasMentor !== undefined ? "hasMentor" : undefined),
+    filters.candidateId ??
+    filters.documentTypeCode ??
+    filters.citizenship ??
+    filters.managerCode1c ??
+    filters.mentorCode1c ??
+    filters.birthDateFrom ??
+    filters.birthDateTo ??
+    filters.positionCode ??
+    filters.projectCode ??
+    (filters.hasMentor !== undefined ? "hasMentor" : undefined),
   );
 }

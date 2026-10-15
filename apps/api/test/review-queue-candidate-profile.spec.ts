@@ -81,7 +81,9 @@ describe("candidate snapshot contract", () => {
   it("maps every mentor code alias and turns an empty code into NULL", () => {
     for (const code of ["code1C", "code1c", "code_1c"]) {
       expect(
-        candidateSnapshotSchema.parse({ mentor: { name: "Н", [code]: " N9 " } }),
+        candidateSnapshotSchema.parse({
+          mentor: { name: "Н", [code]: " N9 " },
+        }),
       ).toMatchObject({ mentorCode1c: "N9" });
     }
     expect(
@@ -105,9 +107,7 @@ describe("candidate snapshot contract", () => {
   });
   it("rejects bad dates, citizenship and over-limit text", () => {
     for (const birthDate of ["17.05.1990", "1990-13-01", "1990-02-31", "x"]) {
-      expect(() =>
-        candidateSnapshotSchema.parse({ birthDate }),
-      ).toThrow();
+      expect(() => candidateSnapshotSchema.parse({ birthDate })).toThrow();
     }
     expect(() =>
       candidateSnapshotSchema.parse({ citizenship: "rus" }),
@@ -185,9 +185,9 @@ describe("snapshot persistence mapping", () => {
   it("parses birthDate as UTC midnight for DATE columns", () => {
     const update = snapshotUpdateInput({ birthDate: "1990-05-17" })!;
     expect(update.birthDate).toEqual(new Date("1990-05-17T00:00:00.000Z"));
-    expect(() =>
-      snapshotUpdateInput({ birthDate: "1990-02-31" }),
-    ).toThrow("birthDate");
+    expect(() => snapshotUpdateInput({ birthDate: "1990-02-31" })).toThrow(
+      "birthDate",
+    );
     expect(() => parseBirthDateBound("2020-13-01", "birthDateFrom")).toThrow(
       "birthDateFrom",
     );
@@ -592,6 +592,48 @@ describe("reviewDocuments candidate progress", () => {
     { allRu: false, allForeign: true, positions: [] },
   ];
 
+  it("enriches all candidate documents for a direct drawer link under the same scope", async () => {
+    const docs = [
+      docRow("d1", profileRow()),
+      docRow("d2", profileRow(), "APPROVED"),
+    ];
+    const { service, findMany, groupBy } = setup(docs, {
+      catalog,
+      grouped: [{ candidateId: "c1", status: "APPROVED", _count: { _all: 1 } }],
+    });
+    const guard = vi
+      .spyOn(access, "candidate")
+      .mockResolvedValue({ id: "c1" } as never);
+    try {
+      const scoped = {
+        ...fullAccess,
+        accessRules: { "20007": ["98"] },
+      } as never;
+      const result = await service.candidateDocuments("c1", scoped);
+      expect(guard).toHaveBeenCalledWith("c1", scoped);
+      expect(findMany.mock.calls[0][0].where).toMatchObject({
+        candidateId: "c1",
+        OR: expect.any(Array),
+      });
+      expect(findMany.mock.calls[0][0].where).not.toHaveProperty("status");
+      expect(result.items.map((doc) => doc.status)).toEqual([
+        "IN_REVIEW",
+        "APPROVED",
+      ]);
+      expect(result.items[0].candidate).toMatchObject({
+        fullName: "Иван Петров",
+        approvedDocuments: 1,
+        requiredDocuments: 2,
+      });
+      expect(groupBy.mock.calls[0][0].where).toMatchObject({
+        candidateId: { in: ["c1"] },
+        OR: expect.any(Array),
+      });
+    } finally {
+      guard.mockRestore();
+    }
+  });
+
   it("counts APPROVED per candidate and required from position+citizenship", async () => {
     const docs = [
       docRow("d1", profileRow({ id: "c1" })),
@@ -610,7 +652,9 @@ describe("reviewDocuments candidate progress", () => {
       catalog,
     });
     const page = await service.reviewDocuments(fullAccess, { limit: 10 });
-    const byId = new Map(page.items.map((d) => [d.candidate!.id, d.candidate!]));
+    const byId = new Map(
+      page.items.map((d) => [d.candidate!.id, d.candidate!]),
+    );
     // c1 (ru + POS1): allRu T1 + position T2.
     expect(byId.get("c1")).toMatchObject({
       approvedDocuments: 2,
