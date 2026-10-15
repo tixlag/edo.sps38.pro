@@ -43,6 +43,48 @@ export function formatBirthDateRu(birthDate: string | null | undefined): string 
   return `${day}.${month}.${year}`;
 }
 
+/**
+ * Full "Объект: ..." header line from the ERP snapshot.
+ * Both null/blank -> "Объект: —".
+ */
+export function formatCandidateObject(
+  projectName: string | null | undefined,
+  projectCode: string | null | undefined,
+): string {
+  const name = (projectName ?? "").trim();
+  const code = (projectCode ?? "").trim();
+  if (name && code) return `Объект: ${name} (${code})`;
+  if (name) return `Объект: ${name}`;
+  if (code) return `Объект: (${code})`;
+  return "Объект: —";
+}
+
+/**
+ * "Подтверждено 3 из 5"; unknown catalog total (no positionCode) ->
+ * "Подтверждено 3 · всего ожидается: неизвестно (нет должности)".
+ */
+export function formatDocumentProgress(
+  approved: number,
+  required: number | null | undefined,
+): string {
+  if (required === null || required === undefined) {
+    return `Подтверждено ${approved} · всего ожидается: неизвестно (нет должности)`;
+  }
+  return `Подтверждено ${approved} из ${required}`;
+}
+
+/**
+ * Progress-bar percent (0–100, clamped), or null when there is no
+ * meaningful total (null/zero) so the caller renders no bar.
+ */
+export function documentProgressPercent(
+  approved: number,
+  required: number | null | undefined,
+): number | null {
+  if (required === null || required === undefined || required <= 0) return null;
+  return Math.min(100, Math.max(0, Math.round((approved / required) * 100)));
+}
+
 export interface ReviewCandidateGroup {
   key: string;
   candidate: CandidateProfileDto | null;

@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { CandidateProfileDto, DocumentDto } from "@edo/api-client";
 import {
   candidateInitials,
+  documentProgressPercent,
   formatBirthDateRu,
+  formatCandidateObject,
+  formatDocumentProgress,
   groupReviewItems,
   hasActiveReviewFilters,
   lkEmployeeUrl,
@@ -29,6 +32,8 @@ function candidate(overrides: Partial<CandidateProfileDto>): CandidateProfileDto
     mentorCode1c: null,
     isReemployment: false,
     profileSyncedAt: null,
+    approvedDocuments: 0,
+    requiredDocuments: null,
     ...overrides,
   };
 }
@@ -128,6 +133,43 @@ describe("lkEmployeeUrl", () => {
       "https://lk.sps38.pro/public/employee/0001?size_width=WIDE_1200",
     );
     vi.unstubAllEnvs();
+  });
+});
+
+describe("formatCandidateObject", () => {
+  it("renders the full object line and an em dash when unknown", () => {
+    expect(formatCandidateObject("ТЦ Север", "PRJ1")).toBe("Объект: ТЦ Север (PRJ1)");
+    expect(formatCandidateObject("ТЦ Север", null)).toBe("Объект: ТЦ Север");
+    expect(formatCandidateObject(null, "PRJ1")).toBe("Объект: (PRJ1)");
+    expect(formatCandidateObject(null, null)).toBe("Объект: —");
+    expect(formatCandidateObject("  ", undefined)).toBe("Объект: —");
+  });
+});
+
+describe("formatDocumentProgress", () => {
+  it("counts approved against the catalog total", () => {
+    expect(formatDocumentProgress(3, 5)).toBe("Подтверждено 3 из 5");
+    expect(formatDocumentProgress(0, 0)).toBe("Подтверждено 0 из 0");
+  });
+
+  it("explains the unknown total when there is no position", () => {
+    expect(formatDocumentProgress(1, null)).toBe(
+      "Подтверждено 1 · всего ожидается: неизвестно (нет должности)",
+    );
+    expect(formatDocumentProgress(1, undefined)).toBe(
+      "Подтверждено 1 · всего ожидается: неизвестно (нет должности)",
+    );
+  });
+});
+
+describe("documentProgressPercent", () => {
+  it("returns a clamped percent and null without a usable total", () => {
+    expect(documentProgressPercent(3, 5)).toBe(60);
+    expect(documentProgressPercent(7, 5)).toBe(100);
+    expect(documentProgressPercent(0, 5)).toBe(0);
+    expect(documentProgressPercent(1, null)).toBeNull();
+    expect(documentProgressPercent(1, undefined)).toBeNull();
+    expect(documentProgressPercent(0, 0)).toBeNull();
   });
 });
 

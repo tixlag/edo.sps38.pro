@@ -27,7 +27,10 @@ import { DocumentReviewWorkspace } from "../components/DocumentReviewWorkspace";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
 import {
   candidateInitials,
+  documentProgressPercent,
   formatBirthDateRu,
+  formatCandidateObject,
+  formatDocumentProgress,
   groupReviewItems,
   hasActiveReviewFilters,
   lkEmployeeUrl,
@@ -119,6 +122,9 @@ function CandidateGroup({
   const candidate = group.candidate;
   const heading = candidate?.fullName?.trim() || "Без имени в профиле";
   const count = group.documents.length;
+  const progressPercent = candidate
+    ? documentProgressPercent(candidate.approvedDocuments, candidate.requiredDocuments)
+    : null;
   return (
     <section
       aria-label={heading}
@@ -142,7 +148,9 @@ function CandidateGroup({
             {candidate?.citizenship && (
               <Badge title="Гражданство">{candidate.citizenship.toUpperCase()}</Badge>
             )}
-            {candidate?.isReemployment && <Badge tone="info">Повторное</Badge>}
+            {candidate?.isReemployment === true && (
+              <Badge tone="warning">Повторный найм</Badge>
+            )}
           </span>
           <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[var(--muted-foreground)]">
             <span title="Дата рождения">
@@ -154,12 +162,9 @@ function CandidateGroup({
                 {candidate.positionCode ? ` (${candidate.positionCode})` : ""}
               </span>
             )}
-            {(candidate?.projectName ?? candidate?.projectCode) && (
-              <span title="Проект">
-                {candidate.projectName ?? "—"}
-                {candidate.projectCode ? ` (${candidate.projectCode})` : ""}
-              </span>
-            )}
+            <span title="Объект">
+              {formatCandidateObject(candidate?.projectName, candidate?.projectCode)}
+            </span>
           </span>
           <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[var(--muted-foreground)]">
             <span>
@@ -184,6 +189,32 @@ function CandidateGroup({
               )}
             </span>
           </span>
+          {candidate && (
+            <span className="mt-1 flex flex-wrap items-center gap-2">
+              <Badge>
+                {formatDocumentProgress(
+                  candidate.approvedDocuments,
+                  candidate.requiredDocuments,
+                )}
+              </Badge>
+              {progressPercent !== null && (
+                <span
+                  role="progressbar"
+                  aria-label="Прогресс подтверждения документов"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progressPercent}
+                  className="h-1 w-24 overflow-hidden rounded-full bg-[var(--muted)]"
+                >
+                  <span
+                    aria-hidden
+                    className="block h-full rounded-full bg-[var(--primary)]"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </span>
+              )}
+            </span>
+          )}
         </span>
         <span className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
           документов: {count}

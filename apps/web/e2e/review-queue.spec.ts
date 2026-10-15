@@ -20,6 +20,8 @@ function profile(id: string, rest: Record<string, unknown>) {
     mentorCode1c: null,
     isReemployment: false,
     profileSyncedAt: null,
+    approvedDocuments: 0,
+    requiredDocuments: null,
     ...rest,
   };
 }
@@ -37,6 +39,9 @@ const IVANOV = profile('cand-ivanov', {
   mentorName: 'Сидоров Сидор',
   mentorPosition: 'Наставник',
   mentorCode1c: 'N001',
+  isReemployment: true,
+  approvedDocuments: 3,
+  requiredDocuments: 5,
 });
 
 const DOCS: DocumentDto[] = [
@@ -91,6 +96,8 @@ const DOCS: DocumentDto[] = [
       citizenship: 'kz',
       managerName: 'Без кода',
       mentorName: null,
+      approvedDocuments: 1,
+      requiredDocuments: null,
     }),
   },
 ];
@@ -174,6 +181,29 @@ test('review queue groups documents by candidate with LK links', async ({ page }
   // Document rows open the versioned review page.
   await ivanov.getByRole('link', { name: 'Открыть →' }).first().click();
   await expect(page).toHaveURL(/\/review\/doc-pass-ivanov\?version=2/);
+});
+
+test('review queue shows candidate object, document progress and reemployment badge', async ({
+  page,
+}) => {
+  await mockQueue(page);
+  await gotoAuthed(page, '/review');
+  const groups = page.locator('section[aria-label]');
+  const ivanov = groups.nth(1);
+  // Object from the ERP snapshot, approved-vs-required progress + bar.
+  await expect(ivanov).toContainText('Объект: ТЦ Север (PRJ1)');
+  await expect(ivanov).toContainText('Подтверждено 3 из 5');
+  await expect(ivanov.getByText('Повторный найм')).toBeVisible();
+  const bar = ivanov.locator('[role="progressbar"]');
+  await expect(bar).toHaveAttribute('aria-valuenow', '60');
+  // Unknown catalog total (no position): short notice, no bar, no badge.
+  const anna = groups.first();
+  await expect(anna).toContainText('Объект: —');
+  await expect(anna).toContainText(
+    'Подтверждено 1 · всего ожидается: неизвестно (нет должности)',
+  );
+  await expect(anna.getByText('Повторный найм')).toHaveCount(0);
+  await expect(anna.locator('[role="progressbar"]')).toHaveCount(0);
 });
 
 test('review queue filters live in the URL and reset cleanly', async ({ page }) => {
