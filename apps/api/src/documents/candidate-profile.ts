@@ -121,8 +121,21 @@ type ProfileRow = {
   profileSyncedAt: Date | null;
 };
 
-/** Serializes a candidate row into the CandidateProfileDto wire shape. */
-export function toCandidateProfile(row: ProfileRow | null | undefined) {
+/** Per-request progress enrichment for the review queue. */
+export interface CandidateProfileEnrichment {
+  approvedDocuments?: number;
+  requiredDocuments?: number | null;
+}
+
+/**
+ * Serializes a candidate row into the CandidateProfileDto wire shape.
+ * Progress defaults to empty values; the review queue patches it via
+ * enrichReviewCandidates (batched queries, no N+1).
+ */
+export function toCandidateProfile(
+  row: ProfileRow | null | undefined,
+  enrichment?: CandidateProfileEnrichment,
+) {
   if (!row) return null;
   return {
     id: row.id,
@@ -144,6 +157,8 @@ export function toCandidateProfile(row: ProfileRow | null | undefined) {
     profileSyncedAt: row.profileSyncedAt
       ? row.profileSyncedAt.toISOString()
       : null,
+    approvedDocuments: enrichment?.approvedDocuments ?? 0,
+    requiredDocuments: enrichment?.requiredDocuments ?? null,
   };
 }
 

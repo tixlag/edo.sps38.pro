@@ -8,7 +8,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { StorageService } from "../storage/storage.service";
 import { DocumentAccessService } from "./document-access.service";
-import { FIELD_LABELS } from "./document-contract";
+import { applicable, FIELD_LABELS } from "./document-contract";
 import {
   buildCandidateProfileWhere,
   toCandidateProfile,
@@ -440,9 +440,67 @@ export class DocumentReadService {
     });
     const ids = rows.slice(0, limit).map((r) => r.id);
     const documents = await this.documents({ id: { in: ids } });
+    const items = ids.map((id) => documents.items.find((d) => d.id === id)!);
+    await this.enrichReviewCandidates(principal, items);
     return {
-      items: ids.map((id) => documents.items.find((d) => d.id === id)!),
+      items,
       nextCursor: rows.length > limit ? ids[ids.length - 1] : null,
     };
+  }
+
+  /**
+   * Patches review-queue candidate profiles with the per-candidate document
+   * progress. Counters are global per candidate and tab-independent: APPROVED
+   * counts run over the same access scope as the queue (documentWhere)
+   * without the status/tab filters, so "approved X of Y" stays stable across
+   * tabs. Exactly 2 queries per page (scoped groupBy, catalog snapshot) —
+   * never N+1 per document.
+   */
+  private async enrichReviewCandidates(
+    principal: AuthPrincipal,
+    items: DocumentDto[],
+  ): Promise<void> {
+    const candidateIds = [
+      ...new Set(
+        items
+          .map((item) => item.candidate?.id)
+          .filter((id): id is string => id !== undefined && id !== null),
+      ),
+    ];
+    if (candidateIds.length === 0) return;
+    const [grouped, catalog] = await Promise.all([
+      this.prisma.document.groupBy({
+        by: ["candidateId", "status"],
+        where: {
+          candidateId: { in: candidateIds },
+          ...this.access.documentWhere(principal),
+        },
+        _count: { _all: true },
+      }),
+      // Catalog snapshot only: no ERP refresh inside the queue read path.
+      this.prisma.documentType.findMany({
+        where: { catalogSyncedAt: { not: null } },
+        include: { positions: true },
+      }),
+    ]);
+    const approved = new Map<string, number>();
+    for (const row of grouped) {
+      if (row.candidateId && row.status === "APPROVED")
+        approved.set(
+          row.candidateId,
+          (approved.get(row.candidateId) ?? 0) + row._count._all,
+        );
+    }
+    for (const item of items) {
+      const profile = item.candidate;
+      if (!profile) continue;
+      const positionCode = profile.positionCode;
+      const citizenship = (profile.citizenship ?? "ru").toLowerCase();
+      profile.approvedDocuments = approved.get(profile.id) ?? 0;
+      profile.requiredDocuments = positionCode
+        ? catalog.filter((type) => applicable(type, positionCode, citizenship))
+            .length
+        : null;
+    }
   }
 }

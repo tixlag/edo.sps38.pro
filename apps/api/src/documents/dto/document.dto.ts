@@ -200,6 +200,18 @@ export class CandidateProfileDto {
   @ApiProperty() isReemployment!: boolean;
   @ApiProperty({ type: String, nullable: true, format: "date-time" })
   profileSyncedAt!: string | null;
+  @ApiProperty({
+    description:
+      "Candidate APPROVED documents under the queue access scope (all tabs)",
+  })
+  approvedDocuments!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      "Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown",
+  })
+  requiredDocuments!: number | null;
 }
 export class DocumentDto {
   @ApiProperty({

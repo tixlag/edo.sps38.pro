@@ -567,6 +567,13 @@ export interface CandidateProfileDto {
   isReemployment: boolean;
   /** @nullable */
   profileSyncedAt: string | null;
+  /** Candidate APPROVED documents under the queue access scope (all tabs) */
+  approvedDocuments: number;
+  /**
+   * Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown
+   * @nullable
+   */
+  requiredDocuments: number | null;
 }
 
 /**

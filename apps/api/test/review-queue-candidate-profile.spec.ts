@@ -232,7 +232,35 @@ describe("snapshot persistence mapping", () => {
       mentorCode1c: null,
       isReemployment: false,
       profileSyncedAt: "2026-01-01T00:00:00.000Z",
+      approvedDocuments: 0,
+      requiredDocuments: null,
     });
+  });
+  it("maps progress from the enrichment with empty defaults", () => {
+    expect(
+      toCandidateProfile(
+        {
+          id: "c1",
+          chatUuid: null,
+          code1c: null,
+          fullName: null,
+          birthDate: null,
+          citizenship: "ru",
+          positionCode: "0000491",
+          positionName: null,
+          projectCode: null,
+          projectName: null,
+          managerName: null,
+          managerCode1c: null,
+          mentorName: null,
+          mentorPosition: null,
+          mentorCode1c: null,
+          isReemployment: false,
+          profileSyncedAt: null,
+        },
+        { approvedDocuments: 2, requiredDocuments: 5 },
+      ),
+    ).toMatchObject({ approvedDocuments: 2, requiredDocuments: 5 });
   });
 });
 
@@ -392,9 +420,21 @@ describe("reviewDocuments with profile filters", () => {
     },
     versions: [{ version: 1, revision: 0, delivery: null }],
   };
-  const readsWith = (findMany: ReturnType<typeof vi.fn>) =>
+  const readsWith = (
+    findMany: ReturnType<typeof vi.fn>,
+    extra: {
+      groupBy?: ReturnType<typeof vi.fn>;
+      catalog?: ReturnType<typeof vi.fn>;
+    } = {},
+  ) =>
     new DocumentReadService(
-      { document: { findMany } } as never,
+      {
+        document: {
+          findMany,
+          groupBy: extra.groupBy ?? vi.fn(async () => []),
+        },
+        documentType: { findMany: extra.catalog ?? vi.fn(async () => []) },
+      } as never,
       access,
       null as never,
     );
@@ -484,5 +524,137 @@ describe("ReviewDocumentsQueryDto validation", () => {
     // Regex accepts the shape, the service rejects the impossible calendar date;
     // the flag must be a real boolean after coercion.
     expect(errors.map((e) => e.property)).toContain("hasMentor");
+  });
+});
+
+describe("reviewDocuments candidate progress", () => {
+  const access = new DocumentAccessService(null as never);
+  const fullAccess = {
+    uuid: "reviewer",
+    code_1c: null,
+    sid: null,
+    accessRules: { "20009": [] },
+  } as never;
+  const profileRow = (overrides: Record<string, unknown> = {}) => ({
+    id: "c1",
+    chatUuid: "chat-1",
+    code1c: null,
+    fullName: "Иван Петров",
+    birthDate: new Date("1990-05-17T00:00:00.000Z"),
+    citizenship: "ru",
+    positionCode: "POS1",
+    positionName: "Водитель",
+    projectCode: "PRJ",
+    projectName: "Проект Север",
+    managerName: null,
+    managerCode1c: null,
+    mentorName: null,
+    mentorPosition: null,
+    mentorCode1c: null,
+    isReemployment: false,
+    profileSyncedAt: null,
+    ...overrides,
+  });
+  const docRow = (id: string, candidate: unknown, status = "IN_REVIEW") => ({
+    id,
+    status,
+    currentVersion: 1,
+    documentType: { code: "PASSPORT", title: "Паспорт", erpUid: "u1" },
+    candidate,
+    versions: [{ version: 1, revision: 0, delivery: null }],
+  });
+  const setup = (
+    docs: { id: string }[],
+    opts: {
+      grouped?: unknown[];
+      catalog?: unknown[];
+    } = {},
+  ) => {
+    const findMany = vi.fn(async (args: { select?: unknown }) =>
+      args.select ? docs.map((d) => ({ id: d.id })) : (docs as unknown[]),
+    );
+    const groupBy = vi.fn(async () => opts.grouped ?? []);
+    const catalog = vi.fn(async () => opts.catalog ?? []);
+    const service = new DocumentReadService(
+      {
+        document: { findMany, groupBy },
+        documentType: { findMany: catalog },
+      } as never,
+      access,
+      null as never,
+    );
+    return { service, findMany, groupBy, catalog };
+  };
+  // Catalog: T1 for all RU, T2 for POS1 only, T3 for all foreigners.
+  const catalog = [
+    { allRu: true, allForeign: false, positions: [] },
+    { allRu: false, allForeign: false, positions: [{ code1c: "POS1" }] },
+    { allRu: false, allForeign: true, positions: [] },
+  ];
+
+  it("counts APPROVED per candidate and required from position+citizenship", async () => {
+    const docs = [
+      docRow("d1", profileRow({ id: "c1" })),
+      docRow("d2", profileRow({ id: "c2", positionCode: null })),
+      docRow(
+        "d3",
+        profileRow({ id: "c3", positionCode: "POS9", citizenship: "kz" }),
+      ),
+    ];
+    const { service } = setup(docs, {
+      grouped: [
+        { candidateId: "c1", status: "APPROVED", _count: { _all: 2 } },
+        { candidateId: "c1", status: "IN_REVIEW", _count: { _all: 1 } },
+        { candidateId: "c2", status: "APPROVED", _count: { _all: 1 } },
+      ],
+      catalog,
+    });
+    const page = await service.reviewDocuments(fullAccess, { limit: 10 });
+    const byId = new Map(page.items.map((d) => [d.candidate!.id, d.candidate!]));
+    // c1 (ru + POS1): allRu T1 + position T2.
+    expect(byId.get("c1")).toMatchObject({
+      approvedDocuments: 2,
+      requiredDocuments: 2,
+    });
+    // c2 without positionCode: approved still counts, required is null.
+    expect(byId.get("c2")).toMatchObject({
+      approvedDocuments: 1,
+      requiredDocuments: null,
+    });
+    // c3 (kz + unknown POS9): only allForeign T3.
+    expect(byId.get("c3")).toMatchObject({
+      approvedDocuments: 0,
+      requiredDocuments: 1,
+    });
+  });
+  it("keeps counters global across tabs and under the 20007 scope", async () => {
+    const docs = [docRow("d1", profileRow(), "RETURNED")];
+    const scoped = {
+      ...fullAccess,
+      accessRules: { "20007": ["98"] },
+    } as never;
+    const { service, findMany, groupBy } = setup(docs, { catalog });
+    const page = await service.reviewDocuments(scoped, {
+      limit: 10,
+      status: "RETURNED",
+    });
+    expect(page.items).toHaveLength(1);
+    // Queue itself is tab-filtered and scoped...
+    expect(findMany.mock.calls[0][0].where).toMatchObject({
+      status: "RETURNED",
+      OR: expect.any(Array),
+    });
+    // ...but the APPROVED counter ignores the tab filter and reuses the scope,
+    // so foreign-location candidates never leak into the counters.
+    expect(groupBy).toHaveBeenCalledTimes(1);
+    const counterWhere = groupBy.mock.calls[0][0].where;
+    expect(counterWhere.candidateId).toEqual({ in: ["c1"] });
+    expect(counterWhere.OR).toBeDefined();
+    expect(counterWhere).not.toHaveProperty("status");
+    expect(page.items[0].candidate).toMatchObject({
+      projectCode: "PRJ",
+      projectName: "Проект Север",
+      approvedDocuments: 0,
+    });
   });
 });
