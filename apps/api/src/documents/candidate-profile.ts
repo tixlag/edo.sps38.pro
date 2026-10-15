@@ -13,6 +13,9 @@ export interface ReviewProfileFilters {
   birthDateTo?: string;
   positionCode?: string;
   projectCode?: string;
+  candidateId?: string;
+  managerCode1c?: string;
+  mentorCode1c?: string;
 }
 
 type SnapshotRow = {
@@ -215,6 +218,12 @@ export function buildCandidateProfileWhere(
   if (positionCode) and.push({ positionCode });
   const projectCode = text(filters.projectCode);
   if (projectCode) and.push({ projectCode });
+  const candidateId = text(filters.candidateId);
+  if (candidateId) and.push({ id: candidateId });
+  const managerCode1c = text(filters.managerCode1c);
+  if (managerCode1c) and.push({ managerCode1c });
+  const mentorCode1c = text(filters.mentorCode1c);
+  if (mentorCode1c) and.push({ mentorCode1c });
   if (and.length === 0) return undefined;
   return and.length === 1 ? and[0] : { AND: and };
 }

@@ -58,6 +58,11 @@ import {
   DocumentDto,
   ReviewDocumentsQueryDto,
   ReviewDocumentsDto,
+  PositionListDto,
+  PositionQueryDto,
+  ReviewDocumentFacetsDto,
+  ReviewCandidateListDto,
+  ReviewCandidatesQueryDto,
 } from "./dto/document.dto";
 import { applyDecorators } from "@nestjs/common";
 import {
@@ -267,6 +272,42 @@ export class ManualDocumentReviewController {
     @Query() query: ReviewDocumentsQueryDto,
   ) {
     return this.reads.reviewDocuments(principal, query);
+  }
+  @Get("review-documents/facets")
+  @RequireAccessRule(EdoAccessRule.ACCESS)
+  @ApiOperation({
+    operationId: "getReviewDocumentFacets",
+    summary:
+      "Distinct manager/mentor/project/citizenship values inside the queue access scope",
+  })
+  @ApiResponse({ status: 200, type: ReviewDocumentFacetsDto })
+  facets(@CurrentPrincipal() principal: AuthPrincipal) {
+    return this.reads.reviewDocumentFacets(principal);
+  }
+  @Get("review-candidates")
+  @RequireAccessRule(EdoAccessRule.ACCESS)
+  @ApiOperation({
+    operationId: "listReviewCandidates",
+    summary: "Candidates owning scoped review documents (fullName selector)",
+  })
+  @ApiResponse({ status: 200, type: ReviewCandidateListDto })
+  reviewCandidates(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Query() query: ReviewCandidatesQueryDto,
+  ) {
+    return this.reads.reviewCandidates(principal, query);
+  }
+  @Get("positions")
+  @RequireAccessRule(EdoAccessRule.ACCESS)
+  @ApiOperation({
+    operationId: "listPositions",
+    summary: "LK position directory for the queue position filter",
+  })
+  @ApiResponse({ status: 200, type: PositionListDto })
+  positions(@Query() query: PositionQueryDto) {
+    // Reference directory: REQUIRE ACCESS guards it, the EDO location scope
+    // does not apply to positions.
+    return this.reads.positions(query);
   }
   @Get("documents/:documentId")
   @RequireAccessRule(EdoAccessRule.ACCESS)

@@ -246,8 +246,7 @@ export class DocumentListDto {
 export class DocumentTypeDto {
   @ApiProperty() code!: string;
   @ApiProperty() title!: string;
-}
-export class DocumentDefinitionDto {
+}export class DocumentDefinitionDto {
   @ApiProperty() name!: string;
   @ApiProperty() label!: string;
   @ApiProperty({ enum: ["text", "date", "boolean"] }) kind!: string;
@@ -265,6 +264,74 @@ export class CatalogDocumentTypesDto {
 }
 export class DocumentTypeListDto {
   @ApiProperty({ type: [DocumentTypeDto] }) items!: DocumentTypeDto[];
+}
+export class DocumentTypesQueryDto {
+  @ApiPropertyOptional({
+    description:
+      "Only ERP-catalog types (catalogSyncedAt != null), sorted by title",
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === "true" ? true : value === "false" ? false : value,
+  )
+  @IsBoolean()
+  catalogOnly?: boolean;
+}
+export class PositionDto {
+  @ApiProperty() code!: string;
+  @ApiProperty() name!: string;
+}
+export class PositionListDto {
+  @ApiProperty({ type: [PositionDto] }) items!: PositionDto[];
+}
+export class PositionQueryDto {
+  @ApiPropertyOptional({ description: "Case-insensitive name search" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  q?: string;
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+export class FacetPersonDto {
+  @ApiProperty() name!: string;
+  @ApiProperty({ type: String, nullable: true }) code1c!: string | null;
+}
+export class FacetProjectDto {
+  @ApiProperty() name!: string;
+  @ApiProperty({ type: String, nullable: true }) code!: string | null;
+}
+export class ReviewDocumentFacetsDto {
+  @ApiProperty({ type: [FacetPersonDto] }) managers!: FacetPersonDto[];
+  @ApiProperty({ type: [FacetPersonDto] }) mentors!: FacetPersonDto[];
+  @ApiProperty({ type: [FacetProjectDto] }) projects!: FacetProjectDto[];
+  @ApiProperty({ type: [String] }) citizenships!: string[];
+}
+export class ReviewCandidateDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ type: String, nullable: true }) fullName!: string | null;
+}
+export class ReviewCandidateListDto {
+  @ApiProperty({ type: [ReviewCandidateDto] }) items!: ReviewCandidateDto[];
+}
+export class ReviewCandidatesQueryDto {
+  @ApiPropertyOptional({ description: "Case-insensitive fullName search" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  q?: string;
+  @ApiPropertyOptional({ minimum: 1, maximum: 50, default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
 }
 export class UploadAcceptedDto {
   @ApiProperty() candidateId!: string;
@@ -577,6 +644,24 @@ export class ReviewDocumentsQueryDto extends CandidateQueryDto {
   @MaxLength(64)
   @Matches(/^\S+$/)
   projectCode?: string;
+  @ApiPropertyOptional({ description: "Exact candidate id" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  candidateId?: string;
+  @ApiPropertyOptional({ description: "Exact manager code_1c" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  managerCode1c?: string;
+  @ApiPropertyOptional({ description: "Exact mentor code_1c" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  mentorCode1c?: string;
 }
 export class ReviewDocumentsDto extends DocumentListDto {
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;

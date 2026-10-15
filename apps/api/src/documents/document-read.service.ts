@@ -22,6 +22,10 @@ import type {
   DocumentListDto,
   DocumentVersionDto,
   DownloadDto,
+  PositionListDto,
+  ReviewCandidateListDto,
+  ReviewCandidatesQueryDto,
+  ReviewDocumentFacetsDto,
 } from "./dto/document.dto";
 
 const versionInclude = {
@@ -320,13 +324,142 @@ export class DocumentReadService {
     };
   }
 
-  async types() {
+  async types(catalogOnly = false) {
     return {
       items: await this.prisma.documentType.findMany({
+        where: catalogOnly ? { catalogSyncedAt: { not: null } } : undefined,
         select: { code: true, title: true },
-        orderBy: { code: "asc" },
+        orderBy: catalogOnly ? { title: "asc" } : { code: "asc" },
       }),
     };
+  }
+
+  /**
+   * LK position directory for the review queue position filter. Reference
+   * data: the location scope does not apply to positions, only REQUIRE ACCESS
+   * on the controller guards this endpoint.
+   */
+  async positions(query: { q?: string; limit?: number }): Promise<PositionListDto> {
+    const { limit = 50 } = query;
+    const needle = query.q?.trim();
+    const rows = await this.prisma.lkPosition.findMany({
+      where: {
+        deleted: false,
+        ...(needle ? { name: { contains: needle } } : {}),
+      },
+      select: { code1c: true, name: true },
+      orderBy: { name: "asc" },
+      take: limit,
+    });
+    return {
+      items: rows.map((r) => ({ code: r.code1c, name: r.name })),
+    };
+  }
+
+  /**
+   * Distinct review-queue filter values, strictly inside the caller's access
+   * scope: candidate ids are collected through access.documentWhere first, so
+   * a 20007 principal can never see another location's managers/mentors.
+   * Distinct over candidates (not documents), each group capped at 500.
+   */
+  async reviewDocumentFacets(
+    principal: AuthPrincipal,
+  ): Promise<ReviewDocumentFacetsDto> {
+    const ids = await this.reviewCandidateIds(principal);
+    if (ids.length === 0)
+      return { managers: [], mentors: [], projects: [], citizenships: [] };
+    const candidates = await this.prisma.candidate.findMany({
+      where: { id: { in: ids } },
+      select: {
+        managerName: true,
+        managerCode1c: true,
+        mentorName: true,
+        mentorCode1c: true,
+        projectName: true,
+        projectCode: true,
+        citizenship: true,
+      },
+    });
+    const byName = <T extends { name: string }>(rows: T[]): T[] =>
+      rows.sort((a, b) => a.name.localeCompare(b.name, "ru")).slice(0, 500);
+    const managers = new Map<string, { name: string; code1c: string | null }>();
+    const mentors = new Map<string, { name: string; code1c: string | null }>();
+    const projects = new Map<string, { name: string; code: string | null }>();
+    const citizenships = new Set<string>();
+    for (const c of candidates) {
+      const manager = c.managerName?.trim();
+      if (manager) {
+        const key = `${manager} ${c.managerCode1c ?? ""}`;
+        if (!managers.has(key))
+          managers.set(key, { name: manager, code1c: c.managerCode1c });
+      }
+      const mentor = c.mentorName?.trim();
+      if (mentor) {
+        const key = `${mentor} ${c.mentorCode1c ?? ""}`;
+        if (!mentors.has(key))
+          mentors.set(key, { name: mentor, code1c: c.mentorCode1c });
+      }
+      const project = c.projectName?.trim();
+      if (project) {
+        const key = `${project} ${c.projectCode ?? ""}`;
+        if (!projects.has(key))
+          projects.set(key, { name: project, code: c.projectCode });
+      }
+      const citizenship = c.citizenship?.trim().toUpperCase();
+      if (citizenship) citizenships.add(citizenship);
+    }
+    return {
+      managers: byName([...managers.values()]),
+      mentors: byName([...mentors.values()]),
+      projects: byName([...projects.values()]),
+      citizenships: [...citizenships].sort(),
+    };
+  }
+
+  /**
+   * Candidates that own at least one document inside the caller's access
+   * scope — backing the review queue fullName selector.
+   */
+  async reviewCandidates(
+    principal: AuthPrincipal,
+    query: ReviewCandidatesQueryDto,
+  ): Promise<ReviewCandidateListDto> {
+    const { limit = 20 } = query;
+    const ids = await this.reviewCandidateIds(principal);
+    if (ids.length === 0) return { items: [] };
+    const needle = query.q?.trim();
+    const rows = await this.prisma.candidate.findMany({
+      where: {
+        id: { in: ids },
+        ...(needle ? { fullName: { contains: needle } } : {}),
+      },
+      select: { id: true, fullName: true },
+      orderBy: { fullName: "asc" },
+      take: limit,
+    });
+    return {
+      items: rows.map((r) => ({ id: r.id, fullName: r.fullName })),
+    };
+  }
+
+  /** Distinct candidate ids owning live (currentVersion > 0) scoped documents. */
+  private async reviewCandidateIds(principal: AuthPrincipal): Promise<string[]> {
+    const docs = await this.prisma.document.findMany({
+      where: {
+        ...this.access.documentWhere(principal),
+        currentVersion: { gt: 0 },
+        candidateId: { not: null },
+      },
+      select: { candidateId: true },
+      distinct: ["candidateId"],
+    });
+    return [
+      ...new Set(
+        docs
+          .map((d) => d.candidateId)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
   }
   scopeWhere(scope: {
     chat_uuid?: string;

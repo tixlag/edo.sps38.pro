@@ -787,6 +787,44 @@ export interface ReviewDocumentsDto {
   nextCursor: string | null;
 }
 
+export interface FacetPersonDto {
+  name: string;
+  /** @nullable */
+  code1c: string | null;
+}
+
+export interface FacetProjectDto {
+  name: string;
+  /** @nullable */
+  code: string | null;
+}
+
+export interface ReviewDocumentFacetsDto {
+  managers: FacetPersonDto[];
+  mentors: FacetPersonDto[];
+  projects: FacetProjectDto[];
+  citizenships: string[];
+}
+
+export interface ReviewCandidateDto {
+  id: string;
+  /** @nullable */
+  fullName: string | null;
+}
+
+export interface ReviewCandidateListDto {
+  items: ReviewCandidateDto[];
+}
+
+export interface PositionDto {
+  code: string;
+  name: string;
+}
+
+export interface PositionListDto {
+  items: PositionDto[];
+}
+
 export interface RejectDocumentDto {
   /** @minimum 0 */
   revision: number;
@@ -832,6 +870,13 @@ export type UploadCandidateDocumentBody = {
    * @maxItems 10
    */
   "files[]": Blob[];
+};
+
+export type ListDocumentTypesParams = {
+  /**
+   * Only ERP-catalog types (catalogSyncedAt != null), sorted by title
+   */
+  catalogOnly?: boolean;
 };
 
 export type ListCandidatesParams = {
@@ -887,6 +932,18 @@ export type ListReviewDocumentsParams = {
   birthDateTo?: string;
   positionCode?: string;
   projectCode?: string;
+  /**
+   * Exact candidate id
+   */
+  candidateId?: string;
+  /**
+   * Exact manager code_1c
+   */
+  managerCode1c?: string;
+  /**
+   * Exact mentor code_1c
+   */
+  mentorCode1c?: string;
 };
 
 export type ListReviewDocumentsStatus =
@@ -899,6 +956,22 @@ export const ListReviewDocumentsStatus = {
   RETURNED: "RETURNED",
   ALL: "ALL",
 } as const;
+
+export type ListReviewCandidatesParams = {
+  /**
+   * Case-insensitive fullName search
+   */
+  q?: string;
+  limit?: number;
+};
+
+export type ListPositionsParams = {
+  /**
+   * Case-insensitive name search
+   */
+  q?: string;
+  limit?: number;
+};
 
 export type SubmitCandidateDocumentDirectBody = {
   /** JSON with documentUid and documentFields only; owner and candidate context come from the upload grant */
@@ -1836,35 +1909,45 @@ export const useLinkCandidateEmployee = <
 /**
  * @summary List supported document type codes
  */
-export const listDocumentTypes = (signal?: AbortSignal) => {
+export const listDocumentTypes = (
+  params?: ListDocumentTypesParams,
+  signal?: AbortSignal,
+) => {
   return customInstance<DocumentTypeListDto>({
     url: `/api/v1/document-types`,
     method: "GET",
+    params,
     signal,
   });
 };
 
-export const getListDocumentTypesQueryKey = () => {
-  return [`/api/v1/document-types`] as const;
+export const getListDocumentTypesQueryKey = (
+  params?: ListDocumentTypesParams,
+) => {
+  return [`/api/v1/document-types`, ...(params ? [params] : [])] as const;
 };
 
 export const getListDocumentTypesQueryOptions = <
   TData = Awaited<ReturnType<typeof listDocumentTypes>>,
   TError = ApiErrorDto,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listDocumentTypes>>,
-    TError,
-    TData
-  >;
-}) => {
+>(
+  params?: ListDocumentTypesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listDocumentTypes>>,
+      TError,
+      TData
+    >;
+  },
+) => {
   const { query: queryOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListDocumentTypesQueryKey();
+  const queryKey =
+    queryOptions?.queryKey ?? getListDocumentTypesQueryKey(params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof listDocumentTypes>>
-  > = ({ signal }) => listDocumentTypes(signal);
+  > = ({ signal }) => listDocumentTypes(params, signal);
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listDocumentTypes>>,
@@ -1885,14 +1968,17 @@ export type ListDocumentTypesQueryError = ApiErrorDto;
 export function useListDocumentTypes<
   TData = Awaited<ReturnType<typeof listDocumentTypes>>,
   TError = ApiErrorDto,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listDocumentTypes>>,
-    TError,
-    TData
-  >;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListDocumentTypesQueryOptions(options);
+>(
+  params?: ListDocumentTypesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listDocumentTypes>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListDocumentTypesQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -3135,6 +3221,240 @@ export function useListReviewDocuments<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListReviewDocumentsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Distinct manager/mentor/project/citizenship values inside the queue access scope
+ */
+export const getReviewDocumentFacets = (signal?: AbortSignal) => {
+  return customInstance<ReviewDocumentFacetsDto>({
+    url: `/api/v1/review-documents/facets`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetReviewDocumentFacetsQueryKey = () => {
+  return [`/api/v1/review-documents/facets`] as const;
+};
+
+export const getGetReviewDocumentFacetsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetReviewDocumentFacetsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getReviewDocumentFacets>>
+  > = ({ signal }) => getReviewDocumentFacets(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetReviewDocumentFacetsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getReviewDocumentFacets>>
+>;
+export type GetReviewDocumentFacetsQueryError = ApiErrorDto;
+
+/**
+ * @summary Distinct manager/mentor/project/citizenship values inside the queue access scope
+ */
+
+export function useGetReviewDocumentFacets<
+  TData = Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetReviewDocumentFacetsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Candidates owning scoped review documents (fullName selector)
+ */
+export const listReviewCandidates = (
+  params?: ListReviewCandidatesParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ReviewCandidateListDto>({
+    url: `/api/v1/review-candidates`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListReviewCandidatesQueryKey = (
+  params?: ListReviewCandidatesParams,
+) => {
+  return [`/api/v1/review-candidates`, ...(params ? [params] : [])] as const;
+};
+
+export const getListReviewCandidatesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listReviewCandidates>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListReviewCandidatesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listReviewCandidates>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListReviewCandidatesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listReviewCandidates>>
+  > = ({ signal }) => listReviewCandidates(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listReviewCandidates>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListReviewCandidatesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listReviewCandidates>>
+>;
+export type ListReviewCandidatesQueryError = ApiErrorDto;
+
+/**
+ * @summary Candidates owning scoped review documents (fullName selector)
+ */
+
+export function useListReviewCandidates<
+  TData = Awaited<ReturnType<typeof listReviewCandidates>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListReviewCandidatesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listReviewCandidates>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListReviewCandidatesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary LK position directory for the queue position filter
+ */
+export const listPositions = (
+  params?: ListPositionsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<PositionListDto>({
+    url: `/api/v1/positions`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListPositionsQueryKey = (params?: ListPositionsParams) => {
+  return [`/api/v1/positions`, ...(params ? [params] : [])] as const;
+};
+
+export const getListPositionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPositions>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListPositionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPositions>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPositionsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPositions>>> = ({
+    signal,
+  }) => listPositions(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPositions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPositionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPositions>>
+>;
+export type ListPositionsQueryError = ApiErrorDto;
+
+/**
+ * @summary LK position directory for the queue position filter
+ */
+
+export function useListPositions<
+  TData = Awaited<ReturnType<typeof listPositions>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListPositionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPositions>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPositionsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
