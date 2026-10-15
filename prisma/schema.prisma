@@ -345,6 +345,22 @@ model Candidate {
   identityKey String @unique @db.VarChar(80)
   locationId Int?
   code1c     String?    @db.VarChar(64)
+  // LK candidate profile snapshot (review queue filters). Only set from the
+  // LK-provided candidateSnapshot; uploads without a snapshot never clear it.
+  fullName        String?   @db.VarChar(512)
+  birthDate       DateTime? @db.Date
+  citizenship     String?   @db.VarChar(2)
+  positionCode    String?   @db.VarChar(64)
+  positionName    String?   @db.VarChar(512)
+  projectCode     String?   @db.VarChar(64)
+  projectName     String?   @db.VarChar(512)
+  managerName     String?   @db.VarChar(512)
+  managerCode1c   String?   @db.VarChar(64)
+  mentorName      String?   @db.VarChar(512)
+  mentorPosition  String?   @db.VarChar(512)
+  mentorCode1c    String?   @db.VarChar(64)
+  isReemployment  Boolean   @default(false)
+  profileSyncedAt DateTime? @db.DateTime(3)
   createdAt  DateTime   @default(now()) @db.DateTime(3)
   updatedAt  DateTime   @updatedAt @db.DateTime(3)
   documents  Document[]

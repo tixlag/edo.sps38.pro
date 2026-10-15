@@ -797,7 +797,17 @@
     "/api/v1/document-types": {
       "get": {
         "operationId": "listDocumentTypes",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "catalogOnly",
+            "required": false,
+            "in": "query",
+            "description": "Only ERP-catalog types (catalogSyncedAt != null), sorted by title",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -2719,6 +2729,118 @@
                 "ALL"
               ]
             }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Case-insensitive fullName search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentTypeCode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "citizenship",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "manager",
+            "required": false,
+            "in": "query",
+            "description": "Manager name or code contains",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mentor",
+            "required": false,
+            "in": "query",
+            "description": "Mentor name or code contains",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hasMentor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "birthDateFrom",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "birthDateTo",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "positionCode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectCode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "candidateId",
+            "required": false,
+            "in": "query",
+            "description": "Exact candidate id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "managerCode1c",
+            "required": false,
+            "in": "query",
+            "description": "Exact manager code_1c",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mentorCode1c",
+            "required": false,
+            "in": "query",
+            "description": "Exact mentor code_1c",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2828,7 +2950,400 @@
             "access-jwt": []
           }
         ],
-        "summary": "Review queue or documents requiring ERP delivery",
+        "summary": "Review queue with candidate profile: q, documentTypeCode, citizenship, manager, mentor, hasMentor, birthDateFrom/To, positionCode, projectCode",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/review-documents/facets": {
+      "get": {
+        "operationId": "getReviewDocumentFacets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDocumentFacetsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Distinct manager/mentor/project/citizenship values inside the queue access scope",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/review-candidates": {
+      "get": {
+        "operationId": "listReviewCandidates",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Case-insensitive fullName search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewCandidateListDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Candidates owning scoped review documents (fullName selector)",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/positions": {
+      "get": {
+        "operationId": "listPositions",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Case-insensitive name search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionListDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "LK position directory for the queue position filter",
         "tags": [
           "documents"
         ]
@@ -4805,6 +5320,110 @@
           "nextCursor"
         ]
       },
+      "CandidateProfileDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "chatUuid": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "code1c": {
+            "type": "string",
+            "nullable": true
+          },
+          "fullName": {
+            "type": "string",
+            "nullable": true
+          },
+          "birthDate": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          },
+          "citizenship": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionName": {
+            "type": "string",
+            "nullable": true
+          },
+          "projectCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "projectName": {
+            "type": "string",
+            "nullable": true
+          },
+          "managerName": {
+            "type": "string",
+            "nullable": true
+          },
+          "managerCode1c": {
+            "type": "string",
+            "nullable": true
+          },
+          "mentorName": {
+            "type": "string",
+            "nullable": true
+          },
+          "mentorPosition": {
+            "type": "string",
+            "nullable": true
+          },
+          "mentorCode1c": {
+            "type": "string",
+            "nullable": true
+          },
+          "isReemployment": {
+            "type": "boolean"
+          },
+          "profileSyncedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "approvedDocuments": {
+            "type": "number",
+            "description": "Candidate APPROVED documents under the queue access scope (all tabs)"
+          },
+          "requiredDocuments": {
+            "type": "number",
+            "nullable": true,
+            "description": "Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown"
+          }
+        },
+        "required": [
+          "id",
+          "chatUuid",
+          "code1c",
+          "fullName",
+          "birthDate",
+          "citizenship",
+          "positionCode",
+          "positionName",
+          "projectCode",
+          "projectName",
+          "managerName",
+          "managerCode1c",
+          "mentorName",
+          "mentorPosition",
+          "mentorCode1c",
+          "isReemployment",
+          "profileSyncedAt",
+          "approvedDocuments",
+          "requiredDocuments"
+        ]
+      },
       "DocumentDto": {
         "type": "object",
         "properties": {
@@ -4857,6 +5476,15 @@
           "deliveryStatus": {
             "type": "string",
             "nullable": true
+          },
+          "candidate": {
+            "nullable": true,
+            "description": "LK candidate profile snapshot, if one was provided",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateProfileDto"
+              }
+            ]
           }
         },
         "required": [
@@ -4871,7 +5499,8 @@
           "candidateId",
           "chatUuid",
           "code1c",
-          "deliveryStatus"
+          "deliveryStatus",
+          "candidate"
         ]
       },
       "DocumentListDto": {
@@ -5100,6 +5729,121 @@
           "expiresAt"
         ]
       },
+      "CandidateSnapshotPositionDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 64
+          }
+        }
+      },
+      "CandidateSnapshotMentorDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "position": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "code1C": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "code1c": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "code_1c": {
+            "type": "string",
+            "maxLength": 64
+          }
+        }
+      },
+      "CandidateSnapshotDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "birthDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "citizenship": {
+            "type": "string",
+            "maxLength": 2
+          },
+          "position": {
+            "$ref": "#/components/schemas/CandidateSnapshotPositionDto"
+          },
+          "project": {
+            "$ref": "#/components/schemas/CandidateSnapshotPositionDto"
+          },
+          "positionCode": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "positionName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "projectCode": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "projectName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "managerName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "manager": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "managerCode1C": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "managerCode1c": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "mentor": {
+            "$ref": "#/components/schemas/CandidateSnapshotMentorDto"
+          },
+          "mentorName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "mentorPosition": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "mentorCode1c": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "isReemployment": {
+            "type": "boolean"
+          }
+        }
+      },
       "DocumentUploadGrantRequestDto": {
         "type": "object",
         "properties": {
@@ -5129,6 +5873,23 @@
           "project_code_1c": {
             "type": "string",
             "maxLength": 64
+          },
+          "candidateSnapshot": {
+            "description": "Optional LK candidate profile stored on the candidate and shown in the review queue",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateSnapshotDto"
+              }
+            ]
+          },
+          "candidate_profile": {
+            "description": "Legacy alias of candidateSnapshot",
+            "deprecated": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateSnapshotDto"
+              }
+            ]
           }
         },
         "required": [
@@ -5176,6 +5937,132 @@
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "FacetPersonDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "code1c": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "name",
+          "code1c"
+        ]
+      },
+      "FacetProjectDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "name",
+          "code"
+        ]
+      },
+      "ReviewDocumentFacetsDto": {
+        "type": "object",
+        "properties": {
+          "managers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FacetPersonDto"
+            }
+          },
+          "mentors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FacetPersonDto"
+            }
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FacetProjectDto"
+            }
+          },
+          "citizenships": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "managers",
+          "mentors",
+          "projects",
+          "citizenships"
+        ]
+      },
+      "ReviewCandidateDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "fullName"
+        ]
+      },
+      "ReviewCandidateListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewCandidateDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "PositionDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ]
+      },
+      "PositionListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PositionDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "RejectDocumentDto": {

@@ -43,6 +43,7 @@ import {
   CandidateQueryDto,
   DocumentListDto,
   DocumentTypeListDto,
+  DocumentTypesQueryDto,
   DocumentVersionDto,
   DownloadDto,
   EditDocumentFieldsDto,
@@ -190,8 +191,8 @@ export class DocumentsController {
     operationId: "listDocumentTypes",
   })
   @ApiResponse({ status: 200, type: DocumentTypeListDto })
-  types(): Promise<DocumentTypeListDto> {
-    return this.reads.types();
+  types(@Query() query: DocumentTypesQueryDto): Promise<DocumentTypeListDto> {
+    return this.reads.types(query.catalogOnly ?? false);
   }
 
   @Get("candidates")

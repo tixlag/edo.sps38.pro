@@ -37,7 +37,8 @@ export class DocumentUploadGrantService {
       .digest("hex");
   }
   grant(input: DocumentUploadGrantRequestDto) {
-    const { idempotencyKey, ...owner } = input;
+    const { idempotencyKey, candidateSnapshot, candidate_profile, ...owner } =
+      input;
     if (
       typeof idempotencyKey !== "string" ||
       !/^[\x21-\x7e]{1,128}$/.test(idempotencyKey)
@@ -45,6 +46,7 @@ export class DocumentUploadGrantService {
       throw new BadRequestException("Invalid upload key");
     const parsed = documentMetadataSchema.safeParse({
       ...owner,
+      candidateSnapshot: candidateSnapshot ?? candidate_profile,
       documentFields: {},
     });
     if (!parsed.success)

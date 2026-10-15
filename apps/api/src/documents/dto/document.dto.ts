@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { DocumentStatus, OcrJobStatus } from "@prisma/client";
 import {
+  IsBoolean,
   IsInt,
   IsObject,
   IsOptional,
@@ -12,8 +13,9 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from "class-validator";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 
 export class ApiErrorDto {
   @ApiProperty() statusCode!: number;
@@ -173,6 +175,44 @@ export class DocumentVersionDto {
   @ApiProperty({ type: () => DocumentDeliveryDto, nullable: true })
   delivery!: DocumentDeliveryDto | null;
 }
+export class CandidateProfileDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ type: String, nullable: true, format: "uuid" }) chatUuid!:
+    | string
+    | null;
+  @ApiProperty({ type: String, nullable: true }) code1c!: string | null;
+  @ApiProperty({ type: String, nullable: true }) fullName!: string | null;
+  @ApiProperty({ type: String, nullable: true, format: "date" }) birthDate!:
+    | string
+    | null;
+  @ApiProperty({ type: String, nullable: true }) citizenship!: string | null;
+  @ApiProperty({ type: String, nullable: true }) positionCode!: string | null;
+  @ApiProperty({ type: String, nullable: true }) positionName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) projectCode!: string | null;
+  @ApiProperty({ type: String, nullable: true }) projectName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) managerName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) managerCode1c!: string | null;
+  @ApiProperty({ type: String, nullable: true }) mentorName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) mentorPosition!:
+    | string
+    | null;
+  @ApiProperty({ type: String, nullable: true }) mentorCode1c!: string | null;
+  @ApiProperty() isReemployment!: boolean;
+  @ApiProperty({ type: String, nullable: true, format: "date-time" })
+  profileSyncedAt!: string | null;
+  @ApiProperty({
+    description:
+      "Candidate APPROVED documents under the queue access scope (all tabs)",
+  })
+  approvedDocuments!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      "Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown",
+  })
+  requiredDocuments!: number | null;
+}
 export class DocumentDto {
   @ApiProperty({
     type: [Number],
@@ -193,6 +233,12 @@ export class DocumentDto {
   @ApiProperty({ type: String, nullable: true }) chatUuid!: string | null;
   @ApiProperty({ type: String, nullable: true }) code1c!: string | null;
   @ApiProperty({ type: String, nullable: true }) deliveryStatus!: string | null;
+  @ApiProperty({
+    type: () => CandidateProfileDto,
+    nullable: true,
+    description: "LK candidate profile snapshot, if one was provided",
+  })
+  candidate!: CandidateProfileDto | null;
 }
 export class DocumentListDto {
   @ApiProperty({ type: [DocumentDto] }) items!: DocumentDto[];
@@ -200,8 +246,7 @@ export class DocumentListDto {
 export class DocumentTypeDto {
   @ApiProperty() code!: string;
   @ApiProperty() title!: string;
-}
-export class DocumentDefinitionDto {
+}export class DocumentDefinitionDto {
   @ApiProperty() name!: string;
   @ApiProperty() label!: string;
   @ApiProperty({ enum: ["text", "date", "boolean"] }) kind!: string;
@@ -219,6 +264,74 @@ export class CatalogDocumentTypesDto {
 }
 export class DocumentTypeListDto {
   @ApiProperty({ type: [DocumentTypeDto] }) items!: DocumentTypeDto[];
+}
+export class DocumentTypesQueryDto {
+  @ApiPropertyOptional({
+    description:
+      "Only ERP-catalog types (catalogSyncedAt != null), sorted by title",
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === "true" ? true : value === "false" ? false : value,
+  )
+  @IsBoolean()
+  catalogOnly?: boolean;
+}
+export class PositionDto {
+  @ApiProperty() code!: string;
+  @ApiProperty() name!: string;
+}
+export class PositionListDto {
+  @ApiProperty({ type: [PositionDto] }) items!: PositionDto[];
+}
+export class PositionQueryDto {
+  @ApiPropertyOptional({ description: "Case-insensitive name search" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  q?: string;
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+export class FacetPersonDto {
+  @ApiProperty() name!: string;
+  @ApiProperty({ type: String, nullable: true }) code1c!: string | null;
+}
+export class FacetProjectDto {
+  @ApiProperty() name!: string;
+  @ApiProperty({ type: String, nullable: true }) code!: string | null;
+}
+export class ReviewDocumentFacetsDto {
+  @ApiProperty({ type: [FacetPersonDto] }) managers!: FacetPersonDto[];
+  @ApiProperty({ type: [FacetPersonDto] }) mentors!: FacetPersonDto[];
+  @ApiProperty({ type: [FacetProjectDto] }) projects!: FacetProjectDto[];
+  @ApiProperty({ type: [String] }) citizenships!: string[];
+}
+export class ReviewCandidateDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ type: String, nullable: true }) fullName!: string | null;
+}
+export class ReviewCandidateListDto {
+  @ApiProperty({ type: [ReviewCandidateDto] }) items!: ReviewCandidateDto[];
+}
+export class ReviewCandidatesQueryDto {
+  @ApiPropertyOptional({ description: "Case-insensitive fullName search" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  q?: string;
+  @ApiPropertyOptional({ minimum: 1, maximum: 50, default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
 }
 export class UploadAcceptedDto {
   @ApiProperty() candidateId!: string;
@@ -290,6 +403,137 @@ export class DocumentStreamGrantDto {
   @ApiProperty() url!: string;
   @ApiProperty({ format: "date-time" }) expiresAt!: string;
 }
+export class CandidateSnapshotPositionDto {
+  @ApiPropertyOptional({ maxLength: 512 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  name?: string;
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  code?: string;
+}
+export class CandidateSnapshotMentorDto {
+  @ApiPropertyOptional({ maxLength: 512 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  name?: string;
+  @ApiPropertyOptional({ maxLength: 512 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  position?: string;
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  code1C?: string;
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  code1c?: string;
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  code_1c?: string;
+}
+export class CandidateSnapshotDto {
+  @ApiPropertyOptional({ maxLength: 512 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  fullName?: string;
+  @ApiPropertyOptional({ maxLength: 512 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  name?: string;
+  @ApiPropertyOptional({ format: "date" })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  birthDate?: string;
+  @ApiPropertyOptional({ maxLength: 2 })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-zA-Z]{2}$/)
+  citizenship?: string;
+  @ApiPropertyOptional({ type: () => CandidateSnapshotPositionDto })
+  @IsOptional()
+  position?: CandidateSnapshotPositionDto | string;
+  @ApiPropertyOptional({ type: () => CandidateSnapshotPositionDto })
+  @IsOptional()
+  project?: CandidateSnapshotPositionDto | string;
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  positionCode?: string;
+  @ApiPropertyOptional({ maxLength: 512 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  positionName?: string;
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  projectCode?: string;
+  @ApiPropertyOptional({ maxLength: 512 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  projectName?: string;
+  @ApiPropertyOptional({ maxLength: 512 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  managerName?: string;
+  @ApiPropertyOptional({ maxLength: 512 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  manager?: string;
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  managerCode1C?: string;
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  managerCode1c?: string;
+  @ApiPropertyOptional({ type: () => CandidateSnapshotMentorDto })
+  @IsOptional()
+  mentor?: CandidateSnapshotMentorDto | string;
+  @ApiPropertyOptional({ maxLength: 512 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  mentorName?: string;
+  @ApiPropertyOptional({ maxLength: 512 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  mentorPosition?: string;
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  mentorCode1c?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isReemployment?: boolean;
+}
+
 export class DocumentUploadGrantRequestDto extends DocumentScopeDto {
   @ApiProperty({ format: "uuid" }) @IsUUID() documentUid!: string;
   @ApiProperty({ maxLength: 128 })
@@ -313,6 +557,24 @@ export class DocumentUploadGrantRequestDto extends DocumentScopeDto {
   @MaxLength(64)
   @Matches(/^\S+$/)
   project_code_1c?: string;
+  @ApiPropertyOptional({
+    type: () => CandidateSnapshotDto,
+    description:
+      "Optional LK candidate profile stored on the candidate and shown in the review queue",
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CandidateSnapshotDto)
+  candidateSnapshot?: CandidateSnapshotDto;
+  @ApiPropertyOptional({
+    type: () => CandidateSnapshotDto,
+    description: "Legacy alias of candidateSnapshot",
+    deprecated: true,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CandidateSnapshotDto)
+  candidate_profile?: CandidateSnapshotDto;
 }
 export class DocumentUploadGrantDto {
   @ApiProperty({
@@ -327,6 +589,79 @@ export class ReviewDocumentsQueryDto extends CandidateQueryDto {
   @IsOptional()
   @IsIn(["IN_REVIEW", "ERP_PENDING", "RETURNED", "ALL"])
   status?: string;
+  @ApiPropertyOptional({ description: "Case-insensitive fullName search" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  q?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  documentTypeCode?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-zA-Z]{2}$/)
+  citizenship?: string;
+  @ApiPropertyOptional({ description: "Manager name or code contains" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  manager?: string;
+  @ApiPropertyOptional({ description: "Mentor name or code contains" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  mentor?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === "true" ? true : value === "false" ? false : value,
+  )
+  @IsBoolean()
+  hasMentor?: boolean;
+  @ApiPropertyOptional({ format: "date" })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  birthDateFrom?: string;
+  @ApiPropertyOptional({ format: "date" })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  birthDateTo?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  positionCode?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  projectCode?: string;
+  @ApiPropertyOptional({ description: "Exact candidate id" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  candidateId?: string;
+  @ApiPropertyOptional({ description: "Exact manager code_1c" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  managerCode1c?: string;
+  @ApiPropertyOptional({ description: "Exact mentor code_1c" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  mentorCode1c?: string;
 }
 export class ReviewDocumentsDto extends DocumentListDto {
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
