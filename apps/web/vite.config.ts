@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
   // Client-exposed VITE_* values come from env files only; explicit process
   // env (CI, e2e) must win when set. `define` overrides file-based values.
   const clientOverrides: Record<string, string> = {};
-  for (const key of ['VITE_API_BASE_URL', 'VITE_AUTH_REFRESH_URL', 'VITE_ALLOW_INSECURE_DEV_AUTH']) {
+  for (const key of ['VITE_API_BASE_URL', 'VITE_AUTH_REFRESH_URL', 'VITE_ALLOW_INSECURE_DEV_AUTH', 'VITE_LK_BASE_URL']) {
     const value = process.env[key];
     if (value !== undefined) {
       clientOverrides[`import.meta.env.${key}`] = JSON.stringify(value);

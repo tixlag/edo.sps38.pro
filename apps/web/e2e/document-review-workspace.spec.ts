@@ -84,6 +84,7 @@ async function reviewFixture(
     code1c: null,
     deliveryStatus: null,
     pendingDeliveryVersions: [],
+    candidate: null,
   };
   const pdf = mode === "pdf";
   let version: DocumentVersionDto = {

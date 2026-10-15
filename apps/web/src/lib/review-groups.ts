@@ -1,0 +1,170 @@
+import type { CandidateProfileDto, DocumentDto } from "@edo/api-client";
+
+export const LK_BASE_URL_FALLBACK = "https://lk.sps38.pro";
+
+/** Browser base of the LK directory; override via VITE_LK_BASE_URL. */
+export function lkBaseUrl(): string {
+  const fromEnv =
+    typeof import.meta !== "undefined"
+      ? ((import.meta.env?.VITE_LK_BASE_URL as string | undefined) ?? "")
+      : "";
+  const trimmed = fromEnv.trim().replace(/\/+$/, "");
+  return trimmed || LK_BASE_URL_FALLBACK;
+}
+
+/**
+ * Public LK employee card URL, or null when there is no 1C code.
+ * Format: {base}/public/employee/{encodeURIComponent(code1C)}?size_width=WIDE_1200
+ */
+export function lkEmployeeUrl(code1c: string | null | undefined): string | null {
+  if (!code1c) return null;
+  return `${lkBaseUrl()}/public/employee/${encodeURIComponent(code1c)}?size_width=WIDE_1200`;
+}
+
+/** "Иванова Анна Сергеевна" -> "ИА". Empty/blank -> "?". */
+export function candidateInitials(fullName: string | null | undefined): string {
+  const parts = (fullName ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return parts
+    .slice(0, 2)
+    .map((part) => Array.from(part)[0] ?? "")
+    .join("")
+    .toLocaleUpperCase("ru");
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** "1990-05-17" -> "17.05.1990". Anything else passes through (or "—"). */
+export function formatBirthDateRu(birthDate: string | null | undefined): string {
+  if (!birthDate) return "—";
+  const match = DATE_RE.exec(birthDate.trim());
+  if (!match) return birthDate;
+  const [year, month, day] = birthDate.trim().split("-");
+  return `${day}.${month}.${year}`;
+}
+
+export interface ReviewCandidateGroup {
+  key: string;
+  candidate: CandidateProfileDto | null;
+  documents: DocumentDto[];
+}
+
+/**
+ * Stable group key: candidate profile first, then document-level fallbacks
+ * (candidateId/chatUuid/code1c), finally the document itself so unlinked
+ * documents never merge into someone else's group.
+ */
+export function reviewGroupKey(doc: DocumentDto): string {
+  const candidate = doc.candidate;
+  return (
+    candidate?.id ??
+    candidate?.chatUuid ??
+    candidate?.code1c ??
+    doc.candidateId ??
+    doc.chatUuid ??
+    doc.code1c ??
+    `document:${doc.id}`
+  );
+}
+
+/**
+ * Group flat review-queue items by candidate. Groups sort by fullName
+ * (ru locale, nameless last); documents inside sort by title.
+ */
+export function groupReviewItems(items: DocumentDto[]): ReviewCandidateGroup[] {
+  const groups = new Map<string, ReviewCandidateGroup>();
+  for (const doc of items) {
+    const key = reviewGroupKey(doc);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.documents.push(doc);
+      if (!existing.candidate && doc.candidate) existing.candidate = doc.candidate;
+    } else {
+      groups.set(key, { key, candidate: doc.candidate ?? null, documents: [doc] });
+    }
+  }
+  const list = [...groups.values()];
+  for (const group of list) {
+    group.documents.sort((a, b) => a.title.localeCompare(b.title, "ru"));
+  }
+  list.sort((a, b) => {
+    const aName = a.candidate?.fullName?.trim() ?? "";
+    const bName = b.candidate?.fullName?.trim() ?? "";
+    if (!aName && !bName) return a.key.localeCompare(b.key, "ru");
+    if (!aName) return 1;
+    if (!bName) return -1;
+    return aName.localeCompare(bName, "ru");
+  });
+  return list;
+}
+
+export type ReviewTab = "IN_REVIEW" | "ERP_PENDING" | "RETURNED";
+
+const REVIEW_TABS: ReviewTab[] = ["IN_REVIEW", "ERP_PENDING", "RETURNED"];
+
+export interface ReviewQueueFilters {
+  status: ReviewTab;
+  q?: string;
+  documentTypeCode?: string;
+  citizenship?: string;
+  manager?: string;
+  mentor?: string;
+  hasMentor?: boolean;
+  birthDateFrom?: string;
+  birthDateTo?: string;
+  positionCode?: string;
+  projectCode?: string;
+  cursor?: string;
+}
+
+function textParam(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const text = String(value).trim();
+  return text || undefined;
+}
+
+function dateParam(value: unknown): string | undefined {
+  const text = textParam(value);
+  return text && DATE_RE.test(text) ? text : undefined;
+}
+
+function booleanParam(value: unknown): boolean | undefined {
+  if (value === true || value === "true") return true;
+  if (value === false || value === "false") return false;
+  return undefined;
+}
+
+/** Parse untrusted TanStack Router search params into review-queue filters. */
+export function parseReviewSearchParams(raw: Record<string, unknown>): ReviewQueueFilters {
+  const status = String(raw.status ?? "IN_REVIEW");
+  return {
+    status: (REVIEW_TABS as string[]).includes(status) ? (status as ReviewTab) : "IN_REVIEW",
+    q: textParam(raw.q),
+    documentTypeCode: textParam(raw.documentTypeCode),
+    citizenship: textParam(raw.citizenship),
+    manager: textParam(raw.manager),
+    mentor: textParam(raw.mentor),
+    hasMentor: booleanParam(raw.hasMentor),
+    birthDateFrom: dateParam(raw.birthDateFrom),
+    birthDateTo: dateParam(raw.birthDateTo),
+    positionCode: textParam(raw.positionCode),
+    projectCode: textParam(raw.projectCode),
+    cursor: textParam(raw.cursor),
+  };
+}
+
+/** True when any server-side filter (besides status tab and cursor) is set. */
+export function hasActiveReviewFilters(filters: ReviewQueueFilters): boolean {
+  return Boolean(
+    filters.q ??
+      filters.documentTypeCode ??
+      filters.citizenship ??
+      filters.manager ??
+      filters.mentor ??
+      filters.birthDateFrom ??
+      filters.birthDateTo ??
+      filters.positionCode ??
+      filters.projectCode ??
+      (filters.hasMentor !== undefined ? "hasMentor" : undefined),
+  );
+}

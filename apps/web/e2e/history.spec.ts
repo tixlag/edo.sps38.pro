@@ -66,6 +66,7 @@ function docInfo(id: string, rest: Partial<DocumentDto>): DocumentDto {
     code1c: null,
     deliveryStatus: null,
     pendingDeliveryVersions: [],
+    candidate: null,
     ...rest,
   } as DocumentDto;
 }

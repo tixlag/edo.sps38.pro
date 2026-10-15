@@ -5,7 +5,7 @@ import type { DocumentDto, DocumentVersionDto } from '@edo/api-client';
 for (const width of [1440, 390]) {
   test(`manual document review and ERP retry at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    const doc: DocumentDto = { id: 'manual-doc', documentTypeCode: 'PASSPORT', title: 'Паспорт', documentUid: 'passport-uuid', status: 'IN_REVIEW', currentVersion: 1, revision: 0, candidateId: 'candidate', chatUuid: 'candidate-chat', code1c: null, deliveryStatus: null, pendingDeliveryVersions: [] };
+    const doc: DocumentDto = { id: 'manual-doc', documentTypeCode: 'PASSPORT', title: 'Паспорт', documentUid: 'passport-uuid', status: 'IN_REVIEW', currentVersion: 1, revision: 0, candidateId: 'candidate', chatUuid: 'candidate-chat', code1c: null, deliveryStatus: null, pendingDeliveryVersions: [], candidate: null };
     let version: DocumentVersionDto = { documentId: doc.id, version: 1, status: 'IN_REVIEW', revision: 0, ocrSource: null, raw: null, files: [], fields: [{ name: 'number', label: 'Номер', kind: 'text', required: true, value: '000123', submittedValue: '000123', originalValue: null, editedBy: null, mismatch: false, regions: [] }, { name: 'isInvalid', label: 'Недействителен', kind: 'boolean', required: false, value: 'false', submittedValue: 'false', originalValue: null, editedBy: null, mismatch: false, regions: [] }], issues: [], job: null, approvedAt: null, approvedBy: null, rejectionReason: null, delivery: null };
     await page.route('**/api/**', async route => {
       const path = new URL(route.request().url()).pathname;
@@ -24,7 +24,7 @@ for (const width of [1440, 390]) {
     });
     await gotoAuthed(page, '/review');
     await expect(page.getByText('Ожидает проверки', { exact: true })).toBeVisible();
-    await page.getByRole('link', { name: 'Паспорт', exact: true }).click();
+    await page.getByRole('link', { name: 'Открыть →' }).click();
     await expect(page.locator('textarea[id$="-number"]')).toHaveValue('000123');
     await expect(page.locator('[data-field-row="isInvalid"]')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Подтвердить документ' })).toBeVisible();
