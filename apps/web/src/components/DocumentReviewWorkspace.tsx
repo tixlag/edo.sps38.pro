@@ -10,6 +10,8 @@ import {
   useRejectDocument,
   useSendDocumentToErp,
   getListReviewDocumentsQueryKey,
+  getListCandidateReviewQueueQueryKey,
+  getGetCandidateDetailsQueryKey,
   type DocumentVersionDto,
   type OcrRegionDto,
 } from "@edo/api-client";
@@ -22,11 +24,13 @@ import { getRequiredReviewFields } from "./document-review-fields";
 export function DocumentReviewWorkspace({
   data,
   employeeId,
+  candidateId,
   readOnly = false,
   fitContainer = false,
 }: {
   data: DocumentVersionDto;
   employeeId?: string;
+  candidateId?: string;
   readOnly?: boolean;
   fitContainer?: boolean;
 }) {
@@ -107,6 +111,16 @@ export function DocumentReviewWorkspace({
           ]
         : []),
       client.invalidateQueries({ queryKey: getListReviewDocumentsQueryKey() }),
+      client.invalidateQueries({
+        queryKey: getListCandidateReviewQueueQueryKey(),
+      }),
+      ...(candidateId
+        ? [
+            client.invalidateQueries({
+              queryKey: getGetCandidateDetailsQueryKey(candidateId),
+            }),
+          ]
+        : []),
       client.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
     ]);
   };

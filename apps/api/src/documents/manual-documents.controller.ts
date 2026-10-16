@@ -58,6 +58,8 @@ import {
   DocumentDto,
   ReviewDocumentsQueryDto,
   ReviewDocumentsDto,
+  CandidateReviewQueueDto,
+  CandidateReviewQueueQueryDto,
   PositionListDto,
   PositionQueryDto,
   ReviewDocumentFacetsDto,
@@ -259,6 +261,21 @@ export class ManualDocumentReviewController {
     private readonly delivery: DocumentDeliveryService,
     private readonly events: DocumentEventsService,
   ) {}
+  @Get("candidate-review-queue")
+  @RequireAccessRule(EdoAccessRule.ACCESS)
+  @ApiOperation({
+    operationId: "listCandidateReviewQueue",
+    summary: "Candidates with matching documents, paginated by candidate id",
+    description:
+      "Profile filters select candidates; status and documentTypeCode select their nested documents. Progress counts all accessible approved documents across tabs. Candidates and documents must both be in the caller's location scope.",
+  })
+  @ApiResponse({ status: 200, type: CandidateReviewQueueDto })
+  candidateQueue(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Query() query: CandidateReviewQueueQueryDto,
+  ): Promise<CandidateReviewQueueDto> {
+    return this.reads.candidateReviewQueue(principal, query);
+  }
   @Get("review-documents")
   @RequireAccessRule(EdoAccessRule.ACCESS)
   @ApiOperation({

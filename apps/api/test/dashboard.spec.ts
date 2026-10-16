@@ -119,11 +119,11 @@ describe('DashboardService', () => {
       return [{
         id: 'd1', status: 'RETURNED', currentVersion: 1,
         documentType: { code: 'PASSPORT', title: 'Паспорт', erpUid: null },
-        candidate: { chatUuid: 'chat', code1c: null },
+        candidate: { id: 'c1', chatUuid: 'chat', code1c: null },
         versions: [{ version: 1, revision: 1, delivery: null }],
       }];
     });
-    const reads = new DocumentReadService({ document: { findMany } } as never, access, null as never);
+    const reads = new DocumentReadService({ document: { findMany, groupBy: vi.fn(async () => []) }, documentType: { findMany: vi.fn(async () => []) } } as never, access, null as never);
     const page = await reads.reviewDocuments(scopedPrincipal, { limit: 50, status: 'RETURNED' });
     expect(page.items).toHaveLength(1);
     expect(page.items[0].status).toBe('RETURNED');

@@ -1,7 +1,10 @@
 import { test, expect, gotoAuthed, type Page } from "./fixture";
-import type { DocumentDto } from "@edo/api-client";
+import type { CandidateProfileDto, DocumentDto } from "@edo/api-client";
 
-function profile(id: string, rest: Record<string, unknown>) {
+function profile(
+  id: string,
+  rest: Partial<CandidateProfileDto>,
+): CandidateProfileDto {
   return {
     id,
     chatUuid: `chat-${id}`,
@@ -113,6 +116,24 @@ const ALL_IVANOV_DOCS: DocumentDto[] = [
   },
 ];
 
+function candidateGroup(
+  candidate: CandidateProfileDto,
+  documents: DocumentDto[],
+) {
+  return {
+    candidate,
+    documents: documents.map(
+      ({
+        candidate: _candidate,
+        candidateId: _id,
+        chatUuid: _chat,
+        code1c: _code,
+        ...document
+      }) => document,
+    ),
+  };
+}
+
 async function mockQueue(page: Page) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -156,7 +177,7 @@ async function mockQueue(page: Page) {
           .filter((c) => c.fullName?.toLowerCase().includes(q))
           .map(({ id, fullName }) => ({ id, fullName })),
       };
-    } else if (path === "/api/v1/review-documents") {
+    } else if (path === "/api/v1/candidate-review-queue") {
       const items = DOCS.filter((d) => {
         const c = d.candidate!;
         for (const field of ["candidateId", "documentTypeCode"] as const) {
@@ -180,11 +201,21 @@ async function mockQueue(page: Page) {
         if (hasMentor === "false" && c.mentorName) return false;
         return true;
       });
-      response = { items, nextCursor: null };
-    } else if (path === "/api/v1/candidates/cand-ivanov/documents") {
-      response = { items: ALL_IVANOV_DOCS };
-    } else if (path === "/api/v1/candidates/cand-anna/documents") {
-      response = { items: [DOCS[2]] };
+      response = {
+        items: [DOCS[2].candidate!, IVANOV]
+          .map((candidate) =>
+            candidateGroup(
+              candidate,
+              items.filter((d) => d.candidateId === candidate.id),
+            ),
+          )
+          .filter((group) => group.documents.length > 0),
+        nextCursor: null,
+      };
+    } else if (path === "/api/v1/candidates/cand-ivanov") {
+      response = candidateGroup(IVANOV, ALL_IVANOV_DOCS);
+    } else if (path === "/api/v1/candidates/cand-anna") {
+      response = candidateGroup(DOCS[2].candidate!, [DOCS[2]]);
     } else if (/\/documents\/[^/]+\/versions\//.test(path)) {
       return route.fulfill({
         status: 404,
@@ -395,11 +426,11 @@ test("drawer handles document errors with retry and an empty document list", asy
 }) => {
   await mockQueue(page);
   let failed = true;
-  await page.route("**/api/v1/candidates/cand-ivanov/documents", (route) =>
+  await page.route("**/api/v1/candidates/cand-ivanov", (route) =>
     route.fulfill({
       status: failed ? 403 : 200,
       contentType: "application/json",
-      body: JSON.stringify(failed ? {} : { items: [] }),
+      body: JSON.stringify(failed ? {} : candidateGroup(IVANOV, [])),
     }),
   );
   await gotoAuthed(page, "/review?candidate=cand-ivanov");
@@ -430,4 +461,43 @@ test("mobile drawer fills the screen without horizontal overflow", async ({
     .getByRole("button", { name: "Закрыть профиль кандидата" })
     .click();
   await expect(drawer).toHaveCount(0);
+});
+
+test("candidate pagination keeps all matching documents together and supports browser history", async ({
+  page,
+}) => {
+  await mockQueue(page);
+  const anna = DOCS[2].candidate!;
+  const documents = Array.from({ length: 61 }, (_, index) => ({
+    ...DOCS[2],
+    id: `anna-document-${index}`,
+  }));
+  await page.route("**/api/v1/candidate-review-queue?*", async (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    await route.fulfill({
+      json: cursor
+        ? { items: [candidateGroup(IVANOV, ALL_IVANOV_DOCS)], nextCursor: null }
+        : { items: [candidateGroup(anna, documents)], nextCursor: anna.id },
+    });
+  });
+  await gotoAuthed(page, "/review");
+  await expect(page.getByRole("region", { name: "Аннова Анна" })).toContainText(
+    "документов: 61",
+  );
+  await expect(page.locator("section[aria-label]")).toHaveCount(1);
+  await page.getByRole("button", { name: "Следующая страница" }).click();
+  await expect(page).toHaveURL(/cursor=cand-anna/);
+  await expect(ivanovRow(page)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Следующая страница" }),
+  ).toHaveCount(0);
+  await page.goBack();
+  await expect(page.getByRole("region", { name: "Аннова Анна" })).toContainText(
+    "документов: 61",
+  );
+  await page.goForward();
+  await expect(ivanovRow(page)).toBeVisible();
+  await page.getByRole("button", { name: "В начало списка" }).click();
+  await expect(page.getByRole("region", { name: "Аннова Анна" })).toBeVisible();
+  expect(new URL(page.url()).searchParams.has("cursor")).toBe(false);
 });

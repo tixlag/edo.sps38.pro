@@ -576,6 +576,27 @@ export interface CandidateProfileDto {
   requiredDocuments: number | null;
 }
 
+export interface CandidateDocumentSummaryDto {
+  /** Approved versions awaiting manual ERP delivery */
+  pendingDeliveryVersions: number[];
+  id: string;
+  /** @nullable */
+  documentTypeCode: string | null;
+  status: DocumentStatus;
+  currentVersion: number;
+  revision: number;
+  title: string;
+  /** @nullable */
+  documentUid: string | null;
+  /** @nullable */
+  deliveryStatus: string | null;
+}
+
+export interface CandidateDetailsDto {
+  candidate: CandidateProfileDto;
+  documents: CandidateDocumentSummaryDto[];
+}
+
 /**
  * LK candidate profile snapshot, if one was provided
  * @nullable
@@ -595,13 +616,13 @@ export interface DocumentDto {
   /** @nullable */
   documentUid: string | null;
   /** @nullable */
+  deliveryStatus: string | null;
+  /** @nullable */
   candidateId: string | null;
   /** @nullable */
   chatUuid: string | null;
   /** @nullable */
   code1c: string | null;
-  /** @nullable */
-  deliveryStatus: string | null;
   /**
    * LK candidate profile snapshot, if one was provided
    * @nullable
@@ -781,6 +802,15 @@ export interface DocumentUploadGrantDto {
   expiresAt: string;
 }
 
+export interface CandidateReviewQueueDto {
+  items: CandidateDetailsDto[];
+  /**
+   * Last candidate id on this page; null when there is no next page
+   * @nullable
+   */
+  nextCursor: string | null;
+}
+
 export interface ReviewDocumentsDto {
   items: DocumentDto[];
   /** @nullable */
@@ -908,6 +938,60 @@ export type GetCandidateDocumentDraftParams = {
   chat_uuid?: string;
   code_1c?: string;
 };
+
+export type ListCandidateReviewQueueParams = {
+  /**
+   * Number of candidates, regardless of their document counts
+   */
+  limit?: number;
+  /**
+   * Candidate id from nextCursor
+   */
+  cursor?: string;
+  status?: ListCandidateReviewQueueStatus;
+  /**
+   * Case-insensitive fullName search
+   */
+  q?: string;
+  documentTypeCode?: string;
+  citizenship?: string;
+  /**
+   * Manager name or code contains
+   */
+  manager?: string;
+  /**
+   * Mentor name or code contains
+   */
+  mentor?: string;
+  hasMentor?: boolean;
+  birthDateFrom?: string;
+  birthDateTo?: string;
+  positionCode?: string;
+  projectCode?: string;
+  /**
+   * Exact candidate id
+   */
+  candidateId?: string;
+  /**
+   * Exact manager code_1c
+   */
+  managerCode1c?: string;
+  /**
+   * Exact mentor code_1c
+   */
+  mentorCode1c?: string;
+};
+
+export type ListCandidateReviewQueueStatus =
+  (typeof ListCandidateReviewQueueStatus)[keyof typeof ListCandidateReviewQueueStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListCandidateReviewQueueStatus = {
+  IN_REVIEW: "IN_REVIEW",
+  ERP_PENDING: "ERP_PENDING",
+  RETURNED: "RETURNED",
+  ALL: "ALL",
+} as const;
 
 export type ListReviewDocumentsParams = {
   limit?: number;
@@ -2070,6 +2154,91 @@ export function useListCandidates<
 }
 
 /**
+ * @summary Candidate profile with all accessible live documents
+ */
+export const getCandidateDetails = (
+  candidateId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateDetailsDto>({
+    url: `/api/v1/candidates/${candidateId}`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCandidateDetailsQueryKey = (candidateId: string) => {
+  return [`/api/v1/candidates/${candidateId}`] as const;
+};
+
+export const getGetCandidateDetailsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateDetails>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDetails>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidateDetailsQueryKey(candidateId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateDetails>>
+  > = ({ signal }) => getCandidateDetails(candidateId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateDetails>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateDetailsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDetails>>
+>;
+export type GetCandidateDetailsQueryError = ApiErrorDto;
+
+/**
+ * @summary Candidate profile with all accessible live documents
+ */
+
+export function useGetCandidateDetails<
+  TData = Awaited<ReturnType<typeof getCandidateDetails>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDetails>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateDetailsQueryOptions(candidateId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
  * @summary List candidate documents
  */
 export const listCandidateDocuments = (
@@ -3147,6 +3316,93 @@ export const useCreateCandidateDocumentUploadGrant = <
 
   return useMutation(mutationOptions);
 };
+
+/**
+ * Profile filters select candidates; status and documentTypeCode select their nested documents. Progress counts all accessible approved documents across tabs. Candidates and documents must both be in the caller's location scope.
+ * @summary Candidates with matching documents, paginated by candidate id
+ */
+export const listCandidateReviewQueue = (
+  params?: ListCandidateReviewQueueParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateReviewQueueDto>({
+    url: `/api/v1/candidate-review-queue`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListCandidateReviewQueueQueryKey = (
+  params?: ListCandidateReviewQueueParams,
+) => {
+  return [
+    `/api/v1/candidate-review-queue`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListCandidateReviewQueueQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCandidateReviewQueue>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCandidateReviewQueueParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateReviewQueue>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListCandidateReviewQueueQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCandidateReviewQueue>>
+  > = ({ signal }) => listCandidateReviewQueue(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCandidateReviewQueue>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCandidateReviewQueueQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCandidateReviewQueue>>
+>;
+export type ListCandidateReviewQueueQueryError = ApiErrorDto;
+
+/**
+ * @summary Candidates with matching documents, paginated by candidate id
+ */
+
+export function useListCandidateReviewQueue<
+  TData = Awaited<ReturnType<typeof listCandidateReviewQueue>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCandidateReviewQueueParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateReviewQueue>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCandidateReviewQueueQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
 
 /**
  * @summary Review queue with candidate profile: q, documentTypeCode, citizenship, manager, mentor, hasMentor, birthDateFrom/To, positionCode, projectCode

@@ -12,10 +12,14 @@ import { applicable, FIELD_LABELS } from "./document-contract";
 import {
   buildCandidateProfileWhere,
   toCandidateProfile,
-  type ReviewProfileFilters,
 } from "./candidate-profile";
 import type {
   CandidateDocumentDraftDto,
+  CandidateDetailsDto,
+  CandidateDocumentSummaryDto,
+  CandidateProfileDto,
+  CandidateReviewQueueDto,
+  CandidateReviewQueueQueryDto,
   CandidateDto,
   CandidateListDto,
   DocumentDto,
@@ -26,7 +30,19 @@ import type {
   ReviewCandidateListDto,
   ReviewCandidatesQueryDto,
   ReviewDocumentFacetsDto,
+  ReviewDocumentsQueryDto,
 } from "./dto/document.dto";
+
+const documentSummaryInclude = {
+  documentType: true,
+  versions: {
+    select: {
+      version: true,
+      revision: true,
+      delivery: { select: { status: true } },
+    },
+  },
+} satisfies Prisma.DocumentInclude;
 
 const versionInclude = {
   files: { orderBy: { ordinal: "asc" as const } },
@@ -96,50 +112,65 @@ export class DocumentReadService {
   async documents(where: Prisma.DocumentWhereInput): Promise<DocumentListDto> {
     const rows = await this.prisma.document.findMany({
       where,
-      include: {
-        documentType: true,
-        candidate: true,
-        versions: {
-          select: {
-            version: true,
-            revision: true,
-            delivery: { select: { status: true } },
-          },
-        },
-      },
+      include: { ...documentSummaryInclude, candidate: true },
       orderBy: { createdAt: "desc" },
     });
     return {
       items: rows.map(
         (d): DocumentDto => ({
-          id: d.id,
-          documentTypeCode: d.documentType?.code ?? null,
-          status: d.status,
-          currentVersion: d.currentVersion,
-          revision:
-            d.versions.find((v) => v.version === d.currentVersion)?.revision ??
-            0,
-          title: d.documentType?.title ?? "Документ",
-          documentUid: d.documentType?.erpUid ?? null,
+          ...this.documentSummary(d),
           candidateId: d.candidateId,
           chatUuid: d.candidate?.chatUuid ?? null,
           code1c: d.candidate?.code1c ?? null,
-          deliveryStatus:
-            d.versions.find((v) => v.version === d.currentVersion)?.delivery
-              ?.status ?? null,
-          pendingDeliveryVersions: d.versions
-            .filter(
-              (v) =>
-                v.delivery &&
-                ["REQUIRES_MANUAL", "WAITING_CONTRACT"].includes(
-                  v.delivery.status,
-                ),
-            )
-            .map((v) => v.version)
-            .sort((a, b) => b - a),
           candidate: toCandidateProfile(d.candidate),
         }),
       ),
+    };
+  }
+
+  private documentSummary(
+    d: Prisma.DocumentGetPayload<{ include: typeof documentSummaryInclude }>,
+  ): CandidateDocumentSummaryDto {
+    const current = d.versions.find((v) => v.version === d.currentVersion);
+    return {
+      id: d.id,
+      documentTypeCode: d.documentType?.code ?? null,
+      status: d.status,
+      currentVersion: d.currentVersion,
+      revision: current?.revision ?? 0,
+      title: d.documentType?.title ?? "Документ",
+      documentUid: d.documentType?.erpUid ?? null,
+      deliveryStatus: current?.delivery?.status ?? null,
+      pendingDeliveryVersions: d.versions
+        .filter(
+          (v) =>
+            v.delivery &&
+            ["REQUIRES_MANUAL", "WAITING_CONTRACT"].includes(v.delivery.status),
+        )
+        .map((v) => v.version)
+        .sort((a, b) => b - a),
+    };
+  }
+
+  async candidateDetails(
+    id: string,
+    principal: AuthPrincipal,
+  ): Promise<CandidateDetailsDto> {
+    const owner = await this.access.candidate(id, principal);
+    const rows = await this.prisma.document.findMany({
+      where: {
+        candidateId: id,
+        currentVersion: { gt: 0 },
+        ...this.access.documentWhere(principal),
+      },
+      include: documentSummaryInclude,
+      orderBy: { id: "asc" },
+    });
+    const candidate = toCandidateProfile(owner)!;
+    await this.enrichReviewCandidates(principal, [candidate]);
+    return {
+      candidate,
+      documents: rows.map((row) => this.documentSummary(row)),
     };
   }
 
@@ -152,7 +183,10 @@ export class DocumentReadService {
       candidateId: id,
       ...this.access.documentWhere(principal),
     });
-    await this.enrichReviewCandidates(principal, documents.items);
+    await this.enrichReviewCandidates(
+      principal,
+      documents.items.flatMap((d) => (d.candidate ? [d.candidate] : [])),
+    );
     return documents;
   }
 
@@ -538,23 +572,16 @@ export class DocumentReadService {
     await this.access.document(id, principal);
     return (await this.documents({ id })).items[0];
   }
-  async reviewDocuments(
+  /** The same document predicate selects candidates and their nested documents. */
+  private reviewDocumentWhere(
     principal: AuthPrincipal,
-    query: {
-      limit?: number;
-      cursor?: string;
-      status?: string;
-      documentTypeCode?: string;
-    } & ReviewProfileFilters = {},
-  ) {
-    const { limit = 50, cursor, status, documentTypeCode, ...profile } = query;
-    const candidate = buildCandidateProfileWhere(profile);
-    const where: Prisma.DocumentWhereInput = {
+    query: { status?: string; documentTypeCode?: string },
+  ): Prisma.DocumentWhereInput {
+    const { status, documentTypeCode } = query;
+    return {
       ...this.access.documentWhere(principal),
       currentVersion: { gt: 0 },
-      ...(cursor ? { id: { gt: cursor } } : {}),
       ...(documentTypeCode ? { documentType: { code: documentTypeCode } } : {}),
-      ...(candidate ? { candidate } : {}),
       ...(status === "ALL"
         ? {}
         : status === "ERP_PENDING"
@@ -567,12 +594,63 @@ export class DocumentReadService {
                 },
               },
             }
-          : // Returned documents share the same location scope as the queue
-            // (documentWhere above): the dashboard rework KPI counts exactly
-            // this set, so the KPI link and the list can never diverge.
-            status === "RETURNED"
-            ? { status: "RETURNED" }
-            : { status: "IN_REVIEW" }),
+          : { status: status === "RETURNED" ? "RETURNED" : "IN_REVIEW" }),
+    };
+  }
+
+  async candidateReviewQueue(
+    principal: AuthPrincipal,
+    query: CandidateReviewQueueQueryDto = {},
+  ): Promise<CandidateReviewQueueDto> {
+    const { limit = 50, cursor, status, documentTypeCode, ...profile } = query;
+    const documentsWhere = this.reviewDocumentWhere(principal, {
+      status,
+      documentTypeCode,
+    });
+    const rows = await this.prisma.candidate.findMany({
+      where: {
+        AND: [
+          this.access.candidateWhere(principal),
+          buildCandidateProfileWhere(profile) ?? {},
+          ...(cursor ? [{ id: { gt: cursor } }] : []),
+          { documents: { some: documentsWhere } },
+        ],
+      },
+      include: {
+        documents: {
+          where: documentsWhere,
+          include: documentSummaryInclude,
+          orderBy: { id: "asc" },
+        },
+      },
+      orderBy: { id: "asc" },
+      take: limit + 1,
+    });
+    const items = rows.slice(0, limit).map((row) => ({
+      candidate: toCandidateProfile(row)!,
+      documents: row.documents.map((d) => this.documentSummary(d)),
+    }));
+    await this.enrichReviewCandidates(
+      principal,
+      items.map((item) => item.candidate),
+    );
+    return {
+      items,
+      nextCursor:
+        rows.length > limit ? items[items.length - 1].candidate.id : null,
+    };
+  }
+
+  async reviewDocuments(
+    principal: AuthPrincipal,
+    query: ReviewDocumentsQueryDto = {},
+  ) {
+    const { limit = 50, cursor, status, documentTypeCode, ...profile } = query;
+    const candidate = buildCandidateProfileWhere(profile);
+    const where: Prisma.DocumentWhereInput = {
+      ...this.reviewDocumentWhere(principal, { status, documentTypeCode }),
+      ...(cursor ? { id: { gt: cursor } } : {}),
+      ...(candidate ? { candidate } : {}),
     };
     const rows = await this.prisma.document.findMany({
       where,
@@ -583,7 +661,10 @@ export class DocumentReadService {
     const ids = rows.slice(0, limit).map((r) => r.id);
     const documents = await this.documents({ id: { in: ids } });
     const items = ids.map((id) => documents.items.find((d) => d.id === id)!);
-    await this.enrichReviewCandidates(principal, items);
+    await this.enrichReviewCandidates(
+      principal,
+      items.flatMap((d) => (d.candidate ? [d.candidate] : [])),
+    );
     return {
       items,
       nextCursor: rows.length > limit ? ids[ids.length - 1] : null,
@@ -600,15 +681,9 @@ export class DocumentReadService {
    */
   private async enrichReviewCandidates(
     principal: AuthPrincipal,
-    items: DocumentDto[],
+    profiles: CandidateProfileDto[],
   ): Promise<void> {
-    const candidateIds = [
-      ...new Set(
-        items
-          .map((item) => item.candidate?.id)
-          .filter((id): id is string => id !== undefined && id !== null),
-      ),
-    ];
+    const candidateIds = [...new Set(profiles.map((profile) => profile.id))];
     if (candidateIds.length === 0) return;
     const [grouped, catalog] = await Promise.all([
       this.prisma.document.groupBy({
@@ -633,9 +708,7 @@ export class DocumentReadService {
           (approved.get(row.candidateId) ?? 0) + row._count._all,
         );
     }
-    for (const item of items) {
-      const profile = item.candidate;
-      if (!profile) continue;
+    for (const profile of profiles) {
       const positionCode = profile.positionCode;
       const citizenship = (profile.citizenship ?? "ru").toLowerCase();
       profile.approvedDocuments = approved.get(profile.id) ?? 0;

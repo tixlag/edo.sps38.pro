@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  useListCandidateDocuments,
+  useGetCandidateDetails,
   type CandidateProfileDto,
 } from "@edo/api-client";
 import { Badge, Button, StatusBadge } from "@edo/ui";
@@ -17,7 +17,7 @@ import {
 
 /**
  * Side drawer with the candidate profile (snapshot from the review queue)
- * and ALL of their documents via `useListCandidateDocuments`.
+ * and ALL of their documents via `useGetCandidateDetails`.
  *
  * Open state lives in the URL (`?candidate=<id>`): the browser back button
  * closes the drawer and the link is shareable. Closes on the cross button,
@@ -34,7 +34,7 @@ export function CandidateDrawer({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
-  const docs = useListCandidateDocuments(candidateId);
+  const docs = useGetCandidateDetails(candidateId);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -53,9 +53,7 @@ export function CandidateDrawer({
     };
   }, []);
 
-  const profile =
-    docs.data?.items.find((doc) => doc.candidate?.id === candidateId)
-      ?.candidate ?? queueProfile;
+  const profile = docs.data?.candidate ?? queueProfile;
   const fullName = profile?.fullName?.trim() || null;
   const heading = fullName ?? "Профиль кандидата";
   const progressPercent = profile
@@ -64,7 +62,7 @@ export function CandidateDrawer({
         profile.requiredDocuments,
       )
     : null;
-  const items = [...(docs.data?.items ?? [])].sort((a, b) =>
+  const items = [...(docs.data?.documents ?? [])].sort((a, b) =>
     a.title.localeCompare(b.title, "ru"),
   );
 

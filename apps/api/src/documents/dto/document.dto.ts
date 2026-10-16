@@ -193,9 +193,7 @@ export class CandidateProfileDto {
   @ApiProperty({ type: String, nullable: true }) managerName!: string | null;
   @ApiProperty({ type: String, nullable: true }) managerCode1c!: string | null;
   @ApiProperty({ type: String, nullable: true }) mentorName!: string | null;
-  @ApiProperty({ type: String, nullable: true }) mentorPosition!:
-    | string
-    | null;
+  @ApiProperty({ type: String, nullable: true }) mentorPosition!: string | null;
   @ApiProperty({ type: String, nullable: true }) mentorCode1c!: string | null;
   @ApiProperty() isReemployment!: boolean;
   @ApiProperty({ type: String, nullable: true, format: "date-time" })
@@ -213,7 +211,8 @@ export class CandidateProfileDto {
   })
   requiredDocuments!: number | null;
 }
-export class DocumentDto {
+/** Document properties shared by candidate details and document-oriented APIs. */
+export class CandidateDocumentSummaryDto {
   @ApiProperty({
     type: [Number],
     description: "Approved versions awaiting manual ERP delivery",
@@ -229,10 +228,12 @@ export class DocumentDto {
   @ApiProperty() revision!: number;
   @ApiProperty() title!: string;
   @ApiProperty({ type: String, nullable: true }) documentUid!: string | null;
+  @ApiProperty({ type: String, nullable: true }) deliveryStatus!: string | null;
+}
+export class DocumentDto extends CandidateDocumentSummaryDto {
   @ApiProperty({ type: String, nullable: true }) candidateId!: string | null;
   @ApiProperty({ type: String, nullable: true }) chatUuid!: string | null;
   @ApiProperty({ type: String, nullable: true }) code1c!: string | null;
-  @ApiProperty({ type: String, nullable: true }) deliveryStatus!: string | null;
   @ApiProperty({
     type: () => CandidateProfileDto,
     nullable: true,
@@ -243,10 +244,26 @@ export class DocumentDto {
 export class DocumentListDto {
   @ApiProperty({ type: [DocumentDto] }) items!: DocumentDto[];
 }
+export class CandidateDetailsDto {
+  @ApiProperty({ type: CandidateProfileDto }) candidate!: CandidateProfileDto;
+  @ApiProperty({ type: [CandidateDocumentSummaryDto] })
+  documents!: CandidateDocumentSummaryDto[];
+}
+export class CandidateReviewQueueDto {
+  @ApiProperty({ type: [CandidateDetailsDto] }) items!: CandidateDetailsDto[];
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "Last candidate id on this page; null when there is no next page",
+  })
+  nextCursor!: string | null;
+}
 export class DocumentTypeDto {
   @ApiProperty() code!: string;
   @ApiProperty() title!: string;
-}export class DocumentDefinitionDto {
+}
+export class DocumentDefinitionDto {
   @ApiProperty() name!: string;
   @ApiProperty() label!: string;
   @ApiProperty({ enum: ["text", "date", "boolean"] }) kind!: string;
@@ -585,7 +602,9 @@ export class DocumentUploadGrantDto {
   @ApiProperty({ format: "date-time" }) expiresAt!: string;
 }
 export class ReviewDocumentsQueryDto extends CandidateQueryDto {
-  @ApiPropertyOptional({ enum: ["IN_REVIEW", "ERP_PENDING", "RETURNED", "ALL"] })
+  @ApiPropertyOptional({
+    enum: ["IN_REVIEW", "ERP_PENDING", "RETURNED", "ALL"],
+  })
   @IsOptional()
   @IsIn(["IN_REVIEW", "ERP_PENDING", "RETURNED", "ALL"])
   status?: string;
@@ -665,6 +684,17 @@ export class ReviewDocumentsQueryDto extends CandidateQueryDto {
 }
 export class ReviewDocumentsDto extends DocumentListDto {
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
+}
+export class CandidateReviewQueueQueryDto extends ReviewDocumentsQueryDto {
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 100,
+    default: 50,
+    description: "Number of candidates, regardless of their document counts",
+  })
+  declare limit?: number;
+  @ApiPropertyOptional({ description: "Candidate id from nextCursor" })
+  declare cursor?: string;
 }
 
 export class CandidateDocumentDraftFieldDto {

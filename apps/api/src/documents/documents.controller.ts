@@ -39,6 +39,7 @@ import { DocumentReviewService } from "./document-review.service";
 import {
   ApiErrorDto,
   CandidateDto,
+  CandidateDetailsDto,
   CandidateListDto,
   CandidateQueryDto,
   DocumentListDto,
@@ -207,6 +208,20 @@ export class DocumentsController {
     @Query() query: CandidateQueryDto,
   ): Promise<CandidateListDto> {
     return this.reads.candidates(principal, query.limit, query.cursor);
+  }
+
+  @Get("candidates/:candidateId")
+  @RequireAccessRule(EdoAccessRule.ACCESS)
+  @ApiOperation({
+    operationId: "getCandidateDetails",
+    summary: "Candidate profile with all accessible live documents",
+  })
+  @ApiResponse({ status: 200, type: CandidateDetailsDto })
+  candidateDetails(
+    @Param("candidateId") id: string,
+    @CurrentPrincipal() principal: AuthPrincipal,
+  ): Promise<CandidateDetailsDto> {
+    return this.reads.candidateDetails(id, principal);
   }
 
   @Get("candidates/:candidateId/documents")
