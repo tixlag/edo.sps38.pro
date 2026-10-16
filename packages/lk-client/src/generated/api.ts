@@ -40,6 +40,13 @@ export interface EdoLocation {
   updatedAt: EdoLocationUpdatedAt;
 }
 
+export type EdoCandidateChatCode1c = string | null;
+
+export interface EdoCandidateChat {
+  chatUuid: string;
+  code1c: EdoCandidateChatCode1c;
+}
+
 export type EdoEmployeeBirthday = string | null;
 
 export type EdoEmployeeCitizenship = string | null;
@@ -88,6 +95,44 @@ export interface EdoReference {
 export type EdoListEmployeesParams = {
   limit?: number;
   cursor?: string;
+};
+
+export const getEdoGetCandidateChatUrl = (chatUuid: string) => {
+  return `/api/internal/edo/v1/candidate-chats/${chatUuid}`;
+};
+
+export const edoGetCandidateChat = async (
+  chatUuid: string,
+  options?: RequestInit,
+): Promise<EdoCandidateChat> => {
+  const res = await fetch(getEdoGetCandidateChatUrl(chatUuid), {
+    ...options,
+    method: "GET",
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+  const data: EdoCandidateChat = body ? JSON.parse(body) : {};
+
+  return data;
+};
+
+export const getEdoGetEmployeeCandidateChatUrl = (code1c: string) => {
+  return `/api/internal/edo/v1/employees/${code1c}/candidate-chat`;
+};
+
+export const edoGetEmployeeCandidateChat = async (
+  code1c: string,
+  options?: RequestInit,
+): Promise<EdoCandidateChat> => {
+  const res = await fetch(getEdoGetEmployeeCandidateChatUrl(code1c), {
+    ...options,
+    method: "GET",
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+  const data: EdoCandidateChat = body ? JSON.parse(body) : {};
+
+  return data;
 };
 
 export const getEdoListEmployeesUrl = (params?: EdoListEmployeesParams) => {

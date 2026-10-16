@@ -30,6 +30,8 @@ const envSchema = z.object({
   EDO_LK_INTERNAL_TOKEN: z.string().optional(),
   ERP_DOCUMENTS_BASE_URL: z.string().url().default('https://api-erp.sps38.pro/ERP/hs/api/'),
   ERP_DOCUMENTS_TOKEN: z.string().optional(),
+  ERP_CANDIDATE_URL: z.string().url().optional(),
+  ERP_CANDIDATE_TOKEN: z.string().optional(),
   ERP_USERNAME: z.string().optional(),
   ERP_PASSWORD: z.string().optional(),
   DOCUMENT_WORKER_ENABLED: z.enum(['true', 'false']).default('true'),

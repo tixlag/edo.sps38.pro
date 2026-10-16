@@ -34,25 +34,44 @@
     "VITE_ALLOW_INSECURE_DEV_AUTH",
     "API_PORT",
     "API_PREFIX",
-    "CORS_ORIGIN"
+    "CORS_ORIGIN",
+    "ERP_CANDIDATE_URL",
+    "ERP_CANDIDATE_TOKEN",
+    "ERP_DOCUMENTS_BASE_URL",
+    "ERP_DOCUMENTS_TOKEN",
+    "ERP_USERNAME",
+    "ERP_PASSWORD",
+    "EDO_PUBLIC_API_URL",
+    "DOCUMENT_WORKER_ENABLED",
+    "EDO_CANDIDATE_CACHE_TEST_REDIS_URL"
   ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
     },
     "api:generate": {
-      "outputs": ["../../packages/api-client/src/generated/**"]
+      "outputs": [
+        "../../packages/api-client/src/generated/**"
+      ]
     },
     "generate": {},
     "dev": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "cache": false,
       "persistent": true
     },
     "lint": {},
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": [
+        "^build"
+      ]
     },
     "test:e2e": {
       "cache": false
