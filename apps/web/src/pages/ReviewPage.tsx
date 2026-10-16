@@ -10,7 +10,8 @@ import {
   useListDocumentTypes,
   useListPositions,
   useListReviewCandidates,
-  useListReviewDocuments,
+  useListCandidateReviewQueue,
+  type CandidateDetailsDto,
   useGetDocumentInfo,
   useGetDocumentVersion,
   getGetDocumentVersionQueryKey,
@@ -39,10 +40,8 @@ import {
   formatBirthDateRu,
   formatCandidateObject,
   formatDocumentProgress,
-  groupReviewItems,
   hasActiveReviewFilters,
   parseReviewSearchParams,
-  type ReviewCandidateGroup,
   type ReviewTab,
 } from "../lib/review-groups";
 
@@ -125,7 +124,7 @@ function CandidateRow({
   group,
   onOpen,
 }: {
-  group: ReviewCandidateGroup;
+  group: CandidateDetailsDto;
   onOpen: () => void;
 }) {
   const candidate = group.candidate;
@@ -372,12 +371,9 @@ export function ReviewPage() {
     }),
     [filters],
   );
-  const list = useListReviewDocuments(queryParams);
+  const list = useListCandidateReviewQueue(queryParams);
 
-  const groups = useMemo(
-    () => groupReviewItems(list.data?.items ?? []),
-    [list.data],
-  );
+  const groups = list.data?.items ?? [];
 
   // Selector options. Facet entries without an exact code cannot feed an
   // exact backend filter, so they are not selectable.
@@ -461,21 +457,10 @@ export function ReviewPage() {
   );
   const docTypeLabel = docType?.title;
 
-  // Drawer target: the queue group for ?candidate=<id>, falling back to any
-  // document-level candidateId. A stale id still opens the drawer with the
-  // document list but without the profile snapshot.
-  const drawerGroup = filters.candidate
-    ? (groups.find((group) => group.candidate?.id === filters.candidate) ??
-      groups.find((group) =>
-        group.documents.some((doc) => doc.candidateId === filters.candidate),
-      ) ??
-      null)
-    : null;
-  const drawerCandidateId =
-    drawerGroup?.candidate?.id ??
-    drawerGroup?.documents.find((doc) => doc.candidateId)?.candidateId ??
-    filters.candidate ??
-    null;
+  const drawerGroup = groups.find(
+    (group) => group.candidate.id === filters.candidate,
+  );
+  const drawerCandidateId = filters.candidate ?? null;
 
   const filtersActive = hasActiveReviewFilters(filters);
 
@@ -675,23 +660,9 @@ export function ReviewPage() {
             <div className="flex flex-col gap-3">
               {groups.map((group) => (
                 <CandidateRow
-                  key={group.key}
+                  key={group.candidate.id}
                   group={group}
-                  onOpen={() => {
-                    const candidateId =
-                      group.candidate?.id ??
-                      group.documents.find((doc) => doc.candidateId)
-                        ?.candidateId;
-                    if (candidateId) openCandidate(candidateId);
-                    else {
-                      const document = group.documents[0];
-                      void navigate({
-                        to: "/review/$documentId",
-                        params: { documentId: document.id },
-                        search: { version: document.currentVersion },
-                      });
-                    }
-                  }}
+                  onOpen={() => openCandidate(group.candidate.id)}
                 />
               ))}
             </div>
@@ -917,6 +888,7 @@ export function ReviewDocumentPage() {
       {version.data && (
         <div className="mt-3 min-h-0 lg:flex-1">
           <DocumentReviewWorkspace
+            candidateId={info.data?.candidateId ?? undefined}
             data={version.data}
             readOnly={historic}
             fitContainer

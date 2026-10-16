@@ -1,5 +1,3 @@
-import type { CandidateProfileDto, DocumentDto } from "@edo/api-client";
-
 export const LK_BASE_URL_FALLBACK = "https://lk.sps38.pro";
 
 /** Browser base of the LK directory; override via VITE_LK_BASE_URL. */
@@ -87,66 +85,6 @@ export function documentProgressPercent(
 ): number | null {
   if (required === null || required === undefined || required <= 0) return null;
   return Math.min(100, Math.max(0, Math.round((approved / required) * 100)));
-}
-
-export interface ReviewCandidateGroup {
-  key: string;
-  candidate: CandidateProfileDto | null;
-  documents: DocumentDto[];
-}
-
-/**
- * Stable group key: candidate profile first, then document-level fallbacks
- * (candidateId/chatUuid/code1c), finally the document itself so unlinked
- * documents never merge into someone else's group.
- */
-export function reviewGroupKey(doc: DocumentDto): string {
-  const candidate = doc.candidate;
-  return (
-    candidate?.id ??
-    candidate?.chatUuid ??
-    candidate?.code1c ??
-    doc.candidateId ??
-    doc.chatUuid ??
-    doc.code1c ??
-    `document:${doc.id}`
-  );
-}
-
-/**
- * Group flat review-queue items by candidate. Groups sort by fullName
- * (ru locale, nameless last); documents inside sort by title.
- */
-export function groupReviewItems(items: DocumentDto[]): ReviewCandidateGroup[] {
-  const groups = new Map<string, ReviewCandidateGroup>();
-  for (const doc of items) {
-    const key = reviewGroupKey(doc);
-    const existing = groups.get(key);
-    if (existing) {
-      existing.documents.push(doc);
-      if (!existing.candidate && doc.candidate)
-        existing.candidate = doc.candidate;
-    } else {
-      groups.set(key, {
-        key,
-        candidate: doc.candidate ?? null,
-        documents: [doc],
-      });
-    }
-  }
-  const list = [...groups.values()];
-  for (const group of list) {
-    group.documents.sort((a, b) => a.title.localeCompare(b.title, "ru"));
-  }
-  list.sort((a, b) => {
-    const aName = a.candidate?.fullName?.trim() ?? "";
-    const bName = b.candidate?.fullName?.trim() ?? "";
-    if (!aName && !bName) return a.key.localeCompare(b.key, "ru");
-    if (!aName) return 1;
-    if (!bName) return -1;
-    return aName.localeCompare(bName, "ru");
-  });
-  return list;
 }
 
 export type ReviewTab = "IN_REVIEW" | "ERP_PENDING" | "RETURNED";

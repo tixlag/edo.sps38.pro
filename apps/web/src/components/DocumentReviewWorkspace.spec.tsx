@@ -15,6 +15,8 @@ vi.mock("@edo/api-client", () => ({
   getGetDocumentVersionQueryKey: () => ["version"],
   getListEmployeeDocumentsQueryKey: () => ["employee-docs"],
   getListReviewDocumentsQueryKey: () => ["review-docs"],
+  getListCandidateReviewQueueQueryKey: () => ["candidate-review-queue"],
+  getGetCandidateDetailsQueryKey: (id: string) => ["candidate", id],
   getGetDocumentFileDownloadQueryKey: () => ["file-download"],
   useGetDocumentFileDownload: () => ({
     data: { url: "blob:fake-preview" },

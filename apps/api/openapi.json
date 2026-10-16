@@ -1058,6 +1058,132 @@
         ]
       }
     },
+    "/api/v1/candidates/{candidateId}": {
+      "get": {
+        "operationId": "getCandidateDetails",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDetailsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Candidate profile with all accessible live documents",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/v1/candidates/{candidateId}/documents": {
       "get": {
         "operationId": "listCandidateDocuments",
@@ -2690,6 +2816,272 @@
         "summary": "Mint a five-minute upload grant bound to owner, document and bundle key",
         "tags": [
           "candidate-documents"
+        ]
+      }
+    },
+    "/api/v1/candidate-review-queue": {
+      "get": {
+        "description": "Profile filters select candidates; status and documentTypeCode select their nested documents. Progress counts all accessible approved documents across tabs. Candidates and documents must both be in the caller's location scope.",
+        "operationId": "listCandidateReviewQueue",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Number of candidates, regardless of their document counts",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "Candidate id from nextCursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "IN_REVIEW",
+                "ERP_PENDING",
+                "RETURNED",
+                "ALL"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Case-insensitive fullName search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentTypeCode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "citizenship",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "manager",
+            "required": false,
+            "in": "query",
+            "description": "Manager name or code contains",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mentor",
+            "required": false,
+            "in": "query",
+            "description": "Mentor name or code contains",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hasMentor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "birthDateFrom",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "birthDateTo",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "positionCode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectCode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "candidateId",
+            "required": false,
+            "in": "query",
+            "description": "Exact candidate id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "managerCode1c",
+            "required": false,
+            "in": "query",
+            "description": "Exact manager code_1c",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mentorCode1c",
+            "required": false,
+            "in": "query",
+            "description": "Exact mentor code_1c",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateReviewQueueDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Candidates with matching documents, paginated by candidate id",
+        "tags": [
+          "documents"
         ]
       }
     },
@@ -5424,6 +5816,78 @@
           "requiredDocuments"
         ]
       },
+      "CandidateDocumentSummaryDto": {
+        "type": "object",
+        "properties": {
+          "pendingDeliveryVersions": {
+            "description": "Approved versions awaiting manual ERP delivery",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "documentTypeCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DocumentStatus"
+              }
+            ]
+          },
+          "currentVersion": {
+            "type": "number"
+          },
+          "revision": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "documentUid": {
+            "type": "string",
+            "nullable": true
+          },
+          "deliveryStatus": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "pendingDeliveryVersions",
+          "id",
+          "documentTypeCode",
+          "status",
+          "currentVersion",
+          "revision",
+          "title",
+          "documentUid",
+          "deliveryStatus"
+        ]
+      },
+      "CandidateDetailsDto": {
+        "type": "object",
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/CandidateProfileDto"
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateDocumentSummaryDto"
+            }
+          }
+        },
+        "required": [
+          "candidate",
+          "documents"
+        ]
+      },
       "DocumentDto": {
         "type": "object",
         "properties": {
@@ -5461,6 +5925,10 @@
             "type": "string",
             "nullable": true
           },
+          "deliveryStatus": {
+            "type": "string",
+            "nullable": true
+          },
           "candidateId": {
             "type": "string",
             "nullable": true
@@ -5470,10 +5938,6 @@
             "nullable": true
           },
           "code1c": {
-            "type": "string",
-            "nullable": true
-          },
-          "deliveryStatus": {
             "type": "string",
             "nullable": true
           },
@@ -5496,10 +5960,10 @@
           "revision",
           "title",
           "documentUid",
+          "deliveryStatus",
           "candidateId",
           "chatUuid",
           "code1c",
-          "deliveryStatus",
           "candidate"
         ]
       },
@@ -5918,6 +6382,26 @@
           "token",
           "url",
           "expiresAt"
+        ]
+      },
+      "CandidateReviewQueueDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateDetailsDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "Last candidate id on this page; null when there is no next page"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
         ]
       },
       "ReviewDocumentsDto": {

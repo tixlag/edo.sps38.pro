@@ -14,7 +14,7 @@ export function useDocumentEvents(enabled: boolean): void {
       onDocuments: () => {
         void client.invalidateQueries({
           predicate: (query) =>
-            /documents|candidates|dashboard/.test(String(query.queryKey[0])),
+            /documents|candidate|dashboard/.test(String(query.queryKey[0])),
         });
       },
     });
