@@ -34,9 +34,21 @@ import {
   DocumentUploadGrantService,
 } from "./document-upload-grant.service";
 
+import {
+  BrowserCandidateDocumentsController,
+  MyCandidateDocumentsController,
+} from "./candidate-browser.controller";
+import { CandidateDocumentsService } from "./candidate-documents.service";
+import { CandidateContextService } from "./candidate-context.service";
+import { LkCandidateIdentityService } from "./lk-candidate-identity.service";
+import { ErpCandidateClient } from "./erp-candidate.client";
+import { CandidateCardCache } from "./candidate-card-cache";
+
 @Module({
   imports: [PrismaModule, AuditModule, StorageModule, OcrModule, RedisModule],
   controllers: [
+    BrowserCandidateDocumentsController,
+    MyCandidateDocumentsController,
     CandidateIntegrationController,
     DocumentsController,
     ManualDocumentIntegrationController,
@@ -44,7 +56,13 @@ import {
     CandidateDocumentEventsController,
     CandidateDocumentUploadController,
   ],
+  exports: [CandidateContextService],
   providers: [
+    CandidateDocumentsService,
+    CandidateContextService,
+    LkCandidateIdentityService,
+    ErpCandidateClient,
+    CandidateCardCache,
     DocumentAccessService,
     DocumentReadService,
     DocumentReviewService,

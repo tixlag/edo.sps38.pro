@@ -118,6 +118,8 @@ export class CandidateProfileBackfill {
           "LK_HTTP_503",
           "LK_HTTP_ERROR",
           "LK_UNAVAILABLE",
+          "ERP_CANDIDATE_NOT_FOUND",
+          "ERP_CANDIDATE_UNAVAILABLE",
         ];
         const status =
           error instanceof Error && allowed.includes(error.message)
@@ -139,36 +141,4 @@ export class CandidateProfileBackfill {
       results,
     };
   }
-}
-
-export function candidateContextLoader(baseUrl: string): ContextLoader {
-  const base = new URL(baseUrl);
-  if (
-    !["http:", "https:"].includes(base.protocol) ||
-    base.username ||
-    base.password
-  )
-    throw new Error("INVALID_LK_BASE_URL");
-  return async (chatUuid, signal) => {
-    const url = new URL(
-      `/surveys-service/api/candidate-documents/by-chat/${encodeURIComponent(chatUuid)}/context`,
-      base,
-    );
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        redirect: "error",
-        signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
-      });
-    } catch {
-      throw new Error("LK_UNAVAILABLE");
-    }
-    if (!response.ok)
-      throw new Error(
-        [404, 503].includes(response.status)
-          ? `LK_HTTP_${response.status}`
-          : "LK_HTTP_ERROR",
-      );
-    return response.json();
-  };
 }

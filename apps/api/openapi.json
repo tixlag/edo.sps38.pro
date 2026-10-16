@@ -343,6 +343,657 @@
         ]
       }
     },
+    "/api/candidate-documents/by-chat/{chatUuid}/context": {
+      "get": {
+        "operationId": "getCandidateDocumentContext",
+        "parameters": [
+          {
+            "name": "chatUuid",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentContextDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Candidate document context from LK identity and ERP",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/by-chat/{chatUuid}/catalog": {
+      "get": {
+        "operationId": "getCandidateDocumentTypes",
+        "parameters": [
+          {
+            "name": "chatUuid",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDocumentTypesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Applicable document forms for a verified candidate",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/by-chat/{chatUuid}/statuses": {
+      "get": {
+        "operationId": "getCandidateDocuments",
+        "parameters": [
+          {
+            "name": "chatUuid",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Document statuses for a verified candidate chat",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/by-chat/{chatUuid}/documents/{documentUid}/draft": {
+      "get": {
+        "operationId": "getBrowserCandidateDocumentDraft",
+        "parameters": [
+          {
+            "name": "chatUuid",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentUid",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentDraftDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Own current returned document fields",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/by-chat/{chatUuid}/stream-grant": {
+      "post": {
+        "operationId": "getCandidateDocumentsStreamGrant",
+        "parameters": [
+          {
+            "name": "chatUuid",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentStreamGrantDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Create a scoped document status stream grant",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/by-chat/{chatUuid}/upload-grant": {
+      "post": {
+        "operationId": "getCandidateDocumentUploadGrant",
+        "parameters": [
+          {
+            "name": "chatUuid",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateDocumentUploadRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentUploadGrantDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Create a scoped document upload grant using server context",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/my/chat": {
+      "get": {
+        "operationId": "getMyCandidateDocumentContext",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentContextDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Own candidate document context from the unified auth-service JWT",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
     "/api/internal/edo/v1/candidate-chats/{chatUuid}/documents": {
       "post": {
         "operationId": "uploadCandidateDocument",
@@ -5179,6 +5830,543 @@
           "path"
         ]
       },
+      "CandidateSnapshotPositionDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 64
+          }
+        }
+      },
+      "CandidateSnapshotMentorDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "position": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "code1C": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "code1c": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "code_1c": {
+            "type": "string",
+            "maxLength": 64
+          }
+        }
+      },
+      "CandidateSnapshotDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "birthDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "citizenship": {
+            "type": "string",
+            "maxLength": 2
+          },
+          "position": {
+            "$ref": "#/components/schemas/CandidateSnapshotPositionDto"
+          },
+          "project": {
+            "$ref": "#/components/schemas/CandidateSnapshotPositionDto"
+          },
+          "positionCode": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "positionName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "projectCode": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "projectName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "managerName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "manager": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "managerCode1C": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "managerCode1c": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "mentor": {
+            "$ref": "#/components/schemas/CandidateSnapshotMentorDto"
+          },
+          "mentorName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "mentorPosition": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "mentorCode1c": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "isReemployment": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CandidateDocumentContextDto": {
+        "type": "object",
+        "properties": {
+          "chatUuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code1c": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionCode1c": {
+            "type": "string"
+          },
+          "citizenship": {
+            "type": "string"
+          },
+          "projectCode1c": {
+            "type": "string",
+            "nullable": true
+          },
+          "candidateSnapshot": {
+            "$ref": "#/components/schemas/CandidateSnapshotDto"
+          }
+        },
+        "required": [
+          "chatUuid",
+          "code1c",
+          "positionCode1c",
+          "citizenship",
+          "projectCode1c"
+        ]
+      },
+      "DocumentDefinitionDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "date",
+              "boolean"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "ordinal": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "kind",
+          "required",
+          "ordinal"
+        ]
+      },
+      "CatalogDocumentTypeDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "documentUid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentDefinitionDto"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "title",
+          "documentUid",
+          "fields"
+        ]
+      },
+      "CatalogDocumentTypesDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogDocumentTypeDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "DocumentStatus": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "UPLOADED",
+          "OCR_PENDING",
+          "OCR_FAILED",
+          "IN_REVIEW",
+          "RETURNED",
+          "APPROVED",
+          "SIGNED",
+          "EXPIRED"
+        ]
+      },
+      "CandidateProfileDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "chatUuid": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "code1c": {
+            "type": "string",
+            "nullable": true
+          },
+          "fullName": {
+            "type": "string",
+            "nullable": true
+          },
+          "birthDate": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          },
+          "citizenship": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionName": {
+            "type": "string",
+            "nullable": true
+          },
+          "projectCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "projectName": {
+            "type": "string",
+            "nullable": true
+          },
+          "managerName": {
+            "type": "string",
+            "nullable": true
+          },
+          "managerCode1c": {
+            "type": "string",
+            "nullable": true
+          },
+          "mentorName": {
+            "type": "string",
+            "nullable": true
+          },
+          "mentorPosition": {
+            "type": "string",
+            "nullable": true
+          },
+          "mentorCode1c": {
+            "type": "string",
+            "nullable": true
+          },
+          "isReemployment": {
+            "type": "boolean"
+          },
+          "profileSyncedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "approvedDocuments": {
+            "type": "number",
+            "description": "Candidate APPROVED documents under the queue access scope (all tabs)"
+          },
+          "requiredDocuments": {
+            "type": "number",
+            "nullable": true,
+            "description": "Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown"
+          }
+        },
+        "required": [
+          "id",
+          "chatUuid",
+          "code1c",
+          "fullName",
+          "birthDate",
+          "citizenship",
+          "positionCode",
+          "positionName",
+          "projectCode",
+          "projectName",
+          "managerName",
+          "managerCode1c",
+          "mentorName",
+          "mentorPosition",
+          "mentorCode1c",
+          "isReemployment",
+          "profileSyncedAt",
+          "approvedDocuments",
+          "requiredDocuments"
+        ]
+      },
+      "DocumentDto": {
+        "type": "object",
+        "properties": {
+          "pendingDeliveryVersions": {
+            "description": "Approved versions awaiting manual ERP delivery",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "documentTypeCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DocumentStatus"
+              }
+            ]
+          },
+          "currentVersion": {
+            "type": "number"
+          },
+          "revision": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "documentUid": {
+            "type": "string",
+            "nullable": true
+          },
+          "deliveryStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "candidateId": {
+            "type": "string",
+            "nullable": true
+          },
+          "chatUuid": {
+            "type": "string",
+            "nullable": true
+          },
+          "code1c": {
+            "type": "string",
+            "nullable": true
+          },
+          "candidate": {
+            "nullable": true,
+            "description": "LK candidate profile snapshot, if one was provided",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateProfileDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pendingDeliveryVersions",
+          "id",
+          "documentTypeCode",
+          "status",
+          "currentVersion",
+          "revision",
+          "title",
+          "documentUid",
+          "deliveryStatus",
+          "candidateId",
+          "chatUuid",
+          "code1c",
+          "candidate"
+        ]
+      },
+      "DocumentListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "CandidateDocumentDraftFieldDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "string",
+                "nullable": true
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ]
+      },
+      "CandidateDocumentDraftDto": {
+        "type": "object",
+        "properties": {
+          "documentUid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "number"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateDocumentDraftFieldDto"
+            }
+          }
+        },
+        "required": [
+          "documentUid",
+          "version",
+          "fields"
+        ]
+      },
+      "DocumentStreamGrantDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "token",
+          "url",
+          "expiresAt"
+        ]
+      },
+      "CandidateDocumentUploadRequestDto": {
+        "type": "object",
+        "properties": {
+          "documentUid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "documentUid",
+          "idempotencyKey"
+        ]
+      },
+      "DocumentUploadGrantDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Five-minute upload capability; keep in memory only"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "token",
+          "url",
+          "expiresAt"
+        ]
+      },
       "UploadAcceptedDto": {
         "type": "object",
         "properties": {
@@ -5218,20 +6406,6 @@
           "documentId",
           "version",
           "jobId"
-        ]
-      },
-      "DocumentStatus": {
-        "type": "string",
-        "enum": [
-          "DRAFT",
-          "UPLOADED",
-          "OCR_PENDING",
-          "OCR_FAILED",
-          "IN_REVIEW",
-          "RETURNED",
-          "APPROVED",
-          "SIGNED",
-          "EXPIRED"
         ]
       },
       "DocumentFileDto": {
@@ -5712,110 +6886,6 @@
           "nextCursor"
         ]
       },
-      "CandidateProfileDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "chatUuid": {
-            "type": "string",
-            "nullable": true,
-            "format": "uuid"
-          },
-          "code1c": {
-            "type": "string",
-            "nullable": true
-          },
-          "fullName": {
-            "type": "string",
-            "nullable": true
-          },
-          "birthDate": {
-            "type": "string",
-            "nullable": true,
-            "format": "date"
-          },
-          "citizenship": {
-            "type": "string",
-            "nullable": true
-          },
-          "positionCode": {
-            "type": "string",
-            "nullable": true
-          },
-          "positionName": {
-            "type": "string",
-            "nullable": true
-          },
-          "projectCode": {
-            "type": "string",
-            "nullable": true
-          },
-          "projectName": {
-            "type": "string",
-            "nullable": true
-          },
-          "managerName": {
-            "type": "string",
-            "nullable": true
-          },
-          "managerCode1c": {
-            "type": "string",
-            "nullable": true
-          },
-          "mentorName": {
-            "type": "string",
-            "nullable": true
-          },
-          "mentorPosition": {
-            "type": "string",
-            "nullable": true
-          },
-          "mentorCode1c": {
-            "type": "string",
-            "nullable": true
-          },
-          "isReemployment": {
-            "type": "boolean"
-          },
-          "profileSyncedAt": {
-            "type": "string",
-            "nullable": true,
-            "format": "date-time"
-          },
-          "approvedDocuments": {
-            "type": "number",
-            "description": "Candidate APPROVED documents under the queue access scope (all tabs)"
-          },
-          "requiredDocuments": {
-            "type": "number",
-            "nullable": true,
-            "description": "Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown"
-          }
-        },
-        "required": [
-          "id",
-          "chatUuid",
-          "code1c",
-          "fullName",
-          "birthDate",
-          "citizenship",
-          "positionCode",
-          "positionName",
-          "projectCode",
-          "projectName",
-          "managerName",
-          "managerCode1c",
-          "mentorName",
-          "mentorPosition",
-          "mentorCode1c",
-          "isReemployment",
-          "profileSyncedAt",
-          "approvedDocuments",
-          "requiredDocuments"
-        ]
-      },
       "CandidateDocumentSummaryDto": {
         "type": "object",
         "properties": {
@@ -5888,99 +6958,6 @@
           "documents"
         ]
       },
-      "DocumentDto": {
-        "type": "object",
-        "properties": {
-          "pendingDeliveryVersions": {
-            "description": "Approved versions awaiting manual ERP delivery",
-            "type": "array",
-            "items": {
-              "type": "number"
-            }
-          },
-          "id": {
-            "type": "string"
-          },
-          "documentTypeCode": {
-            "type": "string",
-            "nullable": true
-          },
-          "status": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/DocumentStatus"
-              }
-            ]
-          },
-          "currentVersion": {
-            "type": "number"
-          },
-          "revision": {
-            "type": "number"
-          },
-          "title": {
-            "type": "string"
-          },
-          "documentUid": {
-            "type": "string",
-            "nullable": true
-          },
-          "deliveryStatus": {
-            "type": "string",
-            "nullable": true
-          },
-          "candidateId": {
-            "type": "string",
-            "nullable": true
-          },
-          "chatUuid": {
-            "type": "string",
-            "nullable": true
-          },
-          "code1c": {
-            "type": "string",
-            "nullable": true
-          },
-          "candidate": {
-            "nullable": true,
-            "description": "LK candidate profile snapshot, if one was provided",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CandidateProfileDto"
-              }
-            ]
-          }
-        },
-        "required": [
-          "pendingDeliveryVersions",
-          "id",
-          "documentTypeCode",
-          "status",
-          "currentVersion",
-          "revision",
-          "title",
-          "documentUid",
-          "deliveryStatus",
-          "candidateId",
-          "chatUuid",
-          "code1c",
-          "candidate"
-        ]
-      },
-      "DocumentListDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DocumentDto"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
       "DownloadDto": {
         "type": "object",
         "properties": {
@@ -6042,125 +7019,6 @@
         "type": "object",
         "properties": {}
       },
-      "DocumentDefinitionDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "label": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "text",
-              "date",
-              "boolean"
-            ]
-          },
-          "required": {
-            "type": "boolean"
-          },
-          "ordinal": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "name",
-          "label",
-          "kind",
-          "required",
-          "ordinal"
-        ]
-      },
-      "CatalogDocumentTypeDto": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "documentUid": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "fields": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DocumentDefinitionDto"
-            }
-          }
-        },
-        "required": [
-          "code",
-          "title",
-          "documentUid",
-          "fields"
-        ]
-      },
-      "CatalogDocumentTypesDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CatalogDocumentTypeDto"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "CandidateDocumentDraftFieldDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "value": {
-            "oneOf": [
-              {
-                "type": "string",
-                "nullable": true
-              },
-              {
-                "type": "boolean"
-              }
-            ]
-          }
-        },
-        "required": [
-          "name",
-          "value"
-        ]
-      },
-      "CandidateDocumentDraftDto": {
-        "type": "object",
-        "properties": {
-          "documentUid": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "version": {
-            "type": "number"
-          },
-          "fields": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CandidateDocumentDraftFieldDto"
-            }
-          }
-        },
-        "required": [
-          "documentUid",
-          "version",
-          "fields"
-        ]
-      },
       "DocumentScopeDto": {
         "type": "object",
         "properties": {
@@ -6170,141 +7028,6 @@
           },
           "code_1c": {
             "type": "string"
-          }
-        }
-      },
-      "DocumentStreamGrantDto": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
-          },
-          "expiresAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "token",
-          "url",
-          "expiresAt"
-        ]
-      },
-      "CandidateSnapshotPositionDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "code": {
-            "type": "string",
-            "maxLength": 64
-          }
-        }
-      },
-      "CandidateSnapshotMentorDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "position": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "code1C": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "code1c": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "code_1c": {
-            "type": "string",
-            "maxLength": 64
-          }
-        }
-      },
-      "CandidateSnapshotDto": {
-        "type": "object",
-        "properties": {
-          "fullName": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "birthDate": {
-            "type": "string",
-            "format": "date"
-          },
-          "citizenship": {
-            "type": "string",
-            "maxLength": 2
-          },
-          "position": {
-            "$ref": "#/components/schemas/CandidateSnapshotPositionDto"
-          },
-          "project": {
-            "$ref": "#/components/schemas/CandidateSnapshotPositionDto"
-          },
-          "positionCode": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "positionName": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "projectCode": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "projectName": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "managerName": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "manager": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "managerCode1C": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "managerCode1c": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "mentor": {
-            "$ref": "#/components/schemas/CandidateSnapshotMentorDto"
-          },
-          "mentorName": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "mentorPosition": {
-            "type": "string",
-            "maxLength": 512
-          },
-          "mentorCode1c": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "isReemployment": {
-            "type": "boolean"
           }
         }
       },
@@ -6360,28 +7083,6 @@
           "documentUid",
           "idempotencyKey",
           "position_code_1c"
-        ]
-      },
-      "DocumentUploadGrantDto": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string",
-            "description": "Five-minute upload capability; keep in memory only"
-          },
-          "url": {
-            "type": "string",
-            "format": "uri"
-          },
-          "expiresAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "token",
-          "url",
-          "expiresAt"
         ]
       },
       "CandidateReviewQueueDto": {

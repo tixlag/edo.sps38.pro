@@ -30,6 +30,8 @@ async function main() {
     '/api/internal/edo/v1/locations',
     '/api/internal/edo/v1/positions',
     '/api/internal/edo/v1/departments',
+    '/api/internal/edo/v1/candidate-chats/{chatUuid}',
+    '/api/internal/edo/v1/employees/{code1c}/candidate-chat',
   ];
   for (const p of paths) {
     if (!allowed.includes(p)) {

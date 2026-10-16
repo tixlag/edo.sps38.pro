@@ -1,11 +1,14 @@
 import { join } from "node:path";
 import { config as dotenvConfig } from "dotenv";
+import { ConfigService } from "@nestjs/config";
+import { RedisService } from "../redis/redis.module";
+import { CandidateContextService } from "./candidate-context.service";
+import { LkCandidateIdentityService } from "./lk-candidate-identity.service";
+import { ErpCandidateClient } from "./erp-candidate.client";
+import { CandidateCardCache } from "./candidate-card-cache";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
-import {
-  CandidateProfileBackfill,
-  candidateContextLoader,
-} from "./candidate-profile-backfill";
+import { CandidateProfileBackfill } from "./candidate-profile-backfill";
 
 dotenvConfig({ path: join(__dirname, "..", "..", "..", "..", ".env") });
 
@@ -27,7 +30,15 @@ async function main() {
   const db = new URL(process.env.DATABASE_URL ?? "");
   if (decodeURIComponent(db.pathname) !== "/edo")
     throw new Error("REFUSED_NON_EDO_DATABASE");
-  const loader = candidateContextLoader(process.env.LK_BASE_URL ?? "");
+  const config = new ConfigService(process.env);
+  const redis = new RedisService(config);
+  const contexts = new CandidateContextService(
+    new LkCandidateIdentityService(config),
+    new ErpCandidateClient(config),
+    new CandidateCardCache(redis),
+  );
+  const loader = (uuid: string, signal: AbortSignal) =>
+    contexts.context(uuid, signal);
   const prisma = new PrismaService();
   try {
     const report = await new CandidateProfileBackfill(
@@ -43,6 +54,7 @@ async function main() {
     if (report.failed) process.exitCode = 1;
   } finally {
     await prisma.$disconnect();
+    await redis.onModuleDestroy();
   }
 }
 

@@ -171,6 +171,12 @@ export class RedisService implements OnModuleDestroy {
     return res === 1;
   }
 
+  /** Strict atomic cache operations; callers own validation and bounded key sets. */
+  async evalStrict(script: string, keys: string[], args: string[]): Promise<unknown> {
+    if (!this.client) throw new Error('Redis client is not configured');
+    return this.client.eval(script, keys.length, ...keys, ...args);
+  }
+
   async onModuleDestroy() {
     try {
       await this.client?.quit();

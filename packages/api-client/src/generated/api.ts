@@ -249,6 +249,229 @@ export interface ApiErrorDto {
   path: string | null;
 }
 
+export interface CandidateSnapshotPositionDto {
+  /** @maxLength 512 */
+  name?: string;
+  /** @maxLength 64 */
+  code?: string;
+}
+
+export interface CandidateSnapshotMentorDto {
+  /** @maxLength 512 */
+  name?: string;
+  /** @maxLength 512 */
+  position?: string;
+  /** @maxLength 64 */
+  code1C?: string;
+  /** @maxLength 64 */
+  code1c?: string;
+  /** @maxLength 64 */
+  code_1c?: string;
+}
+
+export interface CandidateSnapshotDto {
+  /** @maxLength 512 */
+  fullName?: string;
+  /** @maxLength 512 */
+  name?: string;
+  birthDate?: string;
+  /** @maxLength 2 */
+  citizenship?: string;
+  position?: CandidateSnapshotPositionDto;
+  project?: CandidateSnapshotPositionDto;
+  /** @maxLength 64 */
+  positionCode?: string;
+  /** @maxLength 512 */
+  positionName?: string;
+  /** @maxLength 64 */
+  projectCode?: string;
+  /** @maxLength 512 */
+  projectName?: string;
+  /** @maxLength 512 */
+  managerName?: string;
+  /** @maxLength 512 */
+  manager?: string;
+  /** @maxLength 64 */
+  managerCode1C?: string;
+  /** @maxLength 64 */
+  managerCode1c?: string;
+  mentor?: CandidateSnapshotMentorDto;
+  /** @maxLength 512 */
+  mentorName?: string;
+  /** @maxLength 512 */
+  mentorPosition?: string;
+  /** @maxLength 64 */
+  mentorCode1c?: string;
+  isReemployment?: boolean;
+}
+
+export interface CandidateDocumentContextDto {
+  chatUuid: string;
+  /** @nullable */
+  code1c: string | null;
+  positionCode1c: string;
+  citizenship: string;
+  /** @nullable */
+  projectCode1c: string | null;
+  candidateSnapshot?: CandidateSnapshotDto;
+}
+
+export type DocumentDefinitionDtoKind =
+  (typeof DocumentDefinitionDtoKind)[keyof typeof DocumentDefinitionDtoKind];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentDefinitionDtoKind = {
+  text: "text",
+  date: "date",
+  boolean: "boolean",
+} as const;
+
+export interface DocumentDefinitionDto {
+  name: string;
+  label: string;
+  kind: DocumentDefinitionDtoKind;
+  required: boolean;
+  ordinal: number;
+}
+
+export interface CatalogDocumentTypeDto {
+  code: string;
+  title: string;
+  documentUid: string;
+  fields: DocumentDefinitionDto[];
+}
+
+export interface CatalogDocumentTypesDto {
+  items: CatalogDocumentTypeDto[];
+}
+
+export type DocumentStatus =
+  (typeof DocumentStatus)[keyof typeof DocumentStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentStatus = {
+  DRAFT: "DRAFT",
+  UPLOADED: "UPLOADED",
+  OCR_PENDING: "OCR_PENDING",
+  OCR_FAILED: "OCR_FAILED",
+  IN_REVIEW: "IN_REVIEW",
+  RETURNED: "RETURNED",
+  APPROVED: "APPROVED",
+  SIGNED: "SIGNED",
+  EXPIRED: "EXPIRED",
+} as const;
+
+export interface CandidateProfileDto {
+  id: string;
+  /** @nullable */
+  chatUuid: string | null;
+  /** @nullable */
+  code1c: string | null;
+  /** @nullable */
+  fullName: string | null;
+  /** @nullable */
+  birthDate: string | null;
+  /** @nullable */
+  citizenship: string | null;
+  /** @nullable */
+  positionCode: string | null;
+  /** @nullable */
+  positionName: string | null;
+  /** @nullable */
+  projectCode: string | null;
+  /** @nullable */
+  projectName: string | null;
+  /** @nullable */
+  managerName: string | null;
+  /** @nullable */
+  managerCode1c: string | null;
+  /** @nullable */
+  mentorName: string | null;
+  /** @nullable */
+  mentorPosition: string | null;
+  /** @nullable */
+  mentorCode1c: string | null;
+  isReemployment: boolean;
+  /** @nullable */
+  profileSyncedAt: string | null;
+  /** Candidate APPROVED documents under the queue access scope (all tabs) */
+  approvedDocuments: number;
+  /**
+   * Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown
+   * @nullable
+   */
+  requiredDocuments: number | null;
+}
+
+/**
+ * LK candidate profile snapshot, if one was provided
+ * @nullable
+ */
+export type DocumentDtoCandidate = CandidateProfileDto | null;
+
+export interface DocumentDto {
+  /** Approved versions awaiting manual ERP delivery */
+  pendingDeliveryVersions: number[];
+  id: string;
+  /** @nullable */
+  documentTypeCode: string | null;
+  status: DocumentStatus;
+  currentVersion: number;
+  revision: number;
+  title: string;
+  /** @nullable */
+  documentUid: string | null;
+  /** @nullable */
+  deliveryStatus: string | null;
+  /** @nullable */
+  candidateId: string | null;
+  /** @nullable */
+  chatUuid: string | null;
+  /** @nullable */
+  code1c: string | null;
+  /**
+   * LK candidate profile snapshot, if one was provided
+   * @nullable
+   */
+  candidate: DocumentDtoCandidate;
+}
+
+export interface DocumentListDto {
+  items: DocumentDto[];
+}
+
+export type CandidateDocumentDraftFieldDtoValue = string | null | boolean;
+
+export interface CandidateDocumentDraftFieldDto {
+  name: string;
+  value: CandidateDocumentDraftFieldDtoValue;
+}
+
+export interface CandidateDocumentDraftDto {
+  documentUid: string;
+  version: number;
+  fields: CandidateDocumentDraftFieldDto[];
+}
+
+export interface DocumentStreamGrantDto {
+  token: string;
+  url: string;
+  expiresAt: string;
+}
+
+export interface CandidateDocumentUploadRequestDto {
+  documentUid: string;
+  /** @maxLength 128 */
+  idempotencyKey: string;
+}
+
+export interface DocumentUploadGrantDto {
+  /** Five-minute upload capability; keep in memory only */
+  token: string;
+  url: string;
+  expiresAt: string;
+}
+
 export type UploadAcceptedDtoStatus =
   (typeof UploadAcceptedDtoStatus)[keyof typeof UploadAcceptedDtoStatus];
 
@@ -274,22 +497,6 @@ export interface UploadAcceptedDto {
   submissionId?: string;
   status?: UploadAcceptedDtoStatus;
 }
-
-export type DocumentStatus =
-  (typeof DocumentStatus)[keyof typeof DocumentStatus];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const DocumentStatus = {
-  DRAFT: "DRAFT",
-  UPLOADED: "UPLOADED",
-  OCR_PENDING: "OCR_PENDING",
-  OCR_FAILED: "OCR_FAILED",
-  IN_REVIEW: "IN_REVIEW",
-  RETURNED: "RETURNED",
-  APPROVED: "APPROVED",
-  SIGNED: "SIGNED",
-  EXPIRED: "EXPIRED",
-} as const;
 
 export type DocumentFileDtoMimeType =
   (typeof DocumentFileDtoMimeType)[keyof typeof DocumentFileDtoMimeType];
@@ -534,48 +741,6 @@ export interface CandidateListDto {
   nextCursor: string | null;
 }
 
-export interface CandidateProfileDto {
-  id: string;
-  /** @nullable */
-  chatUuid: string | null;
-  /** @nullable */
-  code1c: string | null;
-  /** @nullable */
-  fullName: string | null;
-  /** @nullable */
-  birthDate: string | null;
-  /** @nullable */
-  citizenship: string | null;
-  /** @nullable */
-  positionCode: string | null;
-  /** @nullable */
-  positionName: string | null;
-  /** @nullable */
-  projectCode: string | null;
-  /** @nullable */
-  projectName: string | null;
-  /** @nullable */
-  managerName: string | null;
-  /** @nullable */
-  managerCode1c: string | null;
-  /** @nullable */
-  mentorName: string | null;
-  /** @nullable */
-  mentorPosition: string | null;
-  /** @nullable */
-  mentorCode1c: string | null;
-  isReemployment: boolean;
-  /** @nullable */
-  profileSyncedAt: string | null;
-  /** Candidate APPROVED documents under the queue access scope (all tabs) */
-  approvedDocuments: number;
-  /**
-   * Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown
-   * @nullable
-   */
-  requiredDocuments: number | null;
-}
-
 export interface CandidateDocumentSummaryDto {
   /** Approved versions awaiting manual ERP delivery */
   pendingDeliveryVersions: number[];
@@ -595,43 +760,6 @@ export interface CandidateDocumentSummaryDto {
 export interface CandidateDetailsDto {
   candidate: CandidateProfileDto;
   documents: CandidateDocumentSummaryDto[];
-}
-
-/**
- * LK candidate profile snapshot, if one was provided
- * @nullable
- */
-export type DocumentDtoCandidate = CandidateProfileDto | null;
-
-export interface DocumentDto {
-  /** Approved versions awaiting manual ERP delivery */
-  pendingDeliveryVersions: number[];
-  id: string;
-  /** @nullable */
-  documentTypeCode: string | null;
-  status: DocumentStatus;
-  currentVersion: number;
-  revision: number;
-  title: string;
-  /** @nullable */
-  documentUid: string | null;
-  /** @nullable */
-  deliveryStatus: string | null;
-  /** @nullable */
-  candidateId: string | null;
-  /** @nullable */
-  chatUuid: string | null;
-  /** @nullable */
-  code1c: string | null;
-  /**
-   * LK candidate profile snapshot, if one was provided
-   * @nullable
-   */
-  candidate: DocumentDtoCandidate;
-}
-
-export interface DocumentListDto {
-  items: DocumentDto[];
 }
 
 export interface DownloadDto {
@@ -662,113 +790,9 @@ export interface Object {
   [key: string]: unknown;
 }
 
-export type DocumentDefinitionDtoKind =
-  (typeof DocumentDefinitionDtoKind)[keyof typeof DocumentDefinitionDtoKind];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const DocumentDefinitionDtoKind = {
-  text: "text",
-  date: "date",
-  boolean: "boolean",
-} as const;
-
-export interface DocumentDefinitionDto {
-  name: string;
-  label: string;
-  kind: DocumentDefinitionDtoKind;
-  required: boolean;
-  ordinal: number;
-}
-
-export interface CatalogDocumentTypeDto {
-  code: string;
-  title: string;
-  documentUid: string;
-  fields: DocumentDefinitionDto[];
-}
-
-export interface CatalogDocumentTypesDto {
-  items: CatalogDocumentTypeDto[];
-}
-
-export type CandidateDocumentDraftFieldDtoValue = string | null | boolean;
-
-export interface CandidateDocumentDraftFieldDto {
-  name: string;
-  value: CandidateDocumentDraftFieldDtoValue;
-}
-
-export interface CandidateDocumentDraftDto {
-  documentUid: string;
-  version: number;
-  fields: CandidateDocumentDraftFieldDto[];
-}
-
 export interface DocumentScopeDto {
   chat_uuid?: string;
   code_1c?: string;
-}
-
-export interface DocumentStreamGrantDto {
-  token: string;
-  url: string;
-  expiresAt: string;
-}
-
-export interface CandidateSnapshotPositionDto {
-  /** @maxLength 512 */
-  name?: string;
-  /** @maxLength 64 */
-  code?: string;
-}
-
-export interface CandidateSnapshotMentorDto {
-  /** @maxLength 512 */
-  name?: string;
-  /** @maxLength 512 */
-  position?: string;
-  /** @maxLength 64 */
-  code1C?: string;
-  /** @maxLength 64 */
-  code1c?: string;
-  /** @maxLength 64 */
-  code_1c?: string;
-}
-
-export interface CandidateSnapshotDto {
-  /** @maxLength 512 */
-  fullName?: string;
-  /** @maxLength 512 */
-  name?: string;
-  birthDate?: string;
-  /** @maxLength 2 */
-  citizenship?: string;
-  position?: CandidateSnapshotPositionDto;
-  project?: CandidateSnapshotPositionDto;
-  /** @maxLength 64 */
-  positionCode?: string;
-  /** @maxLength 512 */
-  positionName?: string;
-  /** @maxLength 64 */
-  projectCode?: string;
-  /** @maxLength 512 */
-  projectName?: string;
-  /** @maxLength 512 */
-  managerName?: string;
-  /** @maxLength 512 */
-  manager?: string;
-  /** @maxLength 64 */
-  managerCode1C?: string;
-  /** @maxLength 64 */
-  managerCode1c?: string;
-  mentor?: CandidateSnapshotMentorDto;
-  /** @maxLength 512 */
-  mentorName?: string;
-  /** @maxLength 512 */
-  mentorPosition?: string;
-  /** @maxLength 64 */
-  mentorCode1c?: string;
-  isReemployment?: boolean;
 }
 
 export type DocumentUploadGrantRequestDtoCitizenship = {
@@ -793,13 +817,6 @@ export interface DocumentUploadGrantRequestDto {
    * @deprecated
    */
   candidate_profile?: CandidateSnapshotDto;
-}
-
-export interface DocumentUploadGrantDto {
-  /** Five-minute upload capability; keep in memory only */
-  token: string;
-  url: string;
-  expiresAt: string;
 }
 
 export interface CandidateReviewQueueDto {
@@ -1690,6 +1707,605 @@ export function useGetMe<
   query?: UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetMeQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Candidate document context from LK identity and ERP
+ */
+export const getCandidateDocumentContext = (
+  chatUuid: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateDocumentContextDto>({
+    url: `/api/candidate-documents/by-chat/${chatUuid}/context`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentContextQueryKey = (chatUuid: string) => {
+  return [`/api/candidate-documents/by-chat/${chatUuid}/context`] as const;
+};
+
+export const getGetCandidateDocumentContextQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateDocumentContext>>,
+  TError = ApiErrorDto,
+>(
+  chatUuid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentContext>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidateDocumentContextQueryKey(chatUuid);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateDocumentContext>>
+  > = ({ signal }) => getCandidateDocumentContext(chatUuid, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!chatUuid,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentContext>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateDocumentContextQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocumentContext>>
+>;
+export type GetCandidateDocumentContextQueryError = ApiErrorDto;
+
+/**
+ * @summary Candidate document context from LK identity and ERP
+ */
+
+export function useGetCandidateDocumentContext<
+  TData = Awaited<ReturnType<typeof getCandidateDocumentContext>>,
+  TError = ApiErrorDto,
+>(
+  chatUuid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentContext>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateDocumentContextQueryOptions(
+    chatUuid,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Applicable document forms for a verified candidate
+ */
+export const getCandidateDocumentTypes = (
+  chatUuid: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CatalogDocumentTypesDto>({
+    url: `/api/candidate-documents/by-chat/${chatUuid}/catalog`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentTypesQueryKey = (chatUuid: string) => {
+  return [`/api/candidate-documents/by-chat/${chatUuid}/catalog`] as const;
+};
+
+export const getGetCandidateDocumentTypesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateDocumentTypes>>,
+  TError = ApiErrorDto,
+>(
+  chatUuid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentTypes>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidateDocumentTypesQueryKey(chatUuid);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateDocumentTypes>>
+  > = ({ signal }) => getCandidateDocumentTypes(chatUuid, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!chatUuid,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentTypes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateDocumentTypesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocumentTypes>>
+>;
+export type GetCandidateDocumentTypesQueryError = ApiErrorDto;
+
+/**
+ * @summary Applicable document forms for a verified candidate
+ */
+
+export function useGetCandidateDocumentTypes<
+  TData = Awaited<ReturnType<typeof getCandidateDocumentTypes>>,
+  TError = ApiErrorDto,
+>(
+  chatUuid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentTypes>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateDocumentTypesQueryOptions(
+    chatUuid,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Document statuses for a verified candidate chat
+ */
+export const getCandidateDocuments = (
+  chatUuid: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentListDto>({
+    url: `/api/candidate-documents/by-chat/${chatUuid}/statuses`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentsQueryKey = (chatUuid: string) => {
+  return [`/api/candidate-documents/by-chat/${chatUuid}/statuses`] as const;
+};
+
+export const getGetCandidateDocumentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateDocuments>>,
+  TError = ApiErrorDto,
+>(
+  chatUuid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocuments>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidateDocumentsQueryKey(chatUuid);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateDocuments>>
+  > = ({ signal }) => getCandidateDocuments(chatUuid, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!chatUuid,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateDocuments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateDocumentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocuments>>
+>;
+export type GetCandidateDocumentsQueryError = ApiErrorDto;
+
+/**
+ * @summary Document statuses for a verified candidate chat
+ */
+
+export function useGetCandidateDocuments<
+  TData = Awaited<ReturnType<typeof getCandidateDocuments>>,
+  TError = ApiErrorDto,
+>(
+  chatUuid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocuments>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateDocumentsQueryOptions(chatUuid, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Own current returned document fields
+ */
+export const getBrowserCandidateDocumentDraft = (
+  chatUuid: string,
+  documentUid: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateDocumentDraftDto>({
+    url: `/api/candidate-documents/by-chat/${chatUuid}/documents/${documentUid}/draft`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetBrowserCandidateDocumentDraftQueryKey = (
+  chatUuid: string,
+  documentUid: string,
+) => {
+  return [
+    `/api/candidate-documents/by-chat/${chatUuid}/documents/${documentUid}/draft`,
+  ] as const;
+};
+
+export const getGetBrowserCandidateDocumentDraftQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
+  TError = ApiErrorDto,
+>(
+  chatUuid: string,
+  documentUid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetBrowserCandidateDocumentDraftQueryKey(chatUuid, documentUid);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>
+  > = ({ signal }) =>
+    getBrowserCandidateDocumentDraft(chatUuid, documentUid, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(chatUuid && documentUid),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBrowserCandidateDocumentDraftQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>
+>;
+export type GetBrowserCandidateDocumentDraftQueryError = ApiErrorDto;
+
+/**
+ * @summary Own current returned document fields
+ */
+
+export function useGetBrowserCandidateDocumentDraft<
+  TData = Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
+  TError = ApiErrorDto,
+>(
+  chatUuid: string,
+  documentUid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBrowserCandidateDocumentDraftQueryOptions(
+    chatUuid,
+    documentUid,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Create a scoped document status stream grant
+ */
+export const getCandidateDocumentsStreamGrant = (
+  chatUuid: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentStreamGrantDto>({
+    url: `/api/candidate-documents/by-chat/${chatUuid}/stream-grant`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentsStreamGrantMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>,
+    TError,
+    { chatUuid: string },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>,
+  TError,
+  { chatUuid: string },
+  TContext
+> => {
+  const mutationKey = ["getCandidateDocumentsStreamGrant"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>,
+    { chatUuid: string }
+  > = (props) => {
+    const { chatUuid } = props ?? {};
+
+    return getCandidateDocumentsStreamGrant(chatUuid);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GetCandidateDocumentsStreamGrantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>
+>;
+
+export type GetCandidateDocumentsStreamGrantMutationError = ApiErrorDto;
+
+/**
+ * @summary Create a scoped document status stream grant
+ */
+export const useGetCandidateDocumentsStreamGrant = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>,
+    TError,
+    { chatUuid: string },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>,
+  TError,
+  { chatUuid: string },
+  TContext
+> => {
+  const mutationOptions =
+    getGetCandidateDocumentsStreamGrantMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Create a scoped document upload grant using server context
+ */
+export const getCandidateDocumentUploadGrant = (
+  chatUuid: string,
+  candidateDocumentUploadRequestDto: CandidateDocumentUploadRequestDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentUploadGrantDto>({
+    url: `/api/candidate-documents/by-chat/${chatUuid}/upload-grant`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: candidateDocumentUploadRequestDto,
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentUploadGrantMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentUploadGrant>>,
+    TError,
+    { chatUuid: string; data: CandidateDocumentUploadRequestDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof getCandidateDocumentUploadGrant>>,
+  TError,
+  { chatUuid: string; data: CandidateDocumentUploadRequestDto },
+  TContext
+> => {
+  const mutationKey = ["getCandidateDocumentUploadGrant"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof getCandidateDocumentUploadGrant>>,
+    { chatUuid: string; data: CandidateDocumentUploadRequestDto }
+  > = (props) => {
+    const { chatUuid, data } = props ?? {};
+
+    return getCandidateDocumentUploadGrant(chatUuid, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GetCandidateDocumentUploadGrantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocumentUploadGrant>>
+>;
+export type GetCandidateDocumentUploadGrantMutationBody =
+  CandidateDocumentUploadRequestDto;
+export type GetCandidateDocumentUploadGrantMutationError = ApiErrorDto;
+
+/**
+ * @summary Create a scoped document upload grant using server context
+ */
+export const useGetCandidateDocumentUploadGrant = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentUploadGrant>>,
+    TError,
+    { chatUuid: string; data: CandidateDocumentUploadRequestDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof getCandidateDocumentUploadGrant>>,
+  TError,
+  { chatUuid: string; data: CandidateDocumentUploadRequestDto },
+  TContext
+> => {
+  const mutationOptions =
+    getGetCandidateDocumentUploadGrantMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Own candidate document context from the unified auth-service JWT
+ */
+export const getMyCandidateDocumentContext = (signal?: AbortSignal) => {
+  return customInstance<CandidateDocumentContextDto>({
+    url: `/api/candidate-documents/my/chat`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetMyCandidateDocumentContextQueryKey = () => {
+  return [`/api/candidate-documents/my/chat`] as const;
+};
+
+export const getGetMyCandidateDocumentContextQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMyCandidateDocumentContextQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyCandidateDocumentContext>>
+  > = ({ signal }) => getMyCandidateDocumentContext(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyCandidateDocumentContextQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyCandidateDocumentContext>>
+>;
+export type GetMyCandidateDocumentContextQueryError = ApiErrorDto;
+
+/**
+ * @summary Own candidate document context from the unified auth-service JWT
+ */
+
+export function useGetMyCandidateDocumentContext<
+  TData = Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyCandidateDocumentContextQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
