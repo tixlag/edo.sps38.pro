@@ -372,7 +372,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -382,7 +382,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -392,7 +392,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -402,7 +402,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -412,7 +412,37 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -422,7 +452,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -463,7 +503,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -473,7 +513,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -483,7 +523,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -493,7 +533,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -503,7 +543,37 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -513,7 +583,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -554,7 +634,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -564,7 +644,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -574,7 +654,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -584,7 +664,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -594,7 +674,37 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -604,7 +714,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -653,7 +773,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -663,7 +783,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -673,7 +793,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -683,7 +803,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -693,7 +813,37 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -703,7 +853,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -744,7 +904,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -754,7 +914,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -764,7 +924,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -774,7 +934,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -784,7 +944,37 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -794,7 +984,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -845,7 +1045,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -855,7 +1055,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -865,7 +1065,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -875,7 +1075,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -885,7 +1085,37 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -895,7 +1125,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -909,6 +1149,7 @@
     },
     "/api/candidate-documents/my/chat": {
       "get": {
+        "deprecated": true,
         "operationId": "getMyCandidateDocumentContext",
         "parameters": [],
         "responses": {
@@ -927,7 +1168,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -937,7 +1178,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -947,7 +1188,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -957,7 +1198,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -967,7 +1208,37 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -977,7 +1248,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
                 }
               }
             }
@@ -989,6 +1270,660 @@
           }
         ],
         "summary": "Own candidate document context from the unified auth-service JWT",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/my/forms": {
+      "get": {
+        "operationId": "getMyCandidateDocumentForms",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentFormsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Own document forms and verified candidate context",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/my/statuses": {
+      "get": {
+        "operationId": "getMyCandidateDocuments",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Own document statuses, independently of ERP",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/my/documents/{documentUid}/draft": {
+      "get": {
+        "operationId": "getMyCandidateDocumentDraft",
+        "parameters": [
+          {
+            "name": "documentUid",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentDraftDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Own returned document fields",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/my/stream-grant": {
+      "post": {
+        "operationId": "getMyCandidateDocumentsStreamGrant",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentStreamGrantDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Own document status stream grant",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/my/upload-grant": {
+      "post": {
+        "operationId": "getMyCandidateDocumentUploadGrant",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateDocumentUploadRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentUploadGrantDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Own document upload grant using server context",
         "tags": [
           "candidate-document-browser"
         ]
@@ -5795,7 +6730,40 @@
           "locationScope"
         ]
       },
-      "ApiErrorDto": {
+      "CandidateDocumentErrorCode": {
+        "type": "string",
+        "enum": [
+          "AUTH_REQUIRED",
+          "EMPLOYEE_IDENTITY_REQUIRED",
+          "EMPLOYEE_IDENTITY_INVALID",
+          "CANDIDATE_LINK_MISSING",
+          "CANDIDATE_CHAT_NOT_FOUND",
+          "ERP_CANDIDATE_NOT_FOUND",
+          "CANDIDATE_PROFILE_INCOMPLETE",
+          "LK_CONTRACT_ERROR",
+          "ERP_CONTRACT_ERROR",
+          "LK_UNAVAILABLE",
+          "ERP_UNAVAILABLE",
+          "LK_TIMEOUT",
+          "ERP_TIMEOUT",
+          "DOCUMENTS_TIMEOUT",
+          "DOCUMENT_CATALOG_UNAVAILABLE",
+          "DOCUMENTS_INTEGRATION_MISCONFIGURED",
+          "DOCUMENT_REQUEST_INVALID",
+          "DOCUMENT_ACCESS_DENIED",
+          "DOCUMENT_NOT_FOUND",
+          "DOCUMENT_CONFLICT",
+          "DOCUMENTS_UNAVAILABLE"
+        ]
+      },
+      "CandidateProfileField": {
+        "type": "string",
+        "enum": [
+          "citizenship",
+          "positionCode"
+        ]
+      },
+      "CandidateDocumentErrorDto": {
         "type": "object",
         "properties": {
           "statusCode": {
@@ -5821,13 +6789,31 @@
           "path": {
             "type": "string",
             "nullable": true
+          },
+          "code": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateDocumentErrorCode"
+              }
+            ]
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateProfileField"
+            }
           }
         },
         "required": [
           "statusCode",
           "message",
           "correlationId",
-          "path"
+          "path",
+          "code",
+          "retryable"
         ]
       },
       "CandidateSnapshotPositionDto": {
@@ -6365,6 +7351,56 @@
           "token",
           "url",
           "expiresAt"
+        ]
+      },
+      "CandidateDocumentFormsDto": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/CandidateDocumentContextDto"
+          },
+          "catalog": {
+            "$ref": "#/components/schemas/CatalogDocumentTypesDto"
+          }
+        },
+        "required": [
+          "context",
+          "catalog"
+        ]
+      },
+      "ApiErrorDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number"
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "correlationId": {
+            "type": "string",
+            "nullable": true
+          },
+          "path": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "statusCode",
+          "message",
+          "correlationId",
+          "path"
         ]
       },
       "UploadAcceptedDto": {

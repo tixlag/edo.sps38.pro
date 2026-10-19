@@ -238,15 +238,55 @@ export interface MeResponseDto {
   locationScope: LocationScopeDto;
 }
 
-export type ApiErrorDtoMessage = string | string[];
+export type CandidateDocumentErrorCode =
+  (typeof CandidateDocumentErrorCode)[keyof typeof CandidateDocumentErrorCode];
 
-export interface ApiErrorDto {
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateDocumentErrorCode = {
+  AUTH_REQUIRED: "AUTH_REQUIRED",
+  EMPLOYEE_IDENTITY_REQUIRED: "EMPLOYEE_IDENTITY_REQUIRED",
+  EMPLOYEE_IDENTITY_INVALID: "EMPLOYEE_IDENTITY_INVALID",
+  CANDIDATE_LINK_MISSING: "CANDIDATE_LINK_MISSING",
+  CANDIDATE_CHAT_NOT_FOUND: "CANDIDATE_CHAT_NOT_FOUND",
+  ERP_CANDIDATE_NOT_FOUND: "ERP_CANDIDATE_NOT_FOUND",
+  CANDIDATE_PROFILE_INCOMPLETE: "CANDIDATE_PROFILE_INCOMPLETE",
+  LK_CONTRACT_ERROR: "LK_CONTRACT_ERROR",
+  ERP_CONTRACT_ERROR: "ERP_CONTRACT_ERROR",
+  LK_UNAVAILABLE: "LK_UNAVAILABLE",
+  ERP_UNAVAILABLE: "ERP_UNAVAILABLE",
+  LK_TIMEOUT: "LK_TIMEOUT",
+  ERP_TIMEOUT: "ERP_TIMEOUT",
+  DOCUMENTS_TIMEOUT: "DOCUMENTS_TIMEOUT",
+  DOCUMENT_CATALOG_UNAVAILABLE: "DOCUMENT_CATALOG_UNAVAILABLE",
+  DOCUMENTS_INTEGRATION_MISCONFIGURED: "DOCUMENTS_INTEGRATION_MISCONFIGURED",
+  DOCUMENT_REQUEST_INVALID: "DOCUMENT_REQUEST_INVALID",
+  DOCUMENT_ACCESS_DENIED: "DOCUMENT_ACCESS_DENIED",
+  DOCUMENT_NOT_FOUND: "DOCUMENT_NOT_FOUND",
+  DOCUMENT_CONFLICT: "DOCUMENT_CONFLICT",
+  DOCUMENTS_UNAVAILABLE: "DOCUMENTS_UNAVAILABLE",
+} as const;
+
+export type CandidateProfileField =
+  (typeof CandidateProfileField)[keyof typeof CandidateProfileField];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateProfileField = {
+  citizenship: "citizenship",
+  positionCode: "positionCode",
+} as const;
+
+export type CandidateDocumentErrorDtoMessage = string | string[];
+
+export interface CandidateDocumentErrorDto {
   statusCode: number;
-  message: ApiErrorDtoMessage;
+  message: CandidateDocumentErrorDtoMessage;
   /** @nullable */
   correlationId: string | null;
   /** @nullable */
   path: string | null;
+  code: CandidateDocumentErrorCode;
+  retryable: boolean;
+  fields?: CandidateProfileField[];
 }
 
 export interface CandidateSnapshotPositionDto {
@@ -470,6 +510,22 @@ export interface DocumentUploadGrantDto {
   token: string;
   url: string;
   expiresAt: string;
+}
+
+export interface CandidateDocumentFormsDto {
+  context: CandidateDocumentContextDto;
+  catalog: CatalogDocumentTypesDto;
+}
+
+export type ApiErrorDtoMessage = string | string[];
+
+export interface ApiErrorDto {
+  statusCode: number;
+  message: ApiErrorDtoMessage;
+  /** @nullable */
+  correlationId: string | null;
+  /** @nullable */
+  path: string | null;
 }
 
 export type UploadAcceptedDtoStatus =
@@ -1737,7 +1793,7 @@ export const getGetCandidateDocumentContextQueryKey = (chatUuid: string) => {
 
 export const getGetCandidateDocumentContextQueryOptions = <
   TData = Awaited<ReturnType<typeof getCandidateDocumentContext>>,
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
 >(
   chatUuid: string,
   options?: {
@@ -1772,7 +1828,7 @@ export const getGetCandidateDocumentContextQueryOptions = <
 export type GetCandidateDocumentContextQueryResult = NonNullable<
   Awaited<ReturnType<typeof getCandidateDocumentContext>>
 >;
-export type GetCandidateDocumentContextQueryError = ApiErrorDto;
+export type GetCandidateDocumentContextQueryError = CandidateDocumentErrorDto;
 
 /**
  * @summary Candidate document context from LK identity and ERP
@@ -1780,7 +1836,7 @@ export type GetCandidateDocumentContextQueryError = ApiErrorDto;
 
 export function useGetCandidateDocumentContext<
   TData = Awaited<ReturnType<typeof getCandidateDocumentContext>>,
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
 >(
   chatUuid: string,
   options?: {
@@ -1825,7 +1881,7 @@ export const getGetCandidateDocumentTypesQueryKey = (chatUuid: string) => {
 
 export const getGetCandidateDocumentTypesQueryOptions = <
   TData = Awaited<ReturnType<typeof getCandidateDocumentTypes>>,
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
 >(
   chatUuid: string,
   options?: {
@@ -1860,7 +1916,7 @@ export const getGetCandidateDocumentTypesQueryOptions = <
 export type GetCandidateDocumentTypesQueryResult = NonNullable<
   Awaited<ReturnType<typeof getCandidateDocumentTypes>>
 >;
-export type GetCandidateDocumentTypesQueryError = ApiErrorDto;
+export type GetCandidateDocumentTypesQueryError = CandidateDocumentErrorDto;
 
 /**
  * @summary Applicable document forms for a verified candidate
@@ -1868,7 +1924,7 @@ export type GetCandidateDocumentTypesQueryError = ApiErrorDto;
 
 export function useGetCandidateDocumentTypes<
   TData = Awaited<ReturnType<typeof getCandidateDocumentTypes>>,
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
 >(
   chatUuid: string,
   options?: {
@@ -1913,7 +1969,7 @@ export const getGetCandidateDocumentsQueryKey = (chatUuid: string) => {
 
 export const getGetCandidateDocumentsQueryOptions = <
   TData = Awaited<ReturnType<typeof getCandidateDocuments>>,
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
 >(
   chatUuid: string,
   options?: {
@@ -1948,7 +2004,7 @@ export const getGetCandidateDocumentsQueryOptions = <
 export type GetCandidateDocumentsQueryResult = NonNullable<
   Awaited<ReturnType<typeof getCandidateDocuments>>
 >;
-export type GetCandidateDocumentsQueryError = ApiErrorDto;
+export type GetCandidateDocumentsQueryError = CandidateDocumentErrorDto;
 
 /**
  * @summary Document statuses for a verified candidate chat
@@ -1956,7 +2012,7 @@ export type GetCandidateDocumentsQueryError = ApiErrorDto;
 
 export function useGetCandidateDocuments<
   TData = Awaited<ReturnType<typeof getCandidateDocuments>>,
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
 >(
   chatUuid: string,
   options?: {
@@ -2004,7 +2060,7 @@ export const getGetBrowserCandidateDocumentDraftQueryKey = (
 
 export const getGetBrowserCandidateDocumentDraftQueryOptions = <
   TData = Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
 >(
   chatUuid: string,
   documentUid: string,
@@ -2042,7 +2098,8 @@ export const getGetBrowserCandidateDocumentDraftQueryOptions = <
 export type GetBrowserCandidateDocumentDraftQueryResult = NonNullable<
   Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>
 >;
-export type GetBrowserCandidateDocumentDraftQueryError = ApiErrorDto;
+export type GetBrowserCandidateDocumentDraftQueryError =
+  CandidateDocumentErrorDto;
 
 /**
  * @summary Own current returned document fields
@@ -2050,7 +2107,7 @@ export type GetBrowserCandidateDocumentDraftQueryError = ApiErrorDto;
 
 export function useGetBrowserCandidateDocumentDraft<
   TData = Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
 >(
   chatUuid: string,
   documentUid: string,
@@ -2092,7 +2149,7 @@ export const getCandidateDocumentsStreamGrant = (
 };
 
 export const getGetCandidateDocumentsStreamGrantMutationOptions = <
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -2132,13 +2189,14 @@ export type GetCandidateDocumentsStreamGrantMutationResult = NonNullable<
   Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>
 >;
 
-export type GetCandidateDocumentsStreamGrantMutationError = ApiErrorDto;
+export type GetCandidateDocumentsStreamGrantMutationError =
+  CandidateDocumentErrorDto;
 
 /**
  * @summary Create a scoped document status stream grant
  */
 export const useGetCandidateDocumentsStreamGrant = <
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -2177,7 +2235,7 @@ export const getCandidateDocumentUploadGrant = (
 };
 
 export const getGetCandidateDocumentUploadGrantMutationOptions = <
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -2218,13 +2276,14 @@ export type GetCandidateDocumentUploadGrantMutationResult = NonNullable<
 >;
 export type GetCandidateDocumentUploadGrantMutationBody =
   CandidateDocumentUploadRequestDto;
-export type GetCandidateDocumentUploadGrantMutationError = ApiErrorDto;
+export type GetCandidateDocumentUploadGrantMutationError =
+  CandidateDocumentErrorDto;
 
 /**
  * @summary Create a scoped document upload grant using server context
  */
 export const useGetCandidateDocumentUploadGrant = <
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -2246,6 +2305,7 @@ export const useGetCandidateDocumentUploadGrant = <
 };
 
 /**
+ * @deprecated
  * @summary Own candidate document context from the unified auth-service JWT
  */
 export const getMyCandidateDocumentContext = (signal?: AbortSignal) => {
@@ -2262,7 +2322,7 @@ export const getGetMyCandidateDocumentContextQueryKey = () => {
 
 export const getGetMyCandidateDocumentContextQueryOptions = <
   TData = Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
 >(options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
@@ -2289,15 +2349,16 @@ export const getGetMyCandidateDocumentContextQueryOptions = <
 export type GetMyCandidateDocumentContextQueryResult = NonNullable<
   Awaited<ReturnType<typeof getMyCandidateDocumentContext>>
 >;
-export type GetMyCandidateDocumentContextQueryError = ApiErrorDto;
+export type GetMyCandidateDocumentContextQueryError = CandidateDocumentErrorDto;
 
 /**
+ * @deprecated
  * @summary Own candidate document context from the unified auth-service JWT
  */
 
 export function useGetMyCandidateDocumentContext<
   TData = Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
-  TError = ApiErrorDto,
+  TError = CandidateDocumentErrorDto,
 >(options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
@@ -2315,6 +2376,403 @@ export function useGetMyCandidateDocumentContext<
 
   return query;
 }
+
+/**
+ * @summary Own document forms and verified candidate context
+ */
+export const getMyCandidateDocumentForms = (signal?: AbortSignal) => {
+  return customInstance<CandidateDocumentFormsDto>({
+    url: `/api/candidate-documents/my/forms`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetMyCandidateDocumentFormsQueryKey = () => {
+  return [`/api/candidate-documents/my/forms`] as const;
+};
+
+export const getGetMyCandidateDocumentFormsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyCandidateDocumentForms>>,
+  TError = CandidateDocumentErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentForms>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMyCandidateDocumentFormsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyCandidateDocumentForms>>
+  > = ({ signal }) => getMyCandidateDocumentForms(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentForms>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyCandidateDocumentFormsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyCandidateDocumentForms>>
+>;
+export type GetMyCandidateDocumentFormsQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @summary Own document forms and verified candidate context
+ */
+
+export function useGetMyCandidateDocumentForms<
+  TData = Awaited<ReturnType<typeof getMyCandidateDocumentForms>>,
+  TError = CandidateDocumentErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentForms>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyCandidateDocumentFormsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Own document statuses, independently of ERP
+ */
+export const getMyCandidateDocuments = (signal?: AbortSignal) => {
+  return customInstance<DocumentListDto>({
+    url: `/api/candidate-documents/my/statuses`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetMyCandidateDocumentsQueryKey = () => {
+  return [`/api/candidate-documents/my/statuses`] as const;
+};
+
+export const getGetMyCandidateDocumentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyCandidateDocuments>>,
+  TError = CandidateDocumentErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocuments>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMyCandidateDocumentsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyCandidateDocuments>>
+  > = ({ signal }) => getMyCandidateDocuments(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocuments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyCandidateDocumentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyCandidateDocuments>>
+>;
+export type GetMyCandidateDocumentsQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @summary Own document statuses, independently of ERP
+ */
+
+export function useGetMyCandidateDocuments<
+  TData = Awaited<ReturnType<typeof getMyCandidateDocuments>>,
+  TError = CandidateDocumentErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocuments>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyCandidateDocumentsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Own returned document fields
+ */
+export const getMyCandidateDocumentDraft = (
+  documentUid: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateDocumentDraftDto>({
+    url: `/api/candidate-documents/my/documents/${documentUid}/draft`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetMyCandidateDocumentDraftQueryKey = (documentUid: string) => {
+  return [
+    `/api/candidate-documents/my/documents/${documentUid}/draft`,
+  ] as const;
+};
+
+export const getGetMyCandidateDocumentDraftQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  documentUid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetMyCandidateDocumentDraftQueryKey(documentUid);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>
+  > = ({ signal }) => getMyCandidateDocumentDraft(documentUid, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!documentUid,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyCandidateDocumentDraftQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>
+>;
+export type GetMyCandidateDocumentDraftQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @summary Own returned document fields
+ */
+
+export function useGetMyCandidateDocumentDraft<
+  TData = Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  documentUid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyCandidateDocumentDraftQueryOptions(
+    documentUid,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Own document status stream grant
+ */
+export const getMyCandidateDocumentsStreamGrant = (signal?: AbortSignal) => {
+  return customInstance<DocumentStreamGrantDto>({
+    url: `/api/candidate-documents/my/stream-grant`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getGetMyCandidateDocumentsStreamGrantMutationOptions = <
+  TError = CandidateDocumentErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentsStreamGrant>>,
+    TError,
+    void,
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof getMyCandidateDocumentsStreamGrant>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["getMyCandidateDocumentsStreamGrant"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof getMyCandidateDocumentsStreamGrant>>,
+    void
+  > = () => {
+    return getMyCandidateDocumentsStreamGrant();
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GetMyCandidateDocumentsStreamGrantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof getMyCandidateDocumentsStreamGrant>>
+>;
+
+export type GetMyCandidateDocumentsStreamGrantMutationError =
+  CandidateDocumentErrorDto;
+
+/**
+ * @summary Own document status stream grant
+ */
+export const useGetMyCandidateDocumentsStreamGrant = <
+  TError = CandidateDocumentErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentsStreamGrant>>,
+    TError,
+    void,
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof getMyCandidateDocumentsStreamGrant>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationOptions =
+    getGetMyCandidateDocumentsStreamGrantMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Own document upload grant using server context
+ */
+export const getMyCandidateDocumentUploadGrant = (
+  candidateDocumentUploadRequestDto: CandidateDocumentUploadRequestDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentUploadGrantDto>({
+    url: `/api/candidate-documents/my/upload-grant`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: candidateDocumentUploadRequestDto,
+    signal,
+  });
+};
+
+export const getGetMyCandidateDocumentUploadGrantMutationOptions = <
+  TError = CandidateDocumentErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentUploadGrant>>,
+    TError,
+    { data: CandidateDocumentUploadRequestDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof getMyCandidateDocumentUploadGrant>>,
+  TError,
+  { data: CandidateDocumentUploadRequestDto },
+  TContext
+> => {
+  const mutationKey = ["getMyCandidateDocumentUploadGrant"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof getMyCandidateDocumentUploadGrant>>,
+    { data: CandidateDocumentUploadRequestDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return getMyCandidateDocumentUploadGrant(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GetMyCandidateDocumentUploadGrantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof getMyCandidateDocumentUploadGrant>>
+>;
+export type GetMyCandidateDocumentUploadGrantMutationBody =
+  CandidateDocumentUploadRequestDto;
+export type GetMyCandidateDocumentUploadGrantMutationError =
+  CandidateDocumentErrorDto;
+
+/**
+ * @summary Own document upload grant using server context
+ */
+export const useGetMyCandidateDocumentUploadGrant = <
+  TError = CandidateDocumentErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentUploadGrant>>,
+    TError,
+    { data: CandidateDocumentUploadRequestDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof getMyCandidateDocumentUploadGrant>>,
+  TError,
+  { data: CandidateDocumentUploadRequestDto },
+  TContext
+> => {
+  const mutationOptions =
+    getGetMyCandidateDocumentUploadGrantMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
 
 /**
  * @summary Upload candidate document metadata for manual review, or use the legacy OCR contract

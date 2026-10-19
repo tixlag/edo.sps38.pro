@@ -63,6 +63,7 @@
                     {
                         "name": "code1c",
                         "in": "path",
+                        "description": "Opaque employee code: Unicode letters, decimal digits, underscore, dot or hyphen; dot segments are forbidden. Case and leading zeros are preserved.",
                         "required": true,
                         "schema": {
                             "type": "string",

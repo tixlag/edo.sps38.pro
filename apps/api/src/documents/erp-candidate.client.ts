@@ -2,26 +2,31 @@ import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { z } from "zod";
 import { candidateSnapshotSchema } from "./document-contract";
+import {
+  CandidateDocumentErrorCode as Code,
+  CandidateProfileField as Field,
+} from "./dto/candidate-error.dto";
 import type { CandidateSnapshotDto } from "./dto/document.dto";
 
 export class ErpCandidateError extends Error {
   constructor(
     readonly status: number,
     readonly transient: boolean,
+    readonly code: Code = status === 404
+      ? Code.ERP_CANDIDATE_NOT_FOUND
+      : status === 401 || status === 403
+        ? Code.DOCUMENTS_INTEGRATION_MISCONFIGURED
+        : transient
+          ? [408, 504].includes(status)
+            ? Code.ERP_TIMEOUT
+            : Code.ERP_UNAVAILABLE
+          : Code.ERP_CONTRACT_ERROR,
+    readonly fields?: Field[],
   ) {
-    super(
-      status === 404 ? "ERP_CANDIDATE_NOT_FOUND" : "ERP_CANDIDATE_UNAVAILABLE",
-    );
+    super(code);
   }
 }
-const identitySchema = z.object({
-  uuid: z.string().uuid(),
-  position: z.object({ code: z.string().min(1).max(64).regex(/^\S+$/) }),
-  citizenship: z
-    .string()
-    .regex(/^[a-zA-Z]{2}$/)
-    .default("ru"),
-});
+const uuidSchema = z.string().uuid();
 const text = (value: unknown, max: number) =>
   typeof value === "string"
     ? value.trim().slice(0, max).trim() || undefined
@@ -39,16 +44,44 @@ export function normalizeErpCandidate(
   raw: unknown,
   chatUuid: string,
 ): CandidateSnapshotDto {
-  const identity = identitySchema.safeParse(raw);
-  if (
-    !identity.success ||
-    identity.data.uuid.toLowerCase() !== chatUuid.toLowerCase()
-  )
-    throw new ErpCandidateError(503, false);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    throw new ErpCandidateError(502, false);
   const row = raw as Record<string, unknown>;
+  if (
+    !uuidSchema.safeParse(row.uuid).success ||
+    (row.uuid as string).toLowerCase() !== chatUuid.toLowerCase()
+  )
+    throw new ErpCandidateError(502, false);
+  const position = row.position as Record<string, unknown> | null | undefined;
+  const fields: Field[] = [];
+  if (
+    !position ||
+    position.code == null ||
+    (typeof position.code === "string" && !position.code.trim())
+  )
+    fields.push(Field.POSITION_CODE);
+  if (
+    row.citizenship == null ||
+    (typeof row.citizenship === "string" && !row.citizenship.trim())
+  )
+    fields.push(Field.CITIZENSHIP);
+  if (fields.length)
+    throw new ErpCandidateError(
+      422,
+      false,
+      Code.CANDIDATE_PROFILE_INCOMPLETE,
+      fields,
+    );
+  if (
+    typeof position?.code !== "string" ||
+    !/^\S{1,64}$/.test(position.code) ||
+    typeof row.citizenship !== "string" ||
+    !/^[a-zA-Z]{2}$/.test(row.citizenship)
+  )
+    throw new ErpCandidateError(502, false);
   const result: Record<string, unknown> = {
     uuid: chatUuid.toLowerCase(),
-    citizenship: identity.data.citizenship.toLowerCase(),
+    citizenship: (row.citizenship as string).toLowerCase(),
   };
   for (const [key, max] of [
     ["name", 256],
@@ -77,7 +110,7 @@ export function normalizeErpCandidate(
     if (Object.keys(mentor).length) result.mentor = mentor;
   }
   if (!candidateSnapshotSchema.safeParse(result).success)
-    throw new ErpCandidateError(503, false);
+    throw new ErpCandidateError(502, false);
   return result as unknown as CandidateSnapshotDto;
 }
 
@@ -95,7 +128,11 @@ export class ErpCandidateClient {
     const username = this.config.get<string>("ERP_USERNAME"),
       password = this.config.get<string>("ERP_PASSWORD");
     if (!endpoint || !token || !username || !password)
-      throw new ErpCandidateError(503, false);
+      throw new ErpCandidateError(
+        503,
+        false,
+        Code.DOCUMENTS_INTEGRATION_MISCONFIGURED,
+      );
     let url: URL;
     try {
       url = new URL(endpoint);
@@ -107,10 +144,15 @@ export class ErpCandidateClient {
       )
         throw new Error();
     } catch {
-      throw new ErpCandidateError(503, false);
+      throw new ErpCandidateError(
+        503,
+        false,
+        Code.DOCUMENTS_INTEGRATION_MISCONFIGURED,
+      );
     }
     url.searchParams.set("uuid", chatUuid);
     let response: Response;
+    const timeout = AbortSignal.timeout(15_000);
     try {
       response = await fetch(url, {
         headers: {
@@ -118,9 +160,7 @@ export class ErpCandidateClient {
           token,
           Accept: "application/json",
         },
-        signal: signal
-          ? AbortSignal.any([signal, AbortSignal.timeout(5000)])
-          : AbortSignal.timeout(5000),
+        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
         redirect: "error",
       });
       if (!response.ok)
@@ -130,18 +170,22 @@ export class ErpCandidateClient {
         );
       const body = await response.text();
       if (Buffer.byteLength(body) > 128 * 1024)
-        throw new ErpCandidateError(503, false);
+        throw new ErpCandidateError(502, false);
       let raw: unknown;
       try {
         raw = JSON.parse(body);
       } catch {
-        throw new ErpCandidateError(503, false);
+        throw new ErpCandidateError(502, false);
       }
       return normalizeErpCandidate(raw, chatUuid);
     } catch (error) {
       if (signal?.aborted) throw signal.reason;
       if (error instanceof ErpCandidateError) throw error;
-      throw new ErpCandidateError(503, true);
+      throw new ErpCandidateError(
+        timeout.aborted ? 504 : 503,
+        true,
+        timeout.aborted ? Code.ERP_TIMEOUT : Code.ERP_UNAVAILABLE,
+      );
     }
   }
 }

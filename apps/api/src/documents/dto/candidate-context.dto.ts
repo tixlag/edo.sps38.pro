@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsUUID, Matches } from "class-validator";
-import { CandidateSnapshotDto } from "./document.dto";
+import { CatalogDocumentTypesDto, CandidateSnapshotDto } from "./document.dto";
 
 export class CandidateDocumentContextDto {
   @ApiProperty({ format: "uuid" }) chatUuid!: string;
@@ -16,4 +16,11 @@ export class CandidateDocumentUploadRequestDto {
   @ApiProperty({ maxLength: 128 })
   @Matches(/^[\x21-\x7e]{1,128}$/)
   idempotencyKey!: string;
+}
+
+export class CandidateDocumentFormsDto {
+  @ApiProperty({ type: CandidateDocumentContextDto })
+  context!: CandidateDocumentContextDto;
+  @ApiProperty({ type: CatalogDocumentTypesDto })
+  catalog!: CatalogDocumentTypesDto;
 }

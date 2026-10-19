@@ -179,7 +179,7 @@ describe("document catalog cached snapshot", () => {
     expect(request).not.toHaveBeenCalled();
     syncedAt = null;
     await expect(service().ensure()).rejects.toThrow(
-      "ERP_DOCUMENT_CATALOG_UNAVAILABLE",
+      "Каталог документов временно недоступен",
     );
   });
   it("does not commit a snapshot after losing the refresh lease", async () => {
@@ -197,10 +197,10 @@ describe("document catalog cached snapshot", () => {
     request.mockRejectedValue(new Error("ERP unavailable"));
     const a = service();
     await expect(a.ensure()).rejects.toThrow(
-      "ERP_DOCUMENT_CATALOG_UNAVAILABLE",
+      "Каталог документов временно недоступен",
     );
     await expect(a.ensure()).rejects.toThrow(
-      "ERP_DOCUMENT_CATALOG_UNAVAILABLE",
+      "Каталог документов временно недоступен",
     );
     expect(request).toHaveBeenCalledTimes(1);
     vi.setSystemTime(Date.now() + 90_000);

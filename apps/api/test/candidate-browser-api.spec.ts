@@ -21,12 +21,20 @@ import { DocumentReadService } from "../src/documents/document-read.service";
 import { DocumentEventsService } from "../src/documents/document-events.service";
 import { DocumentUploadGrantService } from "../src/documents/document-upload-grant.service";
 
+import { HttpErrorFilter } from "../src/common/http-error.filter";
+import { CandidateDocumentError } from "../src/documents/candidate-document.error";
+import {
+  CandidateDocumentErrorCode as Code,
+  CandidateProfileField as Field,
+} from "../src/documents/dto/candidate-error.dto";
+
 const uuid = "019d0a2a-f080-762e-b2d0-c7bb7ddb1922";
 describe("EDO candidate browser API with unified auth", () => {
   let app: NestFastifyApplication;
   let jwt: JwtService;
   const identity = {
     byUuid: vi.fn(async () => ({ chatUuid: uuid, code1c: "000123" })),
+    byEmployee: vi.fn(async (code1c: string) => ({ chatUuid: uuid, code1c })),
   };
   const contexts = {
     context: vi.fn(async () => ({
@@ -37,7 +45,13 @@ describe("EDO candidate browser API with unified auth", () => {
       projectCode1c: "00008",
       candidateSnapshot: { uuid, name: "Иван" },
     })),
-    ownChat: vi.fn(async () => uuid),
+    forIdentity: vi.fn(async (chat: { chatUuid: string; code1c: string }) => ({
+      ...chat,
+      positionCode1c: "000491",
+      citizenship: "ru",
+      projectCode1c: "00008",
+      candidateSnapshot: { uuid, name: "Иван" },
+    })),
   };
   const reads = {
     internalDocuments: vi.fn(async () => ({ items: [] })),
@@ -100,6 +114,7 @@ describe("EDO candidate browser API with unified auth", () => {
       { logger: false },
     );
     app.setGlobalPrefix("api");
+    app.useGlobalFilters(new HttpErrorFilter());
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
     );
@@ -147,7 +162,10 @@ describe("EDO candidate browser API with unified auth", () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().chatUuid).toBe(uuid);
-    expect(contexts.ownChat).toHaveBeenCalledWith("000123");
+    expect(identity.byEmployee).toHaveBeenCalledWith(
+      "000123",
+      expect.any(AbortSignal),
+    );
     const expired = jwt.signForTest({
       uuid: "employee",
       code_1c: "000123",
@@ -213,9 +231,9 @@ describe("EDO candidate browser API with unified auth", () => {
     expect(response.headers["cache-control"]).toBe("no-store");
   });
   it.each([null, "other-employee"])(
-    "refuses own context if the link changed between LK lookups (%s)",
+    "refuses a mismatched canonical employee association (%s)",
     async (code1c) => {
-      contexts.context.mockResolvedValueOnce({
+      identity.byEmployee.mockResolvedValueOnce({
         chatUuid: uuid,
         code1c,
         positionCode1c: "000491",
@@ -233,8 +251,129 @@ describe("EDO candidate browser API with unified auth", () => {
         url: "/api/candidate-documents/my/chat",
         headers: { authorization: "Bearer " + token },
       });
-      expect(response.statusCode).toBe(403);
+      expect(response.statusCode).toBe(502);
+      expect(response.json().code).toBe("LK_CONTRACT_ERROR");
       expect(response.body).not.toContain("Other");
     },
   );
+  function authorization(code1c: string | null = "УП000123") {
+    return {
+      authorization:
+        "Bearer " +
+        jwt.signForTest({
+          uuid: "employee",
+          ...(code1c === null ? {} : { code_1c: code1c }),
+          accessRules: {},
+          exp: Math.floor(Date.now() / 1000) + 60,
+        }),
+    };
+  }
+  it("returns forms and catalog from one canonical Unicode employee lookup", async () => {
+    identity.byEmployee.mockClear();
+    identity.byUuid.mockClear();
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/candidate-documents/my/forms",
+      headers: authorization(),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      context: { code1c: "УП000123" },
+      catalog: { items: [] },
+    });
+    expect(identity.byEmployee).toHaveBeenCalledOnce();
+    expect(identity.byUuid).not.toHaveBeenCalled();
+  });
+  it.each(["statuses", `documents/${uuid}/draft`, "stream-grant"])(
+    "reads own %s without ERP or administrative permissions",
+    async (path) => {
+      contexts.context.mockClear();
+      contexts.forIdentity.mockClear();
+      const response = await app.inject({
+        method: path === "stream-grant" ? "POST" : "GET",
+        url: `/api/candidate-documents/my/${path}`,
+        headers: authorization(),
+      });
+      expect(response.statusCode).toBe(200);
+      expect(contexts.context).not.toHaveBeenCalled();
+      expect(contexts.forIdentity).not.toHaveBeenCalled();
+      expect(response.headers["cache-control"]).toBe("no-store");
+    },
+  );
+  it.each([
+    "forms",
+    "statuses",
+    `documents/${uuid}/draft`,
+    "stream-grant",
+    "upload-grant",
+  ])("requires JWT on own %s", async (path) => {
+    const response = await app.inject({
+      method: path.endsWith("grant") ? "POST" : "GET",
+      url: `/api/candidate-documents/my/${path}`,
+    });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({
+      code: "AUTH_REQUIRED",
+      retryable: false,
+    });
+  });
+  it("does not try token refresh semantics for an authenticated user missing an employee code", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/candidate-documents/my/forms",
+      headers: authorization(null),
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      code: "EMPLOYEE_IDENTITY_REQUIRED",
+      retryable: false,
+    });
+  });
+  it("preserves actionable profile errors and safe field names through the global filter", async () => {
+    contexts.forIdentity.mockRejectedValueOnce(
+      new CandidateDocumentError(Code.CANDIDATE_PROFILE_INCOMPLETE, [
+        Field.CITIZENSHIP,
+      ]),
+    );
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/candidate-documents/my/forms",
+      headers: authorization(),
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({
+      code: "CANDIDATE_PROFILE_INCOMPLETE",
+      retryable: false,
+      fields: ["citizenship"],
+    });
+    expect(response.json().message).toContain("гражданство");
+    expect(response.json()).toHaveProperty("correlationId");
+  });
+  it("issues own upload capabilities from server identity and forbids owner overrides", async () => {
+    const url = "/api/candidate-documents/my/upload-grant";
+    const response = await app.inject({
+      method: "POST",
+      url,
+      headers: authorization(),
+      payload: { documentUid: uuid, idempotencyKey: "own-bundle" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(
+      app.get(DocumentUploadGrantService).verify(response.json().token),
+    ).toMatchObject({ context: { chat_uuid: uuid, code_1c: "УП000123" } });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url,
+          headers: authorization(),
+          payload: {
+            documentUid: uuid,
+            idempotencyKey: "own-bundle",
+            code_1c: "other",
+          },
+        })
+      ).statusCode,
+    ).toBe(400);
+  });
 });

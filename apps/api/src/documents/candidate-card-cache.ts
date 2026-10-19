@@ -71,7 +71,7 @@ export class CandidateCardCache {
   }
   acquire(uuid: string, owner: string, signal?: AbortSignal) {
     return this.bounded(
-      this.redis.setNxPxStrict(this.lock(uuid), owner, 15_000),
+      this.redis.setNxPxStrict(this.lock(uuid), owner, 20_000),
       signal,
     );
   }

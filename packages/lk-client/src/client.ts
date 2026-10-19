@@ -53,6 +53,20 @@ export class LkTransientError extends Error {
   }
 }
 
+export class LkTimeoutError extends LkTransientError {
+  constructor() {
+    super("LK request timed out", 504);
+    this.name = "LkTimeoutError";
+  }
+}
+
+/** Employee codes are opaque Unicode identifiers; never trim or coerce them. */
+export function isEmployeeCode(value: string): boolean {
+  return (
+    /^[\p{L}\p{Nd}_.-]{1,64}$/u.test(value) && value !== "." && value !== ".."
+  );
+}
+
 export class LkAuthError extends Error {
   readonly status: number;
   constructor(message: string, status: number) {
@@ -81,7 +95,7 @@ function assertCandidateChat(
     !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(row.chatUuid) ||
     !(
       row.code1c === null ||
-      (typeof row.code1c === "string" && /^\S{1,64}$/.test(row.code1c))
+      (typeof row.code1c === "string" && isEmployeeCode(row.code1c))
     )
   ) {
     throw new LkContractError("LK candidate identity contract violation");
@@ -310,7 +324,13 @@ export class LkEdoClient {
             res.status,
           );
         }
-        const json = (await res.json()) as unknown;
+        let json: unknown;
+        try {
+          json = await res.json();
+        } catch {
+          if (ctrl.signal.aborted) throw new LkTimeoutError();
+          throw new LkContractError("LK returned invalid JSON");
+        }
         try {
           validate?.(json);
         } catch (err) {
@@ -329,7 +349,11 @@ export class LkEdoClient {
         )
           throw err;
         const msg = (err as Error).message;
-        if (/cancelled|aborted|Timeout|timeout/i.test(msg)) {
+        if (
+          ctrl.signal.aborted ||
+          err instanceof LkTimeoutError ||
+          /cancelled|aborted|Timeout|timeout/i.test(msg)
+        ) {
           // Timeout/cancellation: transient only if retries remain and caller
           // did not cancel explicitly.
           if (opts?.signal?.aborted) throw new Error("LK request cancelled");
@@ -338,7 +362,7 @@ export class LkEdoClient {
             await sleep(backoffMs(attempt), opts?.signal);
             continue;
           }
-          throw new LkTransientError(`LK request timed out: ${path}`);
+          throw new LkTimeoutError();
         }
         // Network errors (ECONNRESET, fetch TypeError) are transient.
         if (attempt < maxRetries) {
@@ -346,6 +370,8 @@ export class LkEdoClient {
           await sleep(backoffMs(attempt), opts?.signal);
           continue;
         }
+        if (ctrl.signal.aborted && !opts?.signal?.aborted)
+          throw new LkTimeoutError();
         if (err instanceof LkTransientError) throw err;
         throw new LkTransientError(
           `LK request failed: ${path} ${(msg ?? "").slice(0, 120)}`,
@@ -378,7 +404,7 @@ export class LkEdoClient {
     code1c: string,
     opts?: LkRequestOptions,
   ): Promise<EdoCandidateChat> {
-    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(code1c))
+    if (!isEmployeeCode(code1c))
       throw new LkContractError("Invalid employee code");
     const chat = await this.getJson<EdoCandidateChat>(
       getEdoGetEmployeeCandidateChatUrl(encodeURIComponent(code1c)),
