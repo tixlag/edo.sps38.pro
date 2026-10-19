@@ -21,6 +21,7 @@ const config = new ConfigService({
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("ERP candidate adapter", () => {
@@ -168,5 +169,43 @@ describe("EDO candidate context", () => {
     await expect(service.context(chatUuid)).rejects.toMatchObject({
       status: 404,
     });
+  });
+  it("waits for a peer's slow card without issuing a duplicate ERP request", async () => {
+    vi.useFakeTimers();
+    const { service, cache, erp } = setup();
+    const readyAt = Date.now() + 6500;
+    cache.acquire.mockResolvedValue(false);
+    cache.get.mockImplementation(async () =>
+      Date.now() >= readyAt
+        ? {
+            snapshot: { ...card, citizenship: "ru" },
+            freshUntil: Date.now() + 60_000,
+          }
+        : null,
+    );
+    const request = service.context(chatUuid);
+    await vi.advanceTimersByTimeAsync(7000);
+    await expect(request).resolves.toMatchObject({ citizenship: "ru" });
+    expect(erp.findByChatUuid).not.toHaveBeenCalled();
+  });
+  it("does not cancel a shared ERP request when one caller leaves", async () => {
+    const { service, erp } = setup();
+    let complete!: (value: typeof card) => void;
+    erp.findByChatUuid.mockReturnValue(
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+    );
+    const abort = new AbortController();
+    const leaving = service.context(chatUuid, abort.signal);
+    const remaining = service.context(chatUuid);
+    const cancelled = expect(leaving).rejects.toMatchObject({
+      code: "DOCUMENTS_TIMEOUT",
+    });
+    abort.abort();
+    await cancelled;
+    complete({ ...card, citizenship: "ru" });
+    await expect(remaining).resolves.toMatchObject({ citizenship: "ru" });
+    expect(erp.findByChatUuid).toHaveBeenCalledOnce();
   });
 });

@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  ServiceUnavailableException,
-} from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
@@ -14,6 +10,8 @@ import {
   FIELD_LABELS,
   fieldKind,
 } from "./document-contract";
+import { CandidateDocumentError } from "./candidate-document.error";
+import { CandidateDocumentErrorCode as Code } from "./dto/candidate-error.dto";
 import { erpDocumentHeaders } from "./erp-document-auth";
 
 const CATALOG_TTL_MS = 24 * 60 * 60_000;
@@ -32,6 +30,7 @@ const LEGACY_CODES: Record<string, string> = {
 export class DocumentCatalogService {
   private refreshPromise?: Promise<RefreshResult>;
   private nextRefresh = 0;
+  private refreshFailure?: CandidateDocumentError;
   private readonly logger = new Logger(DocumentCatalogService.name);
   constructor(
     private readonly prisma: PrismaService,
@@ -75,13 +74,49 @@ export class DocumentCatalogService {
       }
     }
     if (!(await this.lastSyncedAt()))
-      throw new ServiceUnavailableException("ERP_DOCUMENT_CATALOG_UNAVAILABLE");
+      throw (
+        this.refreshFailure ??
+        new CandidateDocumentError(Code.DOCUMENT_CATALOG_UNAVAILABLE)
+      );
   }
   private async refresh(): Promise<RefreshResult> {
     this.nextRefresh = Date.now() + RETRY_MS;
     const token = this.config.get<string>("ERP_DOCUMENTS_TOKEN");
-    if (!token) return "done";
+    if (
+      !token ||
+      !this.config.get<string>("ERP_DOCUMENTS_BASE_URL") ||
+      !this.config.get<string>("ERP_USERNAME") ||
+      !this.config.get<string>("ERP_PASSWORD")
+    ) {
+      this.refreshFailure = new CandidateDocumentError(
+        Code.DOCUMENTS_INTEGRATION_MISCONFIGURED,
+      );
+      return "done";
+    }
+    let url: URL;
+    try {
+      url = new URL(
+        "documents-by-positions",
+        this.config.get<string>("ERP_DOCUMENTS_BASE_URL"),
+      );
+      if (
+        !["http:", "https:"].includes(url.protocol) ||
+        url.username ||
+        url.password ||
+        url.hash
+      )
+        throw new Error();
+    } catch {
+      this.refreshFailure = new CandidateDocumentError(
+        Code.DOCUMENTS_INTEGRATION_MISCONFIGURED,
+      );
+      return "done";
+    }
+    this.refreshFailure = undefined;
+    const started = Date.now();
+    let upstreamStatus: number | undefined;
     const owner = randomUUID();
+    const timeout = AbortSignal.timeout(15_000);
     try {
       // No refresh without coordination; cached reads remain available if Redis is down.
       if (!(await this.redis.setNxPxStrict(REFRESH_LOCK_KEY, owner, RETRY_MS)))
@@ -91,23 +126,30 @@ export class DocumentCatalogService {
         await this.redis.compareAndDelStrict(REFRESH_LOCK_KEY, owner);
         return "done";
       }
-      const url = new URL(
-        "documents-by-positions",
-        this.config.get<string>("ERP_DOCUMENTS_BASE_URL"),
-      );
       const response = await fetch(url, {
         headers: {
           ...erpDocumentHeaders(this.config),
           Accept: "application/json",
         },
-        signal: AbortSignal.timeout(15000),
+        signal: timeout,
         redirect: "error",
       });
-      if (!response.ok) throw new Error(`ERP_HTTP_${response.status}`);
+      upstreamStatus = response.status;
+      if (!response.ok)
+        throw new CandidateDocumentError(
+          [401, 403, 404].includes(response.status)
+            ? Code.DOCUMENTS_INTEGRATION_MISCONFIGURED
+            : Code.DOCUMENT_CATALOG_UNAVAILABLE,
+        );
       const body = await response.text();
       if (Buffer.byteLength(body) > 2 * 1024 * 1024)
-        throw new Error("ERP_CATALOG_TOO_LARGE");
-      const catalog = erpCatalogSchema.parse(JSON.parse(body));
+        throw new CandidateDocumentError(Code.ERP_CONTRACT_ERROR);
+      let catalog;
+      try {
+        catalog = erpCatalogSchema.parse(JSON.parse(body));
+      } catch {
+        throw new CandidateDocumentError(Code.ERP_CONTRACT_ERROR);
+      }
       await this.prisma.$transaction(
         async (tx) => {
           if ((await this.redis.getStrict(REFRESH_LOCK_KEY)) !== owner)
@@ -176,11 +218,25 @@ export class DocumentCatalogService {
       );
       this.nextRefresh = 0;
       await this.redis.compareAndDelStrict(REFRESH_LOCK_KEY, owner);
-    } catch {
-      // On failure keep the expiring lease as a shared retry cooldown (also across restarts).
-      this.logger.warn(
-        "ERP document catalog refresh unavailable; retained previous catalog",
+    } catch (error) {
+      const failure =
+        error instanceof CandidateDocumentError
+          ? error
+          : new CandidateDocumentError(
+              timeout.aborted
+                ? Code.ERP_TIMEOUT
+                : Code.DOCUMENT_CATALOG_UNAVAILABLE,
+            );
+      this.refreshFailure = new CandidateDocumentError(
+        failure.code,
+        failure.fields,
+        { source: "catalog", upstreamStatus, durationMs: Date.now() - started },
       );
+      // On failure keep the expiring lease as a shared retry cooldown (also across restarts).
+      this.logger.warn({
+        code: this.refreshFailure.code,
+        ...this.refreshFailure.diagnostic,
+      });
     }
     return "done";
   }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -203,5 +203,48 @@ describe("candidate chat identity", () => {
         chatUuid,
       ),
     ).rejects.toMatchObject({ name: "LkNotFoundError", status: 404 });
+  });
+  it.each(["УП000123", "000123", "У".repeat(64), "𐐀".repeat(64)])(
+    "preserves and URL-encodes employee code %s",
+    async (code1c) => {
+      const fetcher = vi.fn(async (_url: unknown, _options: unknown) =>
+        Response.json({ chatUuid, code1c }),
+      );
+      const client = new LkEdoClient({
+        baseUrl: "http://lk",
+        internalToken: "service",
+        fetchImpl: fetcher as typeof fetch,
+      });
+      expect(await client.getEmployeeCandidateChat(code1c)).toMatchObject({
+        code1c,
+      });
+      expect(fetcher.mock.calls[0][0]).toBe(
+        `http://lk/api/internal/edo/v1/employees/${encodeURIComponent(code1c)}/candidate-chat`,
+      );
+    },
+  );
+  it.each([
+    "",
+    "У".repeat(65),
+    "𐐀".repeat(65),
+    ".",
+    "..",
+    "../x",
+    "a/b",
+    "a\\b",
+    "a b",
+    "a\n",
+    "a\u0000",
+  ])("rejects an invalid code before network I/O: %s", async (code1c) => {
+    const fetcher = vi.fn();
+    const client = new LkEdoClient({
+      baseUrl: "http://lk",
+      internalToken: "service",
+      fetchImpl: fetcher,
+    });
+    await expect(
+      client.getEmployeeCandidateChat(code1c),
+    ).rejects.toBeInstanceOf(LkContractError);
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

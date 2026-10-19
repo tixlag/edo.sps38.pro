@@ -1,8 +1,10 @@
+import { Injectable } from "@nestjs/common";
 import {
-  Injectable,
-  NotFoundException,
-  ServiceUnavailableException,
-} from "@nestjs/common";
+  CandidateDocumentError,
+  withinDocumentDeadline,
+} from "./candidate-document.error";
+import { CandidateDocumentErrorCode as Code } from "./dto/candidate-error.dto";
+import type { EdoCandidateChat } from "@edo/lk-client";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { LkCandidateIdentityService } from "./lk-candidate-identity.service";
@@ -24,21 +26,35 @@ export class CandidateContextService {
 
   async context(chatUuid: string, signal?: AbortSignal) {
     const identity = await this.identity.byUuid(chatUuid.toLowerCase(), signal);
+    return this.forIdentity(identity, signal);
+  }
+  async forIdentity(identity: EdoCandidateChat, signal?: AbortSignal) {
+    const started = Date.now();
     let request = this.pending.get(identity.chatUuid);
     if (!request) {
-      request = this.card(identity.chatUuid, signal).finally(() =>
-        this.pending.delete(identity.chatUuid),
-      );
+      request = this.card(
+        identity.chatUuid,
+        AbortSignal.timeout(19_000),
+      ).finally(() => this.pending.delete(identity.chatUuid));
       this.pending.set(identity.chatUuid, request);
     }
     let snapshot: CandidateSnapshotDto;
     try {
-      snapshot = await request;
+      snapshot = signal
+        ? await withinDocumentDeadline(request, signal)
+        : await request;
     } catch (error) {
+      if (
+        error instanceof Error &&
+        ["AbortError", "TimeoutError"].includes(error.name)
+      )
+        throw new CandidateDocumentError(Code.ERP_TIMEOUT);
       if (error instanceof ErpCandidateError) {
-        if (error.status === 404)
-          throw new NotFoundException("ERP_CANDIDATE_NOT_FOUND");
-        throw new ServiceUnavailableException("ERP_CANDIDATE_UNAVAILABLE");
+        throw new CandidateDocumentError(error.code, error.fields, {
+          source: "ERP",
+          upstreamStatus: error.status,
+          durationMs: Date.now() - started,
+        });
       }
       throw error;
     }
@@ -51,9 +67,6 @@ export class CandidateContextService {
         (snapshot.project as { code?: string } | undefined)?.code ?? null,
       candidateSnapshot: snapshot,
     };
-  }
-  async ownChat(code1c: string, signal?: AbortSignal) {
-    return (await this.identity.byEmployee(code1c, signal)).chatUuid;
   }
   private async card(
     uuid: string,
@@ -74,7 +87,7 @@ export class CandidateContextService {
       return this.erp.findByChatUuid(uuid, signal);
     }
     if (!acquired) {
-      const deadline = Date.now() + 6000;
+      const deadline = Date.now() + 17_000;
       while (Date.now() < deadline) {
         await delay(50, undefined, { signal });
         try {
@@ -85,7 +98,7 @@ export class CandidateContextService {
           return this.erp.findByChatUuid(uuid, signal);
         }
       }
-      throw new ServiceUnavailableException("ERP_CANDIDATE_BUSY");
+      throw new CandidateDocumentError(Code.ERP_UNAVAILABLE);
     }
     try {
       // The previous owner may have finished between our first read and acquisition.
