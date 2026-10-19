@@ -60,11 +60,11 @@ export function normalizeErpCandidate(
     (typeof position.code === "string" && !position.code.trim())
   )
     fields.push(Field.POSITION_CODE);
-  if (
+  const citizenship =
     row.citizenship == null ||
     (typeof row.citizenship === "string" && !row.citizenship.trim())
-  )
-    fields.push(Field.CITIZENSHIP);
+      ? "ru"
+      : row.citizenship;
   if (fields.length)
     throw new ErpCandidateError(
       422,
@@ -75,13 +75,13 @@ export function normalizeErpCandidate(
   if (
     typeof position?.code !== "string" ||
     !/^\S{1,64}$/.test(position.code) ||
-    typeof row.citizenship !== "string" ||
-    !/^[a-zA-Z]{2}$/.test(row.citizenship)
+    typeof citizenship !== "string" ||
+    !/^[a-zA-Z]{2}$/.test(citizenship)
   )
     throw new ErpCandidateError(502, false);
   const result: Record<string, unknown> = {
     uuid: chatUuid.toLowerCase(),
-    citizenship: (row.citizenship as string).toLowerCase(),
+    citizenship: citizenship.toLowerCase(),
   };
   for (const [key, max] of [
     ["name", 256],
