@@ -62,6 +62,7 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 
 - Root `.env` loaded explicitly by `apps/api` (`ConfigModule.envFilePath` + `main.ts` dotenv) and `apps/web` (`vite.config envDir` + loadEnv). Never rely on cwd.
 - New vars: `JWT_SECRET/JWT_ALG/JWT_ISSUER/ALLOW_INSECURE_DEV_AUTH`, `LK_BASE_URL/LK_EDO_OPENAPI_URL/LK_EDO_INTERNAL_TOKEN`, `RABBITMQ_URL/LK_EVENTS_EXCHANGE/EDO_LK_QUEUE`. Local dev uses the SHARED LK containers (MariaDB :12002/db `edo`, Redis :6379, RabbitMQ :5672); EDO runs no MariaDB/Redis/Rabbit of its own. CI (manual) uses its own disposable MariaDB + Redis + RabbitMQ services (isolated, never shared LK infra; destructive fault-injection only there).
+- Known deployment blocker (2026-10-19): the external GitLab `ci-templates/edo.yml` recreates production `.env` without `ERP_CANDIDATE_URL` and `ERP_CANDIDATE_TOKEN`. Access to that template is currently unavailable. Both settings were restored manually on production; this workaround can be overwritten by the next deployment. When deploying EDO, remind the user about this blocker and verify both settings remain nonempty in `/var/www/edo.sps38.pro/.env` and in the API container, without printing their values. If lost, restore from the protected production backup in `/var/www/edo.sps38.pro/.cache/` and recreate only the API with the current image. Obtain the actual compose file path from the container's `com.docker.compose.project.config_files` label. Once access is available, fix environment generation in the external template and remove this reminder after a successful deployment confirms persistence.
 
 ## UI
 
@@ -80,5 +81,6 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 ## Candidate documents boundary
 
 - EDO owns browser document APIs and ERP Candidate context. Surveys owns adaptation authoring/progress and keeps `{{documents}}` / `DOCUMENTS`, but never proxies document requests.
+- ERP Candidate citizenship defaults to `ru` in EDO when missing, null, empty, or whitespace-only. Preserve explicitly supplied valid citizenship (normalized to lowercase); malformed nonempty values remain contract errors. A missing position still returns the actionable incomplete-profile error.
 - LK PHP exposes only canonical chat identity via the narrow internal API. Chat-server retains atomic employee-link outbox delivery. EDO never reads LK tables.
 - Auth-service is the only user JWT issuer. Own-document APIs use verified `code_1c` without administrative EDO permissions; guest chat-link access remains a separate capability.

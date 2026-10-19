@@ -93,24 +93,35 @@ describe("candidate identity and source error diagnostics", () => {
     await result;
     expect(fetcher).toHaveBeenCalledOnce();
   });
-  it.each([undefined, null, ""])(
-    "never invents citizenship for incomplete ERP data (%s)",
+  it.each([undefined, null, "", " \t\n"])(
+    "defaults missing ERP citizenship to ru (%s)",
+    (citizenship) => {
+      expect(
+        normalizeErpCandidate({ ...card, citizenship }, uuid),
+      ).toMatchObject({
+        citizenship: "ru",
+        position: card.position,
+      });
+    },
+  );
+  it("preserves explicitly provided foreign citizenship", () => {
+    expect(
+      normalizeErpCandidate({ ...card, citizenship: "UZ" }, uuid),
+    ).toMatchObject({ citizenship: "uz" });
+  });
+  it.each(["Russia", " UZ ", 0, false, {}])(
+    "rejects malformed citizenship instead of defaulting it (%s)",
     (citizenship) => {
       expect(() =>
         normalizeErpCandidate({ ...card, citizenship }, uuid),
-      ).toThrowError(
-        expect.objectContaining({
-          code: "CANDIDATE_PROFILE_INCOMPLETE",
-          fields: ["citizenship"],
-        }),
-      );
+      ).toThrowError(expect.objectContaining({ code: "ERP_CONTRACT_ERROR" }));
     },
   );
-  it("names both missing profile fields", () => {
+  it("still identifies the missing position when citizenship is absent", () => {
     expect(() => normalizeErpCandidate({ uuid }, uuid)).toThrowError(
       expect.objectContaining({
         code: "CANDIDATE_PROFILE_INCOMPLETE",
-        fields: ["positionCode", "citizenship"],
+        fields: ["positionCode"],
       }),
     );
   });
