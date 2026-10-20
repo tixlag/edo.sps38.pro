@@ -1,5 +1,8 @@
+name: edo-ocr
+
 services:
   glm-ocr:
+    image: document-ocr-glm:local
     build:
       context: ./
     container_name: glm-ocr-vllm

@@ -89,6 +89,7 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 ## OCR source component (`ocr/`)
 
 - Existing Russian passport, Uzbekistan passport and migration-card recognizers are maintained under `ocr/` for a shared agent workspace. Read `ocr/AGENTS.md` before editing that component; its relative paths start at `ocr/`.
+- `ocr/` is the only maintained OCR source and runtime. The former RecognizeUZ/DocRecognizer projects and intermediate monorepo-export are legacy; do not start or patch them. Use `ocr/docs/operations.md` for service management.
 - Python recognizers remain independent external processes behind the existing `OcrService` boundary. Their public ports/routes and fallback behavior are preserved. Source co-location does not enable the EDO worker or provide an EDO adapter.
 - EDO keeps its current pnpm/Turbo stack and root environment rules. OCR has separate Python environments and service-local `.env` files described in `ocr/README.md`; never import Python/GPU dependencies into the NestJS application or root Docker build.
 - No models, archives, private documents, inference results or Python environments in Git. Model weights are distributed privately as an archive; only `ocr/models/manifest.json` is tracked.

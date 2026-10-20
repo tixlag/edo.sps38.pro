@@ -1,13 +1,13 @@
 [Unit]
-Description=Document OCR (RU)
+Description=EDO monorepo document OCR (RU)
 After=network.target
 
 [Service]
 Type=simple
 User=ocr
 Group=ocr
-WorkingDirectory=/opt/document-ocr
-ExecStart=/bin/bash /opt/document-ocr/scripts/run_service.sh ru
+WorkingDirectory=/opt/edo.sps38.pro/ocr
+ExecStart=/bin/bash /opt/edo.sps38.pro/ocr/scripts/run_service.sh ru
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGINT
