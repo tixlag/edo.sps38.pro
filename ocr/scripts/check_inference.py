@@ -3,10 +3,35 @@
 import argparse
 import base64
 import json
+import math
 from pathlib import Path
 import time
 import urllib.request
 import uuid
+
+
+def valid_ocr_fields(data, document_type=None):
+    documents = data if isinstance(data, list) else [data]
+    if document_type:
+        documents = [doc for doc in documents if isinstance(doc, dict) and doc.get('type') == document_type]
+    if any(not isinstance(doc, dict) or not isinstance(doc.get('ocr_fields'), list) for doc in documents):
+        return False
+    fields = [field for doc in documents for field in doc['ocr_fields']]
+    if not fields or any(not isinstance(field, dict) for field in fields):
+        return False
+    if not any(field.get('value') for field in fields):
+        return False
+    for field in fields:
+        if not isinstance(field, dict) or not field.get('name') or field.get('source') not in {'PADDLE', 'GLM', 'MIXED'}:
+            return False
+        if 'paddle_text' not in field or 'paddle_confidence' not in field:
+            return False
+        score = field['paddle_confidence']
+        if score is not None and (isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score) or not 0 <= score <= 1):
+            return False
+        if field['paddle_text'] is not None and not isinstance(field['paddle_text'], str):
+            return False
+    return True
 
 
 def request(url, path, as_base64, timeout=240):

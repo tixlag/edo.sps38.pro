@@ -1316,6 +1316,7 @@ def process_multiline_image_current(
     multiline_model,
     *,
     allow_glm_fallback: bool = True,
+    provenance: dict | None = None,
 ):
     """Распознаёт многострочное поле.
 
@@ -1333,16 +1334,28 @@ def process_multiline_image_current(
     img_bgr = _ensure_bgr(img_rgb)
     base_class_name = _base_multiline_class_name(class_name)
 
+    def record_paddle(text, score):
+        if provenance is not None:
+            provenance.update(source="PADDLE", paddle_text=text, paddle_confidence=score)
+
+    def record_glm():
+        if provenance is not None:
+            provenance["source"] = "GLM"
+
     def maybe_glm_or_paddle_single(reason: str):
         if allow_glm_fallback:
             glm_result = _try_glm_multiline_fallback(img_bgr, base_class_name)
             if glm_result is not None:
                 text, score, source = glm_result
+                record_glm()
                 return (text, score), source
-        return paddle_recognize(img_bgr, class_name)
+        result = paddle_recognize(img_bgr, class_name)
+        record_paddle(*result[0])
+        return result
 
     if multiline_model is None or multiline_model == "" or PADDLE_INSTANCE_MULTILINE is None:
         (paddle_text, paddle_score), paddle_path = paddle_recognize(img_bgr, class_name)
+        record_paddle(paddle_text, paddle_score)
         if (
             allow_glm_fallback
             and MULTILINE_GLM_FALLBACK_ENABLED
@@ -1351,6 +1364,7 @@ def process_multiline_image_current(
             glm_result = _try_glm_multiline_fallback(img_bgr, base_class_name)
             if glm_result is not None:
                 text, score, source = glm_result
+                record_glm()
                 return (text, score), source
         return (paddle_text, paddle_score), paddle_path
 
@@ -1410,6 +1424,7 @@ def process_multiline_image_current(
 
         paddle_text = " ".join(recognized_lines)
         avg_score = sum(recognized_scores) / len(recognized_scores)
+        record_paddle(paddle_text, avg_score)
 
         if (
             allow_glm_fallback
@@ -1419,6 +1434,7 @@ def process_multiline_image_current(
             glm_result = _try_glm_multiline_fallback(img_bgr, base_class_name)
             if glm_result is not None:
                 text, score, source = glm_result
+                record_glm()
                 return (text, score), source
 
         # Возвращаем именно average score, как просили, а не min score.
@@ -2040,6 +2056,7 @@ def _run_paddle_ocr_for_segment(
     multiline_model,
     *,
     allow_multiline_glm_fallback: bool = True,
+    provenance: dict | None = None,
 ):
     if class_name in ['issued_by', 'address']:
         return process_multiline_image_current(
@@ -2047,8 +2064,12 @@ def _run_paddle_ocr_for_segment(
             class_name,
             multiline_model,
             allow_glm_fallback=allow_multiline_glm_fallback,
+            provenance=provenance,
         )
-    return paddle_recognize(img, f"{class_name}_{idx}")
+    result = paddle_recognize(img, f"{class_name}_{idx}")
+    if provenance is not None:
+        provenance.update(source="PADDLE", paddle_text=result[0][0], paddle_confidence=result[0][1])
+    return result
 
 
 def _normalize_ocr_text(doc_type, class_name, text):
@@ -2080,6 +2101,7 @@ def process_images_list_paddle(
         paddle_score_threshold: float = 0.85  # Новый параметр
 ):
     all_recognized_fields = {}
+    all_ocr_fields = {}
     all_segment_info = []
     timings = {'images': []} if debug else None
     total_start = perf_counter() if debug else None
@@ -2166,6 +2188,9 @@ def process_images_list_paddle(
                     full_page_fields = glm_ocr_russian_passport_json(img_cv)
                     used_full_page_glm = True
                     all_recognized_fields.update({k: v for k, v in full_page_fields.items() if v})
+                    for name, value in full_page_fields.items():
+                        if value:
+                            all_ocr_fields[name] = dict(name=name, value=value, source="GLM", paddle_text=None, paddle_confidence=None)
                     all_segment_info.append({
                         'class': 'full_page_glm',
                         'recognized_text': json.dumps(full_page_fields, ensure_ascii=False),
@@ -2218,12 +2243,14 @@ def process_images_list_paddle(
                 # processed = ensure_min_size(crop.copy())  # Защита от модификации оригинала
                 processed = crop
 
+                provenance = dict(source="GLM", paddle_text=None, paddle_confidence=None)
                 primary_paddle_ocr = False
                 if ocr_engine == 'paddle':
                     primary_paddle_ocr = True
                     (text, score), img_path = _run_paddle_ocr_for_segment(
                         processed, class_name, idx, multiline_model,
                         allow_multiline_glm_fallback=not no_llm,
+                        provenance=provenance,
                     )
                 elif ocr_engine == 'paddle_GLM':
                     if class_name in GLM_DIRECT_FIELDS:
@@ -2235,6 +2262,7 @@ def process_images_list_paddle(
                         (text, score), img_path = _run_paddle_ocr_for_segment(
                             processed, class_name, idx, multiline_model,
                             allow_multiline_glm_fallback=not no_llm,
+                            provenance=provenance,
                         )
                 elif ocr_engine in {'tr', 'avito_vision', 'glm'}:
                     text, img_path = glm_recognize_vllm(processed, f"{class_name}_{idx}", prompt, output_dir)
@@ -2256,10 +2284,12 @@ def process_images_list_paddle(
 
                 primary_ok = _is_acceptable_ocr_result(doc_type, class_name, text, score, paddle_score_threshold)
                 if primary_paddle_ocr and not primary_ok:
+                    rotated_provenance = {}
                     rotated = cv2.rotate(processed, cv2.ROTATE_180)
                     (rotated_text, rotated_score), rotated_path = _run_paddle_ocr_for_segment(
                         rotated, class_name, idx, multiline_model,
                         allow_multiline_glm_fallback=False,
+                        provenance=rotated_provenance,
                     )
                     rotated_text = _normalize_ocr_text(doc_type, class_name, rotated_text)
                     rotation_fallback_text = rotated_text
@@ -2275,6 +2305,7 @@ def process_images_list_paddle(
                         text = rotated_text
                         score = rotated_score
                         img_path = rotated_path
+                        provenance = rotated_provenance
                         used_rotation_fallback = True
                         primary_ok = rotated_ok
 
@@ -2297,6 +2328,7 @@ def process_images_list_paddle(
                             text = glm_text_norm
                             img_path = ollama_path
                             score = 1.0  # GLM не возвращает score, помечаем как max
+                            provenance["source"] = "GLM"
                             used_fallback = True
 
                         if debug:
@@ -2321,6 +2353,7 @@ def process_images_list_paddle(
                         page_fields[field] = text
 
                 segment_info.append({
+                    'provenance': provenance,
                     'class': class_name,
                     'recognized_text': text,
                     'score': score,
@@ -2358,6 +2391,12 @@ def process_images_list_paddle(
                 elif text:
                     page_fields[field] = text
 
+        for class_name, seg in best_by_class.items():
+            names = ['series', 'number'] if class_name == 'serial_number' else [SEGMENT_TO_FIELD_MAP.get(class_name)]
+            for name in names:
+                if name and page_fields.get(name):
+                    all_ocr_fields[name] = dict(name=name, value=page_fields[name], **seg['provenance'])
+
         # Финальная агрегация
         all_recognized_fields.update({k: v for k, v in page_fields.items() if v})
         all_segment_info.extend(segment_info)
@@ -2392,7 +2431,7 @@ def process_images_list_paddle(
             timings['validation_error'] = str(e)
 
     # Формирование ответа
-    result = {'data': result_data, 'segments_info': all_segment_info}
+    result = {'data': result_data, 'segments_info': all_segment_info, 'ocr_fields': list(all_ocr_fields.values())}
     if debug:
         result['timings'] = {
             **timings,
