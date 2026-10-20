@@ -65,12 +65,12 @@ describe("required document review fields", () => {
     expect(data.fields).toHaveLength(2);
   });
 
-  it("does not show server-owned positionUid even when required by 1C", () => {
+  it("includes positionUid when selected by the document catalog", () => {
     expect(
       getRequiredReviewFields(
         version([field("positionUid", true), field("number", true)]),
       ).map((item) => item.name),
-    ).toEqual(["number"]);
+    ).toEqual(["number", "positionUid"]);
   });
 
   it("does not fall back to optional fields when none are required", () => {

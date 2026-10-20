@@ -7,9 +7,7 @@ import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
  * selection for the review form and its clickable OCR regions only.
  */
 export function getRequiredReviewFields(data: DocumentVersionDto) {
-  const fields = data.fields.filter(
-    (field) => field.required === true && field.name !== "positionUid",
-  );
+  const fields = data.fields.filter((field) => field.required === true);
   if (!data.ocrSource) return fields;
 
   const order = Object.keys(DOCUMENT_FIELD_LABELS);

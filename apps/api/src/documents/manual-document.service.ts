@@ -11,7 +11,12 @@ import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { AuditService } from "../audit/audit.service";
 import { DocumentCatalogService } from "./document-catalog.service";
-import { applicable, textValue, validateFields } from "./document-contract";
+import {
+  applicable,
+  shouldOmitPositionUid,
+  textValue,
+  validateFields,
+} from "./document-contract";
 import { snapshotUpdateInput } from "./candidate-profile";
 import type { StagedUpload } from "./document-upload.service";
 
@@ -78,8 +83,8 @@ export class ManualDocumentService {
         "Document type is unavailable for this candidate",
       );
     const fields = { ...metadata.documentFields };
-    if (type.definitions.some((d) => d.name === "positionUid"))
-      fields.positionUid = metadata.position_code_1c;
+    if (shouldOmitPositionUid(fields.positionUid, metadata.position_code_1c))
+      delete fields.positionUid;
     validateFields(type.definitions, fields);
     let locationId = metadata.locationId;
     if (

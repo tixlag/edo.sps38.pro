@@ -13,7 +13,7 @@ export const FIELD_LABELS: Record<string, string> = {
   firstNameLatin: "Имя латиницей",
   categories: "Категории",
   specialMarks: "Особые отметки",
-  positionUid: "Код должности",
+  positionUid: "Должность в водительском удостоверении (UUID)",
   isInvalid: "Недействителен",
   valueComment: "Комментарий к значению",
   comment: "Комментарий",
@@ -251,17 +251,32 @@ export function typedValue(
 ): string | boolean | null {
   return value === null ? null : kind === "boolean" ? value === "true" : value;
 }
+
+/** Omit absent values and the job code injected by older clients; preserve document UUIDs. */
+export function shouldOmitPositionUid(
+  value: unknown,
+  positionCode1c: string | null,
+): boolean {
+  return (
+    value == null ||
+    (typeof value === "string" &&
+      (!value.trim() ||
+        (value === positionCode1c && !z.string().uuid().safeParse(value).success)))
+  );
+}
+
+/** Catalog required flags select form fields; empty requisites never block a document. */
 export function validateFields(
   definitions: FieldDefinition[],
   fields: Record<string, string | boolean | null>,
-  complete = true,
 ): void {
   const byName = new Map(definitions.map((d) => [d.name, d]));
   for (const [name, value] of Object.entries(fields)) {
     const definition = byName.get(name);
     if (!definition)
       throw new BadRequestException(`Unknown document field: ${name}`);
-    if (value === null || value === "") continue;
+    if (value === null || (typeof value === "string" && !value.trim()))
+      continue;
     if (
       definition.kind === "boolean"
         ? typeof value !== "boolean"
@@ -279,19 +294,6 @@ export function validateFields(
     )
       throw new BadRequestException(`Invalid date: ${name}`);
   }
-  if (complete)
-    for (const definition of definitions) {
-      const value = fields[definition.name];
-      if (
-        definition.required &&
-        (value === null ||
-          value === undefined ||
-          (typeof value === "string" && !value.trim()))
-      )
-        throw new BadRequestException(
-          `Required document field: ${definition.name}`,
-        );
-    }
 }
 
 export const erpCatalogSchema = z

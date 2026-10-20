@@ -12,7 +12,12 @@ import type { AuthPrincipal } from "../auth/auth-principal";
 import { DocumentAccessService } from "./document-access.service";
 import { DocumentReadService } from "./document-read.service";
 import { DocumentPdfService } from "./document-pdf.service";
-import { textValue, typedValue, validateFields } from "./document-contract";
+import {
+  shouldOmitPositionUid,
+  textValue,
+  typedValue,
+  validateFields,
+} from "./document-contract";
 
 const editsSchema = z
   .record(
@@ -182,12 +187,7 @@ export class DocumentReviewService {
         )
           throw new ConflictException("Approval lease expired");
         if (edits && version.submission) {
-          if (
-            "positionUid" in edits &&
-            edits.positionUid !== version.positionCode1c
-          )
-            throw new BadRequestException("Position is server-owned");
-          validateFields(version.fields, edits, false);
+          validateFields(version.fields, edits);
         }
         const changed = await tx.documentVersion.updateMany({
           where: { id: version.id, revision, status: "IN_REVIEW" },
@@ -241,12 +241,23 @@ export class DocumentReviewService {
             const uid = version.document.documentType?.erpUid;
             const chatUid = version.document.candidate?.chatUuid;
             const documentFields = Object.fromEntries(
-              version.fields.map((f) => [
-                f.name,
-                typedValue(f.value, f.kind) ??
-                  (f.kind === "boolean" ? false : ""),
-              ]),
+              version.fields.map((f) => {
+                const value = typedValue(f.value, f.kind);
+                return [
+                  f.name,
+                  typeof value === "string" && !value.trim()
+                    ? ""
+                    : value ?? (f.kind === "boolean" ? false : ""),
+                ];
+              }),
             );
+            if (
+              shouldOmitPositionUid(
+                documentFields.positionUid,
+                version.positionCode1c,
+              )
+            )
+              delete documentFields.positionUid;
             await tx.erpDocumentDelivery.create({
               data: {
                 versionId: version.id,

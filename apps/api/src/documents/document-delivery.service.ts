@@ -18,6 +18,7 @@ import { DocumentPdfService } from "./document-pdf.service";
 import { DocumentUploadService } from "./document-upload.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { erpDocumentHeaders } from "./erp-document-auth";
+import { shouldOmitPositionUid } from "./document-contract";
 import {
   captureErpDeliveryResponse,
   type ErpDeliveryResponse,
@@ -136,6 +137,21 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
       const bytes = await this.storage.read(
         attempt.row.version.approvedStorageKey,
       );
+      const payload = { ...(attempt.row.payload as Prisma.JsonObject) };
+      const fields = payload.documentFields;
+      if (
+        fields &&
+        typeof fields === "object" &&
+        !Array.isArray(fields) &&
+        shouldOmitPositionUid(
+          fields.positionUid,
+          attempt.row.version.positionCode1c,
+        )
+      ) {
+        const documentFields = { ...fields };
+        delete documentFields.positionUid;
+        payload.documentFields = documentFields;
+      }
       const response = await fetch(
         new URL(
           "candidate-documents",
@@ -149,7 +165,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            ...(attempt.row.payload as Prisma.JsonObject),
+            ...payload,
             fileExtension: "pdf",
             fileBase64: bytes.toString("base64"),
           }),
