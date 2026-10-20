@@ -56,3 +56,5 @@ LAN и клиенты корпоративного VPN с маршрутом в 
 Существующие build/API/web и ручной deploy-production ЭДО сохранены. Настройка OCR не запускает deploy-production, LK sync или миграции БД. Отдельный известный риск генерации production .env ЭДО остаётся описан в корневом AGENTS.md и не относится к локальным OCR-службам.
 
 Справка по контексту include и правилам: https://docs.gitlab.com/ci/yaml/includes/ и https://docs.gitlab.com/ci/yaml/#rulesexistsproject.
+
+Login shell runner читает `.bash_logout` пользователя. У стандартного Ubuntu clear_console возвращал exit 1 без терминала: установщик ограничивает этот блок проверками `-t 0` и `-t 1`, сохраняя поведение интерактивного терминала. Исходный файл сохраняется в закрытой резервной копии.

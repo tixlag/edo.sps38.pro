@@ -65,6 +65,15 @@ def main():
         if path.is_file():
             shutil.copy2(path, backup / (path.name + '.backup'))
             (backup / (path.name + '.backup')).chmod(0o600)
+    # Ubuntu clear_console returns failure for GitLab's non-interactive login shell.
+    logout = home / '.bash_logout'
+    if logout.is_file():
+        text = logout.read_text()
+        old = 'if [ "$SHLVL" = 1 ]; then'
+        if old in text and 'clear_console' in text:
+            shutil.copy2(logout, backup / 'bash_logout.backup')
+            (backup / 'bash_logout.backup').chmod(0o600)
+            logout.write_text(text.replace(old, 'if [ "$SHLVL" = 1 ] && [ -t 0 ] && [ -t 1 ]; then'))
     for key in ('limit', 'shell', 'environment', 'builds_dir'):
         if runners[0].get(key) is not None:
             raise ValueError('User runner config already has ' + key + '; merge explicitly')

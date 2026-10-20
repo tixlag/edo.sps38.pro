@@ -158,6 +158,10 @@ def services_healthy(root):
 
 
 def prepare_release(repo, commit, root, bootstrap=False):
+    shared = root / 'shared'
+    for fixture in ('uz.jpg', 'migration.png', 'ru.pdf'):
+        if not (shared / 'var/regression' / fixture).is_file():
+            raise ValueError('Missing private deployment regression input: ' + fixture)
     release = root / 'releases' / commit
     if (release / 'release.json').is_file():
         # Even a retry must re-check private assets before stopping services.
@@ -167,10 +171,6 @@ def prepare_release(repo, commit, root, bootstrap=False):
     if release.exists():
         shutil.rmtree(release)
     export_component(repo, commit, release)
-    shared = root / 'shared'
-    for fixture in ('uz.jpg', 'migration.png', 'ru.pdf'):
-        if not (shared / 'var/regression' / fixture).is_file():
-            raise ValueError('Missing private deployment regression input: ' + fixture)
     run(sys.executable, str(release / 'scripts/models.py'), 'verify',
         '--models-dir', str(shared / 'models'))
     (shared / 'var').mkdir(parents=True, exist_ok=True)

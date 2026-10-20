@@ -128,6 +128,21 @@ except RuntimeError:
             module.validate_baseline(self.root)
         self.assertEqual((self.root / 'current').resolve(), self.old)
 
+    def test_cached_release_still_requires_private_acceptance_inputs(self):
+        cached = self.root / 'releases/cached'
+        cached.mkdir()
+        (cached / 'release.json').write_text('{}')
+        import hashlib,json,shutil
+        (cached / 'scripts').mkdir();(cached / 'models').mkdir()
+        shutil.copy2(SCRIPT.with_name('models.py'),cached / 'scripts/models.py')
+        models=self.root / 'shared/models';models.mkdir(parents=True)
+        (models / 'model.txt').write_bytes(b'weight')
+        (cached / 'models/manifest.json').write_text(json.dumps({'version':1,'files':[
+            {'path':'model.txt','size':6,'sha256':hashlib.sha256(b'weight').hexdigest()}]}))
+        with self.assertRaisesRegex(ValueError, 'Missing private deployment regression input'):
+            self.module.prepare_release(self.root, 'cached', self.root)
+        self.assertEqual((self.root / 'current').resolve(), self.old)
+
     def test_only_protected_main_push_in_correct_project_is_accepted(self):
         valid = {'CI_PROJECT_PATH': 'webdevs/edo.sps38.pro',
                  'CI_COMMIT_BRANCH': 'main', 'CI_PIPELINE_SOURCE': 'push',
