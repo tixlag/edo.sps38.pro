@@ -493,7 +493,7 @@ export function DocumentReviewWorkspace({
                     )}
                   </dt>
                   <dd className="min-w-0 break-words text-[13px]">
-                    {canEdit && field.name !== "positionUid" ? (
+                    {canEdit ? (
                       field.kind === "boolean" || field.kind === "date" ? (
                         <input
                           ref={(node) => {
@@ -508,7 +508,6 @@ export function DocumentReviewWorkspace({
                               : undefined
                           }
                           value={field.kind === "date" ? value : undefined}
-                          aria-required={field.required}
                           className={
                             field.kind === "boolean"
                               ? "mt-2 h-4 w-4 accent-[var(--primary)]"
@@ -537,7 +536,6 @@ export function DocumentReviewWorkspace({
                           rows={1}
                           maxLength={16384}
                           disabled={busy}
-                          aria-required={field.required}
                           className={`${inputClass} max-h-24 resize-y`}
                           value={value}
                           onFocus={() => {
