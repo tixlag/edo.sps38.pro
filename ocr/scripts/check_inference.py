@@ -9,7 +9,7 @@ import urllib.request
 import uuid
 
 
-def request(url, path, as_base64):
+def request(url, path, as_base64, timeout=240):
     if as_base64:
         body = json.dumps({'files':[{'filename':path.name, 'content_base64':base64.b64encode(path.read_bytes()).decode()}]}).encode()
         content_type = 'application/json'
@@ -19,7 +19,8 @@ def request(url, path, as_base64):
         body = (f'--{boundary}\r\nContent-Disposition: form-data; name="files"; filename="input{path.suffix}"\r\nContent-Type: {mime}\r\n\r\n'.encode() + path.read_bytes() + f'\r\n--{boundary}--\r\n'.encode())
         content_type = f'multipart/form-data; boundary={boundary}'
     req = urllib.request.Request(url, data=body, headers={'Content-Type':content_type})
-    with urllib.request.urlopen(req, timeout=240) as response:
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(req, timeout=timeout) as response:
         return response.status, json.load(response)
 
 

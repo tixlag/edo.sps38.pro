@@ -1,13 +1,35 @@
-# Include from the authoritative external ci-templates/edo.yml.
-# .pre is available without changing the parent pipeline's stages.
-ocr-contracts-and-installation:
-  image: python:3.12-slim
-  stage: .pre
+# Included by edo.yml@webdevs/ci-templates in the EDO project's commit context.
+.ocr-pc:
+  tags: [deploy-ocr-pc]
+  before_script: []
+  after_script: []
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main" && $CI_COMMIT_REF_PROTECTED == "true"'
+      changes:
         - ocr/**/*
+  variables:
+    GIT_DEPTH: "20"
+    GIT_SUBMODULE_STRATEGY: none
+    PYTHONUNBUFFERED: "1"
+    PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+ocr-validate:
+  extends: .ocr-pc
+  stage: .pre
+  interruptible: true
+  timeout: 10m
   script:
-    - cd ocr
-    - python -m pip install -r requirements-test.txt
-    - python -m unittest discover -s tests -v
-    - python scripts/check_repository.py
+    - bash ocr/scripts/ci_check.sh
+
+ocr-deploy-pc:
+  extends: .ocr-pc
+  stage: deploy
+  needs: [ocr-validate]
+  resource_group: edo-ocr-pc
+  interruptible: false
+  timeout: 30m
+  environment:
+    name: ocr/pc
+    url: http://10.10.5.184:8000/docs
+  script:
+    - python3 ocr/scripts/deploy_pc.py

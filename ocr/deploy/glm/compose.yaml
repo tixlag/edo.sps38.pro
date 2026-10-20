@@ -2,7 +2,7 @@ name: edo-ocr
 
 services:
   glm-ocr:
-    image: document-ocr-glm:local
+    image: ${GLM_OCR_IMAGE:-document-ocr-glm:local}
     build:
       context: ./
     container_name: glm-ocr-vllm
