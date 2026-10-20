@@ -16,6 +16,7 @@ import { LkSyncModule } from './lk-sync/lk-sync.module';
 import { LkEventsModule } from './lk-events/lk-events.module';
 import { DocumentsModule } from './documents/documents.module';
 import { MeModule } from './me/me.module';
+import { CommunicationsModule } from './communications/communications.module';
 
 // Root .env is loaded explicitly: do not rely on process cwd.
 // apps/api runs from apps/api/, repo root is ../../.env.
@@ -42,6 +43,7 @@ const ROOT_ENV = join(__dirname, '..', '..', '..', '.env');
     LkEventsModule,
     MeModule,
     DocumentsModule,
+    CommunicationsModule,
   ],
 })
 export class AppModule {}

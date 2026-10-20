@@ -98,6 +98,9 @@ importers:
       sharp:
         specifier: ^0.35.5
         version: 0.35.5(@types/node@22.10.7)
+      ws:
+        specifier: ^8.18.3
+        version: 8.22.0
       zod:
         specifier: 3.24.1
         version: 3.24.1
@@ -120,6 +123,9 @@ importers:
       '@types/node':
         specifier: 22.10.7
         version: 22.10.7
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.2
       eslint:
         specifier: 8.57.1
         version: 8.57.1
@@ -1931,6 +1937,9 @@ packages:
 
   '@types/validator@13.15.10':
     resolution: {integrity: sha512-T8L6i7wCuyoK8A/ZeLYt1+q0ty3Zb9+qbSSvrIVitzT3YjZqkTZ40IbRsPanlB4h1QB3JVL1SYCdR6ngtFYcuA==}
+
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
 
   '@typescript-eslint/eslint-plugin@8.18.0':
     resolution: {integrity: sha512-NR2yS7qUqCL7AIxdJUQf2MKKNDVNaig/dEB0GBLU7D+ZdHgK1NoH/3wsgO3OnPVipn51tG3MAwaODEGil70WEw==}
@@ -6676,6 +6685,10 @@ snapshots:
   '@types/urijs@1.19.26': {}
 
   '@types/validator@13.15.10': {}
+
+  '@types/ws@8.18.2':
+    dependencies:
+      '@types/node': 22.10.7
 
   '@typescript-eslint/eslint-plugin@8.18.0(@typescript-eslint/parser@8.18.0(eslint@8.57.1)(typescript@5.7.3))(eslint@8.57.1)(typescript@5.7.3)':
     dependencies:

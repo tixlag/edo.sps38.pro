@@ -20,6 +20,8 @@ export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const AuditAction = {
+  COMMUNICATION_REQUESTED: "COMMUNICATION_REQUESTED",
+  COMMUNICATION_COMPLETED: "COMMUNICATION_COMPLETED",
   EMPLOYEE_CREATED: "EMPLOYEE_CREATED",
   DOCUMENT_UPLOADED: "DOCUMENT_UPLOADED",
   DOCUMENT_UPLOAD_STARTED: "DOCUMENT_UPLOAD_STARTED",
@@ -970,6 +972,118 @@ export interface RejectDocumentDto {
   reason: string;
 }
 
+export interface CommunicationCandidatesDto {
+  items: CandidateProfileDto[];
+  /** @nullable */
+  nextCursor: string | null;
+  /** @nullable */
+  syncedAt: string | null;
+}
+
+export type ChatChannel = (typeof ChatChannel)[keyof typeof ChatChannel];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ChatChannel = {
+  lk: "lk",
+  tg: "tg",
+  wa: "wa",
+  sms: "sms",
+} as const;
+
+export interface ChatRecipientDto {
+  id: string;
+  channel: ChatChannel;
+  label: string;
+  supportsFiles: boolean;
+}
+
+export interface ChatTemplateDto {
+  id: string;
+  title: string;
+  text: string;
+}
+
+export interface CommunicationContextDto {
+  recipients: ChatRecipientDto[];
+  templates: ChatTemplateDto[];
+  canSend: boolean;
+  /** @nullable */
+  lkUrl: string | null;
+  unavailableSources: string[];
+}
+
+export interface ChatAttachmentDto {
+  id: string;
+  filename: string;
+  mimeType: string;
+  /** @nullable */
+  sizeBytes: number | null;
+}
+
+export interface ChatMessageDto {
+  id: string;
+  channel: ChatChannel;
+  outgoing: boolean;
+  author: string;
+  createdAt: string;
+  text: string;
+  attachments: ChatAttachmentDto[];
+}
+
+export interface CommunicationHistoryDto {
+  items: ChatMessageDto[];
+  /** @nullable */
+  nextCursor: string | null;
+  unavailableSources: string[];
+}
+
+export interface SendCommunicationDto {
+  requestId: string;
+  channel: ChatChannel;
+  /** @maxLength 256 */
+  recipientId: string;
+  /** @maxLength 16000 */
+  text: string;
+  /**
+   * Staged attachment ID. One file per message, as required by LK.
+   * @maxItems 1
+   */
+  attachmentIds?: string[];
+}
+
+export type SendStatus = (typeof SendStatus)[keyof typeof SendStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const SendStatus = {
+  PENDING: "PENDING",
+  SENT: "SENT",
+  FAILED: "FAILED",
+  UNKNOWN: "UNKNOWN",
+} as const;
+
+export interface CommunicationOperationDto {
+  id: string;
+  status: SendStatus;
+  /** @nullable */
+  providerId: string | null;
+  /** @nullable */
+  errorCode: string | null;
+}
+
+export interface ChatDownloadDto {
+  url: string;
+}
+
+export interface ChatLinkDto {
+  url: string;
+}
+
+export interface ChatStreamGrantDto {
+  token: string;
+  url: string;
+  expiresAt: string;
+}
+
 export type ListAuditLogsParams = {
   /**
    * Filter by author uuid; the literal "me" means the caller
@@ -1170,6 +1284,25 @@ export type SubmitCandidateDocumentDirectBody = {
    * @maxItems 10
    */
   "files[]": Blob[];
+};
+
+export type ListCommunicationCandidatesParams = {
+  cursor?: string;
+  limit?: number;
+  q?: string;
+};
+
+export type ListCommunicationMessagesParams = {
+  cursor?: string;
+  limit?: number;
+};
+
+export type UploadCommunicationAttachmentBody = {
+  file: Blob;
+};
+
+export type GetCommunicationAttachmentDownloadParams = {
+  attachmentId: string;
 };
 
 /**
@@ -5308,3 +5441,884 @@ export const useSubmitCandidateDocumentDirect = <
 
   return useMutation(mutationOptions);
 };
+
+/**
+ * @summary All accessible candidates, including candidates without documents
+ */
+export const listCommunicationCandidates = (
+  params?: ListCommunicationCandidatesParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CommunicationCandidatesDto>({
+    url: `/api/v1/candidates/catalog`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListCommunicationCandidatesQueryKey = (
+  params?: ListCommunicationCandidatesParams,
+) => {
+  return [`/api/v1/candidates/catalog`, ...(params ? [params] : [])] as const;
+};
+
+export const getListCommunicationCandidatesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCommunicationCandidates>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCommunicationCandidatesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCommunicationCandidates>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListCommunicationCandidatesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCommunicationCandidates>>
+  > = ({ signal }) => listCommunicationCandidates(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCommunicationCandidates>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCommunicationCandidatesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCommunicationCandidates>>
+>;
+export type ListCommunicationCandidatesQueryError = ApiErrorDto;
+
+/**
+ * @summary All accessible candidates, including candidates without documents
+ */
+
+export function useListCommunicationCandidates<
+  TData = Awaited<ReturnType<typeof listCommunicationCandidates>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCommunicationCandidatesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCommunicationCandidates>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCommunicationCandidatesQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Available channels, recipients and reply templates
+ */
+export const getCommunicationContext = (
+  candidateId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CommunicationContextDto>({
+    url: `/api/v1/candidates/${candidateId}/communications`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCommunicationContextQueryKey = (candidateId: string) => {
+  return [`/api/v1/candidates/${candidateId}/communications`] as const;
+};
+
+export const getGetCommunicationContextQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCommunicationContext>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCommunicationContext>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCommunicationContextQueryKey(candidateId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCommunicationContext>>
+  > = ({ signal }) => getCommunicationContext(candidateId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCommunicationContext>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCommunicationContextQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCommunicationContext>>
+>;
+export type GetCommunicationContextQueryError = ApiErrorDto;
+
+/**
+ * @summary Available channels, recipients and reply templates
+ */
+
+export function useGetCommunicationContext<
+  TData = Awaited<ReturnType<typeof getCommunicationContext>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCommunicationContext>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCommunicationContextQueryOptions(
+    candidateId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Combined candidate chat history with independent source cursors
+ */
+export const listCommunicationMessages = (
+  candidateId: string,
+  params?: ListCommunicationMessagesParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CommunicationHistoryDto>({
+    url: `/api/v1/candidates/${candidateId}/communications/messages`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListCommunicationMessagesQueryKey = (
+  candidateId: string,
+  params?: ListCommunicationMessagesParams,
+) => {
+  return [
+    `/api/v1/candidates/${candidateId}/communications/messages`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListCommunicationMessagesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCommunicationMessages>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  params?: ListCommunicationMessagesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCommunicationMessages>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListCommunicationMessagesQueryKey(candidateId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCommunicationMessages>>
+  > = ({ signal }) => listCommunicationMessages(candidateId, params, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCommunicationMessages>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCommunicationMessagesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCommunicationMessages>>
+>;
+export type ListCommunicationMessagesQueryError = ApiErrorDto;
+
+/**
+ * @summary Combined candidate chat history with independent source cursors
+ */
+
+export function useListCommunicationMessages<
+  TData = Awaited<ReturnType<typeof listCommunicationMessages>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  params?: ListCommunicationMessagesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCommunicationMessages>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCommunicationMessagesQueryOptions(
+    candidateId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Send a candidate message; requestId makes retries safe
+ */
+export const sendCommunicationMessage = (
+  candidateId: string,
+  sendCommunicationDto: SendCommunicationDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CommunicationOperationDto>({
+    url: `/api/v1/candidates/${candidateId}/communications/messages`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: sendCommunicationDto,
+    signal,
+  });
+};
+
+export const getSendCommunicationMessageMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof sendCommunicationMessage>>,
+    TError,
+    { candidateId: string; data: SendCommunicationDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof sendCommunicationMessage>>,
+  TError,
+  { candidateId: string; data: SendCommunicationDto },
+  TContext
+> => {
+  const mutationKey = ["sendCommunicationMessage"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof sendCommunicationMessage>>,
+    { candidateId: string; data: SendCommunicationDto }
+  > = (props) => {
+    const { candidateId, data } = props ?? {};
+
+    return sendCommunicationMessage(candidateId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SendCommunicationMessageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof sendCommunicationMessage>>
+>;
+export type SendCommunicationMessageMutationBody = SendCommunicationDto;
+export type SendCommunicationMessageMutationError = ApiErrorDto;
+
+/**
+ * @summary Send a candidate message; requestId makes retries safe
+ */
+export const useSendCommunicationMessage = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof sendCommunicationMessage>>,
+    TError,
+    { candidateId: string; data: SendCommunicationDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof sendCommunicationMessage>>,
+  TError,
+  { candidateId: string; data: SendCommunicationDto },
+  TContext
+> => {
+  const mutationOptions = getSendCommunicationMessageMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Read the current user’s send receipt
+ */
+export const getCommunicationOperation = (
+  candidateId: string,
+  operationId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CommunicationOperationDto>({
+    url: `/api/v1/candidates/${candidateId}/communications/operations/${operationId}`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCommunicationOperationQueryKey = (
+  candidateId: string,
+  operationId: string,
+) => {
+  return [
+    `/api/v1/candidates/${candidateId}/communications/operations/${operationId}`,
+  ] as const;
+};
+
+export const getGetCommunicationOperationQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCommunicationOperation>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  operationId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCommunicationOperation>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetCommunicationOperationQueryKey(candidateId, operationId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCommunicationOperation>>
+  > = ({ signal }) =>
+    getCommunicationOperation(candidateId, operationId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(candidateId && operationId),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCommunicationOperation>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCommunicationOperationQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCommunicationOperation>>
+>;
+export type GetCommunicationOperationQueryError = ApiErrorDto;
+
+/**
+ * @summary Read the current user’s send receipt
+ */
+
+export function useGetCommunicationOperation<
+  TData = Awaited<ReturnType<typeof getCommunicationOperation>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  operationId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCommunicationOperation>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCommunicationOperationQueryOptions(
+    candidateId,
+    operationId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Stage one private chat attachment (up to 10 MB)
+ */
+export const uploadCommunicationAttachment = (
+  candidateId: string,
+  uploadCommunicationAttachmentBody: UploadCommunicationAttachmentBody,
+  signal?: AbortSignal,
+) => {
+  const formData = new FormData();
+  formData.append("file", uploadCommunicationAttachmentBody.file);
+
+  return customInstance<ChatAttachmentDto>({
+    url: `/api/v1/candidates/${candidateId}/communications/attachments`,
+    method: "POST",
+    headers: { "Content-Type": "multipart/form-data" },
+    data: formData,
+    signal,
+  });
+};
+
+export const getUploadCommunicationAttachmentMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadCommunicationAttachment>>,
+    TError,
+    { candidateId: string; data: UploadCommunicationAttachmentBody },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadCommunicationAttachment>>,
+  TError,
+  { candidateId: string; data: UploadCommunicationAttachmentBody },
+  TContext
+> => {
+  const mutationKey = ["uploadCommunicationAttachment"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadCommunicationAttachment>>,
+    { candidateId: string; data: UploadCommunicationAttachmentBody }
+  > = (props) => {
+    const { candidateId, data } = props ?? {};
+
+    return uploadCommunicationAttachment(candidateId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadCommunicationAttachmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadCommunicationAttachment>>
+>;
+export type UploadCommunicationAttachmentMutationBody =
+  UploadCommunicationAttachmentBody;
+export type UploadCommunicationAttachmentMutationError = ApiErrorDto;
+
+/**
+ * @summary Stage one private chat attachment (up to 10 MB)
+ */
+export const useUploadCommunicationAttachment = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadCommunicationAttachment>>,
+    TError,
+    { candidateId: string; data: UploadCommunicationAttachmentBody },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadCommunicationAttachment>>,
+  TError,
+  { candidateId: string; data: UploadCommunicationAttachmentBody },
+  TContext
+> => {
+  const mutationOptions =
+    getUploadCommunicationAttachmentMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Authorize a signed source attachment locator and return a short-lived download
+ */
+export const getCommunicationAttachmentDownload = (
+  candidateId: string,
+  params: GetCommunicationAttachmentDownloadParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ChatDownloadDto>({
+    url: `/api/v1/candidates/${candidateId}/communications/attachment-download`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetCommunicationAttachmentDownloadQueryKey = (
+  candidateId: string,
+  params: GetCommunicationAttachmentDownloadParams,
+) => {
+  return [
+    `/api/v1/candidates/${candidateId}/communications/attachment-download`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetCommunicationAttachmentDownloadQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCommunicationAttachmentDownload>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  params: GetCommunicationAttachmentDownloadParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCommunicationAttachmentDownload>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetCommunicationAttachmentDownloadQueryKey(candidateId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCommunicationAttachmentDownload>>
+  > = ({ signal }) =>
+    getCommunicationAttachmentDownload(candidateId, params, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCommunicationAttachmentDownload>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCommunicationAttachmentDownloadQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCommunicationAttachmentDownload>>
+>;
+export type GetCommunicationAttachmentDownloadQueryError = ApiErrorDto;
+
+/**
+ * @summary Authorize a signed source attachment locator and return a short-lived download
+ */
+
+export function useGetCommunicationAttachmentDownload<
+  TData = Awaited<ReturnType<typeof getCommunicationAttachmentDownload>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  params: GetCommunicationAttachmentDownloadParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCommunicationAttachmentDownload>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCommunicationAttachmentDownloadQueryOptions(
+    candidateId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Get or create the candidate’s canonical LK chat link
+ */
+export const createCommunicationLkLink = (
+  candidateId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ChatLinkDto>({
+    url: `/api/v1/candidates/${candidateId}/communications/lk-link`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getCreateCommunicationLkLinkMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCommunicationLkLink>>,
+    TError,
+    { candidateId: string },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCommunicationLkLink>>,
+  TError,
+  { candidateId: string },
+  TContext
+> => {
+  const mutationKey = ["createCommunicationLkLink"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCommunicationLkLink>>,
+    { candidateId: string }
+  > = (props) => {
+    const { candidateId } = props ?? {};
+
+    return createCommunicationLkLink(candidateId);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCommunicationLkLinkMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCommunicationLkLink>>
+>;
+
+export type CreateCommunicationLkLinkMutationError = ApiErrorDto;
+
+/**
+ * @summary Get or create the candidate’s canonical LK chat link
+ */
+export const useCreateCommunicationLkLink = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCommunicationLkLink>>,
+    TError,
+    { candidateId: string },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCommunicationLkLink>>,
+  TError,
+  { candidateId: string },
+  TContext
+> => {
+  const mutationOptions = getCreateCommunicationLkLinkMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Issue a five-minute candidate-scoped SSE grant, bounded by JWT expiry
+ */
+export const createCommunicationStreamGrant = (
+  candidateId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ChatStreamGrantDto>({
+    url: `/api/v1/candidates/${candidateId}/communications/stream-grant`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getCreateCommunicationStreamGrantMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCommunicationStreamGrant>>,
+    TError,
+    { candidateId: string },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCommunicationStreamGrant>>,
+  TError,
+  { candidateId: string },
+  TContext
+> => {
+  const mutationKey = ["createCommunicationStreamGrant"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCommunicationStreamGrant>>,
+    { candidateId: string }
+  > = (props) => {
+    const { candidateId } = props ?? {};
+
+    return createCommunicationStreamGrant(candidateId);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCommunicationStreamGrantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCommunicationStreamGrant>>
+>;
+
+export type CreateCommunicationStreamGrantMutationError = ApiErrorDto;
+
+/**
+ * @summary Issue a five-minute candidate-scoped SSE grant, bounded by JWT expiry
+ */
+export const useCreateCommunicationStreamGrant = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCommunicationStreamGrant>>,
+    TError,
+    { candidateId: string },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCommunicationStreamGrant>>,
+  TError,
+  { candidateId: string },
+  TContext
+> => {
+  const mutationOptions =
+    getCreateCommunicationStreamGrantMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Candidate changes using an Authorization bearer stream grant
+ */
+export const streamCommunicationEvents = (signal?: AbortSignal) => {
+  return customInstance<void>({
+    url: `/api/v1/communication-events`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getStreamCommunicationEventsQueryKey = () => {
+  return [`/api/v1/communication-events`] as const;
+};
+
+export const getStreamCommunicationEventsQueryOptions = <
+  TData = Awaited<ReturnType<typeof streamCommunicationEvents>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof streamCommunicationEvents>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getStreamCommunicationEventsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof streamCommunicationEvents>>
+  > = ({ signal }) => streamCommunicationEvents(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof streamCommunicationEvents>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type StreamCommunicationEventsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof streamCommunicationEvents>>
+>;
+export type StreamCommunicationEventsQueryError = ApiErrorDto;
+
+/**
+ * @summary Candidate changes using an Authorization bearer stream grant
+ */
+
+export function useStreamCommunicationEvents<
+  TData = Awaited<ReturnType<typeof streamCommunicationEvents>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof streamCommunicationEvents>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getStreamCommunicationEventsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}

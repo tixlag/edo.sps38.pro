@@ -4,6 +4,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { EmployeesPage } from '../pages/EmployeesPage';
 import { EmployeeDetailPage } from '../pages/EmployeeDetailPage';
 import { ReviewPage, ReviewDocumentPage } from '../pages/ReviewPage';
+import { CandidateWorkspacePage } from '../pages/CandidateWorkspacePage';
 import { HistoryPage, MyReviews } from '../pages/HistoryPage';
 import { useEmployeeRouteId } from './AppShell';
 
@@ -60,6 +61,7 @@ const reviewRoute = createRoute({
 });
 
 const reviewDocumentRoute = createRoute({ getParentRoute: () => rootRoute, path: '/review/$documentId', component: ReviewDocumentPage });
+const candidateWorkspaceRoute = createRoute({ getParentRoute: () => rootRoute, path: '/review/candidates/$candidateId', component: CandidateWorkspacePage });
 
 const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -104,6 +106,7 @@ const routeTree = rootRoute.addChildren([
   tasksRoute,
   reviewRoute,
   reviewDocumentRoute,
+  candidateWorkspaceRoute,
   historyRoute,
   myReviewsRoute,
   onboardingRoute,

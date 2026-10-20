@@ -5,6 +5,8 @@ import { AppHeader } from '../components/AppHeader';
 import { useGetMe } from '@edo/api-client';
 import { Button } from '@edo/ui';
 import { useDocumentEvents } from '../lib/document-events';
+import { clearChatDrafts } from '../lib/chat-drafts';
+import { subscribeAccessToken } from '../lib/auth-token';
 
 const CRUMBS: Record<string, string> = {
   '/': 'Дашборд',
@@ -37,6 +39,10 @@ function activeFor(pathname: string): string {
 /** Layout shell: real URL routing via TanStack Router (back/forward + deep links work). */
 export function AppShell() {
   const profile = useGetMe();
+  React.useEffect(() => {
+    clearChatDrafts();
+    return subscribeAccessToken((token) => { if (!token) clearChatDrafts(); });
+  }, [profile.data?.uuid]);
   useDocumentEvents(!!profile.data);
   const [collapsed, setCollapsed] = React.useState(true);
   const navigate = useNavigate();

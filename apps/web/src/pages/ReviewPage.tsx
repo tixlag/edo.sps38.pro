@@ -31,7 +31,6 @@ import {
   SearchSelect,
   type SearchSelectOption,
 } from "../components/SearchSelect";
-import { CandidateDrawer } from "../components/CandidateDrawer";
 import { LkLink } from "../components/LkLink";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
 import {
@@ -151,8 +150,7 @@ function CandidateRow({
       <div className="relative flex w-full flex-wrap items-center gap-3 bg-[var(--muted)] px-3 py-2.5">
         <button
           type="button"
-          aria-haspopup="dialog"
-          aria-label={`Открыть документы: ${heading}`}
+          aria-label={`Открыть чат и документы: ${heading}`}
           onClick={onOpen}
           className="absolute inset-0 rounded-[10px] hover:bg-[var(--border)]/30 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--primary)]"
         />
@@ -318,24 +316,13 @@ export function ReviewPage() {
   const openCandidate = useCallback(
     (id: string) => {
       void navigate({
-        to: "/review",
-        search: (prev: Record<string, unknown>) => ({ ...prev, candidate: id }),
+        to: "/review/candidates/$candidateId",
+        params: { candidateId: id },
+        search: (prev: Record<string, unknown>) => { const next = { ...prev }; delete next.candidate; return next; },
       });
     },
     [navigate],
   );
-
-  const closeCandidate = useCallback(() => {
-    void navigate({
-      to: "/review",
-      replace: true,
-      search: (prev: Record<string, unknown>) => {
-        const next: Record<string, unknown> = { ...prev };
-        delete next.candidate;
-        return next;
-      },
-    });
-  }, [navigate]);
 
   // Async selector sources: candidates (ФИО) and the LK position directory.
   const [candidateQuery, setCandidateQuery] = useState("");
@@ -464,10 +451,12 @@ export function ReviewPage() {
   );
   const docTypeLabel = docType?.title;
 
-  const drawerGroup = groups.find(
-    (group) => group.candidate.id === filters.candidate,
-  );
-  const drawerCandidateId = filters.candidate ?? null;
+  useEffect(() => {
+    if (filters.candidate) {
+      const next = { ...rawSearch }; delete next.candidate;
+      void navigate({ to: "/review/candidates/$candidateId", params: { candidateId: filters.candidate }, search: next, replace: true });
+    }
+  }, [filters.candidate, navigate, rawSearch]);
 
   const filtersActive = hasActiveReviewFilters(filters);
 
@@ -712,15 +701,7 @@ export function ReviewPage() {
           )}
         </CardContent>
       </Card>
-      {drawerCandidateId && (
-        <CandidateDrawer
-          key={drawerCandidateId}
-          candidateId={drawerCandidateId}
-          profile={drawerGroup?.candidate ?? null}
-          returnedHistory={filters.status === "RETURNED"}
-          onClose={closeCandidate}
-        />
-      )}
+
     </div>
   );
 }

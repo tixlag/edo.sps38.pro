@@ -9,6 +9,7 @@ export default defineConfig({
       transform(code, id) {
         const needsMetadata = [
           "/src/documents/",
+          "/src/communications/",
           "/src/ocr/",
           "/src/storage/",
           "/src/auth/jwt.service.ts",

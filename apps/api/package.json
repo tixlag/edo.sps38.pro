@@ -8,7 +8,7 @@
     "start": "node dist/main.js",
     "lint": "eslint src test --ext .ts",
     "test": "vitest run",
-    "openapi:export": "DATABASE_URL=mysql://edo:edo@127.0.0.1:12002/edo JWT_SECRET=export-only-insecure-secret LK_EVENTS_CONSUME=0 OCR_WORKER_ENABLED=false DOCUMENT_WORKER_ENABLED=false ts-node --transpile-only scripts/export-openapi.ts",
+    "openapi:export": "DATABASE_URL=mysql://edo:edo@127.0.0.1:12002/edo JWT_SECRET=export-only-insecure-secret LK_EVENTS_CONSUME=0 OCR_WORKER_ENABLED=false DOCUMENT_WORKER_ENABLED=false CANDIDATE_CATALOG_SYNC_ENABLED=false ts-node --transpile-only scripts/export-openapi.ts",
     "api:generate": "pnpm openapi:export && orval --config ../../orval.config.ts",
     "db:seed": "ts-node --transpile-only prisma/seed.ts",
     "demo:passport": "ts-node --transpile-only scripts/seed-passport-example.ts",
@@ -18,7 +18,8 @@
     "lk:topology": "ts-node --transpile-only src/lk-sync/run-topology.ts",
     "lk:recover": "ts-node --transpile-only src/lk-sync/run-recover.ts",
     "lk:queues:reset": "ts-node --transpile-only scripts/reset-edo-queues.ts",
-    "infra:check": "ts-node --transpile-only scripts/infra-check.ts"
+    "infra:check": "ts-node --transpile-only scripts/infra-check.ts",
+    "candidates:sync": "ts-node --transpile-only src/communications/run-catalog-sync.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1148.0",
@@ -44,6 +45,7 @@
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.1",
     "sharp": "^0.35.5",
+    "ws": "^8.18.3",
     "zod": "3.24.1"
   },
   "devDependencies": {
@@ -53,6 +55,7 @@
     "@nestjs/testing": "11.0.12",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "22.10.7",
+    "@types/ws": "^8.18.1",
     "eslint": "8.57.1",
     "orval": "7.5.0",
     "prettier": "3.8.1",

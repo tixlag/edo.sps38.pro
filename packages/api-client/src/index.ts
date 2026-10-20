@@ -3,3 +3,4 @@
 export * from './generated/api';
 export * from './mutator/custom-instance';
 export * from './document-events';
+export * from './communication-events';

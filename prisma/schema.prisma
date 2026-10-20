@@ -51,6 +51,8 @@ enum AuditAction {
   DATA_IMPORTED
   LK_REFERENCE_SYNCED
   LK_EVENT_APPLIED
+  COMMUNICATION_REQUESTED
+  COMMUNICATION_COMPLETED
 }
 
 model Employee {
@@ -341,6 +343,9 @@ model LkSyncState {
 
 model Candidate {
   id         String     @id @default(cuid()) @db.VarChar(64)
+  erpUid     String?    @unique @db.VarChar(36)
+  erpDeleted Boolean    @default(false)
+  catalogSyncedAt DateTime? @db.DateTime(3)
   chatUuid   String?    @unique @db.VarChar(36)
   identityKey String @unique @db.VarChar(80)
   locationId Int?
@@ -365,10 +370,59 @@ model Candidate {
   updatedAt  DateTime   @updatedAt @db.DateTime(3)
   documents  Document[]
   jobs       OcrJob[]
+  communications CommunicationOperation[]
+  chatAttachments CommunicationAttachment[]
 
   @@index([locationId])
   @@index([code1c])
   @@map("candidates")
+}
+
+enum CommunicationStatus {
+  PENDING
+  SENT
+  FAILED
+  UNKNOWN
+}
+
+model CommunicationOperation {
+  id String @id @default(uuid()) @db.VarChar(36)
+  candidateId String @db.VarChar(64)
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+  actorId String @db.VarChar(64)
+  actorCode1c String @db.VarChar(64)
+  requestKey String @db.VarChar(128)
+  fingerprint String @db.VarChar(64)
+  channel String @db.VarChar(16)
+  recipientId String @db.VarChar(256)
+  text String @db.Text
+  status CommunicationStatus @default(PENDING)
+  providerId String? @db.VarChar(256)
+  errorCode String? @db.VarChar(64)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  attachments CommunicationAttachment[]
+
+  @@unique([actorId, requestKey])
+  @@index([candidateId, createdAt])
+  @@map("communication_operations")
+}
+
+model CommunicationAttachment {
+  id String @id @default(uuid()) @db.VarChar(36)
+  candidateId String @db.VarChar(64)
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+  actorId String @db.VarChar(64)
+  filename String @db.VarChar(256)
+  mimeType String @db.VarChar(128)
+  sizeBytes Int
+  storageKey String @unique @db.VarChar(512)
+  operationId String? @db.VarChar(36)
+  operation CommunicationOperation? @relation(fields: [operationId], references: [id])
+  createdAt DateTime @default(now()) @db.DateTime(3)
+
+  @@index([candidateId, actorId])
+  @@map("communication_attachments")
 }
 
 model DocumentVersionFile {
