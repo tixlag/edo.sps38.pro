@@ -152,6 +152,9 @@ def services_healthy(root):
             valid = isinstance(data, list) and any(d.get('type') == document_type and d.get('fields') for d in data)
         else:
             valid = isinstance(data, dict) and sum(bool(value) for value in data.get('data', {}).values()) >= 6
+        # During rollback the previous release may predate this additive contract.
+        if valid and (root / 'current/contracts/ocr-fields-v1.json').is_file():
+            valid = smoke.valid_ocr_fields(data, document_type)
         if status != 200 or not valid:
             raise RuntimeError('Real inference check failed: ' + label)
         print('Private inference smoke passed: ' + label)

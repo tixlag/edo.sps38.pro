@@ -38,6 +38,7 @@ from recognizeuz.text.normalization import normalize_ocr_text_for_match, paddle_
 
 def build_output_document(ctx: DocumentContext) -> dict[str, Any]:
     field_items: dict[str, Any] = {}
+    ocr_fields: list[dict[str, Any]] = []
     public_output_field_names = ctx.spec.public_output_field_names
 
     for item in ctx.recognized_fields:
@@ -55,13 +56,30 @@ def build_output_document(ctx: DocumentContext) -> dict[str, Any]:
             continue
 
         field_items[field_name] = build_field_output_item(ctx, item, field)
+        if not ctx.spec.should_skip_ocr(field_name):
+            source = "GLM" if str(item["source"]).startswith("glm") else "PADDLE"
+            if item["source"] == "migration_fio_grid_letters" and any(
+                stage.get("used_glm_count", 0) for stage in item.get("intermediate", [])
+            ):
+                source = "MIXED"
+            paddle_score = item.get("original_paddle_score", item.get("paddle_score"))
+            ocr_fields.append({
+                "name": field_name,
+                "value": item["final_text"],
+                "source": source,
+                "paddle_text": item.get("original_paddle_text", item.get("paddle_text")),
+                "paddle_confidence": float(paddle_score) if paddle_score is not None else None,
+            })
 
     if ctx.page.options.debug:
-        return build_debug_output_doc(ctx, field_items)
+        output = build_debug_output_doc(ctx, field_items)
+        output["ocr_fields"] = ocr_fields
+        return output
 
     output = {
         "type": ctx.doc_type,
         "fields": field_items,
+        "ocr_fields": ocr_fields,
     }
     if ctx.page.options.save_segments:
         output["segment_dump"] = ctx.page.segment_dump.as_debug_dict()

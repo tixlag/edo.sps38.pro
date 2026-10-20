@@ -140,6 +140,8 @@ def recognize_single_field(
         "field_crop_prepared_variants": prepared_variants,
         "paddle_text": text,
         "paddle_score": ocr_conf,
+        "original_paddle_text": text,
+        "original_paddle_score": ocr_conf,
         "final_text": text,
         "source": "paddle" if not ctx.spec.should_skip_ocr(field_name) else "skipped",
         "glm_text": None,
