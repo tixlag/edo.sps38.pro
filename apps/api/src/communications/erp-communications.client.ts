@@ -33,7 +33,7 @@ export class ErpCommunicationsClient {
     body?: unknown,
   ): Promise<T> {
     const endpoint = this.config.get<string>("ERP_COMMUNICATIONS_URL");
-    const token = this.config.get<string>("ERP_COMMUNICATIONS_TOKEN");
+    const token = this.config.get<string>("ERP_CANDIDATE_TOKEN");
     const username = this.config.get<string>("ERP_USERNAME");
     const password = this.config.get<string>("ERP_PASSWORD");
     if (!endpoint || !token || !username || !password)

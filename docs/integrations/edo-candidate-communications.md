@@ -41,13 +41,17 @@
 
    ```dotenv
    ERP_COMMUNICATIONS_URL=https://api-erp.sps38.pro/ERP/hs/api/candidate-communications
-   ERP_COMMUNICATIONS_TOKEN=<HTTP_IN_API token>
+   ERP_CANDIDATE_TOKEN=<existing HTTP_IN_API token>
    ERP_USERNAME=<service account>
    ERP_PASSWORD=<service account password>
    LK_CHAT_BASE_URL=https://lk.sps38.pro:8091
    LK_PUBLIC_BASE_URL=https://lk.sps38.pro
    CANDIDATE_CATALOG_SYNC_ENABLED=true
    ```
+
+   Чат использует существующий `ERP_CANDIDATE_TOKEN`: оба endpoint проверяют
+   входящий токен подключения `HTTP_IN_API` в 1С. Отдельный токен для чата
+   не нужен, менять действующий токен в 1С не требуется.
 
    `LK_CHAT_BASE_URL` — существующий HTTP(S) адрес chat-server, доступный из
    API EDO. Файлы читаются через публичный nginx `LK_PUBLIC_BASE_URL`, а не
@@ -115,8 +119,10 @@ Server и тесты адаптера не заменяют проверку н�
 использует, а сохранённые операции защищают от повторной отправки. Не удалять
 данные/volumes и не восстанавливать всю базу ради отката интерфейса.
 
-При будущем production deployment учесть известный блокер внешнего
-`ci-templates/edo.yml`: генерация `.env` теряет `ERP_CANDIDATE_URL/TOKEN`.
-Новые communications settings также должны попасть в шаблон до включения.
+Production CI использует файловую переменную GitLab `RUNTIME_ENV` для
+генерации `.env` во внешнем `ci-templates/edo.yml`. При проверке 2026-10-20
+существующие `ERP_CANDIDATE_URL/TOKEN` и Basic credentials уже присутствовали
+в `RUNTIME_ENV` и API container. До включения чата добавить в `RUNTIME_ENV`
+`ERP_COMMUNICATIONS_URL` и `LK_CHAT_BASE_URL`; сохранить существующие настройки.
 После deploy проверить наличие настроек в `.env` и API container без вывода
 значений. Сам этот change не выполняет deployment.
