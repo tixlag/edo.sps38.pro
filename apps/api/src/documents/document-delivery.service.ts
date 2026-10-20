@@ -18,6 +18,10 @@ import { DocumentPdfService } from "./document-pdf.service";
 import { DocumentUploadService } from "./document-upload.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { erpDocumentHeaders } from "./erp-document-auth";
+import {
+  captureErpDeliveryResponse,
+  type ErpDeliveryResponse,
+} from "./erp-delivery-response";
 
 @Injectable()
 export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
@@ -123,6 +127,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
       return { row, record };
     });
     let errorCode: string | null = null;
+    let erpResponse: ErpDeliveryResponse | null = null;
     try {
       const secret = this.config.get<string>("ERP_DOCUMENTS_TOKEN");
       if (!secret) throw new Error("ERP_NOT_CONFIGURED");
@@ -151,7 +156,14 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
           signal: AbortSignal.timeout(60000),
         },
       );
-      response.body?.cancel().catch(() => undefined);
+      const username = this.config.get<string>("ERP_USERNAME") ?? "";
+      const password = this.config.get<string>("ERP_PASSWORD") ?? "";
+      erpResponse = await captureErpDeliveryResponse(response, [
+        secret,
+        username,
+        password,
+        Buffer.from(`${username}:${password}`).toString("base64"),
+      ]);
       if (!response.ok) throw new Error(`ERP_HTTP_${response.status}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
@@ -175,7 +187,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
       if (!changed.count) return;
       await tx.erpDocumentAttempt.update({
         where: { id: attempt.record.id },
-        data: { finishedAt: new Date(), errorCode },
+        data: { finishedAt: new Date(), errorCode, ...(erpResponse ?? {}) },
       });
       await this.audit.logInTransaction(tx, {
         actorId,
@@ -187,6 +199,9 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
           version: attempt.row.version.version,
           status: errorCode ? "REQUIRES_MANUAL" : "SENT",
           errorCode,
+          httpStatus: erpResponse?.httpStatus ?? null,
+          responseTruncated: erpResponse?.responseTruncated ?? false,
+          responseReadError: erpResponse?.responseReadError ?? null,
         },
       });
     });

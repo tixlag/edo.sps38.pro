@@ -7693,6 +7693,25 @@
           "errorCode": {
             "type": "string",
             "nullable": true
+          },
+          "httpStatus": {
+            "type": "number",
+            "nullable": true,
+            "description": "ERP HTTP response status; null when no response was received or for historical attempts"
+          },
+          "responseBody": {
+            "type": "string",
+            "nullable": true,
+            "description": "Bounded ERP response text with credentials and file contents redacted; historical responses are unavailable"
+          },
+          "responseTruncated": {
+            "type": "boolean",
+            "description": "ERP response exceeded the capture limit"
+          },
+          "responseReadError": {
+            "type": "string",
+            "nullable": true,
+            "description": "ERP_RESPONSE_READ_TIMEOUT or ERP_RESPONSE_READ_FAILED; does not override the received HTTP status"
           }
         },
         "required": [
@@ -7700,7 +7719,11 @@
           "actorId",
           "startedAt",
           "finishedAt",
-          "errorCode"
+          "errorCode",
+          "httpStatus",
+          "responseBody",
+          "responseTruncated",
+          "responseReadError"
         ]
       },
       "DocumentDeliveryDto": {

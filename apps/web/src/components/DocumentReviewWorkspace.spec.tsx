@@ -250,6 +250,72 @@ describe("DocumentReviewWorkspace hover vs select", () => {
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
   });
+  it("shows the ERP response and retains it as plain text in attempt history", () => {
+    const data = buildData();
+    data.status = "APPROVED";
+    data.delivery = {
+      status: "REQUIRES_MANUAL",
+      errorCode: "ERP_HTTP_400",
+      attempts: [
+        {
+          id: "failed-send",
+          actorId: "reviewer",
+          startedAt: "2026-10-20T02:05:24.806Z",
+          finishedAt: "2026-10-20T02:05:25.731Z",
+          errorCode: "ERP_HTTP_400",
+          httpStatus: 400,
+          responseBody:
+            '{"description":"Должность по positionUid не найдена. <script>alert(1)</script>"}',
+          responseTruncated: true,
+          responseReadError: "ERP_RESPONSE_READ_TIMEOUT",
+        },
+      ],
+    };
+    const { container, cleanup } = renderWorkspace(data);
+    try {
+      expect(container.textContent).toContain("Ответ 1С: HTTP 400");
+      expect(container.textContent).toContain(
+        "Должность по positionUid не найдена.",
+      );
+      expect(container.textContent).toContain("Ответ показан не полностью");
+      expect(container.textContent).toContain("ERP_RESPONSE_READ_TIMEOUT");
+      expect(container.querySelector("script")).toBeNull();
+      expect(container.querySelector("details li")?.textContent).toContain(
+        "positionUid",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+  it("does not invent a response for historical attempts", () => {
+    const data = buildData();
+    data.delivery = {
+      status: "REQUIRES_MANUAL",
+      errorCode: "ERP_HTTP_400",
+      attempts: [
+        {
+          id: "old-send",
+          actorId: "reviewer",
+          startedAt: "2026-10-20T02:05:24.806Z",
+          finishedAt: "2026-10-20T02:05:25.731Z",
+          errorCode: "ERP_HTTP_400",
+          httpStatus: null,
+          responseBody: null,
+          responseTruncated: false,
+          responseReadError: null,
+        },
+      ],
+    };
+    const { container, cleanup } = renderWorkspace(data);
+    try {
+      expect(container.textContent).toContain(
+        "Текст ответа для этой попытки не сохранён.",
+      );
+      expect(container.textContent).not.toContain("Ответ 1С: HTTP");
+    } finally {
+      cleanup();
+    }
+  });
 
   it("скрывает необязательные поля и их OCR-области", () => {
     const { container, cleanup } = renderWorkspace(buildData());

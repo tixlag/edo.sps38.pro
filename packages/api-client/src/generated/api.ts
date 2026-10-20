@@ -693,6 +693,23 @@ export interface DocumentDeliveryAttemptDto {
   finishedAt: string | null;
   /** @nullable */
   errorCode: string | null;
+  /**
+   * ERP HTTP response status; null when no response was received or for historical attempts
+   * @nullable
+   */
+  httpStatus: number | null;
+  /**
+   * Bounded ERP response text with credentials and file contents redacted; historical responses are unavailable
+   * @nullable
+   */
+  responseBody: string | null;
+  /** ERP response exceeded the capture limit */
+  responseTruncated: boolean;
+  /**
+   * ERP_RESPONSE_READ_TIMEOUT or ERP_RESPONSE_READ_FAILED; does not override the received HTTP status
+   * @nullable
+   */
+  responseReadError: string | null;
 }
 
 export type DocumentDeliveryDtoStatus =

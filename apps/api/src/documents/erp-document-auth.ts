@@ -1,6 +1,6 @@
 import type { ConfigService } from "@nestjs/config";
 
-/** Both credentials are server-only. Never log these headers or response bodies. */
+/** Credentials are server-only. Never log headers or raw response bodies; stored diagnostics must be redacted. */
 export function erpDocumentHeaders(
   config: ConfigService,
 ): Record<string, string> {

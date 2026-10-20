@@ -213,7 +213,16 @@ suite("manual documents with isolated MariaDB/S3 and ERP stub", () => {
       for await (const chunk of req) chunks.push(Buffer.from(chunk));
       posts.push(JSON.parse(Buffer.concat(chunks).toString()));
       res.statusCode = erpStatus;
-      res.end();
+      if (erpStatus >= 400) {
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            success: false,
+            description: "Должность по positionUid не найдена.",
+            token: "test-token",
+          }),
+        );
+      } else res.end();
     });
     await new Promise<void>((resolve) =>
       server.listen(0, "127.0.0.1", resolve),
@@ -423,6 +432,16 @@ suite("manual documents with isolated MariaDB/S3 and ERP stub", () => {
     });
     expect(status.json().status).toBe("APPROVED");
     expect(status.json().delivery.status).toBe("REQUIRES_MANUAL");
+    expect(status.json().delivery.attempts[0]).toMatchObject({
+      httpStatus: 503,
+      responseBody: JSON.stringify({
+        success: false,
+        description: "Должность по positionUid не найдена.",
+        token: "[redacted]",
+      }),
+      responseTruncated: false,
+      responseReadError: null,
+    });
     expect(posts.at(-1)?.documentUid).toBe(typeUid);
     expect(
       (posts.at(-1)?.documentFields as Record<string, unknown>).isInvalid,
@@ -437,6 +456,13 @@ suite("manual documents with isolated MariaDB/S3 and ERP stub", () => {
     expect(sent.statusCode).toBe(200);
     expect(sent.json().delivery.status).toBe("SENT");
     expect(sent.json().delivery.attempts).toHaveLength(2);
+    expect(sent.json().delivery.attempts[0]).toMatchObject({
+      httpStatus: 204,
+      responseBody: "",
+      responseTruncated: false,
+      responseReadError: null,
+    });
+    expect(sent.json().delivery.attempts[1].httpStatus).toBe(503);
     expect(
       (
         await app.inject({
