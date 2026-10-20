@@ -35,4 +35,4 @@ python3 scripts/check_repository.py
 
 ## CI
 
-Авторитетный pipeline — внешний `ci-templates/edo.yml`. Для него подготовлен фрагмент `ocr/.gitlab-ci.yml`: отдельный Python job `.pre`, запуск по изменениям `ocr/**/*`, без GPU и частных моделей. Он пока не подключён, потому что внешний шаблон находится вне этого репозитория. Корневой CI и GitHub Actions не заменялись.
+Авторитетный pipeline — внешний `edo.yml@webdevs/ci-templates`. Он подключает `ocr/.gitlab-ci.yml` из коммита ЭДО: проверки `.pre`, затем автоматический deploy на OCR-компьютер для push в защищённую main с изменениями `ocr/**/*`. Используется shell runner с тегом `deploy-ocr-pc`. Управляемые релизы, постоянные модели/окружения, реальные проверки и откат описаны в `ocr/docs/ci-cd.md`. Deploy Node-приложения ЭДО остаётся ручным; GitHub Actions не используются.

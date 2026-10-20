@@ -4,7 +4,7 @@
 
 ## Размещение на текущей машине
 
-Корень компонента: `/home/neuro/PycharmProjects/RecognizeUZ/edo-integration/ocr`. Несмотря на имя родительского каталога, это отдельный checkout репозитория ЭДО; исходники прежнего проекта рядом не используются как runtime-зависимости.
+Управляемый runtime: `/home/neuro/.local/share/edo-ocr/current`, ссылка на конкретный релиз монорепозитория. Изменения делайте в Git checkout ЭДО (на этой машине `/home/neuro/PycharmProjects/RecognizeUZ/edo-integration`), а не в current/releases. CI/CD: [ci-cd.md](ci-cd.md).
 
 | Компонент | Управление | Адрес |
 |---|---|---|
@@ -12,20 +12,21 @@
 | Паспорт РФ | `recognize-ru.service` | `0.0.0.0:8001` |
 | Общий GLM | Compose `edo-ocr`, контейнер `glm-ocr-vllm` | `0.0.0.0:8083` |
 
-Обе systemd-службы работают от `neuro`, используют `scripts/run_service.sh` из компонента, собственные `services/{uz,ru}/.venv`, модели `models/` и записываемые каталоги `var/`. UZ использует закреплённый `vendor/PaddleOCR` внутри компонента. Ни одна из этих зависимостей не является ссылкой в старый проект.
+Обе systemd-службы работают от `neuro` и используют `current/scripts/run_service.sh`. `MODELS_ROOT` указывает на `shared/models`; окружения, vendor и var в релизе связаны с постоянными каталогами shared. Эти данные не находятся в старых проектах и не теряются при смене релиза.
 
 `doc-recognizer.service` — прежняя служба РФ: остановлена, отключена и замаскирована (`masked`), чтобы её нельзя было случайно запустить. Не включайте её снова. Остановленный резервный контейнер GLM с префиксом `legacy-glm-ocr-vllm-` сохраняется только для отката, с `restart=no`. Активный контейнер управляется `deploy/glm/compose.yaml` монорепозитория; restart policy — `always`.
 
 ## Проверка и перезапуск
 
-Из `ocr/`:
+Проверка:
 
 ```bash
 systemctl status recognize-uz.service recognize-ru.service --no-pager
 systemctl is-enabled recognize-uz.service recognize-ru.service
 systemctl is-active doc-recognizer.service # ожидается inactive
 systemctl is-enabled doc-recognizer.service # ожидается masked
-docker compose -f deploy/glm/compose.yaml ps
+docker ps --filter name=glm-ocr-vllm
+cat /home/neuro/.local/share/edo-ocr/deployed.json
 curl --fail http://127.0.0.1:8000/health
 curl --fail http://127.0.0.1:8001/openapi.json > /dev/null
 curl --fail http://127.0.0.1:8083/v1/models
@@ -35,12 +36,15 @@ curl --fail http://127.0.0.1:8083/v1/models
 
 ```bash
 sudo systemctl restart recognize-uz.service recognize-ru.service
-docker compose -f deploy/glm/compose.yaml up -d --no-build
 ```
+
+Исходники и GLM обновляются через pipeline; не запускайте Compose из checkout разработчика поверх управляемого контейнера. Точная конфигурация и образ активного GLM записаны в current/release.json.
 
 Реальный inference проверяйте отдельно на частных документах, без вывода персональных данных в общие журналы. Результаты сохраняйте только в игнорируемом `var/verification`. Проверка HTTP сама по себе не доказывает качество распознавания.
 
 ## Новая машина и переключение
+
+Для автоматического обновления используйте начальную подготовку из [ci-cd.md](ci-cd.md); ниже сохранён порядок первоначального ручного переноса до включения CI/CD.
 
 1. Клонируйте монорепозиторий, установите модели, оба Python-окружения и закреплённый PaddleOCR по README и `installation.md`. Не используйте старые проекты как источники импортов.
 2. Поднимите GLM из `deploy/glm/compose.yaml`. На новой машине требуется `docker compose up -d --build` из `deploy/glm`; проверенный локальный образ `document-ocr-glm:local` можно повторно использовать с `--no-build`. Не запускайте второй GLM на том же GPU/порту.
