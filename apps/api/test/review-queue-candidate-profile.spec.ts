@@ -685,7 +685,7 @@ describe("reviewDocuments candidate progress", () => {
     expect(page.items).toHaveLength(1);
     // Queue itself is tab-filtered and scoped...
     expect(findMany.mock.calls[0][0].where).toMatchObject({
-      status: "RETURNED",
+      versions: { some: { status: "RETURNED" } },
       OR: expect.any(Array),
     });
     // ...but the APPROVED counter ignores the tab filter and reuses the scope,

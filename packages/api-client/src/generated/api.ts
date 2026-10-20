@@ -385,6 +385,17 @@ export interface CatalogDocumentTypesDto {
   items: CatalogDocumentTypeDto[];
 }
 
+export interface ReturnedDocumentVersionDto {
+  version: number;
+  /** @nullable */
+  rejectionReason: string | null;
+  /**
+   * Newer current version, or null while this returned version is still current
+   * @nullable
+   */
+  supersededByVersion: number | null;
+}
+
 export type DocumentStatus =
   (typeof DocumentStatus)[keyof typeof DocumentStatus];
 
@@ -450,6 +461,8 @@ export interface CandidateProfileDto {
 export type DocumentDtoCandidate = CandidateProfileDto | null;
 
 export interface DocumentDto {
+  /** Returned versions, newest first, including versions superseded by a new upload */
+  returnedVersions?: ReturnedDocumentVersionDto[];
   /** Approved versions awaiting manual ERP delivery */
   pendingDeliveryVersions: number[];
   id: string;
@@ -798,6 +811,8 @@ export interface CandidateListDto {
 }
 
 export interface CandidateDocumentSummaryDto {
+  /** Returned versions, newest first, including versions superseded by a new upload */
+  returnedVersions?: ReturnedDocumentVersionDto[];
   /** Approved versions awaiting manual ERP delivery */
   pendingDeliveryVersions: number[];
   id: string;
@@ -4392,7 +4407,7 @@ export const useCreateCandidateDocumentUploadGrant = <
 };
 
 /**
- * Profile filters select candidates; status and documentTypeCode select their nested documents. Progress counts all accessible approved documents across tabs. Candidates and documents must both be in the caller's location scope.
+ * Profile filters select candidates; status and documentTypeCode select their nested documents. RETURNED includes documents with any returned version, even after a newer upload; returnedVersions contains the history. Progress counts all accessible approved documents across tabs. Candidates and documents must both be in the caller's location scope.
  * @summary Candidates with matching documents, paginated by candidate id
  */
 export const listCandidateReviewQueue = (
