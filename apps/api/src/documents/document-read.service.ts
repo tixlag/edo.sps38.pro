@@ -41,6 +41,10 @@ const documentSummaryInclude = {
       revision: true,
       status: true,
       rejectionReason: true,
+      submittedAt: true,
+      reviewedAt: true,
+      reviewedBy: true,
+      job: { select: { status: true, errorCode: true } },
       delivery: { select: { status: true } },
     },
   },
@@ -62,6 +66,7 @@ const versionInclude = {
     },
   },
   issues: true,
+  ocrFields: { orderBy: { ordinal: "asc" as const } },
   job: true,
   delivery: {
     include: { attempts: { orderBy: { startedAt: "desc" as const } } },
@@ -140,6 +145,9 @@ export class DocumentReadService {
       .map((v) => ({
         version: v.version,
         rejectionReason: v.rejectionReason,
+        submittedAt: v.submittedAt?.toISOString() ?? null,
+        reviewedAt: v.reviewedAt?.toISOString() ?? null,
+        reviewedBy: v.reviewedBy ?? null,
         supersededByVersion:
           d.currentVersion > v.version ? d.currentVersion : null,
       }));
@@ -150,6 +158,11 @@ export class DocumentReadService {
       status: d.status,
       currentVersion: d.currentVersion,
       revision: current?.revision ?? 0,
+      submittedAt: current?.submittedAt?.toISOString() ?? null,
+      reviewedAt: current?.reviewedAt?.toISOString() ?? null,
+      reviewedBy: current?.reviewedBy ?? null,
+      ocrStatus: current?.job?.status ?? null,
+      ocrErrorCode: current?.job?.errorCode ?? null,
       title: d.documentType?.title ?? "Документ",
       documentUid: d.documentType?.erpUid ?? null,
       deliveryStatus: current?.delivery?.status ?? null,
@@ -231,11 +244,39 @@ export class DocumentReadService {
       include: versionInclude,
     });
     if (!row) throw new NotFoundException("Document version not found");
+    const reviewers = row.reviewedBy
+      ? await this.prisma.lkEmployee.findMany({
+          where: { uuid: row.reviewedBy },
+          select: { fullName: true },
+          take: 2,
+        })
+      : [];
     return {
       documentId,
       version,
       status: row.status,
       revision: row.revision,
+      submittedAt: row.submittedAt?.toISOString() ?? null,
+      reviewedAt: row.reviewedAt?.toISOString() ?? null,
+      reviewedBy: row.reviewedBy ?? null,
+      reviewedByName: reviewers.length === 1 ? reviewers[0].fullName : null,
+      ocrFields: (row.ocrFields ?? []).map(
+        ({
+          name,
+          documentFieldName,
+          value,
+          source,
+          paddleText,
+          paddleConfidence,
+        }) => ({
+          name,
+          documentFieldName,
+          value,
+          source,
+          paddleText,
+          paddleConfidence,
+        }),
+      ),
       ocrSource: row.ocrSource,
       files: row.files.map((f) => ({
         id: f.id,

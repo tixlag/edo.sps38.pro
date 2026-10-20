@@ -21,7 +21,7 @@ import { OcrQueueService } from "./ocr-queue.service";
 
 const LEASE_MS = 120_000;
 const MAX_ATTEMPTS = 5;
-const FINAL = ["SUCCEEDED", "REJECTED", "FAILED"] as const;
+const FINAL = ["SUCCEEDED", "REJECTED", "FAILED", "CANCELLED"] as const;
 
 @Injectable()
 export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
@@ -41,6 +41,14 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly audit: AuditService,
     private readonly config: ConfigService,
   ) {}
+
+  private get requestTimeout(): number {
+    return Number(this.config.get("OCR_REQUEST_TIMEOUT_MS") ?? 240000);
+  }
+
+  private get leaseMs(): number {
+    return Math.max(LEASE_MS, this.requestTimeout + 30_000);
+  }
 
   onModuleInit(): void {
     // Export/codegen processes must not run consumers or dispatch jobs.
@@ -143,7 +151,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
       data: {
         status: "RUNNING",
         leaseToken: token,
-        leaseUntil: new Date(Date.now() + LEASE_MS),
+        leaseUntil: new Date(Date.now() + this.leaseMs),
         attempts: { increment: 1 },
       },
     });
@@ -161,13 +169,15 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     });
     const controller = new AbortController();
     this.aborts.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 60_000);
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeout);
     try {
       const request: OcrRequest = {
         jobId,
         documentId: job.version.documentId,
         version: job.version.version,
         documentTypeCode: job.version.document.documentType?.code ?? "",
+        documentUid: job.version.document.documentType?.erpUid,
+        citizenship: job.version.citizenship,
         files: await Promise.all(
           job.version.files.map(async (f) => ({
             id: f.id,
@@ -213,7 +223,12 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       const contractError =
         error instanceof Error &&
-        (error.name === "ZodError" || error.message === "OCR_CONTRACT_INVALID");
+        (error.name === "ZodError" ||
+          [
+            "OCR_CONTRACT_INVALID",
+            "OCR_UNSUPPORTED_DOCUMENT",
+            "OCR_NOT_CONFIGURED",
+          ].includes(error.message));
       await this.failAttempt(
         jobId,
         token,
@@ -258,11 +273,32 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.$transaction(async (tx) => {
       const initial = await tx.ocrJob.findUnique({
         where: { id: jobId },
-        include: { version: true },
+        include: { version: { include: { submission: true } } },
       });
       if (!initial) return;
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${initial.candidateId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM documents WHERE id = ${initial.version.documentId} FOR UPDATE`;
+      const manual = !!initial.version.submission;
+      const current = await tx.documentVersion.findUnique({
+        where: { id: initial.versionId },
+        include: { document: true },
+      });
+      if (
+        !current ||
+        current.status !== (manual ? "IN_REVIEW" : "OCR_PENDING") ||
+        current.document.currentVersion !== current.version
+      ) {
+        await tx.ocrJob.updateMany({
+          where: { id: jobId, status: "RUNNING", leaseToken: token },
+          data: {
+            status: "CANCELLED",
+            leaseToken: null,
+            leaseUntil: null,
+            cleanupPending: false,
+          },
+        });
+        return;
+      }
       const changed = await tx.ocrJob.updateMany({
         where: {
           id: jobId,
@@ -272,7 +308,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
         },
         data: {
           status: result.outcome,
-          cleanupPending: result.outcome === "REJECTED",
+          cleanupPending: !manual && result.outcome === "REJECTED",
           leaseToken: null,
           leaseUntil: null,
           errorCode: null,
@@ -280,7 +316,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
       });
       if (!changed.count) return;
       const status =
-        result.outcome === "SUCCEEDED" ? "IN_REVIEW" : "OCR_FAILED";
+        manual || result.outcome === "SUCCEEDED" ? "IN_REVIEW" : "OCR_FAILED";
       await tx.documentVersion.update({
         where: { id: initial.versionId },
         data: {
@@ -291,14 +327,31 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
         },
       });
       if (result.outcome === "SUCCEEDED") {
-        await tx.documentVersionField.createMany({
-          data: Object.entries(result.fields).map(([name, value]) => ({
-            versionId: initial.versionId,
-            name,
-            originalValue: value,
-            value,
-          })),
-        });
+        if (result.ocrFields?.length) {
+          await tx.documentVersionOcrField.createMany({
+            data: result.ocrFields.map((field, ordinal) => ({
+              ...field,
+              ordinal,
+              versionId: initial.versionId,
+            })),
+          });
+        }
+        if (manual) {
+          for (const [name, value] of Object.entries(result.fields)) {
+            await tx.documentVersionField.updateMany({
+              where: { versionId: initial.versionId, name },
+              data: { originalValue: value },
+            });
+          }
+        } else
+          await tx.documentVersionField.createMany({
+            data: Object.entries(result.fields).map(([name, value]) => ({
+              versionId: initial.versionId,
+              name,
+              originalValue: value,
+              value,
+            })),
+          });
         if (result.regions?.length) {
           const [fields, files] = await Promise.all([
             tx.documentVersionField.findMany({
@@ -368,11 +421,12 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.$transaction(async (tx) => {
       const job = await tx.ocrJob.findUnique({
         where: { id: jobId },
-        include: { version: true },
+        include: { version: { include: { submission: true } } },
       });
       if (!job) return;
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${job.candidateId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM documents WHERE id = ${job.version.documentId} FOR UPDATE`;
+      const manual = !!job.version.submission;
       const final = permanent || job.attempts >= MAX_ATTEMPTS;
       const changed = await tx.ocrJob.updateMany({
         where: { id: jobId, status: "RUNNING", leaseToken: token },
@@ -400,14 +454,17 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
       } else {
         await tx.documentVersion.update({
           where: { id: job.versionId },
-          data: { status: "OCR_FAILED" },
+          data: {
+            status: manual ? "IN_REVIEW" : "OCR_FAILED",
+            revision: { increment: 1 },
+          },
         });
         await tx.document.updateMany({
           where: {
             id: job.version.documentId,
             currentVersion: job.version.version,
           },
-          data: { status: "OCR_FAILED" },
+          data: { status: manual ? "IN_REVIEW" : "OCR_FAILED" },
         });
         await this.audit.logInTransaction(tx, {
           action: "DOCUMENT_OCR_COMPLETED",

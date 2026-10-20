@@ -3869,7 +3869,7 @@
             "lk-service-token": []
           }
         ],
-        "summary": "Submit a document for manual review without OCR",
+        "summary": "Submit a document for manual review with optional asynchronous OCR enrichment",
         "tags": [
           "candidate-documents"
         ]
@@ -7037,9 +7037,38 @@
           "items"
         ]
       },
+      "OcrJobStatus": {
+        "type": "string",
+        "enum": [
+          "UPLOADING",
+          "QUEUED",
+          "RUNNING",
+          "SUCCEEDED",
+          "REJECTED",
+          "FAILED",
+          "CANCELLED"
+        ]
+      },
       "ReturnedDocumentVersionDto": {
         "type": "object",
         "properties": {
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Successful submission time, UTC ISO 8601; null when historically unknown"
+          },
+          "reviewedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Approval or return decision time, UTC ISO 8601"
+          },
+          "reviewedBy": {
+            "type": "string",
+            "nullable": true,
+            "description": "Verified JWT UUID of the reviewer"
+          },
           "version": {
             "type": "number"
           },
@@ -7054,6 +7083,9 @@
           }
         },
         "required": [
+          "submittedAt",
+          "reviewedAt",
+          "reviewedBy",
           "version",
           "rejectionReason",
           "supersededByVersion"
@@ -7180,6 +7212,35 @@
       "DocumentDto": {
         "type": "object",
         "properties": {
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Successful submission time, UTC ISO 8601; null when historically unknown"
+          },
+          "reviewedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Approval or return decision time, UTC ISO 8601"
+          },
+          "reviewedBy": {
+            "type": "string",
+            "nullable": true,
+            "description": "Verified JWT UUID of the reviewer"
+          },
+          "ocrStatus": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OcrJobStatus"
+              }
+            ]
+          },
+          "ocrErrorCode": {
+            "type": "string",
+            "nullable": true
+          },
           "returnedVersions": {
             "description": "Returned versions, newest first, including versions superseded by a new upload",
             "type": "array",
@@ -7248,6 +7309,11 @@
           }
         },
         "required": [
+          "submittedAt",
+          "reviewedAt",
+          "reviewedBy",
+          "ocrStatus",
+          "ocrErrorCode",
           "pendingDeliveryVersions",
           "id",
           "documentTypeCode",
@@ -7633,6 +7699,48 @@
           "regions"
         ]
       },
+      "DocumentOcrFieldDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "documentFieldName": {
+            "type": "string",
+            "nullable": true
+          },
+          "value": {
+            "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "PADDLE",
+              "GLM",
+              "MIXED"
+            ]
+          },
+          "paddleText": {
+            "type": "string",
+            "nullable": true
+          },
+          "paddleConfidence": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "name",
+          "documentFieldName",
+          "value",
+          "source",
+          "paddleText",
+          "paddleConfidence"
+        ]
+      },
       "OcrIssueDto": {
         "type": "object",
         "properties": {
@@ -7662,17 +7770,6 @@
           "message",
           "fileOrdinal",
           "pageNumber"
-        ]
-      },
-      "OcrJobStatus": {
-        "type": "string",
-        "enum": [
-          "UPLOADING",
-          "QUEUED",
-          "RUNNING",
-          "SUCCEEDED",
-          "REJECTED",
-          "FAILED"
         ]
       },
       "OcrJobDto": {
@@ -7788,6 +7885,23 @@
       "DocumentVersionDto": {
         "type": "object",
         "properties": {
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Successful submission time, UTC ISO 8601; null when historically unknown"
+          },
+          "reviewedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Approval or return decision time, UTC ISO 8601"
+          },
+          "reviewedBy": {
+            "type": "string",
+            "nullable": true,
+            "description": "Verified JWT UUID of the reviewer"
+          },
           "documentId": {
             "type": "string"
           },
@@ -7823,6 +7937,16 @@
             "items": {
               "$ref": "#/components/schemas/DocumentFieldDto"
             }
+          },
+          "ocrFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentOcrFieldDto"
+            }
+          },
+          "reviewedByName": {
+            "type": "string",
+            "nullable": true
           },
           "issues": {
             "type": "array",
@@ -7866,6 +7990,9 @@
           }
         },
         "required": [
+          "submittedAt",
+          "reviewedAt",
+          "reviewedBy",
           "documentId",
           "version",
           "status",
@@ -7873,6 +8000,8 @@
           "ocrSource",
           "files",
           "fields",
+          "ocrFields",
+          "reviewedByName",
           "issues",
           "job",
           "raw",
@@ -7977,6 +8106,35 @@
       "CandidateDocumentSummaryDto": {
         "type": "object",
         "properties": {
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Successful submission time, UTC ISO 8601; null when historically unknown"
+          },
+          "reviewedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Approval or return decision time, UTC ISO 8601"
+          },
+          "reviewedBy": {
+            "type": "string",
+            "nullable": true,
+            "description": "Verified JWT UUID of the reviewer"
+          },
+          "ocrStatus": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OcrJobStatus"
+              }
+            ]
+          },
+          "ocrErrorCode": {
+            "type": "string",
+            "nullable": true
+          },
           "returnedVersions": {
             "description": "Returned versions, newest first, including versions superseded by a new upload",
             "type": "array",
@@ -8024,6 +8182,11 @@
           }
         },
         "required": [
+          "submittedAt",
+          "reviewedAt",
+          "reviewedBy",
+          "ocrStatus",
+          "ocrErrorCode",
           "pendingDeliveryVersions",
           "id",
           "documentTypeCode",

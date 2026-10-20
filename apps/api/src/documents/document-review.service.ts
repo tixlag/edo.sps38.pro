@@ -166,6 +166,7 @@ export class DocumentReviewService {
           include: {
             fields: true,
             submission: true,
+            job: true,
             document: { include: { documentType: true, candidate: true } },
           },
         });
@@ -189,6 +190,7 @@ export class DocumentReviewService {
         if (edits && version.submission) {
           validateFields(version.fields, edits);
         }
+        const reviewedAt = new Date();
         const changed = await tx.documentVersion.updateMany({
           where: { id: version.id, revision, status: "IN_REVIEW" },
           data: {
@@ -197,9 +199,11 @@ export class DocumentReviewService {
               ? {}
               : {
                   status: rejectionReason ? "RETURNED" : "APPROVED",
+                  reviewedAt,
+                  reviewedBy: principal.uuid,
                   ...(rejectionReason
                     ? { rejectionReason, cleanupPending: true }
-                    : { approvedAt: new Date(), approvedBy: principal.uuid }),
+                    : { approvedAt: reviewedAt, approvedBy: principal.uuid }),
                   ...(approvedKey
                     ? {
                         approvedStorageKey: approvedKey,
@@ -233,6 +237,24 @@ export class DocumentReviewService {
             });
           }
         } else {
+          if (
+            version.job &&
+            ["UPLOADING", "QUEUED", "RUNNING"].includes(version.job.status)
+          ) {
+            await tx.ocrJob.updateMany({
+              where: {
+                id: version.job.id,
+                status: { in: ["UPLOADING", "QUEUED", "RUNNING"] },
+              },
+              data: {
+                status: "CANCELLED",
+                leaseToken: null,
+                leaseUntil: null,
+                cleanupPending: false,
+                errorCode: null,
+              },
+            });
+          }
           await tx.document.update({
             where: { id: documentId },
             data: { status: rejectionReason ? "RETURNED" : "APPROVED" },
@@ -247,7 +269,7 @@ export class DocumentReviewService {
                   f.name,
                   typeof value === "string" && !value.trim()
                     ? ""
-                    : value ?? (f.kind === "boolean" ? false : ""),
+                    : (value ?? (f.kind === "boolean" ? false : "")),
                 ];
               }),
             );
@@ -290,6 +312,8 @@ export class DocumentReviewService {
               : {
                   status: rejectionReason ? "RETURNED" : "APPROVED",
                   rejectionReason,
+                  reviewedAt: reviewedAt.toISOString(),
+                  reviewedBy: principal.uuid,
                 }),
           },
         });

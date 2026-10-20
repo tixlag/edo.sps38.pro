@@ -175,7 +175,41 @@ export class DocumentDeliveryDto {
   @ApiProperty({ type: [DocumentDeliveryAttemptDto] })
   attempts!: DocumentDeliveryAttemptDto[];
 }
-export class DocumentVersionDto {
+export class DocumentOcrFieldDto {
+  @ApiProperty() name!: string;
+  @ApiProperty({ type: String, nullable: true }) documentFieldName!:
+    | string
+    | null;
+  @ApiProperty({ type: String, nullable: true }) value!: string | null;
+  @ApiProperty({ enum: ["PADDLE", "GLM", "MIXED"] }) source!: string;
+  @ApiProperty({ type: String, nullable: true }) paddleText!: string | null;
+  @ApiProperty({ type: Number, nullable: true, minimum: 0, maximum: 1 })
+  paddleConfidence!: number | null;
+}
+export class DocumentReviewMetadataDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    format: "date-time",
+    description:
+      "Successful submission time, UTC ISO 8601; null when historically unknown",
+  })
+  submittedAt!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    format: "date-time",
+    description: "Approval or return decision time, UTC ISO 8601",
+  })
+  reviewedAt!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "Verified JWT UUID of the reviewer",
+  })
+  reviewedBy!: string | null;
+}
+export class DocumentVersionDto extends DocumentReviewMetadataDto {
   @ApiProperty() documentId!: string;
   @ApiProperty() version!: number;
   @ApiProperty({ enum: DocumentStatus, enumName: "DocumentStatus" })
@@ -185,6 +219,9 @@ export class DocumentVersionDto {
   ocrSource!: string | null;
   @ApiProperty({ type: [DocumentFileDto] }) files!: DocumentFileDto[];
   @ApiProperty({ type: [DocumentFieldDto] }) fields!: DocumentFieldDto[];
+  @ApiProperty({ type: [DocumentOcrFieldDto] })
+  ocrFields!: DocumentOcrFieldDto[];
+  @ApiProperty({ type: String, nullable: true }) reviewedByName!: string | null;
   @ApiProperty({ type: [OcrIssueDto] }) issues!: OcrIssueDto[];
   @ApiProperty({ type: OcrJobDto, nullable: true }) job!: OcrJobDto | null;
   @ApiProperty({ type: "object", additionalProperties: true, nullable: true })
@@ -235,7 +272,7 @@ export class CandidateProfileDto {
   requiredDocuments!: number | null;
 }
 /** Returned versions retained after a newer document upload. */
-export class ReturnedDocumentVersionDto {
+export class ReturnedDocumentVersionDto extends DocumentReviewMetadataDto {
   @ApiProperty() version!: number;
   @ApiProperty({ type: String, nullable: true }) rejectionReason!:
     | string
@@ -250,7 +287,10 @@ export class ReturnedDocumentVersionDto {
 }
 
 /** Document properties shared by candidate details and document-oriented APIs. */
-export class CandidateDocumentSummaryDto {
+export class CandidateDocumentSummaryDto extends DocumentReviewMetadataDto {
+  @ApiProperty({ enum: OcrJobStatus, enumName: "OcrJobStatus", nullable: true })
+  ocrStatus!: OcrJobStatus | null;
+  @ApiProperty({ type: String, nullable: true }) ocrErrorCode!: string | null;
   @ApiPropertyOptional({
     type: [ReturnedDocumentVersionDto],
     description:

@@ -385,7 +385,35 @@ export interface CatalogDocumentTypesDto {
   items: CatalogDocumentTypeDto[];
 }
 
+export type OcrJobStatus = (typeof OcrJobStatus)[keyof typeof OcrJobStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const OcrJobStatus = {
+  UPLOADING: "UPLOADING",
+  QUEUED: "QUEUED",
+  RUNNING: "RUNNING",
+  SUCCEEDED: "SUCCEEDED",
+  REJECTED: "REJECTED",
+  FAILED: "FAILED",
+  CANCELLED: "CANCELLED",
+} as const;
+
 export interface ReturnedDocumentVersionDto {
+  /**
+   * Successful submission time, UTC ISO 8601; null when historically unknown
+   * @nullable
+   */
+  submittedAt: string | null;
+  /**
+   * Approval or return decision time, UTC ISO 8601
+   * @nullable
+   */
+  reviewedAt: string | null;
+  /**
+   * Verified JWT UUID of the reviewer
+   * @nullable
+   */
+  reviewedBy: string | null;
   version: number;
   /** @nullable */
   rejectionReason: string | null;
@@ -455,12 +483,36 @@ export interface CandidateProfileDto {
 }
 
 /**
+ * @nullable
+ */
+export type DocumentDtoOcrStatus = OcrJobStatus | null;
+
+/**
  * LK candidate profile snapshot, if one was provided
  * @nullable
  */
 export type DocumentDtoCandidate = CandidateProfileDto | null;
 
 export interface DocumentDto {
+  /**
+   * Successful submission time, UTC ISO 8601; null when historically unknown
+   * @nullable
+   */
+  submittedAt: string | null;
+  /**
+   * Approval or return decision time, UTC ISO 8601
+   * @nullable
+   */
+  reviewedAt: string | null;
+  /**
+   * Verified JWT UUID of the reviewer
+   * @nullable
+   */
+  reviewedBy: string | null;
+  /** @nullable */
+  ocrStatus: DocumentDtoOcrStatus;
+  /** @nullable */
+  ocrErrorCode: string | null;
   /** Returned versions, newest first, including versions superseded by a new upload */
   returnedVersions?: ReturnedDocumentVersionDto[];
   /** Approved versions awaiting manual ERP delivery */
@@ -654,6 +706,33 @@ export interface DocumentFieldDto {
   regions: OcrRegionDto[];
 }
 
+export type DocumentOcrFieldDtoSource =
+  (typeof DocumentOcrFieldDtoSource)[keyof typeof DocumentOcrFieldDtoSource];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentOcrFieldDtoSource = {
+  PADDLE: "PADDLE",
+  GLM: "GLM",
+  MIXED: "MIXED",
+} as const;
+
+export interface DocumentOcrFieldDto {
+  name: string;
+  /** @nullable */
+  documentFieldName: string | null;
+  /** @nullable */
+  value: string | null;
+  source: DocumentOcrFieldDtoSource;
+  /** @nullable */
+  paddleText: string | null;
+  /**
+   * @minimum 0
+   * @maximum 1
+   * @nullable
+   */
+  paddleConfidence: number | null;
+}
+
 export type OcrIssueDtoCode =
   (typeof OcrIssueDtoCode)[keyof typeof OcrIssueDtoCode];
 
@@ -677,18 +756,6 @@ export interface OcrIssueDto {
    */
   pageNumber: number | null;
 }
-
-export type OcrJobStatus = (typeof OcrJobStatus)[keyof typeof OcrJobStatus];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const OcrJobStatus = {
-  UPLOADING: "UPLOADING",
-  QUEUED: "QUEUED",
-  RUNNING: "RUNNING",
-  SUCCEEDED: "SUCCEEDED",
-  REJECTED: "REJECTED",
-  FAILED: "FAILED",
-} as const;
 
 export interface OcrJobDto {
   id: string;
@@ -773,6 +840,21 @@ export type DocumentVersionDtoRaw = { [key: string]: unknown } | null;
 export type DocumentVersionDtoDelivery = DocumentDeliveryDto | null;
 
 export interface DocumentVersionDto {
+  /**
+   * Successful submission time, UTC ISO 8601; null when historically unknown
+   * @nullable
+   */
+  submittedAt: string | null;
+  /**
+   * Approval or return decision time, UTC ISO 8601
+   * @nullable
+   */
+  reviewedAt: string | null;
+  /**
+   * Verified JWT UUID of the reviewer
+   * @nullable
+   */
+  reviewedBy: string | null;
   documentId: string;
   version: number;
   status: DocumentStatus;
@@ -781,6 +863,9 @@ export interface DocumentVersionDto {
   ocrSource: DocumentVersionDtoOcrSource;
   files: DocumentFileDto[];
   fields: DocumentFieldDto[];
+  ocrFields: DocumentOcrFieldDto[];
+  /** @nullable */
+  reviewedByName: string | null;
   issues: OcrIssueDto[];
   /** @nullable */
   job: DocumentVersionDtoJob;
@@ -827,7 +912,31 @@ export interface CandidateListDto {
   nextCursor: string | null;
 }
 
+/**
+ * @nullable
+ */
+export type CandidateDocumentSummaryDtoOcrStatus = OcrJobStatus | null;
+
 export interface CandidateDocumentSummaryDto {
+  /**
+   * Successful submission time, UTC ISO 8601; null when historically unknown
+   * @nullable
+   */
+  submittedAt: string | null;
+  /**
+   * Approval or return decision time, UTC ISO 8601
+   * @nullable
+   */
+  reviewedAt: string | null;
+  /**
+   * Verified JWT UUID of the reviewer
+   * @nullable
+   */
+  reviewedBy: string | null;
+  /** @nullable */
+  ocrStatus: CandidateDocumentSummaryDtoOcrStatus;
+  /** @nullable */
+  ocrErrorCode: string | null;
   /** Returned versions, newest first, including versions superseded by a new upload */
   returnedVersions?: ReturnedDocumentVersionDto[];
   /** Approved versions awaiting manual ERP delivery */
@@ -3978,7 +4087,7 @@ export function useGetCandidateDocumentCatalog<
 }
 
 /**
- * @summary Submit a document for manual review without OCR
+ * @summary Submit a document for manual review with optional asynchronous OCR enrichment
  */
 export const submitCandidateDocument = (
   submitCandidateDocumentBody: SubmitCandidateDocumentBody,
@@ -4043,7 +4152,7 @@ export type SubmitCandidateDocumentMutationBody = SubmitCandidateDocumentBody;
 export type SubmitCandidateDocumentMutationError = ApiErrorDto;
 
 /**
- * @summary Submit a document for manual review without OCR
+ * @summary Submit a document for manual review with optional asynchronous OCR enrichment
  */
 export const useSubmitCandidateDocument = <
   TError = ApiErrorDto,
