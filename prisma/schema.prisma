@@ -469,6 +469,10 @@ model ErpDocumentAttempt {
   startedAt DateTime @default(now()) @db.DateTime(3)
   finishedAt DateTime? @db.DateTime(3)
   errorCode String? @db.VarChar(64)
+  httpStatus Int?
+  responseBody String? @db.Text
+  responseTruncated Boolean @default(false)
+  responseReadError String? @db.VarChar(64)
   delivery ErpDocumentDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
   @@index([deliveryId])
   @@map("erp_document_attempts")
