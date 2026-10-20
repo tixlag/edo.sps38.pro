@@ -1,0 +1,141 @@
+Global:
+  model_name: PP-OCRv5_mobile_rec
+  debug: false
+  use_gpu: true
+
+  epoch_num: 50
+  log_smooth_window: 20
+  print_batch_step: 20
+
+  save_model_dir: /home/neuro/PycharmProjects/RecognizeUZ/paddleocr/output/ocr/passport_rec_exp_b_ctc_only
+  save_epoch_step: 2
+  eval_batch_step: [1000, 1000]
+  cal_metric_during_train: true
+
+  pretrained_model: /home/neuro/PycharmProjects/RecognizeUZ/paddleocr/configs/rec/pretrain_models/latin_PP-OCRv5_mobile_rec_pretrained.pdparams
+  checkpoints:
+  save_inference_dir:
+
+  use_visualdl: false
+
+  infer_img: /home/neuro/PycharmProjects/RecognizeUZ/paddleocr_passport_rec/val
+
+  # В эксперименте B оставляем текущий кастомный dict.
+  # Так проверяем именно влияние CTC-only против MultiHead.
+  character_dict_path: /home/neuro/PycharmProjects/RecognizeUZ/paddleocr_passport_rec/dict.txt
+
+  # Для CTC это не так критично, как для NRTR,
+  # но CTCLabelEncode тоже использует max_text_length для фильтрации длинных строк.
+  # У тебя максимум около 25, поэтому 32 — безопасный запас.
+  max_text_length: &max_text_length 32
+
+  infer_mode: false
+  use_space_char: true
+  distributed: true
+
+  save_res_path: /home/neuro/PycharmProjects/RecognizeUZ/paddleocr/output/ocr/passport_rec_exp_b_ctc_only/predicts.txt
+
+  d2s_train_image_shape: [3, 48, 768]
+
+Optimizer:
+  name: Adam
+  beta1: 0.9
+  beta2: 0.999
+  lr:
+    name: Cosine
+    learning_rate: 0.0001
+    warmup_epoch: 2
+  regularizer:
+    name: L2
+    factor: 0.00003
+
+Architecture:
+  model_type: rec
+  algorithm: SVTR_LCNet
+
+  Transform:
+
+  Backbone:
+    name: PPLCNetV3
+    scale: 0.95
+
+  Neck:
+    name: SequenceEncoder
+    encoder_type: reshape
+
+  # Главное отличие Experiment B:
+  # вместо MultiHead оставляем только CTCHead.
+  Head:
+    name: CTCHead
+    fc_decay: 0.00001
+
+Loss:
+  name: CTCLoss
+
+PostProcess:
+  name: CTCLabelDecode
+
+Metric:
+  name: RecMetric
+  main_indicator: acc
+
+Train:
+  dataset:
+    name: SimpleDataSet
+    data_dir: /home/neuro/PycharmProjects/RecognizeUZ/paddleocr_passport_rec
+    label_file_list:
+      - /home/neuro/PycharmProjects/RecognizeUZ/paddleocr_passport_rec/rec_gt_train.txt
+
+    transforms:
+      - DecodeImage:
+          img_mode: BGR
+          channel_first: false
+
+      # В CTC-only нужен CTCLabelEncode, а не MultiLabelEncode.
+      - CTCLabelEncode:
+
+      - RecResizeImg:
+          image_shape: [3, 48, 768]
+
+      - KeepKeys:
+          keep_keys:
+            - image
+            - label
+            - length
+            - valid_ratio
+
+  loader:
+    shuffle: true
+    batch_size_per_card: 16
+    drop_last: true
+    num_workers: 8
+
+Eval:
+  dataset:
+    name: SimpleDataSet
+    data_dir: /home/neuro/PycharmProjects/RecognizeUZ/paddleocr_passport_rec
+    label_file_list:
+      - /home/neuro/PycharmProjects/RecognizeUZ/paddleocr_passport_rec/rec_gt_val.txt
+
+    transforms:
+      - DecodeImage:
+          img_mode: BGR
+          channel_first: false
+
+      - CTCLabelEncode:
+
+      - RecResizeImg:
+          image_shape: [3, 48, 768]
+
+      - KeepKeys:
+          keep_keys:
+            - image
+            - label
+            - length
+            - valid_ratio
+
+  loader:
+    shuffle: false
+    drop_last: false
+    batch_size_per_card: 16
+    num_workers: 4

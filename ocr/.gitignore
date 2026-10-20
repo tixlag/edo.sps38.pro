@@ -1,0 +1,45 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+# Runtime artifacts and models
+/models/*
+!/models/manifest.json
+!/models/README.md
+/vendor/
+/var/
+/artifacts/
+*.pt
+*.pth
+*.pdparams
+*.pdiparams
+*.pdopt
+*.safetensors
+*.onnx
+*.bin
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+# Private inputs and generated research artifacts
+*.jpg
+*.jpeg
+*.png
+*.pdf
+*.npy
+*.npz
+*.log
+/datasets/
+/runs/
+/output/
+/logs/
+# Local tools
+.venv/
+.venv-*/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.idea/
+.vscode/
+.superpowers/

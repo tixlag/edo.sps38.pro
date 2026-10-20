@@ -1,0 +1,18 @@
+[Unit]
+Description=Document OCR (RU)
+After=network.target
+
+[Service]
+Type=simple
+User=ocr
+Group=ocr
+WorkingDirectory=/opt/document-ocr
+ExecStart=/bin/bash /opt/document-ocr/scripts/run_service.sh ru
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+Environment=PYTHONUNBUFFERED=1
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

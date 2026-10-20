@@ -14,3 +14,6 @@ tmp
 .env.*
 !.env.example
 docs
+
+# OCR is deployed separately; exclude its sources and private runtime assets.
+ocr/

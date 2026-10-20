@@ -85,3 +85,13 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 - ERP Candidate citizenship defaults to `ru` in EDO when missing, null, empty, or whitespace-only. Preserve explicitly supplied valid citizenship (normalized to lowercase); malformed nonempty values remain contract errors. A missing position still returns the actionable incomplete-profile error.
 - LK PHP exposes only canonical chat identity via the narrow internal API. Chat-server retains atomic employee-link outbox delivery. EDO never reads LK tables.
 - Auth-service is the only user JWT issuer. Own-document APIs use verified `code_1c` without administrative EDO permissions; guest chat-link access remains a separate capability.
+
+## OCR source component (`ocr/`)
+
+- Existing Russian passport, Uzbekistan passport and migration-card recognizers are maintained under `ocr/` for a shared agent workspace. Read `ocr/AGENTS.md` before editing that component; its relative paths start at `ocr/`.
+- Python recognizers remain independent external processes behind the existing `OcrService` boundary. Their public ports/routes and fallback behavior are preserved. Source co-location does not enable the EDO worker or provide an EDO adapter.
+- EDO keeps its current pnpm/Turbo stack and root environment rules. OCR has separate Python environments and service-local `.env` files described in `ocr/README.md`; never import Python/GPU dependencies into the NestJS application or root Docker build.
+- No models, archives, private documents, inference results or Python environments in Git. Model weights are distributed privately as an archive; only `ocr/models/manifest.json` is tracked.
+- OCR checks: from `ocr/`, run `.venv-test/bin/python -m unittest discover -s tests -v` and `python3 scripts/check_repository.py`. Check real inference separately with private inputs.
+- GitLab CI is still the external `ci-templates/edo.yml`. `ocr/.gitlab-ci.yml` is a ready-to-include component fragment; it is not automatically enabled. Do not replace the authoritative external template or trigger GitHub Actions/e2e.
+- See `docs/integrations/document-ocr-sources.md` for the boundary, setup and remaining EDO adapter work.
