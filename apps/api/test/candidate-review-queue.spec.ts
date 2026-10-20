@@ -150,7 +150,7 @@ describe("candidate review queue", () => {
     expect(nested).toEqual({
       ...access.documentWhere(scoped),
       currentVersion: { gt: 0 },
-      status: "RETURNED",
+      versions: { some: { status: "RETURNED" } },
       documentType: { code: "PASSPORT" },
     });
     expect(prisma.document.groupBy).not.toHaveBeenCalled();
@@ -173,12 +173,120 @@ describe("candidate review queue", () => {
           "REQUIRES_MANUAL",
           "WAITING_CONTRACT",
         ]);
-      else expect(where.status).toBe(status ?? "IN_REVIEW");
+      else if (status === "RETURNED") {
+        expect(where.versions.some.status).toBe("RETURNED");
+        expect(where).not.toHaveProperty("status");
+      } else expect(where.status).toBe(status ?? "IN_REVIEW");
       expect(prisma.document.groupBy.mock.calls[0][0].where).toEqual({
         candidateId: { in: ["c1"] },
       });
     },
   );
+
+  it.each(["IN_REVIEW", "APPROVED"])(
+    "keeps historical returns after the current document becomes %s",
+    async (status) => {
+      const { reads, prisma } = setup();
+      const doc = {
+        ...document("d1"),
+        status,
+        currentVersion: 3,
+        versions: [
+          {
+            version: 1,
+            revision: 1,
+            status: "RETURNED",
+            rejectionReason: "Размытое фото",
+            delivery: null,
+          },
+          {
+            version: 2,
+            revision: 1,
+            status: "RETURNED",
+            rejectionReason: "Обрезан край",
+            delivery: null,
+          },
+          {
+            version: 3,
+            revision: 0,
+            status,
+            rejectionReason: null,
+            delivery: null,
+          },
+        ],
+      };
+      prisma.candidate.findMany.mockResolvedValue([
+        { ...owner("c1"), documents: [doc] },
+      ]);
+      const page = await reads.candidateReviewQueue(principal, {
+        status: "RETURNED",
+      });
+      expect(page.items[0].documents[0]).toMatchObject({
+        currentVersion: 3,
+        status,
+        returnedVersions: [
+          {
+            version: 2,
+            rejectionReason: "Обрезан край",
+            supersededByVersion: 3,
+          },
+          {
+            version: 1,
+            rejectionReason: "Размытое фото",
+            supersededByVersion: 3,
+          },
+        ],
+      });
+      const where =
+        prisma.candidate.findMany.mock.calls[0][0].include.documents.where;
+      expect(where.versions.some.status).toBe("RETURNED");
+      expect(where).not.toHaveProperty("status");
+      prisma.candidate.findFirst.mockResolvedValue(owner("c1"));
+      prisma.document.findMany.mockResolvedValue([doc]);
+      const details = await reads.candidateDetails("c1", principal);
+      expect(details.documents[0].returnedVersions).toEqual(
+        page.items[0].documents[0].returnedVersions,
+      );
+    },
+  );
+
+  it("distinguishes a current return from a superseded version", async () => {
+    const { reads, prisma } = setup();
+    prisma.candidate.findMany.mockResolvedValue([
+      {
+        ...owner("c1"),
+        documents: [
+          {
+            ...document("d1"),
+            status: "RETURNED",
+            versions: [
+              {
+                version: 1,
+                revision: 1,
+                status: "RETURNED",
+                rejectionReason: "Фото",
+                delivery: null,
+              },
+              {
+                version: 2,
+                revision: 1,
+                status: "RETURNED",
+                rejectionReason: "Поля",
+                delivery: null,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    const page = await reads.candidateReviewQueue(principal, {
+      status: "RETURNED",
+    });
+    expect(page.items[0].documents[0].returnedVersions).toEqual([
+      { version: 2, rejectionReason: "Поля", supersededByVersion: null },
+      { version: 1, rejectionReason: "Фото", supersededByVersion: 2 },
+    ]);
+  });
 
   it("fails closed for callers with no location scope", async () => {
     const { reads, prisma } = setup();

@@ -39,6 +39,8 @@ const documentSummaryInclude = {
     select: {
       version: true,
       revision: true,
+      status: true,
+      rejectionReason: true,
       delivery: { select: { status: true } },
     },
   },
@@ -132,7 +134,17 @@ export class DocumentReadService {
     d: Prisma.DocumentGetPayload<{ include: typeof documentSummaryInclude }>,
   ): CandidateDocumentSummaryDto {
     const current = d.versions.find((v) => v.version === d.currentVersion);
+    const returned = d.versions
+      .filter((v) => v.status === "RETURNED")
+      .sort((a, b) => b.version - a.version)
+      .map((v) => ({
+        version: v.version,
+        rejectionReason: v.rejectionReason,
+        supersededByVersion:
+          d.currentVersion > v.version ? d.currentVersion : null,
+      }));
     return {
+      ...(returned.length ? { returnedVersions: returned } : {}),
       id: d.id,
       documentTypeCode: d.documentType?.code ?? null,
       status: d.status,
@@ -598,7 +610,9 @@ export class DocumentReadService {
                 },
               },
             }
-          : { status: status === "RETURNED" ? "RETURNED" : "IN_REVIEW" }),
+          : status === "RETURNED"
+            ? { versions: { some: { status: "RETURNED" } } }
+            : { status: "IN_REVIEW" }),
     };
   }
 

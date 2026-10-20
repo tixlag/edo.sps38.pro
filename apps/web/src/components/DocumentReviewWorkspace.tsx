@@ -37,7 +37,11 @@ export function DocumentReviewWorkspace({
 }) {
   const client = useQueryClient();
   const profile = useGetMe();
-  const files = data.files.filter((file) => !file.deleted);
+  // The API denies downloads for returned versions, including the interval before cleanup.
+  const files =
+    data.status === "RETURNED"
+      ? []
+      : data.files.filter((file) => !file.deleted);
   const [fileId, setFileId] = useState<string | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [selection, setSelection] = useState<{
@@ -380,7 +384,9 @@ export function DocumentReviewWorkspace({
           />
         ) : (
           <p className="text-[13px] text-[var(--muted-foreground)]">
-            Оригиналы недоступны.
+            {data.status === "RETURNED"
+              ? "Файлы возвращённой версии недоступны. Реквизиты и причина возврата сохранены."
+              : "Оригиналы недоступны."}
           </p>
         )}
       </section>
@@ -645,7 +651,7 @@ export function DocumentReviewWorkspace({
           )}
           {data.rejectionReason && (
             <p role="status" className="py-2 text-xs text-[var(--primary)]">
-              {data.rejectionReason}
+              Причина возврата: {data.rejectionReason}
             </p>
           )}
           {data.status === "IN_REVIEW" && !canReview && (

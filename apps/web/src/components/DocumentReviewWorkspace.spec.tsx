@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { DocumentVersionDto } from "@edo/api-client";
+import {
+  useGetDocumentFileDownload,
+  type DocumentVersionDto,
+} from "@edo/api-client";
 import { DocumentReviewWorkspace } from "./DocumentReviewWorkspace";
 
 vi.mock("@edo/api-client", () => ({
@@ -18,13 +21,13 @@ vi.mock("@edo/api-client", () => ({
   getListCandidateReviewQueueQueryKey: () => ["candidate-review-queue"],
   getGetCandidateDetailsQueryKey: (id: string) => ["candidate", id],
   getGetDocumentFileDownloadQueryKey: () => ["file-download"],
-  useGetDocumentFileDownload: () => ({
+  useGetDocumentFileDownload: vi.fn(() => ({
     data: { url: "blob:fake-preview" },
     isLoading: false,
     isError: false,
     isFetching: false,
     refetch: vi.fn(),
-  }),
+  })),
 }));
 
 const G = globalThis as unknown as Record<string, unknown>;
@@ -245,11 +248,32 @@ function pageLabel(container: Element): string {
 
 describe("DocumentReviewWorkspace hover vs select", () => {
   beforeEach(() => {
+    vi.mocked(useGetDocumentFileDownload).mockClear();
     document.body.innerHTML = "";
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
   });
+  it("shows returned-version records without requesting files that the API denies", () => {
+    const data = buildData();
+    data.status = "RETURNED";
+    data.rejectionReason = "Обрезан край документа";
+    // Cleanup may not have marked the file deleted yet, but the API already denies downloads.
+    const { container, cleanup } = renderWorkspace(data);
+    try {
+      expect(container.textContent).toContain(
+        "Файлы возвращённой версии недоступны",
+      );
+      expect(container.textContent).toContain(
+        "Причина возврата: Обрезан край документа",
+      );
+      expect(container.querySelector("textarea")).toBeNull();
+      expect(useGetDocumentFileDownload).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("shows the ERP response and retains it as plain text in attempt history", () => {
     const data = buildData();
     data.status = "APPROVED";

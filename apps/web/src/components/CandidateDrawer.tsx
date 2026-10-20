@@ -1,8 +1,10 @@
 import { useEffect, useId, useRef } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   useGetCandidateDetails,
   type CandidateProfileDto,
+  type CandidateDocumentSummaryDto,
+  type ReturnedDocumentVersionDto,
 } from "@edo/api-client";
 import { Badge, Button, StatusBadge } from "@edo/ui";
 import { ChevronRight, X } from "lucide-react";
@@ -17,7 +19,8 @@ import {
 
 /**
  * Side drawer with the candidate profile (snapshot from the review queue)
- * and ALL of their documents via `useGetCandidateDetails`.
+ * and their documents via `useGetCandidateDetails`. The returned tab displays
+ * the backend's returned-version history instead of current document versions.
  *
  * Open state lives in the URL (`?candidate=<id>`): the browser back button
  * closes the drawer and the link is shareable. Closes on the cross button,
@@ -28,12 +31,15 @@ export function CandidateDrawer({
   candidateId,
   profile: queueProfile,
   onClose,
+  returnedHistory = false,
 }: {
   candidateId: string;
   profile: CandidateProfileDto | null;
   onClose: () => void;
+  returnedHistory?: boolean;
 }) {
   const navigate = useNavigate();
+  const search = useSearch({ strict: false }) as Record<string, unknown>;
   const docs = useGetCandidateDetails(candidateId);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingId = useId();
@@ -62,8 +68,19 @@ export function CandidateDrawer({
         profile.requiredDocuments,
       )
     : null;
-  const items = [...(docs.data?.documents ?? [])].sort((a, b) =>
+  const documents = [...(docs.data?.documents ?? [])].sort((a, b) =>
     a.title.localeCompare(b.title, "ru"),
+  );
+  const items = documents.flatMap<{
+    doc: CandidateDocumentSummaryDto;
+    returnedVersion?: ReturnedDocumentVersionDto;
+  }>((doc) =>
+    returnedHistory
+      ? (doc.returnedVersions ?? []).map((returnedVersion) => ({
+          doc,
+          returnedVersion,
+        }))
+      : [{ doc }],
   );
 
   return (
@@ -189,7 +206,8 @@ export function CandidateDrawer({
         </div>
         <div className="min-h-0 flex-1 overflow-auto p-4">
           <h3 className="mb-2 text-[13px] font-semibold">
-            Документы{docs.data ? ` (${items.length})` : ""}
+            {returnedHistory ? "Возвращённые версии" : "Документы"}
+            {docs.data ? ` (${items.length})` : ""}
           </h3>
           {docs.isLoading && <p role="status">Загрузка документов…</p>}
           {docs.isError && (
@@ -206,24 +224,30 @@ export function CandidateDrawer({
           )}
           {docs.data && items.length === 0 && (
             <p className="text-[13px] text-[var(--muted-foreground)]">
-              У кандидата нет документов.
+              {returnedHistory
+                ? "У кандидата нет возвращённых версий."
+                : "У кандидата нет документов."}
             </p>
           )}
           {items.length > 0 && (
             <ul className="flex flex-col gap-2">
-              {items.map((doc) => (
+              {items.map(({ doc, returnedVersion }) => (
                 <li
-                  key={doc.id}
+                  key={`${doc.id}:${returnedVersion?.version ?? doc.currentVersion}`}
                   className="overflow-hidden rounded-[8px] border border-[var(--border)]"
                 >
                   <button
                     type="button"
-                    aria-label={`${doc.title}, версия ${doc.currentVersion}`}
+                    aria-label={`${doc.title}, ${returnedVersion ? "возвращённая " : ""}версия ${returnedVersion?.version ?? doc.currentVersion}`}
                     onClick={() =>
                       void navigate({
                         to: "/review/$documentId",
                         params: { documentId: doc.id },
-                        search: { version: doc.currentVersion },
+                        search: {
+                          ...search,
+                          version:
+                            returnedVersion?.version ?? doc.currentVersion,
+                        },
                       })
                     }
                     className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-[var(--muted)]/40"
@@ -233,10 +257,26 @@ export function CandidateDrawer({
                         {doc.title}
                       </span>
                       <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">
-                        Версия {doc.currentVersion}
+                        Версия {returnedVersion?.version ?? doc.currentVersion}
                       </span>
+                      {returnedVersion && (
+                        <>
+                          <span className="mt-1 block break-words text-[13px] font-normal">
+                            Причина возврата:{" "}
+                            {returnedVersion.rejectionReason || "не указана"}
+                          </span>
+                          <span className="mt-1 block text-xs text-[var(--muted-foreground)]">
+                            {returnedVersion.supersededByVersion != null
+                              ? `Уже загружена новая версия №${returnedVersion.supersededByVersion}`
+                              : "Ожидается повторная загрузка"}
+                          </span>
+                        </>
+                      )}
                     </span>
-                    <StatusBadge status={doc.status} document />
+                    <StatusBadge
+                      status={returnedVersion ? "RETURNED" : doc.status}
+                      document
+                    />
                     <ChevronRight
                       size={16}
                       aria-hidden

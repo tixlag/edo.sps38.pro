@@ -234,8 +234,29 @@ export class CandidateProfileDto {
   })
   requiredDocuments!: number | null;
 }
+/** Returned versions retained after a newer document upload. */
+export class ReturnedDocumentVersionDto {
+  @ApiProperty() version!: number;
+  @ApiProperty({ type: String, nullable: true }) rejectionReason!:
+    | string
+    | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      "Newer current version, or null while this returned version is still current",
+  })
+  supersededByVersion!: number | null;
+}
+
 /** Document properties shared by candidate details and document-oriented APIs. */
 export class CandidateDocumentSummaryDto {
+  @ApiPropertyOptional({
+    type: [ReturnedDocumentVersionDto],
+    description:
+      "Returned versions, newest first, including versions superseded by a new upload",
+  })
+  returnedVersions?: ReturnedDocumentVersionDto[];
   @ApiProperty({
     type: [Number],
     description: "Approved versions awaiting manual ERP delivery",

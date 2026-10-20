@@ -123,13 +123,20 @@ function StaticSearchSelect({
 function CandidateRow({
   group,
   onOpen,
+  returnedHistory = false,
 }: {
   group: CandidateDetailsDto;
   onOpen: () => void;
+  returnedHistory?: boolean;
 }) {
   const candidate = group.candidate;
   const heading = candidate?.fullName?.trim() || "Без имени в профиле";
-  const count = group.documents.length;
+  const count = returnedHistory
+    ? group.documents.reduce(
+        (sum, doc) => sum + (doc.returnedVersions?.length ?? 0),
+        0,
+      )
+    : group.documents.length;
   const progressPercent = candidate
     ? documentProgressPercent(
         candidate.approvedDocuments,
@@ -238,7 +245,7 @@ function CandidateRow({
           )}
         </span>
         <span className="pointer-events-none relative flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-          документов: {count}
+          {returnedHistory ? "возвратов" : "документов"}: {count}
           <ChevronRight size={16} aria-hidden />
         </span>
       </div>
@@ -482,6 +489,12 @@ export function ReviewPage() {
           </Button>
         ))}
       </div>
+      {filters.status === "RETURNED" && (
+        <p className="mb-4 text-[13px] text-[var(--muted-foreground)]">
+          История возвращённых версий. После новой загрузки прежние возвраты
+          остаются в этом списке.
+        </p>
+      )}
       <Card>
         <CardContent>
           <div
@@ -662,6 +675,7 @@ export function ReviewPage() {
                 <CandidateRow
                   key={group.candidate.id}
                   group={group}
+                  returnedHistory={filters.status === "RETURNED"}
                   onOpen={() => openCandidate(group.candidate.id)}
                 />
               ))}
@@ -703,6 +717,7 @@ export function ReviewPage() {
           key={drawerCandidateId}
           candidateId={drawerCandidateId}
           profile={drawerGroup?.candidate ?? null}
+          returnedHistory={filters.status === "RETURNED"}
           onClose={closeCandidate}
         />
       )}
@@ -715,7 +730,7 @@ export function ReviewDocumentPage() {
   // Versioned deep link from history: /review/$documentId?version=N.
   // useSearch (no route validateSearch change needed): invalid values fall
   // back to the current version with an explicit notice.
-  const search = useSearch({ strict: false }) as { version?: unknown };
+  const search = useSearch({ strict: false }) as Record<string, unknown>;
   const urlVersion = parseVersionParam(search.version);
   const info = useGetDocumentInfo(documentId);
   const [selectedVersion, setSelectedVersion] = useState<number>();
@@ -747,7 +762,7 @@ export function ReviewDocumentPage() {
     void navigate({
       to: "/review/$documentId",
       params: { documentId },
-      search: { version: next },
+      search: (prev: Record<string, unknown>) => ({ ...prev, version: next }),
     });
   };
   const goToCurrent = () => {
@@ -764,6 +779,7 @@ export function ReviewDocumentPage() {
     <div className="flex h-full min-h-0 flex-col overflow-auto p-3 sm:p-4 lg:overflow-hidden">
       <Link
         to="/review"
+        search={{ ...parseReviewSearchParams(search) }}
         className="mb-2 inline-block text-[13px] text-[var(--muted-foreground)] underline underline-offset-4 hover:text-[var(--foreground)]"
       >
         ← Очередь проверки
