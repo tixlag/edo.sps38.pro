@@ -131,6 +131,10 @@ model DocumentVersion {
   ocrSource  String?                @db.VarChar(16)
   approvedAt DateTime?              @db.DateTime(3)
   approvedBy String?                @db.VarChar(64)
+  submittedAt DateTime?             @db.DateTime(3)
+  reviewedAt DateTime?              @db.DateTime(3)
+  reviewedBy String?                @db.VarChar(64)
+  ocrFields DocumentVersionOcrField[]
   positionCode1c String? @db.VarChar(64)
   citizenship String? @db.VarChar(2)
   approvedStorageKey String? @db.VarChar(1024)
@@ -516,6 +520,23 @@ enum OcrJobStatus {
   SUCCEEDED
   REJECTED
   FAILED
+  CANCELLED
+}
+
+/// OCR observations are separate from user/ERP requisites, including unmapped fields.
+model DocumentVersionOcrField {
+  id String @id @default(cuid()) @db.VarChar(64)
+  versionId String @db.VarChar(64)
+  ordinal Int
+  name String @db.VarChar(128)
+  documentFieldName String? @db.VarChar(128)
+  value String? @db.Text
+  source String @db.VarChar(16)
+  paddleText String? @db.Text
+  paddleConfidence Float?
+  version DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  @@unique([versionId, ordinal])
+  @@map("document_version_ocr_fields")
 }
 
 model OcrJob {

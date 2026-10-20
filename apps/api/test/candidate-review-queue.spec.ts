@@ -99,6 +99,11 @@ describe("candidate review queue", () => {
       revision: 4,
       deliveryStatus: null,
       pendingDeliveryVersions: [1],
+      submittedAt: null,
+      reviewedAt: null,
+      reviewedBy: null,
+      ocrStatus: null,
+      ocrErrorCode: null,
     });
     const page2 = await reads.candidateReviewQueue(principal, {
       limit: 1,
@@ -283,8 +288,22 @@ describe("candidate review queue", () => {
       status: "RETURNED",
     });
     expect(page.items[0].documents[0].returnedVersions).toEqual([
-      { version: 2, rejectionReason: "Поля", supersededByVersion: null },
-      { version: 1, rejectionReason: "Фото", supersededByVersion: 2 },
+      {
+        version: 2,
+        rejectionReason: "Поля",
+        supersededByVersion: null,
+        submittedAt: null,
+        reviewedAt: null,
+        reviewedBy: null,
+      },
+      {
+        version: 1,
+        rejectionReason: "Фото",
+        supersededByVersion: 2,
+        submittedAt: null,
+        reviewedAt: null,
+        reviewedBy: null,
+      },
     ]);
   });
 

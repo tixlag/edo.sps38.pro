@@ -113,7 +113,7 @@ export class ManualDocumentIntegrationController {
   @HttpCode(202)
   @ApiOperation({
     operationId: "submitCandidateDocument",
-    summary: "Submit a document for manual review without OCR",
+    summary: "Submit a document for manual review with optional asynchronous OCR enrichment",
   })
   @ApiConsumes("multipart/form-data")
   @ApiHeader({ name: "Idempotency-Key", required: true })

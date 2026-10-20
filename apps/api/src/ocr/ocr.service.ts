@@ -14,6 +14,8 @@ export interface OcrRequest {
   documentId: string;
   version: number;
   documentTypeCode: string;
+  documentUid?: string | null;
+  citizenship?: string | null;
   files: OcrInputFile[];
 }
 
@@ -23,6 +25,16 @@ export const ocrIssueSchema = z.object({
   fileOrdinal: z.number().int().nonnegative().nullable().default(null),
   pageNumber: z.number().int().positive().nullable().default(null),
 });
+
+export const ocrFieldSchema = z.object({
+  name: z.string().min(1).max(128),
+  documentFieldName: z.string().min(1).max(128).nullable(),
+  value: z.string().max(16384).nullable(),
+  source: z.enum(["PADDLE", "GLM", "MIXED"]),
+  paddleText: z.string().max(16384).nullable(),
+  paddleConfidence: z.number().finite().min(0).max(1).nullable(),
+});
+export type OcrField = z.infer<typeof ocrFieldSchema>;
 
 const fieldsSchema = z
   .record(z.string().min(1).max(128), z.string().max(16_384).nullable())
@@ -60,6 +72,7 @@ export const ocrResultSchema = z
       outcome: z.literal("SUCCEEDED"),
       source: z.enum(["STUB", "EXTERNAL"]),
       fields: fieldsSchema,
+      ocrFields: z.array(ocrFieldSchema).max(2000).optional(),
       regions: z.array(ocrRegionSchema).max(2000).optional(),
       raw: z.record(z.unknown()),
     }),

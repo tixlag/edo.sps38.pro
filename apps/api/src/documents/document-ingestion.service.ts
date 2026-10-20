@@ -116,7 +116,7 @@ export class DocumentIngestionService {
           throw new ConflictException("Upload lease expired");
         await tx.documentVersion.update({
           where: { id: reserved.job.versionId },
-          data: { status: "OCR_PENDING" },
+          data: { status: "OCR_PENDING", submittedAt: new Date() },
         });
         await tx.document.updateMany({
           where: {

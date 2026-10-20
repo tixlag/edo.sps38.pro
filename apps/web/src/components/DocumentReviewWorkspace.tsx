@@ -21,6 +21,7 @@ import { Check, Save, X } from "lucide-react";
 import { DocumentPreview } from "./DocumentPreview";
 import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
 import { getRequiredReviewFields } from "./document-review-fields";
+import { DocumentOcrFields, DocumentReviewMetadata } from "./DocumentOcrDetails";
 
 export function DocumentReviewWorkspace({
   data,
@@ -422,6 +423,7 @@ export function DocumentReviewWorkspace({
           ref={fieldsContainer}
           className="max-h-[60dvh] min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 lg:max-h-none"
         >
+          <DocumentReviewMetadata data={data} />
           <dl className="divide-y divide-[var(--border)]">
             {visibleFields.map((field) => {
               const onCurrentPage = field.regions.some(
@@ -580,6 +582,7 @@ export function DocumentReviewWorkspace({
               );
             })}
           </dl>
+          <DocumentOcrFields data={data} />
           {!fields.length && (
             <p className="py-3 text-[13px] text-[var(--muted-foreground)]">
               В документе нет обязательных полей для ручной проверки.
@@ -659,7 +662,7 @@ export function DocumentReviewWorkspace({
                 : "Для исправления и подтверждения нужно право проверки документов."}
             </p>
           )}
-          {data.approvedAt && (
+        {data.approvedAt && !data.reviewedAt && (
             <p className="py-2 text-xs text-[var(--muted-foreground)]">
               Подтверждён {new Date(data.approvedAt).toLocaleString("ru-RU")}.
             </p>
