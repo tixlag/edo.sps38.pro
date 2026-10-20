@@ -342,7 +342,8 @@ chatUid, PDF в base64 и замороженные documentFields. Наприм�
 
 ## Развёртывание и контракты
 
-EDO: `pnpm db:migrate` применяет 0008 только к БД edo, затем `pnpm api:generate`.
+EDO: `pnpm db:migrate` применяет все ожидающие миграции только к БД edo,
+включая `0011_erp_delivery_responses`, затем `pnpm api:generate`.
 ЛК: миграция `next/src/Integrations/Edo/Entities/migrations/20261013120000.php`
 обнаруживается штатным доменным pipeline `next` и создаёт только
 `sps_next.edo_candidate_link_outbox`. Корневой `db/migrations` для этой интеграции

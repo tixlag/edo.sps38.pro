@@ -75,7 +75,8 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 
 - `pnpm install`, `pnpm dev`, `pnpm build`, `pnpm lint`, `pnpm test` work from repo root.
 - Backend compiles; frontend has zero TS errors; Prisma migrations apply on clean MariaDB; OpenAPI exports; Orval client regenerates and frontend uses generated hooks; dashboard renders; collapsed/expanded sidebar work; employee endpoints respond; no JWT in persistent storage; production build passes.
-- CI (`.github/workflows/ci.yml`): frozen install → migrate → lint → test → OpenAPI/Orval regen → `git diff --exit-code` drift check → build → seed → Playwright install → e2e. Health split: `/api/health/live` (process) vs `/api/health/ready` (MariaDB+RabbitMQ; Redis reported but optional) vs `/api/health/integration` (Redis coordination, consumer, bootstrap, freshness, queue depths; never gates reads).
+- The authoritative CI is GitLab (external `ci-templates/edo.yml`). Per user instruction (2026-10-20), do not trigger GitHub Actions or run e2e unless explicitly requested. The retained `.github/workflows/ci.yml` is a historical/manual workflow, not the project's required CI. Use local targeted checks and GitLab pipeline results for validation.
+- Health split: `/api/health/live` (process) vs `/api/health/ready` (MariaDB+RabbitMQ; Redis reported but optional) vs `/api/health/integration` (Redis coordination, consumer, bootstrap, freshness, queue depths; never gates reads).
 - E2E auth: API runs with `ALLOW_INSECURE_DEV_AUTH=true` (dev/test only); web runs with `VITE_ALLOW_INSECURE_DEV_AUTH=true` + empty `VITE_AUTH_REFRESH_URL`; specs in `apps/web/e2e/fixture.ts` inject a real HS256-signed JWT (full EDO rules) via the dev-only `window.__EDO_DEV_TOKEN` hook, secret from `EDO_E2E_JWT_SECRET` (must equal the API `JWT_SECRET`). Never use this hook in production.
 
 ## Candidate documents boundary
