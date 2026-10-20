@@ -13,6 +13,7 @@ import {
   getListCandidateReviewQueueQueryKey,
   getGetCandidateDetailsQueryKey,
   type DocumentVersionDto,
+  type DocumentDeliveryAttemptDto,
   type OcrRegionDto,
 } from "@edo/api-client";
 import { Badge, Button } from "@edo/ui";
@@ -612,6 +613,9 @@ export function DocumentReviewWorkspace({
                   ЭДО. Код: {data.delivery.errorCode}
                 </p>
               )}
+              {data.delivery.attempts[0] && (
+                <ErpAttemptResponse attempt={data.delivery.attempts[0]} />
+              )}
               {canSend && data.delivery.status === "REQUIRES_MANUAL" && (
                 <Button
                   size="sm"
@@ -633,10 +637,11 @@ export function DocumentReviewWorkspace({
                   <summary>История отправок</summary>
                   <ul>
                     {data.delivery.attempts.map((attempt) => (
-                      <li key={attempt.id}>
+                      <li key={attempt.id} className="mt-2">
                         {new Date(attempt.startedAt).toLocaleString("ru-RU")} ·{" "}
                         {attempt.errorCode ??
                           (attempt.finishedAt ? "Отправлено" : "Выполняется")}
+                        <ErpAttemptResponse attempt={attempt} />
                       </li>
                     ))}
                   </ul>
@@ -798,6 +803,34 @@ export function DocumentReviewWorkspace({
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function ErpAttemptResponse({
+  attempt,
+}: {
+  attempt: DocumentDeliveryAttemptDto;
+}) {
+  return (
+    <div className="mt-1">
+      {attempt.httpStatus != null && <p>Ответ 1С: HTTP {attempt.httpStatus}</p>}
+      {attempt.responseBody != null ? (
+        <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-sans text-xs">
+          {attempt.responseBody || "1С вернула пустой ответ."}
+        </pre>
+      ) : attempt.finishedAt && attempt.httpStatus == null ? (
+        <p>Текст ответа для этой попытки не сохранён.</p>
+      ) : null}
+      {attempt.responseTruncated && (
+        <p>Ответ показан не полностью: превышен предел размера.</p>
+      )}
+      {attempt.responseReadError && (
+        <p>
+          Не удалось полностью прочитать ответ 1С. Код:{" "}
+          {attempt.responseReadError}
+        </p>
+      )}
     </div>
   );
 }

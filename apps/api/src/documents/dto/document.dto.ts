@@ -142,6 +142,29 @@ export class DocumentDeliveryAttemptDto {
   @ApiProperty() startedAt!: string;
   @ApiProperty({ type: String, nullable: true }) finishedAt!: string | null;
   @ApiProperty({ type: String, nullable: true }) errorCode!: string | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      "ERP HTTP response status; null when no response was received or for historical attempts",
+  })
+  httpStatus!: number | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "Bounded ERP response text with credentials and file contents redacted; historical responses are unavailable",
+  })
+  responseBody!: string | null;
+  @ApiProperty({ description: "ERP response exceeded the capture limit" })
+  responseTruncated!: boolean;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "ERP_RESPONSE_READ_TIMEOUT or ERP_RESPONSE_READ_FAILED; does not override the received HTTP status",
+  })
+  responseReadError!: string | null;
 }
 export class DocumentDeliveryDto {
   @ApiProperty({

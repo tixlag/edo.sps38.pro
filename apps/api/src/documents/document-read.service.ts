@@ -299,6 +299,10 @@ export class DocumentReadService {
               startedAt: a.startedAt.toISOString(),
               finishedAt: a.finishedAt?.toISOString() ?? null,
               errorCode: a.errorCode,
+              httpStatus: a.httpStatus,
+              responseBody: a.responseBody,
+              responseTruncated: a.responseTruncated,
+              responseReadError: a.responseReadError,
             })),
           }
         : null,
