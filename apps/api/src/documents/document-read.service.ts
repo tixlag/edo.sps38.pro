@@ -85,6 +85,59 @@ const versionInclude = {
   },
 } satisfies Prisma.DocumentVersionInclude;
 
+function comparableDate(value: string): string | null {
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const localized = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value);
+  const match = iso ?? localized;
+  if (!match) return null;
+
+  const [, first, second, third] = match;
+  const year = Number(iso ? first : third);
+  const month = Number(second);
+  const day = Number(iso ? third : first);
+  if (year < 1 || month < 1 || month > 12) return null;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [
+    31,
+    leapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ][month - 1];
+  if (!daysInMonth || day < 1 || day > daysInMonth) return null;
+
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function ocrValuesMatch(
+  candidateValue: string,
+  ocrValue: string,
+  field: { name: string; kind: string },
+): boolean {
+  if (candidateValue === ocrValue) return true;
+  if (field.kind === "date") {
+    const candidateDate = comparableDate(candidateValue.trim());
+    const ocrDate = comparableDate(ocrValue.trim());
+    return candidateDate !== null && candidateDate === ocrDate;
+  }
+
+  // OCR sometimes inserts a visual separator into a passport series.
+  const canonicalName = field.name.toLowerCase().replace(/[^a-z]/g, "");
+  if (canonicalName === "series" || canonicalName.endsWith("series"))
+    return (
+      candidateValue.replace(/\s+/gu, "") === ocrValue.replace(/\s+/gu, "")
+    );
+
+  return false;
+}
+
 @Injectable()
 export class DocumentReadService {
   constructor(
@@ -326,7 +379,7 @@ export class DocumentReadService {
           !!f.submittedValue?.trim() &&
           f.required &&
           !!(f.ocrText ?? f.originalValue)?.trim() &&
-          f.submittedValue !== (f.ocrText ?? f.originalValue),
+          !ocrValuesMatch(f.submittedValue, f.ocrText ?? f.originalValue!, f),
         regions: (f.required ? f.regions : []).map((region) => ({
           id: region.id,
           fileId: region.fileId,
