@@ -205,6 +205,24 @@ export class DocumentsController {
     return this.ocrRetry.retry(id, version, body.revision, principal, req.correlationId ?? "");
   }
 
+  @Post("documents/:documentId/versions/:version/ocr/start")
+  @HttpCode(202)
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
+  @ApiOperation({
+    summary: "Start OCR for a supported current document without a previous OCR job",
+    operationId: "startDocumentOcr",
+  })
+  @ApiResponse({ status: 202, type: DocumentVersionDto })
+  startOcr(
+    @Param("documentId") id: string,
+    @Param("version", ParseIntPipe) version: number,
+    @Body() body: ReviewRevisionDto,
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Req() req: Request,
+  ): Promise<DocumentVersionDto> {
+    return this.ocrRetry.start(id, version, body.revision, principal, req.correlationId ?? "");
+  }
+
   @Get("document-types")
   @RequireAccessRule(EdoAccessRule.ACCESS)
   @ApiOperation({

@@ -14,8 +14,10 @@ function fixture() {
     citizenship: "ru",
     reviewedAt: null,
     cleanupPending: false,
+    ocrSource: null,
     submittedAt: new Date("2026-10-20T10:00:00Z"),
     document: {
+      candidateId: "candidate",
       currentVersion: 4,
       documentType: { erpUid: PASSPORT_UID, code: "passport" },
     },
@@ -27,7 +29,11 @@ function fixture() {
       attempts: 3,
       cleanupPending: false,
     },
-    submission: { id: "submission" } as { id: string } | null,
+    submission: {
+      id: "submission",
+      status: "SUCCEEDED",
+      fingerprint: "fingerprint",
+    } as { id: string; status: string; fingerprint: string } | null,
   };
   const tx = {
     $queryRaw: vi.fn(async () => []),

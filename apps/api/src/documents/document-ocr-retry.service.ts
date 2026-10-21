@@ -9,7 +9,10 @@ import { Prisma } from "@prisma/client";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { canRetryDocumentOcr } from "../ocr/ocr-retry-policy";
+import {
+  canRetryDocumentOcr,
+  canStartDocumentOcr,
+} from "../ocr/ocr-retry-policy";
 import { DocumentAccessService } from "./document-access.service";
 import { DocumentReadService } from "./document-read.service";
 
@@ -29,6 +32,41 @@ export class DocumentOcrRetryService {
     revision: number,
     principal: AuthPrincipal,
     correlationId: string,
+  ) {
+    return this.enqueue(
+      documentId,
+      number,
+      revision,
+      principal,
+      correlationId,
+      "retry",
+    );
+  }
+
+  async start(
+    documentId: string,
+    number: number,
+    revision: number,
+    principal: AuthPrincipal,
+    correlationId: string,
+  ) {
+    return this.enqueue(
+      documentId,
+      number,
+      revision,
+      principal,
+      correlationId,
+      "start",
+    );
+  }
+
+  private async enqueue(
+    documentId: string,
+    number: number,
+    revision: number,
+    principal: AuthPrincipal,
+    correlationId: string,
+    action: "start" | "retry",
   ) {
     await this.prisma.$transaction(async (tx) => {
       const initial = await tx.document.findUnique({
@@ -58,27 +96,44 @@ export class DocumentOcrRetryService {
       if (
         !version ||
         version.revision !== revision ||
-        !canRetryDocumentOcr(version, true)
+        !(action === "start"
+          ? canStartDocumentOcr(version, true)
+          : canRetryDocumentOcr(version, true))
       )
         throw new ConflictException(
-          "OCR retry is unavailable for this version",
+          "OCR action is unavailable for this version",
         );
-      // The policy requires an existing failed job. Reuse it so duplicate
-      // RabbitMQ deliveries still claim only one attempt through its lease.
-      const job = version.job!;
-      const changed = await tx.ocrJob.updateMany({
-        where: { id: job.id, status: job.status, cleanupPending: false },
-        data: {
-          status: "QUEUED",
-          attempts: 0,
-          errorCode: null,
-          leaseToken: null,
-          leaseUntil: null,
-          correlationId,
-        },
-      });
-      if (changed.count !== 1)
-        throw new ConflictException("OCR job has changed");
+      const previous = version.job;
+      const job =
+        action === "start"
+          ? await tx.ocrJob.create({
+              data: {
+                versionId: version.id,
+                candidateId: version.document.candidateId!,
+                idempotencyKey: `submission:${version.submission!.id}`,
+                fingerprint: version.submission!.fingerprint,
+                correlationId,
+                status: "QUEUED",
+              },
+            })
+          : version.job!;
+      // Reuse a failed job so duplicate RabbitMQ deliveries still claim only
+      // one attempt through its lease. Initial starts create it under the lock.
+      if (action === "retry") {
+        const changed = await tx.ocrJob.updateMany({
+          where: { id: job.id, status: job.status, cleanupPending: false },
+          data: {
+            status: "QUEUED",
+            attempts: 0,
+            errorCode: null,
+            leaseToken: null,
+            leaseUntil: null,
+            correlationId,
+          },
+        });
+        if (changed.count !== 1)
+          throw new ConflictException("OCR job has changed");
+      }
       const status = version.submission ? "IN_REVIEW" : "OCR_PENDING";
       await tx.documentVersion.update({
         where: { id: version.id },
@@ -107,15 +162,18 @@ export class DocumentOcrRetryService {
       });
       await this.audit.logInTransaction(tx, {
         actorId: principal.uuid,
-        action: "DOCUMENT_OCR_RETRIED",
+        action:
+          action === "start"
+            ? "DOCUMENT_OCR_REQUESTED"
+            : "DOCUMENT_OCR_RETRIED",
         entityType: "Document",
         entityId: documentId,
         correlationId,
         before: {
           version: number,
-          status: job.status,
-          errorCode: job.errorCode,
-          attempts: job.attempts,
+          status: previous?.status ?? null,
+          errorCode: previous?.errorCode ?? null,
+          attempts: previous?.attempts ?? 0,
         },
         after: { version: number, jobId: job.id, status: "QUEUED" },
       });

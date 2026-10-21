@@ -10,6 +10,7 @@ import {
   useRejectDocument,
   useSendDocumentToErp,
   useRetryDocumentOcr,
+  useStartDocumentOcr,
   getListReviewDocumentsQueryKey,
   getListCandidateReviewQueueQueryKey,
   getGetCandidateDetailsQueryKey,
@@ -193,6 +194,18 @@ export function DocumentReviewWorkspace({
         ),
     },
   });
+  const startOcr = useStartDocumentOcr({
+    mutation: {
+      onSuccess: async (result) => {
+        await update(result);
+        setMessage("Документ отправлен на распознавание.");
+      },
+      onError: () =>
+        setMessage(
+          "Не удалось запустить распознавание. Обновите данные: состояние документа могло измениться.",
+        ),
+    },
+  });
   const canSend =
     !readOnly &&
     !!permissions &&
@@ -204,7 +217,8 @@ export function DocumentReviewWorkspace({
     approve.isPending ||
     reject.isPending ||
     send.isPending ||
-    retryOcr.isPending;
+    retryOcr.isPending ||
+    startOcr.isPending;
   const setField = (name: string, value: string) => {
     const values =
       draft?.values ??
@@ -444,21 +458,25 @@ export function DocumentReviewWorkspace({
           className="max-h-[60dvh] min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 lg:max-h-none"
         >
           <DocumentReviewMetadata data={data} />
-          {canReview && data.canRetryOcr && (
+          {canReview && (data.canStartOcr || data.canRetryOcr) && (
             <div className="pb-3">
               <Button
                 size="sm"
                 variant="outline"
                 disabled={busy || changedCount > 0}
                 onClick={() =>
-                  retryOcr.mutate({
+                  (data.canStartOcr ? startOcr : retryOcr).mutate({
                     documentId: data.documentId,
                     version: data.version,
                     data: { revision: data.revision },
                   })
                 }
               >
-                {retryOcr.isPending ? "Отправка…" : "Повторить OCR"}
+                {startOcr.isPending || retryOcr.isPending
+                  ? "Отправка…"
+                  : data.canStartOcr
+                    ? "Запустить OCR"
+                    : "Повторить OCR"}
               </Button>
               {changedCount > 0 && (
                 <p className="mt-1 text-xs text-[var(--muted-foreground)]">

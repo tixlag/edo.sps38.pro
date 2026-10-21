@@ -13,6 +13,7 @@ const STAGES: Array<[EmployeeStatus, string]> = [
 ];
 const ACTIONS: Partial<Record<AuditAction, string>> = {
   DOCUMENT_OCR_RETRIED: 'Документ повторно отправлен на распознавание',
+  DOCUMENT_OCR_REQUESTED: 'Документ отправлен на распознавание',
   EMPLOYEE_CREATED: 'Создано дело работника', DOCUMENT_UPLOADED: 'Загружен документ',
   DOCUMENT_FIELDS_UPDATED: 'Исправлены поля документа', DOCUMENT_RETURNED: 'Возвращён документ',
   DOCUMENT_APPROVED: 'Подтверждён документ', DOCUMENT_SIGNED: 'Подписан документ',
