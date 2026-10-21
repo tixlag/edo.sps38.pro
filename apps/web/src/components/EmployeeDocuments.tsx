@@ -29,7 +29,8 @@ function DocumentViewer({
     query: {
       queryKey: getGetDocumentVersionQueryKey(documentId, version),
       refetchInterval: (query) =>
-        ["UPLOADED", "OCR_PENDING"].includes(query.state.data?.status ?? "")
+        (["UPLOADED", "OCR_PENDING"].includes(query.state.data?.status ?? "") ||
+          ["QUEUED", "RUNNING"].includes(query.state.data?.job?.status ?? ""))
           ? 3000
           : false,
     },

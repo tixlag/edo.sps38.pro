@@ -36,6 +36,7 @@ import { ManualDocumentService } from "./manual-document.service";
 import { DocumentIngestionService } from "./document-ingestion.service";
 import { DocumentReadService } from "./document-read.service";
 import { DocumentReviewService } from "./document-review.service";
+import { DocumentOcrRetryService } from "./document-ocr-retry.service";
 import {
   ApiErrorDto,
   CandidateDto,
@@ -183,7 +184,26 @@ export class DocumentsController {
   constructor(
     private readonly reads: DocumentReadService,
     private readonly review: DocumentReviewService,
+    private readonly ocrRetry: DocumentOcrRetryService,
   ) {}
+
+  @Post("documents/:documentId/versions/:version/ocr/retry")
+  @HttpCode(202)
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
+  @ApiOperation({
+    summary: "Retry failed OCR for a supported current document with retained originals",
+    operationId: "retryDocumentOcr",
+  })
+  @ApiResponse({ status: 202, type: DocumentVersionDto })
+  retryOcr(
+    @Param("documentId") id: string,
+    @Param("version", ParseIntPipe) version: number,
+    @Body() body: ReviewRevisionDto,
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Req() req: Request,
+  ): Promise<DocumentVersionDto> {
+    return this.ocrRetry.retry(id, version, body.revision, principal, req.correlationId ?? "");
+  }
 
   @Get("document-types")
   @RequireAccessRule(EdoAccessRule.ACCESS)

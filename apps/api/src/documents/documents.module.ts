@@ -11,6 +11,7 @@ import {
 import { DocumentAccessService } from "./document-access.service";
 import { DocumentReadService } from "./document-read.service";
 import { DocumentReviewService } from "./document-review.service";
+import { DocumentOcrRetryService } from "./document-ocr-retry.service";
 import { DocumentIngestionService } from "./document-ingestion.service";
 import { DocumentUploadService } from "./document-upload.service";
 import { LkInternalGuard } from "./lk-internal.guard";
@@ -66,6 +67,7 @@ import { CandidateCardCache } from "./candidate-card-cache";
     DocumentAccessService,
     DocumentReadService,
     DocumentReviewService,
+    DocumentOcrRetryService,
     DocumentIngestionService,
     DocumentUploadService,
     LkInternalGuard,
