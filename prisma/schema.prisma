@@ -51,6 +51,7 @@ enum AuditAction {
   DATA_IMPORTED
   LK_REFERENCE_SYNCED
   LK_EVENT_APPLIED
+  DOCUMENT_OCR_RETRIED
 }
 
 model Employee {

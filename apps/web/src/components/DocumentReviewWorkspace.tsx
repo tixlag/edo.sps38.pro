@@ -9,6 +9,7 @@ import {
   useGetMe,
   useRejectDocument,
   useSendDocumentToErp,
+  useRetryDocumentOcr,
   getListReviewDocumentsQueryKey,
   getListCandidateReviewQueueQueryKey,
   getGetCandidateDetailsQueryKey,
@@ -21,7 +22,10 @@ import { Check, Save, X } from "lucide-react";
 import { DocumentPreview } from "./DocumentPreview";
 import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
 import { getRequiredReviewFields } from "./document-review-fields";
-import { DocumentOcrFields, DocumentReviewMetadata } from "./DocumentOcrDetails";
+import {
+  DocumentOcrFields,
+  DocumentReviewMetadata,
+} from "./DocumentOcrDetails";
 
 export function DocumentReviewWorkspace({
   data,
@@ -177,6 +181,18 @@ export function DocumentReviewWorkspace({
       onError: failure,
     },
   });
+  const retryOcr = useRetryDocumentOcr({
+    mutation: {
+      onSuccess: async (result) => {
+        await update(result);
+        setMessage("Документ повторно отправлен на распознавание.");
+      },
+      onError: () =>
+        setMessage(
+          "Не удалось повторить распознавание. Обновите данные: состояние документа могло измениться.",
+        ),
+    },
+  });
   const canSend =
     !readOnly &&
     !!permissions &&
@@ -184,7 +200,11 @@ export function DocumentReviewWorkspace({
       Object.prototype.hasOwnProperty.call(permissions, rule),
     );
   const busy =
-    edit.isPending || approve.isPending || reject.isPending || send.isPending;
+    edit.isPending ||
+    approve.isPending ||
+    reject.isPending ||
+    send.isPending ||
+    retryOcr.isPending;
   const setField = (name: string, value: string) => {
     const values =
       draft?.values ??
@@ -424,6 +444,29 @@ export function DocumentReviewWorkspace({
           className="max-h-[60dvh] min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 lg:max-h-none"
         >
           <DocumentReviewMetadata data={data} />
+          {canReview && data.canRetryOcr && (
+            <div className="pb-3">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || changedCount > 0}
+                onClick={() =>
+                  retryOcr.mutate({
+                    documentId: data.documentId,
+                    version: data.version,
+                    data: { revision: data.revision },
+                  })
+                }
+              >
+                {retryOcr.isPending ? "Отправка…" : "Повторить OCR"}
+              </Button>
+              {changedCount > 0 && (
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  Сохраните или отмените правки перед повторным распознаванием.
+                </p>
+              )}
+            </div>
+          )}
           <dl className="divide-y divide-[var(--border)]">
             {visibleFields.map((field) => {
               const onCurrentPage = field.regions.some(
@@ -662,7 +705,7 @@ export function DocumentReviewWorkspace({
                 : "Для исправления и подтверждения нужно право проверки документов."}
             </p>
           )}
-        {data.approvedAt && !data.reviewedAt && (
+          {data.approvedAt && !data.reviewedAt && (
             <p className="py-2 text-xs text-[var(--muted-foreground)]">
               Подтверждён {new Date(data.approvedAt).toLocaleString("ru-RU")}.
             </p>

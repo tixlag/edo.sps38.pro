@@ -2,7 +2,10 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { canRetryDocumentOcr } from "../ocr/ocr-retry-policy";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
@@ -51,6 +54,7 @@ const documentSummaryInclude = {
 } satisfies Prisma.DocumentInclude;
 
 const versionInclude = {
+  document: { include: { documentType: true } },
   files: { orderBy: { ordinal: "asc" as const } },
   fields: {
     orderBy: [{ ordinal: "asc" as const }, { name: "asc" as const }],
@@ -79,6 +83,7 @@ export class DocumentReadService {
     private readonly prisma: PrismaService,
     private readonly access: DocumentAccessService,
     private readonly storage: StorageService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   candidateDto(c: {
@@ -256,6 +261,11 @@ export class DocumentReadService {
       version,
       status: row.status,
       revision: row.revision,
+      canRetryOcr: canRetryDocumentOcr(
+        row,
+        this.config?.get("OCR_MODE") === "external" &&
+          this.config.get("OCR_WORKER_ENABLED") !== "false",
+      ),
       submittedAt: row.submittedAt?.toISOString() ?? null,
       reviewedAt: row.reviewedAt?.toISOString() ?? null,
       reviewedBy: row.reviewedBy ?? null,

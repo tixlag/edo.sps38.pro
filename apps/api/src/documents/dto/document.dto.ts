@@ -210,6 +210,8 @@ export class DocumentReviewMetadataDto {
   reviewedBy!: string | null;
 }
 export class DocumentVersionDto extends DocumentReviewMetadataDto {
+  @ApiProperty({ description: "Current supported version has a failed OCR attempt, retained originals, and enabled OCR" })
+  canRetryOcr!: boolean;
   @ApiProperty() documentId!: string;
   @ApiProperty() version!: number;
   @ApiProperty({ enum: DocumentStatus, enumName: "DocumentStatus" })

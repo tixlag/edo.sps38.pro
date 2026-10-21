@@ -30,6 +30,7 @@ function version(fields: DocumentFieldDto[]): DocumentVersionDto {
     status: "IN_REVIEW",
     ocrSource: "EXTERNAL",
     ocrFields: [],
+    canRetryOcr: false,
     submittedAt: null,
     reviewedAt: null,
     reviewedBy: null,

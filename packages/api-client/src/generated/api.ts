@@ -36,6 +36,7 @@ export const AuditAction = {
   DATA_IMPORTED: "DATA_IMPORTED",
   LK_REFERENCE_SYNCED: "LK_REFERENCE_SYNCED",
   LK_EVENT_APPLIED: "LK_EVENT_APPLIED",
+  DOCUMENT_OCR_RETRIED: "DOCUMENT_OCR_RETRIED",
 } as const;
 
 export interface AuditLogItemDto {
@@ -855,6 +856,8 @@ export interface DocumentVersionDto {
    * @nullable
    */
   reviewedBy: string | null;
+  /** Current supported version has a failed OCR attempt, retained originals, and enabled OCR */
+  canRetryOcr: boolean;
   documentId: string;
   version: number;
   status: DocumentStatus;
@@ -895,6 +898,11 @@ export interface CandidateDto {
   /** @nullable */
   code1c: string | null;
   createdAt: string;
+}
+
+export interface ReviewRevisionDto {
+  /** @minimum 0 */
+  revision: number;
 }
 
 export interface DocumentTypeDto {
@@ -976,11 +984,6 @@ export interface EditDocumentFieldsDto {
   revision: number;
   /** Field names mapped to new values; null clears a value. Maximum 200 fields, 16384 characters per value. */
   fields: EditDocumentFieldsDtoFields;
-}
-
-export interface ReviewRevisionDto {
-  /** @minimum 0 */
-  revision: number;
 }
 
 export interface Object {
@@ -3201,6 +3204,91 @@ export const useLinkCandidateEmployee = <
   TContext
 > => {
   const mutationOptions = getLinkCandidateEmployeeMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Retry failed OCR for a supported current document with retained originals
+ */
+export const retryDocumentOcr = (
+  documentId: string,
+  version: number,
+  reviewRevisionDto: ReviewRevisionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentVersionDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/ocr/retry`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: reviewRevisionDto,
+    signal,
+  });
+};
+
+export const getRetryDocumentOcrMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryDocumentOcr>>,
+    TError,
+    { documentId: string; version: number; data: ReviewRevisionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof retryDocumentOcr>>,
+  TError,
+  { documentId: string; version: number; data: ReviewRevisionDto },
+  TContext
+> => {
+  const mutationKey = ["retryDocumentOcr"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof retryDocumentOcr>>,
+    { documentId: string; version: number; data: ReviewRevisionDto }
+  > = (props) => {
+    const { documentId, version, data } = props ?? {};
+
+    return retryDocumentOcr(documentId, version, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RetryDocumentOcrMutationResult = NonNullable<
+  Awaited<ReturnType<typeof retryDocumentOcr>>
+>;
+export type RetryDocumentOcrMutationBody = ReviewRevisionDto;
+export type RetryDocumentOcrMutationError = ApiErrorDto;
+
+/**
+ * @summary Retry failed OCR for a supported current document with retained originals
+ */
+export const useRetryDocumentOcr = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryDocumentOcr>>,
+    TError,
+    { documentId: string; version: number; data: ReviewRevisionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof retryDocumentOcr>>,
+  TError,
+  { documentId: string; version: number; data: ReviewRevisionDto },
+  TContext
+> => {
+  const mutationOptions = getRetryDocumentOcrMutationOptions(options);
 
   return useMutation(mutationOptions);
 };

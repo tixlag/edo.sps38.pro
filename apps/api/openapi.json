@@ -2380,6 +2380,150 @@
         ]
       }
     },
+    "/api/v1/documents/{documentId}/versions/{version}/ocr/retry": {
+      "post": {
+        "operationId": "retryDocumentOcr",
+        "parameters": [
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRevisionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentVersionDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Retry failed OCR for a supported current document with retained originals",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/v1/document-types": {
       "get": {
         "operationId": "listDocumentTypes",
@@ -6168,7 +6312,8 @@
           "WORKFLOW_STAGE_CHANGED",
           "DATA_IMPORTED",
           "LK_REFERENCE_SYNCED",
-          "LK_EVENT_APPLIED"
+          "LK_EVENT_APPLIED",
+          "DOCUMENT_OCR_RETRIED"
         ]
       },
       "AuditLogItemDto": {
@@ -7902,6 +8047,10 @@
             "nullable": true,
             "description": "Verified JWT UUID of the reviewer"
           },
+          "canRetryOcr": {
+            "type": "boolean",
+            "description": "Current supported version has a failed OCR attempt, retained originals, and enabled OCR"
+          },
           "documentId": {
             "type": "string"
           },
@@ -7993,6 +8142,7 @@
           "submittedAt",
           "reviewedAt",
           "reviewedBy",
+          "canRetryOcr",
           "documentId",
           "version",
           "status",
@@ -8053,6 +8203,18 @@
           "locationId",
           "code1c",
           "createdAt"
+        ]
+      },
+      "ReviewRevisionDto": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "revision"
         ]
       },
       "DocumentTypeDto": {
@@ -8259,18 +8421,6 @@
         "required": [
           "revision",
           "fields"
-        ]
-      },
-      "ReviewRevisionDto": {
-        "type": "object",
-        "properties": {
-          "revision": {
-            "type": "number",
-            "minimum": 0
-          }
-        },
-        "required": [
-          "revision"
         ]
       },
       "Object": {

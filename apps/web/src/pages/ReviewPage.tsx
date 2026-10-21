@@ -753,6 +753,10 @@ export function ReviewDocumentPage() {
     query: {
       queryKey: getGetDocumentVersionQueryKey(documentId, number),
       enabled: !!number,
+      refetchInterval: (query) =>
+        ["QUEUED", "RUNNING"].includes(query.state.data?.job?.status ?? "")
+          ? 3000
+          : false,
     },
   });
   const historic = isHistoricVersion(version.data?.version, currentVersion);

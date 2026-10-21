@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   useGetDocumentFileDownload,
+  useRetryDocumentOcr,
   type DocumentVersionDto,
 } from "@edo/api-client";
 import { DocumentReviewWorkspace } from "./DocumentReviewWorkspace";
@@ -14,6 +15,7 @@ vi.mock("@edo/api-client", () => ({
   useApproveDocument: () => ({ mutate: vi.fn(), isPending: false }),
   useRejectDocument: () => ({ mutate: vi.fn(), isPending: false }),
   useSendDocumentToErp: () => ({ mutate: vi.fn(), isPending: false }),
+  useRetryDocumentOcr: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   getGetDashboardQueryKey: () => ["dashboard"],
   getGetDocumentVersionQueryKey: () => ["version"],
   getListEmployeeDocumentsQueryKey: () => ["employee-docs"],
@@ -248,11 +250,43 @@ function pageLabel(container: Element): string {
 
 describe("DocumentReviewWorkspace hover vs select", () => {
   beforeEach(() => {
+    vi.mocked(useRetryDocumentOcr).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as never);
     vi.mocked(useGetDocumentFileDownload).mockClear();
     document.body.innerHTML = "";
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
+  });
+  it("offers OCR retry only when the backend permits it and sends the current revision", () => {
+    const data = buildData();
+    data.canRetryOcr = false;
+    const hidden = renderWorkspace(data);
+    expect(hidden.container.textContent).not.toContain("Повторить OCR");
+    hidden.cleanup();
+    data.canRetryOcr = true;
+    const mutate = vi.fn();
+    vi.mocked(useRetryDocumentOcr).mockReturnValue({
+      mutate,
+      isPending: false,
+    } as never);
+    const shown = renderWorkspace(data);
+    try {
+      const button = Array.from(
+        shown.container.querySelectorAll("button"),
+      ).find((node) => node.textContent === "Повторить OCR");
+      expect(button).toBeDefined();
+      act(() => button!.click());
+      expect(mutate).toHaveBeenCalledWith({
+        documentId: data.documentId,
+        version: data.version,
+        data: { revision: data.revision },
+      });
+    } finally {
+      shown.cleanup();
+    }
   });
   it("shows returned-version records without requesting files that the API denies", () => {
     const data = buildData();
