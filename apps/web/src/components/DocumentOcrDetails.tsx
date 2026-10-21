@@ -1,7 +1,7 @@
-import type { DocumentVersionDto } from "@edo/api-client";
+import type { DocumentVersionDto, DocumentOcrFieldDto } from "@edo/api-client";
 import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
 
-const LABELS: Record<string, string> = {
+export const OCR_FIELD_LABELS: Record<string, string> = {
   series: "Серия",
   number: "Номер",
   date_issue: "Дата выдачи",
@@ -88,14 +88,20 @@ export function DocumentReviewMetadata({ data }: { data: DocumentVersionDto }) {
         <p>Распознавание отменено после решения проверяющего.</p>
       )}
       {status === "SUCCEEDED" && (
-        <p>Распознавание завершено. Результаты OCR показаны ниже.</p>
+        <p role="status">Распознавание завершено. Сверьте поля с оригиналом.</p>
       )}
     </div>
   );
 }
 
-export function DocumentOcrFields({ data }: { data: DocumentVersionDto }) {
-  const fields = data.ocrFields ?? [];
+export function DocumentOcrFields({
+  data,
+  fields: suppliedFields,
+}: {
+  data?: DocumentVersionDto;
+  fields?: DocumentOcrFieldDto[];
+}) {
+  const fields = suppliedFields ?? data?.ocrFields ?? [];
   if (!fields.length) return null;
   return (
     <section
@@ -110,7 +116,7 @@ export function DocumentOcrFields({ data }: { data: DocumentVersionDto }) {
         {fields.map((field, index) => (
           <div key={`${field.name}-${index}`} className="min-w-0 py-2">
             <dt className="break-words text-[13px] font-medium">
-              {LABELS[field.name] ??
+              {OCR_FIELD_LABELS[field.name] ??
                 DOCUMENT_FIELD_LABELS[field.name] ??
                 field.name}
             </dt>

@@ -14,10 +14,12 @@ import {
   type DocumentFieldDto,
   type DocumentFileDto,
   type OcrRegionDto,
+  type DocumentOcrFieldDto,
 } from "@edo/api-client";
 import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import type { PDFDocumentLoadingTask, RenderTask } from "pdfjs-dist";
 import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
+import { OCR_FIELD_LABELS } from "./DocumentOcrDetails";
 
 const ZOOM_LEVELS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 type PageSize = { width: number; height: number };
@@ -88,8 +90,10 @@ export function DocumentPreview({
   file,
   pageNumber,
   fields,
+  observations,
   selectedField,
   selectedRegionId,
+  selectionRequest = 0,
   hoveredField,
   hoveredRegionId,
   onSelectRegion,
@@ -100,8 +104,10 @@ export function DocumentPreview({
   file: DocumentFileDto;
   pageNumber: number;
   fields: DocumentFieldDto[];
+  observations?: DocumentOcrFieldDto[];
   selectedField: string | null;
   selectedRegionId: string | null;
+  selectionRequest?: number;
   hoveredField?: string | null;
   hoveredRegionId?: string | null;
   onSelectRegion: (fieldName: string, region: OcrRegionDto) => void;
@@ -118,6 +124,9 @@ export function DocumentPreview({
   });
   const [viewportWidth, setViewportWidth] = useState(600);
   const [showBoxes, setShowBoxes] = useState(true);
+  const [localHoveredRegion, setLocalHoveredRegion] = useState<string | null>(
+    null,
+  );
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
@@ -132,18 +141,53 @@ export function DocumentPreview({
       refetchInterval: 240_000,
     },
   });
-  const regions = useMemo(
-    () =>
-      fields.flatMap((field) =>
+  const regions = useMemo(() => {
+    const candidates = [
+      ...fields.flatMap((field) =>
         field.regions
           .filter(
             (region) =>
               region.fileId === file.id && region.pageNumber === pageNumber,
           )
-          .map((region) => ({ field, region })),
+          .map((region) => ({ field, region, linked: true })),
       ),
-    [fields, file.id, pageNumber],
-  );
+      ...(observations ?? []).flatMap((observation, index) => {
+        const linkedField = fields.find(
+          (field) => field.name === observation.documentFieldName,
+        );
+        const field = linkedField ?? {
+          name: `ocr:${index}`,
+          originalValue: observation.value,
+          label:
+            OCR_FIELD_LABELS[observation.name] ??
+            DOCUMENT_FIELD_LABELS[observation.name] ??
+            observation.name,
+        };
+        return (observation.regions ?? [])
+          .filter(
+            (region) =>
+              region.fileId === file.id && region.pageNumber === pageNumber,
+          )
+          .map((region) => ({ field, region, linked: !!linkedField }));
+      }),
+    ];
+    const unique = new Map<string, (typeof candidates)[number]>();
+    for (const item of candidates) {
+      const r = item.region;
+      const key = JSON.stringify([
+        r.fileId,
+        r.pageNumber,
+        r.x,
+        r.y,
+        r.width,
+        r.height,
+        r.text,
+      ]);
+      if (!unique.has(key) || item.field.name === selectedField)
+        unique.set(key, item);
+    }
+    return [...unique.values()];
+  }, [fields, observations, file.id, pageNumber, selectedField]);
   const onReady = useCallback((size: PageSize) => {
     if (size.width > 0 && size.height > 0) setPageSize(size);
     setReady(true);
@@ -166,15 +210,27 @@ export function DocumentPreview({
   const rotatedWidth = sideways ? pageHeight : pageWidth;
   const rotatedHeight = sideways ? pageWidth : pageHeight;
   const stageWidth = Math.max(viewportWidth, rotatedWidth);
+  const selectedGeometry = regions.find(
+    (item) => item.region.id === selectedRegionId,
+  )?.region;
+  const regionX = selectedGeometry?.x;
+  const regionY = selectedGeometry?.y;
+  const regionWidth = selectedGeometry?.width;
+  const regionHeight = selectedGeometry?.height;
   useEffect(() => {
-    const region = regions.find(
-      (item) => item.region.id === selectedRegionId,
-    )?.region;
-    if (!ready || !region || !viewport.current) return;
+    if (
+      !ready ||
+      regionX === undefined ||
+      regionY === undefined ||
+      regionWidth === undefined ||
+      regionHeight === undefined ||
+      !viewport.current
+    )
+      return;
     // The image and overlay rotate together around the page center. Move the
     // selected region's center through the same transform before scrolling.
-    const x = (region.x + region.width / 2 - 0.5) * pageWidth;
-    const y = (region.y + region.height / 2 - 0.5) * pageHeight;
+    const x = (regionX + regionWidth / 2 - 0.5) * pageWidth;
+    const y = (regionY + regionHeight / 2 - 0.5) * pageHeight;
     const radians = (rotation * Math.PI) / 180;
     viewport.current.scrollTo({
       left: Math.max(
@@ -194,8 +250,12 @@ export function DocumentPreview({
       ),
     });
   }, [
-    regions,
+    regionX,
+    regionY,
+    regionWidth,
+    regionHeight,
     selectedRegionId,
+    selectionRequest,
     ready,
     rotation,
     pageWidth,
@@ -206,6 +266,10 @@ export function DocumentPreview({
   const selected =
     regions.find((item) => item.region.id === selectedRegionId) ??
     regions.find((item) => item.field.name === selectedField);
+  const inspected =
+    (showBoxes &&
+      regions.find((item) => item.region.id === localHoveredRegion)) ||
+    selected;
   const retry = async () => {
     const refreshed = await download.refetch();
     if (!refreshed.isError) {
@@ -396,23 +460,38 @@ export function DocumentPreview({
                   preserveAspectRatio="none"
                   aria-label="Распознанные области"
                 >
-                  {regions.map(({ field, region }) => {
+                  {regions.map(({ field, region, linked }) => {
                     const isSelected =
                       field.name === selectedField ||
                       region.id === selectedRegionId;
                     const isHovered =
                       !isSelected &&
                       (field.name === hoveredField ||
-                        region.id === hoveredRegionId);
+                        region.id === hoveredRegionId ||
+                        region.id === localHoveredRegion);
+                    const label =
+                      DOCUMENT_FIELD_LABELS[field.name] ??
+                      field.label ??
+                      field.name;
+                    const hover = () => {
+                      setLocalHoveredRegion(region.id);
+                      if (linked) onHoverRegion?.(field.name, region);
+                    };
+                    const unhover = () => {
+                      setLocalHoveredRegion(null);
+                      onHoverRegion?.(null, null);
+                    };
                     return (
                       <rect
                         key={region.id}
-                        role="button"
+                        role={linked ? "button" : "img"}
                         tabIndex={0}
                         data-region={region.id}
                         data-field={field.name}
-                        aria-pressed={field.name === selectedField}
-                        aria-label={`${DOCUMENT_FIELD_LABELS[field.name] ?? field.name}. OCR: ${region.text ?? field.originalValue ?? "Не распознано"}`}
+                        aria-pressed={
+                          linked ? field.name === selectedField : undefined
+                        }
+                        aria-label={`${label}. OCR: ${region.text ?? field.originalValue ?? "Не распознано"}`}
                         x={region.x * 1000}
                         y={region.y * 1000}
                         width={region.width * 1000}
@@ -433,21 +512,26 @@ export function DocumentPreview({
                         strokeWidth={isSelected ? 3 : isHovered ? 2.5 : 1.5}
                         vectorEffect="non-scaling-stroke"
                         className="pointer-events-auto cursor-pointer focus:outline focus:outline-2 focus:outline-[var(--primary)]"
-                        onClick={() => onSelectRegion(field.name, region)}
-                        onMouseEnter={() => onHoverRegion?.(field.name, region)}
-                        onMouseLeave={() => onHoverRegion?.(null, null)}
-                        onFocus={() => onHoverRegion?.(field.name, region)}
-                        onBlur={() => onHoverRegion?.(null, null)}
+                        onClick={() => {
+                          if (linked) onSelectRegion(field.name, region);
+                          else hover();
+                        }}
+                        onMouseEnter={hover}
+                        onMouseLeave={unhover}
+                        onFocus={hover}
+                        onBlur={unhover}
                         onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
+                          if (
+                            linked &&
+                            (event.key === "Enter" || event.key === " ")
+                          ) {
                             event.preventDefault();
                             onSelectRegion(field.name, region);
                           }
                         }}
                       >
                         <title>
-                          {DOCUMENT_FIELD_LABELS[field.name] ?? field.name}:{" "}
-                          {region.text ?? field.originalValue ?? "—"}
+                          {label}: {region.text ?? field.originalValue ?? "—"}
                         </title>
                       </rect>
                     );
@@ -458,17 +542,19 @@ export function DocumentPreview({
           </div>
         </div>
       )}
-      {selected && (
+      {inspected && (
         <p
-          className="shrink-0 truncate text-xs"
-          title={`${DOCUMENT_FIELD_LABELS[selected.field.name] ?? selected.field.name} · OCR: ${selected.region.text ?? selected.field.originalValue ?? "Не распознано"}`}
+          role={localHoveredRegion ? "tooltip" : undefined}
+          className="max-h-24 shrink-0 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-[var(--muted)] px-2 py-1.5 text-xs"
         >
           <b>
-            {DOCUMENT_FIELD_LABELS[selected.field.name] ?? selected.field.name}
+            {DOCUMENT_FIELD_LABELS[inspected.field.name] ??
+              inspected.field.label ??
+              inspected.field.name}
           </b>{" "}
           · OCR: «
-          {selected.region.text ??
-            selected.field.originalValue ??
+          {inspected.region.text ??
+            inspected.field.originalValue ??
             "Не распознано"}
           »
         </p>

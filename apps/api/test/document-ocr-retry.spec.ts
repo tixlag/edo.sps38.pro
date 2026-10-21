@@ -50,6 +50,8 @@ function fixture() {
     ocrOutbox: { upsert: vi.fn() },
     ocrIssue: { deleteMany: vi.fn() },
     documentVersionOcrField: { deleteMany: vi.fn() },
+    ocrRegion: { deleteMany: vi.fn() },
+    documentVersionField: { updateMany: vi.fn() },
   };
   const config = { OCR_MODE: "external", OCR_WORKER_ENABLED: "true" };
   const audit = { logInTransaction: vi.fn() };
@@ -170,6 +172,13 @@ describe("OCR retry transaction", () => {
     expect(data).not.toHaveProperty("submittedAt");
     expect(data).not.toHaveProperty("reviewedAt");
     expect(data).not.toHaveProperty("fields");
+    expect(tx.documentVersionField.updateMany).toHaveBeenCalledWith({
+      where: { versionId: "v4" },
+      data: { originalValue: null, ocrText: null },
+    });
+    expect(tx.ocrRegion.deleteMany).toHaveBeenCalledWith({
+      where: { file: { versionId: "v4" } },
+    });
     expect(tx.ocrOutbox.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { jobId: "job" },

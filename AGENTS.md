@@ -8,6 +8,7 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 - Новая задача OCR и метаданных проверки ведётся в `feat/ocr-fields-review-metadata` от актуального `gitlab/main` (`5be72be`), по уточнению пользователя. `origin/main` отстаёт; не подменять им актуальную базу и не переносить изменения прежней ветки без необходимости.
 - Перед будущим деплоем сверить оставшиеся коммиты прежней ветки с актуальной `main`, сохранить её работу и выполнить отдельный этап интеграции/деплоя. Сейчас деплой не запрошен.
 - OCR выпускается первым отдельным этапом через GitLab runner; на машине агента нет весов, локальные OCR inference/Python-тесты не запускать. Дождаться сообщения пользователя о результате runner на `10.10.5.184` (UZ/миграция:8000, РФ:8001), затем выполнять отдельный этап деплоя API/web и включения `OCR_MODE=external`. До подтверждения сохранять ручной режим. Реализация ЭДО подготовлена в `feat/ocr-fields-review-metadata`.
+- Доработка проверки (2026-10-21): координаты OCR относительно оригинала, inline-подсказки, строгие исходные расхождения, live-обновление без потери черновика и автоподстановка только нетронутых пустых полей. Для API/web нужна миграция `0015_ocr_observation_regions`; все OCR-области защищены `20010 — EDO_OCR_DETAILS_VIEW` (20009 включает). Отдельное назначение 20010 требует регистрации кода в каталоге прав ЛК. Порядок выпуска OCR → подтверждение пользователя → отдельный deploy API/web сохраняется.
 
 ## Stack (do not change)
 
@@ -33,7 +34,7 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 - Backend: `JwtService.verify()` + global `JwtAuthGuard` attach typed `AuthPrincipal` (uuid/code_1c/sid/accessRules). Dev bypass ONLY via `ALLOW_INSECURE_DEV_AUTH=true` AND `NODE_ENV=development/test` (accepts literal `dev-demo-token`). Default off.
 - Access JWT in React memory ONLY (`apps/web/src/lib/auth-token.ts`). NEVER localStorage/sessionStorage/IndexedDB.
 - Refresh token in HttpOnly cookie; restore session via configured refresh endpoint adapter. Frontend dev fallback (`dev-demo-token`) ONLY when `VITE_ALLOW_INSECURE_DEV_AUTH=true` in dev.
-- EDO access rules 20000–20009 (`EdoAccessRule` enum). Key presence grants (`hasOwnProperty`), NEVER truthiness. Location scope: 20009/20008 → all, else 20007 → listed ids, else denied. Enforce via `@RequireAccessRule(...)` + `AccessRuleGuard` and `resolveLocationScope`/`isLocationAllowed` helpers — never hand-check in controllers. `GET /api/v1/me` exposes permissions + locationScope for UI decisions only; backend re-checks every action.
+- EDO access rules 20000–20010 (`EdoAccessRule` enum); 20010 is `EDO_OCR_DETAILS_VIEW` (all OCR observations/regions), implied by 20009. Key presence grants (`hasOwnProperty`), NEVER truthiness. Location scope: 20009/20008 → all, else 20007 → listed ids, else denied. Enforce via `@RequireAccessRule(...)` + `AccessRuleGuard` and `resolveLocationScope`/`isLocationAllowed` helpers — never hand-check in controllers. `GET /api/v1/me` exposes permissions + locationScope for UI decisions only; backend re-checks every action.
 
 ## LK master-data integration (source of truth = lk.sps38.pro)
 

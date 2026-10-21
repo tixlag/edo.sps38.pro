@@ -695,6 +695,11 @@ export interface DocumentFieldDto {
   name: string;
   /** @nullable */
   originalValue: string | null;
+  /**
+   * Unformatted OCR field text for exact comparison; originalValue is the typed suggestion
+   * @nullable
+   */
+  ocrText?: string | null;
   /** @nullable */
   value: string | null;
   /** @nullable */
@@ -733,6 +738,7 @@ export interface DocumentOcrFieldDto {
    * @nullable
    */
   paddleConfidence: number | null;
+  regions?: OcrRegionDto[];
 }
 
 export type OcrIssueDtoCode =
@@ -968,6 +974,18 @@ export interface CandidateDocumentSummaryDto {
 export interface CandidateDetailsDto {
   candidate: CandidateProfileDto;
   documents: CandidateDocumentSummaryDto[];
+}
+
+/**
+ * @nullable
+ */
+export type DocumentOcrDetailsDtoRaw = { [key: string]: unknown } | null;
+
+export interface DocumentOcrDetailsDto {
+  revision: number;
+  fields: DocumentOcrFieldDto[];
+  /** @nullable */
+  raw: DocumentOcrDetailsDtoRaw;
 }
 
 export interface DownloadDto {
@@ -3887,6 +3905,104 @@ export function useGetDocumentVersion<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetDocumentVersionQueryOptions(
+    documentId,
+    version,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Get all OCR observations and source regions
+ */
+export const getDocumentOcrDetails = (
+  documentId: string,
+  version: number,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentOcrDetailsDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/ocr-details`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetDocumentOcrDetailsQueryKey = (
+  documentId: string,
+  version: number,
+) => {
+  return [
+    `/api/v1/documents/${documentId}/versions/${version}/ocr-details`,
+  ] as const;
+};
+
+export const getGetDocumentOcrDetailsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  version: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetDocumentOcrDetailsQueryKey(documentId, version);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getDocumentOcrDetails>>
+  > = ({ signal }) => getDocumentOcrDetails(documentId, version, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(documentId && version),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDocumentOcrDetailsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDocumentOcrDetails>>
+>;
+export type GetDocumentOcrDetailsQueryError = ApiErrorDto;
+
+/**
+ * @summary Get all OCR observations and source regions
+ */
+
+export function useGetDocumentOcrDetails<
+  TData = Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  version: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDocumentOcrDetailsQueryOptions(
     documentId,
     version,
     options,

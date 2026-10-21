@@ -3,6 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetDashboardQueryKey,
   getGetDocumentVersionQueryKey,
+  getGetDocumentOcrDetailsQueryKey,
+  useGetDocumentOcrDetails,
   getListEmployeeDocumentsQueryKey,
   useApproveDocument,
   useEditDocumentFields,
@@ -22,7 +24,10 @@ import { Badge, Button } from "@edo/ui";
 import { Check, Save, X } from "lucide-react";
 import { DocumentPreview } from "./DocumentPreview";
 import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
-import { getRequiredReviewFields } from "./document-review-fields";
+import {
+  getRequiredReviewFields,
+  getReviewFieldValue,
+} from "./document-review-fields";
 import {
   DocumentOcrFields,
   DocumentReviewMetadata,
@@ -63,8 +68,10 @@ export function DocumentReviewWorkspace({
   const [hoveredField, setHoveredField] = useState<string | null>(null);
   const [draft, setDraft] = useState<{
     revision: number;
+    snapshot: string;
     values: Record<string, string>;
     original: Record<string, string>;
+    touched: Record<string, boolean>;
   } | null>(null);
   const [message, setMessage] = useState("");
   const [rejectionReason, setRejectionReason] = useState(
@@ -89,23 +96,85 @@ export function DocumentReviewWorkspace({
   const file = files.find((item) => item.id === fileId) ?? files[0];
   const visiblePage = Math.max(1, Math.min(pageNumber, file?.pageCount ?? 1));
   const fields = getRequiredReviewFields(data);
+  const reviewSnapshot = JSON.stringify(
+    data.fields
+      .map((field) => [
+        field.name,
+        field.kind,
+        field.required,
+        field.value,
+        field.editedBy,
+      ])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+  );
+  const canViewDetails =
+    !!permissions &&
+    ["20010", "20009"].some((rule) =>
+      Object.prototype.hasOwnProperty.call(permissions, rule),
+    );
+  const [showAllRegions, setShowAllRegions] = useState(false);
+  const [showOcrDetails, setShowOcrDetails] = useState(false);
+  const ocrDetails = useGetDocumentOcrDetails(data.documentId, data.version, {
+    query: {
+      queryKey: getGetDocumentOcrDetailsQueryKey(data.documentId, data.version),
+      enabled: canViewDetails && (showAllRegions || showOcrDetails),
+      refetchOnWindowFocus: "always",
+    },
+  });
+  useEffect(() => {
+    if (canViewDetails && (showAllRegions || showOcrDetails))
+      void client.invalidateQueries({
+        queryKey: getGetDocumentOcrDetailsQueryKey(
+          data.documentId,
+          data.version,
+        ),
+      });
+  }, [
+    client,
+    data.documentId,
+    data.version,
+    data.revision,
+    canViewDetails,
+    showAllRegions,
+    showOcrDetails,
+  ]);
   const mismatchCount = fields.filter((field) => field.mismatch).length;
   const visibleFields = mismatchOnly
     ? fields.filter((field) => field.mismatch)
     : fields;
-  const changes = draft
-    ? Object.fromEntries(
-        Object.entries(draft.values)
-          .filter(([name, value]) => value !== draft.original[name])
-          .map(([name, value]) => [
-            name,
-            fields.find((f) => f.name === name)?.kind === "boolean"
-              ? value === "true"
-              : value || null,
-          ]),
+  const savedValues = Object.fromEntries(
+    fields.map((field) => [field.name, field.value ?? ""]),
+  );
+  const currentValues = Object.fromEntries(
+    fields.map((field) => [
+      field.name,
+      draft?.touched[field.name]
+        ? draft.values[field.name]
+        : canEdit
+          ? getReviewFieldValue(field)
+          : (field.value ?? ""),
+    ]),
+  );
+  const changes = Object.fromEntries(
+    Object.entries(currentValues)
+      .filter(
+        ([name, value]) =>
+          value !== (draft?.original ?? savedValues)[name] ||
+          (draft?.touched[name] &&
+            getReviewFieldValue(
+              fields.find((field) => field.name === name)!,
+            ) !== savedValues[name]),
       )
-    : {};
+      .map(([name, value]) => [
+        name,
+        fields.find((f) => f.name === name)?.kind === "boolean"
+          ? value === "true"
+          : value || null,
+      ]),
+  );
   const changedCount = Object.keys(changes).length;
+  const hasManualChanges =
+    !!draft && Object.keys(changes).some((name) => draft.touched[name]);
   const stale = !!draft && (draft.revision !== data.revision || !canEdit);
   const update = async (result: DocumentVersionDto) => {
     client.setQueryData(
@@ -220,15 +289,13 @@ export function DocumentReviewWorkspace({
     retryOcr.isPending ||
     startOcr.isPending;
   const setField = (name: string, value: string) => {
-    const values =
-      draft?.values ??
-      Object.fromEntries(
-        fields.map((field) => [field.name, field.value ?? ""]),
-      );
+    const values = draft?.values ?? currentValues;
     setDraft({
       revision: draft?.revision ?? data.revision,
-      original: draft?.original ?? values,
+      snapshot: draft?.snapshot ?? reviewSnapshot,
+      original: draft?.original ?? savedValues,
       values: { ...values, [name]: value },
+      touched: { ...draft?.touched, [name]: true },
     });
     setMessage("");
   };
@@ -325,17 +392,29 @@ export function DocumentReviewWorkspace({
   useEffect(() => {
     if (
       draft &&
+      canEdit &&
+      draft.revision !== data.revision &&
+      draft.snapshot === reviewSnapshot
+    )
+      setDraft({ ...draft, revision: data.revision });
+    else if (
+      draft &&
       !changedCount &&
-      (draft.revision !== data.revision || !canEdit)
+      ((draft.revision !== data.revision &&
+        !Object.keys(draft.touched).length) ||
+        !canEdit)
     )
       setDraft(null);
-  }, [draft, changedCount, data.revision, canEdit]);
+  }, [draft, changedCount, data.revision, canEdit, reviewSnapshot]);
   const beginDraft = () => {
     if (!draft) {
-      const values = Object.fromEntries(
-        fields.map((field) => [field.name, field.value ?? ""]),
-      );
-      setDraft({ revision: data.revision, values, original: values });
+      setDraft({
+        revision: data.revision,
+        snapshot: reviewSnapshot,
+        values: currentValues,
+        original: savedValues,
+        touched: {},
+      });
     }
   };
   return (
@@ -347,6 +426,34 @@ export function DocumentReviewWorkspace({
         className="flex min-h-0 min-w-0 flex-col gap-2 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] p-3"
         aria-label="Превью документа"
       >
+        {canViewDetails && (
+          <label className="flex shrink-0 items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              className="accent-[var(--primary)]"
+              checked={showAllRegions}
+              onChange={(event) => setShowAllRegions(event.target.checked)}
+            />
+            Все области OCR
+          </label>
+        )}
+        {canViewDetails && showAllRegions && ocrDetails.isLoading && (
+          <p role="status" className="text-xs">
+            Загрузка областей OCR…
+          </p>
+        )}
+        {canViewDetails && showAllRegions && ocrDetails.isError && (
+          <p role="alert" className="text-xs">
+            Не удалось загрузить области.{" "}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void ocrDetails.refetch()}
+            >
+              Повторить
+            </Button>
+          </p>
+        )}
         {(files.length > 1 || (file && file.pageCount > 1)) && (
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
             {files.length > 1 && (
@@ -411,8 +518,16 @@ export function DocumentReviewWorkspace({
             file={file}
             pageNumber={visiblePage}
             fields={fields}
+            observations={
+              canViewDetails &&
+              showAllRegions &&
+              ocrDetails.data?.revision === data.revision
+                ? ocrDetails.data.fields
+                : undefined
+            }
             selectedField={selection?.fieldName ?? null}
             selectedRegionId={selection?.regionId ?? null}
+            selectionRequest={selection?.request ?? 0}
             hoveredField={hoveredField}
             onSelectRegion={(name, region) => selectField(name, true, region)}
             onHoverRegion={(name) => hoverRegion(name)}
@@ -500,14 +615,22 @@ export function DocumentReviewWorkspace({
               const isSelected = selection?.fieldName === field.name;
               const label =
                 DOCUMENT_FIELD_LABELS[field.name] ?? field.label ?? field.name;
-              const value = draft?.values[field.name] ?? field.value ?? "";
+              const value = currentValues[field.name];
               const displayValue = (text: string | null) =>
                 field.kind === "boolean"
                   ? text === "true"
                     ? "Да"
                     : "Нет"
                   : text || "—";
-              const inputClass = `block min-h-8 w-full min-w-0 rounded-md border bg-[var(--card)] px-2 py-1 text-[13px] leading-5 caret-[var(--primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] ${field.mismatch ? "border-[var(--primary)]" : "border-[var(--border)]"}`;
+              const ocrText = field.ocrText ?? field.originalValue;
+              const hasOcr = !!ocrText?.trim();
+              const canApplyOcr =
+                canEdit &&
+                hasOcr &&
+                field.originalValue !== null &&
+                (field.kind !== "boolean" ||
+                  ["true", "false"].includes(field.originalValue));
+              const inputClass = `block min-h-8 w-full min-w-0 rounded-md border bg-[var(--card)] px-2 py-1 text-[13px] leading-5 caret-[var(--primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] ${field.mismatch ? "border-[var(--warning)]" : "border-[var(--border)]"}`;
               return (
                 <div
                   key={field.name}
@@ -517,7 +640,7 @@ export function DocumentReviewWorkspace({
                   data-field-row={field.name}
                   onMouseEnter={() => hoverField(field.name)}
                   onMouseLeave={unhoverField}
-                  className={`grid min-w-0 gap-1 py-2 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3 ${field.mismatch ? "bg-[var(--primary-soft)]" : isSelected ? "bg-[var(--muted)]" : ""} ${isHovered ? `${field.mismatch ? "" : "bg-[var(--muted)]"} outline outline-1 outline-[var(--primary)]` : ""}`}
+                  className={`grid min-w-0 gap-1 py-2 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3 ${field.mismatch ? "bg-[var(--warning-soft)]" : isSelected ? "bg-[var(--muted)]" : ""} ${isHovered ? `${field.mismatch ? "" : "bg-[var(--muted)]"} outline outline-1 outline-[var(--primary)]` : ""}`}
                 >
                   <dt className="min-w-0 text-[13px] leading-5 sm:pt-1.5">
                     {canEdit ? (
@@ -618,23 +741,45 @@ export function DocumentReviewWorkspace({
                     )}
                     <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs leading-4 text-[var(--muted-foreground)]">
                       {field.submittedValue !== null &&
-                        (field.mismatch || field.submittedValue !== value) && (
+                        field.submittedValue !== value && (
                           <p className="min-w-0 break-words">
                             Кандидат: {displayValue(field.submittedValue)}
                           </p>
                         )}
-                      {data.ocrSource &&
-                        (field.mismatch ||
-                          field.editedBy ||
-                          value !== (field.originalValue ?? "")) && (
-                          <p className="min-w-0 break-words">
-                            OCR: {displayValue(field.originalValue)}
-                            {field.editedBy && " · исправлено вручную"}
-                          </p>
-                        )}
+                      {data.ocrSource && (
+                        <div className="min-w-0">
+                          {canApplyOcr ? (
+                            <button
+                              type="button"
+                              disabled={busy || stale}
+                              aria-label={`Подставить OCR: ${label}`}
+                              title="Подставить в поле. Сохранение — кнопкой «Сохранить исправления»."
+                              className="max-w-full whitespace-pre-wrap break-words rounded-sm text-left text-[var(--foreground)] underline decoration-dotted underline-offset-2 hover:decoration-solid focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() =>
+                                setField(field.name, field.originalValue!)
+                              }
+                            >
+                              OCR: {displayValue(ocrText)}
+                            </button>
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words">
+                              OCR:{" "}
+                              {hasOcr ? displayValue(ocrText) : "Не распознано"}
+                            </p>
+                          )}
+                          {field.editedBy && <p>Исправлено вручную</p>}
+                          {canEdit &&
+                            !draft?.touched[field.name] &&
+                            getReviewFieldValue(field) !==
+                              (field.value ?? "") && (
+                              <p>Подставлено OCR · проверьте по оригиналу</p>
+                            )}
+                        </div>
+                      )}
                       {field.mismatch && (
-                        <p className="mt-0.5 text-xs leading-4 text-[var(--primary)]">
-                          Расхождение с OCR — сверьте с оригиналом.
+                        <p className="mt-0.5 text-xs leading-4 text-[var(--foreground)]">
+                          Данные кандидата и OCR различаются — сверьте с
+                          оригиналом.
                         </p>
                       )}
                     </div>
@@ -643,7 +788,43 @@ export function DocumentReviewWorkspace({
               );
             })}
           </dl>
-          <DocumentOcrFields data={data} />
+          {canViewDetails && (
+            <details
+              className="my-3 border-t border-[var(--border)] pt-3"
+              open={showOcrDetails}
+              onToggle={(event) => setShowOcrDetails(event.currentTarget.open)}
+            >
+              <summary className="cursor-pointer text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]">
+                Подробности распознавания
+              </summary>
+              {showOcrDetails &&
+                (ocrDetails.isLoading ||
+                (ocrDetails.data?.revision !== data.revision &&
+                  !ocrDetails.isError) ? (
+                  <p role="status" className="py-2 text-xs">
+                    Загрузка результатов OCR…
+                  </p>
+                ) : ocrDetails.isError ? (
+                  <p role="alert" className="py-2 text-xs">
+                    Не удалось загрузить OCR.{" "}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void ocrDetails.refetch()}
+                    >
+                      Повторить
+                    </Button>
+                  </p>
+                ) : (
+                  <>
+                    <DocumentOcrFields fields={ocrDetails.data?.fields} />
+                    {!ocrDetails.data?.fields.length && (
+                      <p className="py-2 text-xs">Результатов OCR пока нет.</p>
+                    )}
+                  </>
+                ))}
+            </details>
+          )}
           {!fields.length && (
             <p className="py-3 text-[13px] text-[var(--muted-foreground)]">
               В документе нет обязательных полей для ручной проверки.
@@ -793,7 +974,7 @@ export function DocumentReviewWorkspace({
                     variant="outline"
                     className="text-[var(--primary)]"
                     aria-label="Отклонить документ"
-                    disabled={busy || changedCount > 0}
+                    disabled={busy || hasManualChanges}
                     onClick={() => setShowReject(!showReject)}
                   >
                     <X size={14} />
@@ -806,12 +987,14 @@ export function DocumentReviewWorkspace({
                   className="flex-1"
                   disabled={busy || !changedCount || stale}
                   onClick={() => {
-                    if (draft)
-                      edit.mutate({
-                        documentId: data.documentId,
-                        version: data.version,
-                        data: { revision: draft.revision, fields: changes },
-                      });
+                    edit.mutate({
+                      documentId: data.documentId,
+                      version: data.version,
+                      data: {
+                        revision: draft?.revision ?? data.revision,
+                        fields: changes,
+                      },
+                    });
                   }}
                 >
                   <Save size={14} />

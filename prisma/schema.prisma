@@ -400,6 +400,7 @@ model DocumentVersionField {
   versionId     String          @db.VarChar(64)
   name          String          @db.VarChar(128)
   originalValue String?         @db.Text
+  ocrText       String?         @db.Text
   submittedValue String?        @db.Text
   kind String @default("text") @db.VarChar(16)
   required Boolean @default(false)
@@ -498,7 +499,8 @@ model DocumentStreamGrant {
 // after EXIF/PDF rotation. Manual edits change value, never this source evidence.
 model OcrRegion {
   id         String @id @default(cuid()) @db.VarChar(64)
-  fieldId    String @db.VarChar(64)
+  fieldId    String? @db.VarChar(64)
+  ocrFieldId String? @db.VarChar(64)
   fileId     String @db.VarChar(64)
   pageNumber Int
   x          Float
@@ -507,10 +509,12 @@ model OcrRegion {
   height     Float
   text       String? @db.Text
 
-  field DocumentVersionField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  field DocumentVersionField? @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  ocrField DocumentVersionOcrField? @relation(fields: [ocrFieldId], references: [id], onDelete: Cascade)
   file  DocumentVersionFile  @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@index([fieldId])
+  @@index([ocrFieldId])
   @@index([fileId, pageNumber])
   @@map("ocr_regions")
 }
@@ -537,6 +541,7 @@ model DocumentVersionOcrField {
   paddleText String? @db.Text
   paddleConfidence Float?
   version DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  regions OcrRegion[]
   @@unique([versionId, ordinal])
   @@map("document_version_ocr_fields")
 }

@@ -1,14 +1,20 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { canRetryDocumentOcr, canStartDocumentOcr } from "../ocr/ocr-retry-policy";
+import {
+  canRetryDocumentOcr,
+  canStartDocumentOcr,
+} from "../ocr/ocr-retry-policy";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
+import { hasAccessRule } from "../auth/access-rules";
+import { EdoAccessRule } from "../auth/edo-access-rule";
 import { StorageService } from "../storage/storage.service";
 import { DocumentAccessService } from "./document-access.service";
 import { applicable, FIELD_LABELS } from "./document-contract";
@@ -28,6 +34,7 @@ import type {
   DocumentDto,
   DocumentListDto,
   DocumentVersionDto,
+  DocumentOcrDetailsDto,
   DownloadDto,
   PositionListDto,
   ReviewCandidateListDto,
@@ -257,7 +264,8 @@ export class DocumentReadService {
           take: 2,
         })
       : [];
-    const ocrEnabled = this.config?.get("OCR_MODE") === "external" &&
+    const ocrEnabled =
+      this.config?.get("OCR_MODE") === "external" &&
       this.config.get("OCR_WORKER_ENABLED") !== "false";
     return {
       documentId,
@@ -270,23 +278,30 @@ export class DocumentReadService {
       reviewedAt: row.reviewedAt?.toISOString() ?? null,
       reviewedBy: row.reviewedBy ?? null,
       reviewedByName: reviewers.length === 1 ? reviewers[0].fullName : null,
-      ocrFields: (row.ocrFields ?? []).map(
-        ({
-          name,
-          documentFieldName,
-          value,
-          source,
-          paddleText,
-          paddleConfidence,
-        }) => ({
-          name,
-          documentFieldName,
-          value,
-          source,
-          paddleText,
-          paddleConfidence,
-        }),
-      ),
+      ocrFields: (row.ocrFields ?? [])
+        .filter((observation) =>
+          row.fields.some(
+            (field) =>
+              field.required && field.name === observation.documentFieldName,
+          ),
+        )
+        .map(
+          ({
+            name,
+            documentFieldName,
+            value,
+            source,
+            paddleText,
+            paddleConfidence,
+          }) => ({
+            name,
+            documentFieldName,
+            value,
+            source,
+            paddleText,
+            paddleConfidence,
+          }),
+        ),
       ocrSource: row.ocrSource,
       files: row.files.map((f) => ({
         id: f.id,
@@ -299,7 +314,8 @@ export class DocumentReadService {
       })),
       fields: row.fields.map((f) => ({
         name: f.name,
-        originalValue: f.originalValue,
+        originalValue: f.required ? f.originalValue : null,
+        ocrText: f.required ? (f.ocrText ?? f.originalValue) : null,
         value: f.value,
         editedBy: f.editedBy,
         submittedValue: f.submittedValue,
@@ -307,10 +323,11 @@ export class DocumentReadService {
         kind: f.kind,
         required: f.required,
         mismatch:
-          f.submittedValue !== null &&
-          f.originalValue !== null &&
-          f.submittedValue !== f.originalValue,
-        regions: f.regions.map((region) => ({
+          !!f.submittedValue?.trim() &&
+          f.required &&
+          !!(f.ocrText ?? f.originalValue)?.trim() &&
+          f.submittedValue !== (f.ocrText ?? f.originalValue),
+        regions: (f.required ? f.regions : []).map((region) => ({
           id: region.id,
           fileId: region.fileId,
           fileOrdinal: region.file.ordinal,
@@ -336,7 +353,7 @@ export class DocumentReadService {
             cleanupPending: row.job.cleanupPending,
           }
         : null,
-      raw: row.ocrRaw,
+      raw: null,
       approvedAt: row.approvedAt?.toISOString() ?? null,
       approvedBy: row.approvedBy,
       rejectionReason: row.rejectionReason,
@@ -357,6 +374,67 @@ export class DocumentReadService {
             })),
           }
         : null,
+    };
+  }
+
+  async ocrDetails(
+    documentId: string,
+    version: number,
+    principal: AuthPrincipal,
+  ): Promise<DocumentOcrDetailsDto> {
+    if (!hasAccessRule(principal.accessRules, EdoAccessRule.OCR_DETAILS_VIEW))
+      throw new ForbiddenException("Missing required EDO access rule");
+    await this.access.document(documentId, principal);
+    const row = await this.prisma.documentVersion.findUnique({
+      where: { documentId_version: { documentId, version } },
+      include: {
+        ocrFields: {
+          orderBy: { ordinal: "asc" },
+          include: {
+            regions: { include: { file: { select: { ordinal: true } } } },
+          },
+        },
+      },
+    });
+    if (!row) throw new NotFoundException("Document version not found");
+    return {
+      revision: row.revision,
+      fields: row.ocrFields.map((field) => ({
+        name: field.name,
+        documentFieldName: field.documentFieldName,
+        value: field.value,
+        source: field.source,
+        paddleText: field.paddleText,
+        paddleConfidence: field.paddleConfidence,
+        // A single source segment may feed both series and number.
+        regions: Array.from(
+          new Map(
+            field.regions.map((region) => [
+              JSON.stringify([
+                region.fileId,
+                region.pageNumber,
+                region.x,
+                region.y,
+                region.width,
+                region.height,
+                region.text,
+              ]),
+              {
+                id: region.id,
+                fileId: region.fileId,
+                fileOrdinal: region.file.ordinal,
+                pageNumber: region.pageNumber,
+                x: region.x,
+                y: region.y,
+                width: region.width,
+                height: region.height,
+                text: region.text,
+              },
+            ]),
+          ).values(),
+        ),
+      })),
+      raw: row.ocrRaw,
     };
   }
 

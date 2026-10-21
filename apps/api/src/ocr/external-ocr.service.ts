@@ -3,11 +3,29 @@ import { ConfigService } from "@nestjs/config";
 import { z } from "zod";
 import {
   OcrService,
+  ocrSourceRegionSchema,
   type OcrRequest,
   type OcrResult,
   type OcrField,
 } from "./ocr.service";
 import { resolveOcrProfile, type OcrProfile } from "./ocr-profile";
+
+const vendorRegion = z
+  .object({
+    file_index: z.number().int().nonnegative(),
+    page_number: z.number().int().positive(),
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+    text: z.string().max(16384).nullable().optional(),
+  })
+  .transform(({ file_index, page_number, ...region }) => ({
+    ...region,
+    fileOrdinal: file_index,
+    pageNumber: page_number,
+  }))
+  .pipe(ocrSourceRegionSchema);
 
 const vendorField = z.object({
   name: z
@@ -21,6 +39,7 @@ const vendorField = z.object({
   source: z.enum(["PADDLE", "GLM", "MIXED"]),
   paddle_text: z.string().max(16384).nullable(),
   paddle_confidence: z.number().finite().min(0).max(1).nullable(),
+  regions: z.array(vendorRegion).max(200).optional(),
 });
 const ruResponse = z.object({
   data: z
@@ -103,11 +122,14 @@ export function normalizeOcrResponse(
     return rejected(
       docs.length ? "DOCUMENT_TYPE_MISMATCH" : "POOR_IMAGE_QUALITY",
     );
-  const fields: Record<string, string> = {};
+  const fields: Record<string, string | null> = {};
+  const fieldTexts: Record<string, string> = {};
+  const regions: Extract<OcrResult, { outcome: "SUCCEEDED" }>["regions"] = [];
   const ocrFields: OcrField[] = [];
   for (const doc of selected)
     for (const field of doc.ocr_fields) {
       const documentFieldName = mapping[profile][field.name] ?? null;
+      const ocrFieldOrdinal = ocrFields.length;
       ocrFields.push({
         name: field.name,
         documentFieldName,
@@ -115,25 +137,48 @@ export function normalizeOcrResponse(
         source: field.source,
         paddleText: field.paddle_text,
         paddleConfidence: field.paddle_confidence,
+        ...(field.regions ? { regions: field.regions } : {}),
       });
-      let value = field.value?.trim();
+      let value = field.value;
       if (
         !documentFieldName ||
-        !value ||
-        fields[documentFieldName] !== undefined
+        !value?.trim() ||
+        fields[documentFieldName] != null
       )
         continue;
+      const assign = (
+        name: string,
+        normalized: string | null,
+        text: string,
+      ) => {
+        if (
+          fields[name] !== undefined &&
+          (fields[name] !== null || normalized === null)
+        )
+          return;
+        for (let index = regions.length - 1; index >= 0; index--)
+          if (regions[index].fieldName === name) regions.splice(index, 1);
+        fields[name] = normalized;
+        fieldTexts[name] = text;
+        regions.push(
+          ...(field.regions ?? []).map((region) => ({
+            ...region,
+            fieldName: name,
+            ocrFieldOrdinal,
+          })),
+        );
+      };
       if (["issueDate", "expiryDate"].includes(documentFieldName))
-        value = calendarDate(value) ?? undefined;
-      if (!value) continue;
+        value = calendarDate(value);
       if (profile === "passport_uz" && field.name === "pas_number") {
-        const split = /^([A-Z]{2})(\d{7})$/.exec(value);
+        const split = /^([A-Z]{2})(\d{7})$/.exec(value!.trim());
         if (split) {
-          fields.series ??= split[1];
-          value = split[2];
+          assign("series", split[1], split[1]);
+          assign("number", split[2], split[2]);
+          continue;
         }
       }
-      fields[documentFieldName] = value;
+      assign(documentFieldName, value, field.value!);
     }
   if (!ocrFields.some((field) => field.value?.trim()))
     return rejected("POOR_IMAGE_QUALITY");
@@ -142,7 +187,9 @@ export function normalizeOcrResponse(
     outcome: "SUCCEEDED",
     source: "EXTERNAL",
     fields,
+    fieldTexts,
     ocrFields,
+    regions,
     raw: { profile, ocrFields },
   };
 }

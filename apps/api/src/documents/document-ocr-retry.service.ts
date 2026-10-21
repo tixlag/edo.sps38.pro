@@ -146,6 +146,15 @@ export class DocumentOcrRetryService {
       });
       await tx.document.update({ where: { id: documentId }, data: { status } });
       await tx.ocrIssue.deleteMany({ where: { versionId: version.id } });
+      if (action === "retry") {
+        await tx.ocrRegion.deleteMany({
+          where: { file: { versionId: version.id } },
+        });
+        await tx.documentVersionField.updateMany({
+          where: { versionId: version.id },
+          data: { originalValue: null, ocrText: null },
+        });
+      }
       await tx.documentVersionOcrField.deleteMany({
         where: { versionId: version.id },
       });

@@ -327,20 +327,27 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
         },
       });
       if (result.outcome === "SUCCEEDED") {
+        const observationIds = (result.ocrFields ?? []).map(() => randomUUID());
         if (result.ocrFields?.length) {
           await tx.documentVersionOcrField.createMany({
-            data: result.ocrFields.map((field, ordinal) => ({
-              ...field,
-              ordinal,
-              versionId: initial.versionId,
-            })),
+            data: result.ocrFields.map(
+              ({ regions: _regions, ...field }, ordinal) => ({
+                ...field,
+                id: observationIds[ordinal],
+                ordinal,
+                versionId: initial.versionId,
+              }),
+            ),
           });
         }
         if (manual) {
           for (const [name, value] of Object.entries(result.fields)) {
             await tx.documentVersionField.updateMany({
               where: { versionId: initial.versionId, name },
-              data: { originalValue: value },
+              data: {
+                originalValue: value,
+                ocrText: result.fieldTexts?.[name] ?? value,
+              },
             });
           }
         } else
@@ -349,10 +356,24 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
               versionId: initial.versionId,
               name,
               originalValue: value,
+              ocrText: result.fieldTexts?.[name] ?? value,
               value,
             })),
           });
-        if (result.regions?.length) {
+        const mappedRegions = result.regions ?? [];
+        // Unmapped observations still have useful geometry for the protected detail view.
+        const observationRegions = (result.ocrFields ?? []).flatMap(
+          (field, ordinal) =>
+            mappedRegions.some((region) => region.ocrFieldOrdinal === ordinal)
+              ? []
+              : (field.regions ?? []).map((region) => ({
+                  ...region,
+                  ocrFieldOrdinal: ordinal,
+                  fieldName: null,
+                })),
+        );
+        const allRegions = [...mappedRegions, ...observationRegions];
+        if (allRegions.length) {
           const [fields, files] = await Promise.all([
             tx.documentVersionField.findMany({
               where: { versionId: initial.versionId },
@@ -363,15 +384,23 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
               select: { id: true, ordinal: true, pageCount: true },
             }),
           ]);
-          const regions = result.regions.map((region) => {
+          const regions = allRegions.map((region) => {
             const field = fields.find((item) => item.name === region.fieldName);
             const file = files.find(
               (item) => item.ordinal === region.fileOrdinal,
             );
-            if (!field || !file || region.pageNumber > file.pageCount)
+            if (
+              (!field && region.ocrFieldOrdinal === undefined) ||
+              !file ||
+              region.pageNumber > file.pageCount
+            )
               throw new Error("OCR_CONTRACT_INVALID");
             return {
-              fieldId: field.id,
+              fieldId: field?.id ?? null,
+              ocrFieldId:
+                region.ocrFieldOrdinal === undefined
+                  ? null
+                  : observationIds[region.ocrFieldOrdinal],
               fileId: file.id,
               pageNumber: region.pageNumber,
               x: region.x,

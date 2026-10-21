@@ -47,6 +47,7 @@ import {
   DocumentTypeListDto,
   DocumentTypesQueryDto,
   DocumentVersionDto,
+  DocumentOcrDetailsDto,
   DownloadDto,
   EditDocumentFieldsDto,
   EmployeeLinkDto,
@@ -79,7 +80,8 @@ export class CandidateIntegrationController {
   @Post(":chatUuid/documents")
   @HttpCode(202)
   @ApiOperation({
-    summary: "Upload candidate document metadata for manual review, or use the legacy OCR contract",
+    summary:
+      "Upload candidate document metadata for manual review, or use the legacy OCR contract",
     operationId: "uploadCandidateDocument",
   })
   @ApiConsumes("multipart/form-data")
@@ -93,7 +95,8 @@ export class CandidateIntegrationController {
     schema: {
       type: "object",
       required: ["files[]"],
-      description: "Provide metadata for manual review or documentTypeCode for legacy OCR; at least one is required.",
+      description:
+        "Provide metadata for manual review or documentTypeCode for legacy OCR; at least one is required.",
       properties: {
         documentTypeCode: { type: "string", maxLength: 64 },
         metadata: {
@@ -191,7 +194,8 @@ export class DocumentsController {
   @HttpCode(202)
   @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
   @ApiOperation({
-    summary: "Retry failed OCR for a supported current document with retained originals",
+    summary:
+      "Retry failed OCR for a supported current document with retained originals",
     operationId: "retryDocumentOcr",
   })
   @ApiResponse({ status: 202, type: DocumentVersionDto })
@@ -202,14 +206,21 @@ export class DocumentsController {
     @CurrentPrincipal() principal: AuthPrincipal,
     @Req() req: Request,
   ): Promise<DocumentVersionDto> {
-    return this.ocrRetry.retry(id, version, body.revision, principal, req.correlationId ?? "");
+    return this.ocrRetry.retry(
+      id,
+      version,
+      body.revision,
+      principal,
+      req.correlationId ?? "",
+    );
   }
 
   @Post("documents/:documentId/versions/:version/ocr/start")
   @HttpCode(202)
   @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
   @ApiOperation({
-    summary: "Start OCR for a supported current document without a previous OCR job",
+    summary:
+      "Start OCR for a supported current document without a previous OCR job",
     operationId: "startDocumentOcr",
   })
   @ApiResponse({ status: 202, type: DocumentVersionDto })
@@ -220,7 +231,13 @@ export class DocumentsController {
     @CurrentPrincipal() principal: AuthPrincipal,
     @Req() req: Request,
   ): Promise<DocumentVersionDto> {
-    return this.ocrRetry.start(id, version, body.revision, principal, req.correlationId ?? "");
+    return this.ocrRetry.start(
+      id,
+      version,
+      body.revision,
+      principal,
+      req.correlationId ?? "",
+    );
   }
 
   @Get("document-types")
@@ -303,6 +320,21 @@ export class DocumentsController {
     @CurrentPrincipal() principal: AuthPrincipal,
   ): Promise<DocumentVersionDto> {
     return this.reads.publicVersion(id, version, principal);
+  }
+
+  @Get("documents/:documentId/versions/:version/ocr-details")
+  @RequireAccessRule(EdoAccessRule.OCR_DETAILS_VIEW)
+  @ApiOperation({
+    summary: "Get all OCR observations and source regions",
+    operationId: "getDocumentOcrDetails",
+  })
+  @ApiResponse({ status: 200, type: DocumentOcrDetailsDto })
+  ocrDetails(
+    @Param("documentId") id: string,
+    @Param("version", ParseIntPipe) version: number,
+    @CurrentPrincipal() principal: AuthPrincipal,
+  ): Promise<DocumentOcrDetailsDto> {
+    return this.reads.ocrDetails(id, version, principal);
   }
 
   @Get("documents/:documentId/versions/:version/files/:fileId/download")

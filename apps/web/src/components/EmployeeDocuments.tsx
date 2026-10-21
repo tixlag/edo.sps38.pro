@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { Clock, Check, X } from "lucide-react";
 import {
-  getGetDocumentVersionQueryKey,
-  useGetDocumentVersion,
   useListDocumentTypes,
   useListEmployeeDocuments,
 } from "@edo/api-client";
@@ -15,6 +13,7 @@ import {
   StatusBadge,
 } from "@edo/ui";
 import { DocumentReviewWorkspace } from "./DocumentReviewWorkspace";
+import { useLiveDocumentVersion } from "../lib/use-live-document-version";
 
 function DocumentViewer({
   documentId,
@@ -25,16 +24,7 @@ function DocumentViewer({
   version: number;
   employeeId: string;
 }) {
-  const result = useGetDocumentVersion(documentId, version, {
-    query: {
-      queryKey: getGetDocumentVersionQueryKey(documentId, version),
-      refetchInterval: (query) =>
-        (["UPLOADED", "OCR_PENDING"].includes(query.state.data?.status ?? "") ||
-          ["QUEUED", "RUNNING"].includes(query.state.data?.job?.status ?? ""))
-          ? 3000
-          : false,
-    },
-  });
+  const result = useLiveDocumentVersion(documentId, version);
   if (result.isLoading)
     return (
       <p role="status" className="py-8 text-sm">
@@ -58,7 +48,19 @@ function DocumentViewer({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <StatusBadge status={data.status} document icon={data.status === "IN_REVIEW" ? <Clock size={14} /> : data.status === "APPROVED" ? <Check size={14} /> : data.status === "RETURNED" ? <X size={14} /> : undefined} />
+          <StatusBadge
+            status={data.status}
+            document
+            icon={
+              data.status === "IN_REVIEW" ? (
+                <Clock size={14} />
+              ) : data.status === "APPROVED" ? (
+                <Check size={14} />
+              ) : data.status === "RETURNED" ? (
+                <X size={14} />
+              ) : undefined
+            }
+          />
           <span className="text-sm text-[var(--muted-foreground)]">
             Версия {data.version}
           </span>
@@ -122,17 +124,19 @@ function DocumentViewer({
         </section>
       )}
       <DocumentReviewWorkspace data={data} employeeId={employeeId} />
-      {data.raw !== null && <details className="border-t border-[var(--border)] pt-4">
-        <summary className="cursor-pointer text-sm font-semibold focus-visible:outline focus-visible:outline-2">
-          Исходный JSON OCR
-        </summary>
-        <p className="mt-3 text-sm text-[var(--muted-foreground)]">
-          Ответ распознавания до ручных исправлений.
-        </p>
-        <pre className="mt-3 max-h-[420px] overflow-auto rounded-[10px] bg-[var(--muted)] p-4 text-xs">
-          {JSON.stringify(data.raw ?? {}, null, 2)}
-        </pre>
-      </details>}
+      {data.raw !== null && (
+        <details className="border-t border-[var(--border)] pt-4">
+          <summary className="cursor-pointer text-sm font-semibold focus-visible:outline focus-visible:outline-2">
+            Исходный JSON OCR
+          </summary>
+          <p className="mt-3 text-sm text-[var(--muted-foreground)]">
+            Ответ распознавания до ручных исправлений.
+          </p>
+          <pre className="mt-3 max-h-[420px] overflow-auto rounded-[10px] bg-[var(--muted)] p-4 text-xs">
+            {JSON.stringify(data.raw ?? {}, null, 2)}
+          </pre>
+        </details>
+      )}
     </div>
   );
 }

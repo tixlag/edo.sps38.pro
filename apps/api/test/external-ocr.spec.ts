@@ -52,6 +52,111 @@ const service = (extra: Record<string, unknown> = {}) =>
 afterEach(() => vi.unstubAllGlobals());
 
 describe("OCR profiles and normalization without inference", () => {
+  it("keeps a later valid date usable when an earlier page had an invalid date", () => {
+    const box = {
+      file_index: 0,
+      page_number: 1,
+      x: 0.1,
+      y: 0.2,
+      width: 0.3,
+      height: 0.05,
+    };
+    const result = normalizeOcrResponse("passport_ru", {
+      data: {},
+      ocr_fields: [
+        { ...field("date_issue", "31.02.2026"), regions: [box] },
+        { ...field("date_issue", "20.10.2026"), regions: [{ ...box, y: 0.5 }] },
+      ],
+    });
+    expect(result).toMatchObject({
+      fields: { issueDate: "2026-10-20" },
+      fieldTexts: { issueDate: "20.10.2026" },
+      regions: [{ fieldName: "issueDate", ocrFieldOrdinal: 1, y: 0.5 }],
+    });
+    expect(result.outcome === "SUCCEEDED" && result.regions).toHaveLength(1);
+  });
+  it("maps source geometry to typed requisites while retaining unmapped observations", () => {
+    const region = {
+      file_index: 0,
+      page_number: 1,
+      x: 0.1,
+      y: 0.2,
+      width: 0.4,
+      height: 0.05,
+      text: "AA1234567",
+    };
+    const result = validateOcrResult(
+      normalizeOcrResponse("passport_uz", [
+        {
+          type: "passport",
+          fields: {},
+          ocr_fields: [
+            { ...field("pas_number", "AA1234567"), regions: [region] },
+            {
+              ...field("pas_nationality", "UZBEKISTAN"),
+              regions: [{ ...region, y: 0.4 }],
+            },
+          ],
+        },
+      ]),
+      request.files,
+    );
+    expect(result).toMatchObject({
+      fields: { series: "AA", number: "1234567" },
+      regions: [
+        {
+          fieldName: "series",
+          ocrFieldOrdinal: 0,
+          fileOrdinal: 0,
+          pageNumber: 1,
+        },
+        {
+          fieldName: "number",
+          ocrFieldOrdinal: 0,
+          fileOrdinal: 0,
+          pageNumber: 1,
+        },
+      ],
+      ocrFields: [
+        { regions: [{ text: "AA1234567" }] },
+        { documentFieldName: null, regions: [{ y: 0.4 }] },
+      ],
+    });
+  });
+
+  it("rejects invalid geometry, absent source files and out-of-range pages", () => {
+    for (const change of [
+      { x: -0.1 },
+      { width: 2 },
+      { file_index: 9 },
+      { page_number: 2 },
+    ]) {
+      expect(() =>
+        validateOcrResult(
+          normalizeOcrResponse("passport_ru", {
+            data: {},
+            ocr_fields: [
+              {
+                ...field("number", "123456"),
+                regions: [
+                  {
+                    file_index: 0,
+                    page_number: 1,
+                    x: 0.1,
+                    y: 0.2,
+                    width: 0.3,
+                    height: 0.05,
+                    ...change,
+                  },
+                ],
+              },
+            ],
+          }),
+          request.files,
+        ),
+      ).toThrow();
+    }
+  });
   it("routes only the supported type/citizenship combinations", () => {
     expect(resolveOcrProfile(request)).toBe("passport_ru");
     expect(resolveOcrProfile({ ...request, citizenship: "uz" })).toBe(
@@ -88,7 +193,12 @@ describe("OCR profiles and normalization without inference", () => {
       data: {},
       ocr_fields: [field("date_issue", "31.02.2026")],
     });
-    expect(invalid.outcome === "SUCCEEDED" && invalid.fields).toEqual({});
+    expect(invalid.outcome === "SUCCEEDED" && invalid.fields).toEqual({
+      issueDate: null,
+    });
+    expect(invalid.outcome === "SUCCEEDED" && invalid.fieldTexts).toEqual({
+      issueDate: "31.02.2026",
+    });
   });
   it("splits only a complete UZ passport number and never maps entry dates to issueDate", () => {
     expect(

@@ -3,6 +3,7 @@ import { OcrWorkerService } from "../src/ocr/ocr-worker.service";
 import { DocumentReviewService } from "../src/documents/document-review.service";
 import { DocumentReadService } from "../src/documents/document-read.service";
 import type { OcrResult } from "../src/ocr/ocr.service";
+import { normalizeOcrResponse } from "../src/ocr/external-ocr.service";
 
 const principal = {
   uuid: "verified-reviewer",
@@ -67,7 +68,18 @@ function workerFixture() {
       update: vi.fn(),
     },
     documentVersionOcrField: { createMany: vi.fn() },
-    documentVersionField: { updateMany: vi.fn(), createMany: vi.fn() },
+    documentVersionField: {
+      updateMany: vi.fn(),
+      createMany: vi.fn(),
+      findMany: vi.fn(async () => [
+        { id: "series", name: "series" },
+        { id: "number", name: "number" },
+      ]),
+    },
+    documentVersionFile: {
+      findMany: vi.fn(async () => [{ id: "scan", ordinal: 0, pageCount: 2 }]),
+    },
+    ocrRegion: { createMany: vi.fn() },
     document: { updateMany: vi.fn() },
     ocrIssue: { createMany: vi.fn() },
   };
@@ -89,13 +101,81 @@ function workerFixture() {
 afterEach(() => vi.useRealTimers());
 
 describe("manual review enrichment", () => {
+  it("stores source boxes for split and unmapped observations without creating candidate requisites", async () => {
+    const { worker, tx, job } = workerFixture();
+    job.status = "RUNNING";
+    job.leaseToken = "lease";
+    const region = {
+      file_index: 0,
+      page_number: 2,
+      x: 0.1,
+      y: 0.2,
+      width: 0.3,
+      height: 0.05,
+      text: "AA1234567",
+    };
+    const observed = normalizeOcrResponse("passport_uz", [
+      {
+        type: "passport",
+        fields: {},
+        ocr_fields: [
+          {
+            name: "pas_number",
+            value: "AA1234567",
+            source: "PADDLE",
+            paddle_text: "AA1234567",
+            paddle_confidence: 0.99,
+            regions: [region],
+          },
+          {
+            name: "pas_nationality",
+            value: "UZBEKISTAN",
+            source: "GLM",
+            paddle_text: null,
+            paddle_confidence: null,
+            regions: [{ ...region, y: 0.5 }],
+          },
+        ],
+      },
+    ]);
+    await worker.complete("job", "lease", observed, {});
+    const observations =
+      tx.documentVersionOcrField.createMany.mock.calls[0][0].data;
+    const geometry = tx.ocrRegion.createMany.mock.calls[0][0].data;
+    expect(observations[0]).not.toHaveProperty("regions");
+    expect(geometry).toEqual([
+      expect.objectContaining({
+        fieldId: "series",
+        ocrFieldId: observations[0].id,
+        fileId: "scan",
+        pageNumber: 2,
+      }),
+      expect.objectContaining({
+        fieldId: "number",
+        ocrFieldId: observations[0].id,
+        fileId: "scan",
+        pageNumber: 2,
+      }),
+      expect.objectContaining({
+        fieldId: null,
+        ocrFieldId: observations[1].id,
+        fileId: "scan",
+        y: 0.5,
+      }),
+    ]);
+    expect(tx.documentVersionField.createMany).not.toHaveBeenCalled();
+    expect(tx.documentVersionField.updateMany).toHaveBeenCalledWith({
+      where: { versionId: "v1", name: "number" },
+      data: { originalValue: "1234567", ocrText: "1234567" },
+    });
+  });
   it("stores observations and comparison values without overwriting requisites", async () => {
     const { worker, tx, job } = workerFixture();
     await worker.process("job");
     expect(job.status).toBe("SUCCEEDED");
     expect(tx.documentVersionField.updateMany).toHaveBeenCalledWith({
       where: { versionId: "v1", name: "number" },
-      data: { originalValue: "OCR" },
+      data: { originalValue: "OCR", ocrText: "OCR" },
     });
     expect(tx.documentVersionField.createMany).not.toHaveBeenCalled();
     expect(tx.documentVersionOcrField.createMany).toHaveBeenCalledWith({

@@ -13,8 +13,6 @@ import {
   useListCandidateReviewQueue,
   type CandidateDetailsDto,
   useGetDocumentInfo,
-  useGetDocumentVersion,
-  getGetDocumentVersionQueryKey,
 } from "@edo/api-client";
 import {
   PageHeader,
@@ -27,6 +25,7 @@ import {
 } from "@edo/ui";
 import { Clock, Check, X, ChevronRight } from "lucide-react";
 import { DocumentReviewWorkspace } from "../components/DocumentReviewWorkspace";
+import { useLiveDocumentVersion } from "../lib/use-live-document-version";
 import {
   SearchSelect,
   type SearchSelectOption,
@@ -749,16 +748,7 @@ export function ReviewDocumentPage() {
       : (info.data?.pendingDeliveryVersions[0] ??
         info.data?.currentVersion ??
         0));
-  const version = useGetDocumentVersion(documentId, number, {
-    query: {
-      queryKey: getGetDocumentVersionQueryKey(documentId, number),
-      enabled: !!number,
-      refetchInterval: (query) =>
-        ["QUEUED", "RUNNING"].includes(query.state.data?.job?.status ?? "")
-          ? 3000
-          : false,
-    },
-  });
+  const version = useLiveDocumentVersion(documentId, number);
   const historic = isHistoricVersion(version.data?.version, currentVersion);
   const unknownVersionFallback = urlVersion === undefined;
   const chooseVersion = (next: number) => {
@@ -908,6 +898,7 @@ export function ReviewDocumentPage() {
       {version.data && (
         <div className="mt-3 min-h-0 lg:flex-1">
           <DocumentReviewWorkspace
+            key={`${version.data.documentId}-${version.data.version}`}
             candidateId={info.data?.candidateId ?? undefined}
             data={version.data}
             readOnly={historic}

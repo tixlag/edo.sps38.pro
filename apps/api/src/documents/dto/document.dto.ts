@@ -102,6 +102,13 @@ export class OcrRegionDto {
 export class DocumentFieldDto {
   @ApiProperty() name!: string;
   @ApiProperty({ type: String, nullable: true }) originalValue!: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      "Unformatted OCR field text for exact comparison; originalValue is the typed suggestion",
+  })
+  ocrText?: string | null;
   @ApiProperty({ type: String, nullable: true }) value!: string | null;
   @ApiProperty({ type: String, nullable: true }) editedBy!: string | null;
   @ApiProperty({ type: String, nullable: true }) submittedValue!: string | null;
@@ -185,6 +192,13 @@ export class DocumentOcrFieldDto {
   @ApiProperty({ type: String, nullable: true }) paddleText!: string | null;
   @ApiProperty({ type: Number, nullable: true, minimum: 0, maximum: 1 })
   paddleConfidence!: number | null;
+  @ApiPropertyOptional({ type: [OcrRegionDto] }) regions?: OcrRegionDto[];
+}
+export class DocumentOcrDetailsDto {
+  @ApiProperty() revision!: number;
+  @ApiProperty({ type: [DocumentOcrFieldDto] }) fields!: DocumentOcrFieldDto[];
+  @ApiProperty({ type: "object", additionalProperties: true, nullable: true })
+  raw!: unknown;
 }
 export class DocumentReviewMetadataDto {
   @ApiProperty({
@@ -210,9 +224,15 @@ export class DocumentReviewMetadataDto {
   reviewedBy!: string | null;
 }
 export class DocumentVersionDto extends DocumentReviewMetadataDto {
-  @ApiProperty({ description: "Current supported submitted version has no OCR attempt and retained originals" })
+  @ApiProperty({
+    description:
+      "Current supported submitted version has no OCR attempt and retained originals",
+  })
   canStartOcr!: boolean;
-  @ApiProperty({ description: "Current supported version has a failed OCR attempt, retained originals, and enabled OCR" })
+  @ApiProperty({
+    description:
+      "Current supported version has a failed OCR attempt, retained originals, and enabled OCR",
+  })
   canRetryOcr!: boolean;
   @ApiProperty() documentId!: string;
   @ApiProperty() version!: number;
