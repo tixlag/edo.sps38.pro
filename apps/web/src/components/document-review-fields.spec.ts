@@ -31,6 +31,7 @@ function version(fields: DocumentFieldDto[]): DocumentVersionDto {
     ocrSource: "EXTERNAL",
     ocrFields: [],
     canRetryOcr: false,
+    canStartOcr: false,
     submittedAt: null,
     reviewedAt: null,
     reviewedBy: null,

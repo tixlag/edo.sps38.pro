@@ -5,7 +5,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { canRetryDocumentOcr } from "../ocr/ocr-retry-policy";
+import { canRetryDocumentOcr, canStartDocumentOcr } from "../ocr/ocr-retry-policy";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
@@ -55,6 +55,7 @@ const documentSummaryInclude = {
 
 const versionInclude = {
   document: { include: { documentType: true } },
+  submission: { select: { id: true, status: true } },
   files: { orderBy: { ordinal: "asc" as const } },
   fields: {
     orderBy: [{ ordinal: "asc" as const }, { name: "asc" as const }],
@@ -256,16 +257,15 @@ export class DocumentReadService {
           take: 2,
         })
       : [];
+    const ocrEnabled = this.config?.get("OCR_MODE") === "external" &&
+      this.config.get("OCR_WORKER_ENABLED") !== "false";
     return {
       documentId,
       version,
       status: row.status,
       revision: row.revision,
-      canRetryOcr: canRetryDocumentOcr(
-        row,
-        this.config?.get("OCR_MODE") === "external" &&
-          this.config.get("OCR_WORKER_ENABLED") !== "false",
-      ),
+      canRetryOcr: canRetryDocumentOcr(row, ocrEnabled),
+      canStartOcr: canStartDocumentOcr(row, ocrEnabled),
       submittedAt: row.submittedAt?.toISOString() ?? null,
       reviewedAt: row.reviewedAt?.toISOString() ?? null,
       reviewedBy: row.reviewedBy ?? null,

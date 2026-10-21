@@ -6,8 +6,11 @@ export interface OcrRetryVersion {
   citizenship: string | null;
   reviewedAt: Date | null;
   cleanupPending: boolean;
+  ocrSource: string | null;
+  submission: { id: string; status: string } | null;
   document: {
     currentVersion: number;
+    candidateId: string | null;
     documentType: { erpUid: string | null; code: string } | null;
   };
   job: {
@@ -18,7 +21,7 @@ export interface OcrRetryVersion {
   files: { deletedAt: Date | null }[];
 }
 
-export function canRetryDocumentOcr(
+function canProcessDocumentOcr(
   version: OcrRetryVersion,
   enabled: boolean,
 ): boolean {
@@ -28,10 +31,6 @@ export function canRetryDocumentOcr(
     ["IN_REVIEW", "OCR_FAILED"].includes(version.status) &&
     !version.reviewedAt &&
     !version.cleanupPending &&
-    version.job &&
-    ["FAILED", "REJECTED"].includes(version.job.status) &&
-    !version.job.cleanupPending &&
-    version.job.errorCode !== "UPLOAD_FAILED" &&
     version.files.length > 0 &&
     version.files.every((file) => !file.deletedAt) &&
     resolveOcrProfile({
@@ -39,5 +38,32 @@ export function canRetryDocumentOcr(
       documentTypeCode: version.document.documentType?.code ?? "",
       citizenship: version.citizenship,
     }),
+  );
+}
+
+export function canRetryDocumentOcr(
+  version: OcrRetryVersion,
+  enabled: boolean,
+): boolean {
+  return Boolean(
+    canProcessDocumentOcr(version, enabled) &&
+    version.job &&
+    ["FAILED", "REJECTED"].includes(version.job.status) &&
+    !version.job.cleanupPending &&
+    version.job.errorCode !== "UPLOAD_FAILED",
+  );
+}
+
+export function canStartDocumentOcr(
+  version: OcrRetryVersion,
+  enabled: boolean,
+): boolean {
+  return Boolean(
+    canProcessDocumentOcr(version, enabled) &&
+    version.status === "IN_REVIEW" &&
+    version.job === null &&
+    version.ocrSource === null &&
+    version.document.candidateId &&
+    version.submission?.status === "SUCCEEDED",
   );
 }

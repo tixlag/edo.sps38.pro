@@ -16,6 +16,7 @@ vi.mock("@edo/api-client", () => ({
   useRejectDocument: () => ({ mutate: vi.fn(), isPending: false }),
   useSendDocumentToErp: () => ({ mutate: vi.fn(), isPending: false }),
   useRetryDocumentOcr: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useStartDocumentOcr: () => ({ mutate: vi.fn(), isPending: false }),
   getGetDashboardQueryKey: () => ["dashboard"],
   getGetDocumentVersionQueryKey: () => ["version"],
   getListEmployeeDocumentsQueryKey: () => ["employee-docs"],

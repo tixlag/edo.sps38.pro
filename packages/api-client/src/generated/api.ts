@@ -37,6 +37,7 @@ export const AuditAction = {
   LK_REFERENCE_SYNCED: "LK_REFERENCE_SYNCED",
   LK_EVENT_APPLIED: "LK_EVENT_APPLIED",
   DOCUMENT_OCR_RETRIED: "DOCUMENT_OCR_RETRIED",
+  DOCUMENT_OCR_REQUESTED: "DOCUMENT_OCR_REQUESTED",
 } as const;
 
 export interface AuditLogItemDto {
@@ -856,6 +857,8 @@ export interface DocumentVersionDto {
    * @nullable
    */
   reviewedBy: string | null;
+  /** Current supported submitted version has no OCR attempt and retained originals */
+  canStartOcr: boolean;
   /** Current supported version has a failed OCR attempt, retained originals, and enabled OCR */
   canRetryOcr: boolean;
   documentId: string;
@@ -3289,6 +3292,91 @@ export const useRetryDocumentOcr = <
   TContext
 > => {
   const mutationOptions = getRetryDocumentOcrMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Start OCR for a supported current document without a previous OCR job
+ */
+export const startDocumentOcr = (
+  documentId: string,
+  version: number,
+  reviewRevisionDto: ReviewRevisionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentVersionDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/ocr/start`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: reviewRevisionDto,
+    signal,
+  });
+};
+
+export const getStartDocumentOcrMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startDocumentOcr>>,
+    TError,
+    { documentId: string; version: number; data: ReviewRevisionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof startDocumentOcr>>,
+  TError,
+  { documentId: string; version: number; data: ReviewRevisionDto },
+  TContext
+> => {
+  const mutationKey = ["startDocumentOcr"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof startDocumentOcr>>,
+    { documentId: string; version: number; data: ReviewRevisionDto }
+  > = (props) => {
+    const { documentId, version, data } = props ?? {};
+
+    return startDocumentOcr(documentId, version, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StartDocumentOcrMutationResult = NonNullable<
+  Awaited<ReturnType<typeof startDocumentOcr>>
+>;
+export type StartDocumentOcrMutationBody = ReviewRevisionDto;
+export type StartDocumentOcrMutationError = ApiErrorDto;
+
+/**
+ * @summary Start OCR for a supported current document without a previous OCR job
+ */
+export const useStartDocumentOcr = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startDocumentOcr>>,
+    TError,
+    { documentId: string; version: number; data: ReviewRevisionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof startDocumentOcr>>,
+  TError,
+  { documentId: string; version: number; data: ReviewRevisionDto },
+  TContext
+> => {
+  const mutationOptions = getStartDocumentOcrMutationOptions(options);
 
   return useMutation(mutationOptions);
 };
