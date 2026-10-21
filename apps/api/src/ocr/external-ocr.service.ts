@@ -8,7 +8,11 @@ import {
   type OcrResult,
   type OcrField,
 } from "./ocr.service";
-import { resolveOcrProfile, type OcrProfile } from "./ocr-profile";
+import {
+  normalizeRussianPassportSeries,
+  resolveOcrProfile,
+  type OcrProfile,
+} from "./ocr-profile";
 
 const vendorRegion = z
   .object({
@@ -129,17 +133,21 @@ export function normalizeOcrResponse(
   for (const doc of selected)
     for (const field of doc.ocr_fields) {
       const documentFieldName = mapping[profile][field.name] ?? null;
+      const fieldValue =
+        profile === "passport_ru" && field.name === "series"
+          ? normalizeRussianPassportSeries(field.value)
+          : field.value;
       const ocrFieldOrdinal = ocrFields.length;
       ocrFields.push({
         name: field.name,
         documentFieldName,
-        value: field.value,
+        value: fieldValue,
         source: field.source,
         paddleText: field.paddle_text,
         paddleConfidence: field.paddle_confidence,
         ...(field.regions ? { regions: field.regions } : {}),
       });
-      let value = field.value;
+      let value = fieldValue;
       if (
         !documentFieldName ||
         !value?.trim() ||
@@ -178,7 +186,7 @@ export function normalizeOcrResponse(
           continue;
         }
       }
-      assign(documentFieldName, value, field.value!);
+      assign(documentFieldName, value, fieldValue!);
     }
   if (!ocrFields.some((field) => field.value?.trim()))
     return rejected("POOR_IMAGE_QUALITY");

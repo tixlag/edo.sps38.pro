@@ -19,6 +19,10 @@ import { StorageService } from "../storage/storage.service";
 import { DocumentAccessService } from "./document-access.service";
 import { applicable, FIELD_LABELS } from "./document-contract";
 import {
+  normalizeRussianPassportSeries,
+  resolveOcrProfile,
+} from "../ocr/ocr-profile";
+import {
   buildCandidateProfileWhere,
   toCandidateProfile,
 } from "./candidate-profile";
@@ -87,7 +91,7 @@ const versionInclude = {
 
 function comparableDate(value: string): string | null {
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  const localized = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value);
+  const localized = /^(\d{2})[./-](\d{2})[./-](\d{4})$/.exec(value);
   const match = iso ?? localized;
   if (!match) return null;
 
@@ -120,6 +124,7 @@ function ocrValuesMatch(
   candidateValue: string,
   ocrValue: string,
   field: { name: string; kind: string },
+  isRussianPassport: boolean,
 ): boolean {
   if (candidateValue === ocrValue) return true;
   if (field.kind === "date") {
@@ -128,11 +133,11 @@ function ocrValuesMatch(
     return candidateDate !== null && candidateDate === ocrDate;
   }
 
-  // OCR sometimes inserts a visual separator into a passport series.
-  const canonicalName = field.name.toLowerCase().replace(/[^a-z]/g, "");
-  if (canonicalName === "series" || canonicalName.endsWith("series"))
+  // Older Russian-passport OCR records may still contain spaces in the series.
+  if (isRussianPassport && field.name === "series")
     return (
-      candidateValue.replace(/\s+/gu, "") === ocrValue.replace(/\s+/gu, "")
+      normalizeRussianPassportSeries(candidateValue) ===
+      normalizeRussianPassportSeries(ocrValue)
     );
 
   return false;
@@ -310,6 +315,12 @@ export class DocumentReadService {
       include: versionInclude,
     });
     if (!row) throw new NotFoundException("Document version not found");
+    const isRussianPassport =
+      resolveOcrProfile({
+        documentUid: row.document.documentType?.erpUid,
+        documentTypeCode: row.document.documentType?.code ?? "",
+        citizenship: row.citizenship,
+      }) === "passport_ru";
     const reviewers = row.reviewedBy
       ? await this.prisma.lkEmployee.findMany({
           where: { uuid: row.reviewedBy },
@@ -365,33 +376,45 @@ export class DocumentReadService {
         pageCount: f.pageCount,
         deleted: f.deletedAt !== null,
       })),
-      fields: row.fields.map((f) => ({
-        name: f.name,
-        originalValue: f.required ? f.originalValue : null,
-        ocrText: f.required ? (f.ocrText ?? f.originalValue) : null,
-        value: f.value,
-        editedBy: f.editedBy,
-        submittedValue: f.submittedValue,
-        label: FIELD_LABELS[f.name] ?? f.name,
-        kind: f.kind,
-        required: f.required,
-        mismatch:
-          !!f.submittedValue?.trim() &&
-          f.required &&
-          !!(f.ocrText ?? f.originalValue)?.trim() &&
-          !ocrValuesMatch(f.submittedValue, f.ocrText ?? f.originalValue!, f),
-        regions: (f.required ? f.regions : []).map((region) => ({
-          id: region.id,
-          fileId: region.fileId,
-          fileOrdinal: region.file.ordinal,
-          pageNumber: region.pageNumber,
-          x: region.x,
-          y: region.y,
-          width: region.width,
-          height: region.height,
-          text: region.text,
-        })),
-      })),
+      fields: row.fields.map((f) => {
+        const rawOcrText = f.ocrText ?? f.originalValue;
+        const isRussianSeries = isRussianPassport && f.name === "series";
+        return {
+          name: f.name,
+          originalValue: f.required
+            ? isRussianSeries
+              ? normalizeRussianPassportSeries(f.originalValue)
+              : f.originalValue
+            : null,
+          ocrText: f.required
+            ? isRussianSeries
+              ? normalizeRussianPassportSeries(rawOcrText)
+              : rawOcrText
+            : null,
+          value: f.value,
+          editedBy: f.editedBy,
+          submittedValue: f.submittedValue,
+          label: FIELD_LABELS[f.name] ?? f.name,
+          kind: f.kind,
+          required: f.required,
+          mismatch:
+            !!f.submittedValue?.trim() &&
+            f.required &&
+            !!rawOcrText?.trim() &&
+            !ocrValuesMatch(f.submittedValue, rawOcrText, f, isRussianPassport),
+          regions: (f.required ? f.regions : []).map((region) => ({
+            id: region.id,
+            fileId: region.fileId,
+            fileOrdinal: region.file.ordinal,
+            pageNumber: region.pageNumber,
+            x: region.x,
+            y: region.y,
+            width: region.width,
+            height: region.height,
+            text: region.text,
+          })),
+        };
+      }),
       issues: row.issues.map((i) => ({
         code: i.code,
         message: i.message,

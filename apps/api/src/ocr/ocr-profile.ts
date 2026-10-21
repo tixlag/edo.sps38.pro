@@ -2,6 +2,12 @@ export type OcrProfile = "passport_ru" | "passport_uz" | "migration_card";
 export const PASSPORT_UID = "6ffb1fd5-8341-11eb-ba8b-00259002db81";
 export const MIGRATION_UID = "39554ac3-6462-11ec-80cc-002590854e7f";
 
+export function normalizeRussianPassportSeries(
+  value: string | null,
+): string | null {
+  return value?.replace(/\s+/gu, "") ?? null;
+}
+
 export function resolveOcrProfile(input: {
   documentUid?: string | null;
   documentTypeCode: string;
