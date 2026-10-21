@@ -7360,7 +7360,8 @@
         "properties": {
           "chatUuid": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "nullable": true
           },
           "code1c": {
             "type": "string",

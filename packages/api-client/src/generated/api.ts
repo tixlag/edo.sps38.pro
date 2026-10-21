@@ -348,7 +348,8 @@ export interface CandidateSnapshotDto {
 }
 
 export interface CandidateDocumentContextDto {
-  chatUuid: string;
+  /** @nullable */
+  chatUuid: string | null;
   /** @nullable */
   code1c: string | null;
   positionCode1c: string;

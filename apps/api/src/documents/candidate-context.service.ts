@@ -9,11 +9,14 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { LkCandidateIdentityService } from "./lk-candidate-identity.service";
 import { ErpCandidateClient, ErpCandidateError } from "./erp-candidate.client";
+import { PrismaService } from "../prisma/prisma.service";
 import {
   CandidateCardCache,
   type CandidateCardEntry,
 } from "./candidate-card-cache";
 import type { CandidateSnapshotDto } from "./dto/document.dto";
+import { CandidateProfileField } from "./dto/candidate-error.dto";
+import type { CandidateDocumentContextDto } from "./dto/candidate-context.dto";
 
 @Injectable()
 export class CandidateContextService {
@@ -22,6 +25,7 @@ export class CandidateContextService {
     private readonly identity: LkCandidateIdentityService,
     private readonly erp: ErpCandidateClient,
     private readonly cache: CandidateCardCache,
+    private readonly prisma: PrismaService,
   ) {}
 
   async context(chatUuid: string, signal?: AbortSignal) {
@@ -66,6 +70,59 @@ export class CandidateContextService {
       projectCode1c:
         (snapshot.project as { code?: string } | undefined)?.code ?? null,
       candidateSnapshot: snapshot,
+    };
+  }
+
+  /**
+   * Authenticated employees can upload their own documents without a chat
+   * link. Use the locally synchronized LK employee projection as the source
+   * for the server-side upload context; never trust profile fields from the
+   * browser.
+   */
+  async forEmployee(code1c: string): Promise<CandidateDocumentContextDto> {
+    const employee = await this.prisma.lkEmployee.findUnique({
+      where: { code1c },
+      select: {
+        code1c: true,
+        fullName: true,
+        birthday: true,
+        citizenship: true,
+        positionCode1c: true,
+        positionName: true,
+        sourcePresent: true,
+      },
+    });
+    if (!employee?.sourcePresent || !employee.positionCode1c)
+      throw new CandidateDocumentError(Code.CANDIDATE_PROFILE_INCOMPLETE, [
+        CandidateProfileField.POSITION_CODE,
+      ]);
+
+    const rawCitizenship = employee.citizenship?.trim();
+    if (rawCitizenship && !/^[a-zA-Z]{2}$/.test(rawCitizenship))
+      throw new CandidateDocumentError(Code.LK_CONTRACT_ERROR);
+    const citizenship = rawCitizenship?.toLowerCase() || "ru";
+    const candidateSnapshot: CandidateSnapshotDto = {
+      ...(employee.fullName?.trim()
+        ? { fullName: employee.fullName.trim() }
+        : {}),
+      ...(employee.birthday
+        ? { birthDate: employee.birthday.toISOString().slice(0, 10) }
+        : {}),
+      citizenship,
+      position: {
+        code: employee.positionCode1c,
+        ...(employee.positionName?.trim()
+          ? { name: employee.positionName.trim() }
+          : {}),
+      },
+    };
+    return {
+      chatUuid: null,
+      code1c: employee.code1c,
+      positionCode1c: employee.positionCode1c,
+      citizenship,
+      projectCode1c: null,
+      candidateSnapshot,
     };
   }
   private async card(
