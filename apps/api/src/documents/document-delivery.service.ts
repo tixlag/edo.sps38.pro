@@ -18,7 +18,7 @@ import { DocumentPdfService } from "./document-pdf.service";
 import { DocumentUploadService } from "./document-upload.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { erpDocumentHeaders } from "./erp-document-auth";
-import { shouldOmitPositionUid } from "./document-contract";
+import { formatDateForErp, shouldOmitPositionUid } from "./document-contract";
 import {
   captureErpDeliveryResponse,
   type ErpDeliveryResponse,
@@ -84,7 +84,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
     const attempt = await this.prisma.$transaction(async (tx) => {
       const row = await tx.erpDocumentDelivery.findUniqueOrThrow({
         where: { id },
-        include: { version: true },
+        include: { version: { include: { fields: true } } },
       });
       if (principal) {
         const doc = await tx.document.findUniqueOrThrow({
@@ -139,17 +139,20 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
       );
       const payload = { ...(attempt.row.payload as Prisma.JsonObject) };
       const fields = payload.documentFields;
-      if (
-        fields &&
-        typeof fields === "object" &&
-        !Array.isArray(fields) &&
-        shouldOmitPositionUid(
-          fields.positionUid,
-          attempt.row.version.positionCode1c,
-        )
-      ) {
+      if (fields && typeof fields === "object" && !Array.isArray(fields)) {
         const documentFields = { ...fields };
-        delete documentFields.positionUid;
+        for (const field of attempt.row.version.fields) {
+          const value = documentFields[field.name];
+          if (field.kind === "date" && typeof value === "string")
+            documentFields[field.name] = formatDateForErp(value);
+        }
+        if (
+          shouldOmitPositionUid(
+            documentFields.positionUid,
+            attempt.row.version.positionCode1c,
+          )
+        )
+          delete documentFields.positionUid;
         payload.documentFields = documentFields;
       }
       const response = await fetch(

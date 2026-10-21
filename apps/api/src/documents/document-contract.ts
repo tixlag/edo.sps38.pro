@@ -92,6 +92,12 @@ const isCalendarDate = (value: string): boolean =>
   Number.isFinite(Date.parse(value)) &&
   new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
 
+export function formatDateForErp(value: string): string {
+  if (!isCalendarDate(value)) return value;
+  const [year, month, day] = value.split("-");
+  return `${day}.${month}.${year}`;
+}
+
 const snapshotBirthDate = z.preprocess(
   emptyToNull,
   z

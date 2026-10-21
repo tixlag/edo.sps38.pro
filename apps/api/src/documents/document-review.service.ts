@@ -13,6 +13,7 @@ import { DocumentAccessService } from "./document-access.service";
 import { DocumentReadService } from "./document-read.service";
 import { DocumentPdfService } from "./document-pdf.service";
 import {
+  formatDateForErp,
   shouldOmitPositionUid,
   textValue,
   typedValue,
@@ -265,11 +266,15 @@ export class DocumentReviewService {
             const documentFields = Object.fromEntries(
               version.fields.map((f) => {
                 const value = typedValue(f.value, f.kind);
-                return [
-                  f.name,
+                const erpValue =
                   typeof value === "string" && !value.trim()
                     ? ""
-                    : (value ?? (f.kind === "boolean" ? false : "")),
+                    : (value ?? (f.kind === "boolean" ? false : ""));
+                return [
+                  f.name,
+                  f.kind === "date" && typeof erpValue === "string"
+                    ? formatDateForErp(erpValue)
+                    : erpValue,
                 ];
               }),
             );
