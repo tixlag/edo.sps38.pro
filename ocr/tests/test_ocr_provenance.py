@@ -55,7 +55,7 @@ class ProvenanceTests(unittest.TestCase):
             options['provenance'].update(source='PADDLE', paddle_text='RAW', paddle_confidence=0.99)
             return ('FINAL', 0.99), ''
         ns = load_functions(ROOT / 'services/ru/doc_recognizer_universe.py', ['process_images_list_paddle'], {
-            'run_yolo_segments_from_array_paddle': lambda img, model: {'name': [object()]},
+            'run_yolo_segments_from_array_paddle': lambda img, model, **options: {'name': [object()]},
             '_count_useful_paddle_segments': lambda segments: 1,
             'OCR_SEGMENT_CLASSES': {'name'}, 'SEGMENT_TO_FIELD_MAP': {'name': 'first_name'},
             'get_glm_prompt': lambda name: '', '_run_paddle_ocr_for_segment': recognize,

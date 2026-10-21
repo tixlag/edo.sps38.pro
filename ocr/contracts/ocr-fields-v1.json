@@ -1,1 +1,14 @@
-{"version":1,"field":"ocr_fields","sources":["PADDLE","GLM","MIXED"]}
+{
+  "version": 1,
+  "field": "ocr_fields",
+  "sources": ["PADDLE", "GLM", "MIXED"],
+  "regions": {
+    "optional": true,
+    "file_index": "zero-based multipart file index",
+    "page_number": "one-based source page number",
+    "coordinates": "x/y/width/height normalized to the displayed source page after EXIF/PDF rotation, not a detector crop",
+    "text": "original recognized segment text or null",
+    "max_per_field": 200,
+    "max_total": 2000
+  }
+}

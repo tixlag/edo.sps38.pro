@@ -603,7 +603,7 @@ def _embedded_image_looks_like_page(image_info, page, min_area_ratio=0.45, max_a
     return area_ratio >= min_area_ratio and aspect_delta <= max_aspect_delta
 
 
-def _extract_largest_embedded_image_from_page(doc, page):
+def _extract_largest_embedded_image_from_page(doc, page, with_placement=False):
     image_list = page.get_images(full=True)
     if not image_list:
         return None
@@ -615,11 +615,26 @@ def _extract_largest_embedded_image_from_page(doc, page):
             continue
 
         xref = image_info[0]
+        placement = None
+        if with_placement:
+            occurrences = page.get_image_rects(xref, transform=True)
+            if len(occurrences) != 1:
+                # No unique geometry: use a page render instead of guessing.
+                continue
+            _, transform = occurrences[0]
+            transform = transform * page.rotation_matrix
+            page_rect = page.rect
+            placement = [
+                transform.a / page_rect.width, transform.b / page_rect.height,
+                transform.c / page_rect.width, transform.d / page_rect.height,
+                (transform.e - page_rect.x0) / page_rect.width,
+                (transform.f - page_rect.y0) / page_rect.height,
+            ]
         try:
             base_image = doc.extract_image(xref)
             img_cv = _decode_pdf_image_bytes(base_image.get("image"))
             if img_cv is not None:
-                return img_cv
+                return (img_cv, placement) if with_placement else img_cv
         except Exception:
             pass
 
@@ -627,7 +642,7 @@ def _extract_largest_embedded_image_from_page(doc, page):
             pix = fitz.Pixmap(doc, xref)
             img_cv = _decode_pdf_image_bytes(pix.tobytes("png"))
             if img_cv is not None:
-                return img_cv
+                return (img_cv, placement) if with_placement else img_cv
         except Exception:
             continue
 
@@ -672,12 +687,16 @@ def extract_pdf_page_image(pdf_path, page_index=0, max_w=DEFAULT_MAX_W, max_h=DE
                     return []
 
                 page = doc[page_index]
-                img_cv = _extract_largest_embedded_image_from_page(doc, page)
+                embedded = _extract_largest_embedded_image_from_page(doc, page, with_placement=True)
+                placement = None
+                img_cv = embedded[0] if embedded is not None else None
+                if embedded is not None:
+                    placement = embedded[1]
                 if img_cv is None:
                     img_cv = _render_pdf_page_with_fitz(page, max_w=max_w, max_h=max_h, initial_dpi=initial_dpi)
                 if img_cv is not None:
                     img_cv = _resize_preserve_aspect_cv(img_cv, max_w=max_w, max_h=max_h)
-                    return [{'img': img_cv, 'name': page_name}]
+                    return [{'img': img_cv, 'name': page_name, 'page_transform': placement}]
             finally:
                 doc.close()
         except Exception as e:
@@ -901,7 +920,7 @@ def run_yolo_segments_from_array(img, model):
     return segments
 
 
-def run_yolo_segments_from_array_paddle(img, model, folder_name=None, right_oriented_docs=None):
+def run_yolo_segments_from_array_paddle(img, model, folder_name=None, right_oriented_docs=None, with_regions=False):
     """YOLO bbox-crops для OCR с быстрым orientation fallback.
 
     Оптимизация: раньше YOLO запускался дважды всегда. Теперь второй прогон делается
@@ -914,6 +933,8 @@ def run_yolo_segments_from_array_paddle(img, model, folder_name=None, right_orie
         right_oriented_docs = []
 
     h, w = img.shape[:2]
+    source_shape = (h, w)
+    rotation = 0
     results = model(img, verbose=False)
     result = results[0]
 
@@ -925,6 +946,7 @@ def run_yolo_segments_from_array_paddle(img, model, folder_name=None, right_orie
             if folder_name and any(name in folder_name for name in right_oriented_docs):
                 rotate_code = cv2.ROTATE_90_COUNTERCLOCKWISE
             img = cv2.rotate(img, rotate_code)
+            rotation = 90 if rotate_code == cv2.ROTATE_90_CLOCKWISE else 270
             h, w = img.shape[:2]
             rotated = True
 
@@ -961,9 +983,37 @@ def run_yolo_segments_from_array_paddle(img, model, folder_name=None, right_orie
             if crop_w < crop_h:
                 crop = cv2.rotate(crop, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
-        segments.setdefault(class_name, []).append(crop)
+        segment = crop
+        if with_regions:
+            segment = {'image': crop, 'region': _source_box_region((x1, y1, x2, y2), source_shape, rotation)}
+        segments.setdefault(class_name, []).append(segment)
 
     return segments
+
+
+def _source_box_region(box, source_shape, rotation=0, page_transform=None):
+    """Map detector box edges back to the displayed source page (0..1)."""
+    height, width = source_shape[:2]
+    x1, y1, x2, y2 = box
+    points = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+    source = []
+    for x, y in points:
+        if rotation == 90:
+            x, y = y, height - x
+        elif rotation == 180:
+            x, y = width - x, height - y
+        elif rotation == 270:
+            x, y = width - y, x
+        x, y = x / width, y / height
+        if page_transform is not None:
+            a, b, c, d, e, f = page_transform
+            x, y = a * x + c * y + e, b * x + d * y + f
+        source.append((max(0.0, min(1.0, x)), max(0.0, min(1.0, y))))
+    left, top = min(p[0] for p in source), min(p[1] for p in source)
+    right, bottom = max(p[0] for p in source), max(p[1] for p in source)
+    if right <= left or bottom <= top:
+        return None
+    return dict(x=left, y=top, width=right - left, height=bottom - top)
 
 
 # --------------------------- Vision OCR compatibility wrappers --------------
@@ -2106,7 +2156,7 @@ def process_images_list_paddle(
     timings = {'images': []} if debug else None
     total_start = perf_counter() if debug else None
 
-    for item in work_images:
+    for input_index, item in enumerate(work_images):
         img_t0 = perf_counter() if debug else None
         img_cv = item.get('img')
         img_name = item.get('name', 'input')
@@ -2114,6 +2164,8 @@ def process_images_list_paddle(
         pdf_page_timings = []
         selected_page = None
         pdf_pages_checked = None
+        page_transform = item.get('page_transform')
+        source_page_number = 1
 
         if item.get('source_type') == 'pdf':
             pdf_path = item['path']
@@ -2121,6 +2173,7 @@ def process_images_list_paddle(
             pdf_pages_checked = 0
 
             for page_index in range(page_count):
+                source_page_number = page_index + 1
                 page_timing = {
                     'page': page_index + 1,
                     'pdf_page_skipped_no_segments': True,
@@ -2146,6 +2199,7 @@ def process_images_list_paddle(
 
                 page_image = page_images[0]
                 img_cv = page_image['img']
+                page_transform = page_image.get('page_transform')
                 img_name = page_image.get('name', f"{item.get('name', 'pdf')}_page{page_index + 1}")
 
                 if debug:
@@ -2153,7 +2207,7 @@ def process_images_list_paddle(
                     cv2.imwrite(img_path, img_cv)
 
                 segment_t0 = perf_counter() if debug else None
-                segments = run_yolo_segments_from_array_paddle(img_cv, model) if model else None
+                segments = run_yolo_segments_from_array_paddle(img_cv, model, with_regions=True) if model else None
                 useful_segments_count = _count_useful_paddle_segments(segments)
                 if debug:
                     page_timing['yolo_time'] = perf_counter() - segment_t0
@@ -2176,7 +2230,7 @@ def process_images_list_paddle(
             if debug:
                 img_path = os.path.join(output_dir or '/tmp', f'current_rec_0_main.png')
                 cv2.imwrite(img_path, img_cv)
-            segments = run_yolo_segments_from_array_paddle(img_cv, model) if model else None
+            segments = run_yolo_segments_from_array_paddle(img_cv, model, with_regions=True) if model else None
 
         if _count_useful_paddle_segments(segments) == 0:
             full_page_fields = {}
@@ -2236,6 +2290,16 @@ def process_images_list_paddle(
 
             for idx, crop in enumerate(crops):
                 ocr_t0 = perf_counter() if debug else None
+                source_region = None
+                if isinstance(crop, dict):
+                    source_region = crop.get('region')
+                    crop = crop['image']
+                    if source_region is not None and page_transform is not None:
+                        x, y = source_region['x'], source_region['y']
+                        source_region = _source_box_region(
+                            (x, y, x + source_region['width'], y + source_region['height']),
+                            (1, 1), page_transform=page_transform,
+                        )
                 # prep = preprocess_for_ocr(crop)
                 #
                 # # оригинал (normalized)
@@ -2353,6 +2417,7 @@ def process_images_list_paddle(
                         page_fields[field] = text
 
                 segment_info.append({
+                    'region': source_region,
                     'provenance': provenance,
                     'class': class_name,
                     'recognized_text': text,
@@ -2395,7 +2460,13 @@ def process_images_list_paddle(
             names = ['series', 'number'] if class_name == 'serial_number' else [SEGMENT_TO_FIELD_MAP.get(class_name)]
             for name in names:
                 if name and page_fields.get(name):
-                    all_ocr_fields[name] = dict(name=name, value=page_fields[name], **seg['provenance'])
+                    geometry = {}
+                    if seg.get('region') is not None:
+                        geometry['regions'] = [{
+                            **seg['region'], 'file_index': item.get('file_index', input_index),
+                            'page_number': source_page_number, 'text': seg['recognized_text'],
+                        }]
+                    all_ocr_fields[name] = dict(name=name, value=page_fields[name], **seg['provenance'], **geometry)
 
         # Финальная агрегация
         all_recognized_fields.update({k: v for k, v in page_fields.items() if v})
@@ -2898,7 +2969,7 @@ async def parse_files(files: List[UploadFile] = File(...),
                 if img_cv is None:
                     logger.error(f"Request {request_id} - Failed to read image {filename}")
                     raise HTTPException(status_code=400, detail=f'Failed to read image {filename}')
-                work_images.append({'img': img_cv, 'name': Path(filename).stem})
+                work_images.append({'img': img_cv, 'name': Path(filename).stem, 'file_index': idx})
 
         # Запускаем синхронную или асинхронную обработку
 

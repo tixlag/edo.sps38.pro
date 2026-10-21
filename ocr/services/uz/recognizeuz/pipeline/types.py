@@ -42,6 +42,7 @@ class DocumentContext:
     orientation_score: float
     orientation_confident: bool
     orientation_timing: dict[str, Any]
+    source_to_document: np.ndarray | None = None
     recognized_fields: list[dict[str, Any]] = field(default_factory=list)
     avg_paddle_score: float = 0.0
     fallback_mode: str = "none"

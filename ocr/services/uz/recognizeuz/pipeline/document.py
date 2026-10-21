@@ -31,7 +31,7 @@ def process_detected_document(
         return None
 
     with page.profiler.stage("document.warp", doc_type=doc_type, document_index=doc_index):
-        base_doc_crop, _ = warp_document_by_polygon(
+        base_doc_crop, source_to_document = warp_document_by_polygon(
             image_bgr=page.image_bgr,
             polygon=doc["polygon"],
         )
@@ -101,6 +101,7 @@ def process_detected_document(
         orientation_score=orientation_score,
         orientation_confident=orientation_confident,
         orientation_timing=orientation_timing,
+        source_to_document=source_to_document,
     )
 
     recognize_document_fields(ctx)

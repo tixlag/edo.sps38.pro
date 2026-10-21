@@ -4,6 +4,7 @@ import base64
 import hashlib
 import io
 import json
+from math import isfinite
 import os
 import re
 import tempfile
@@ -116,6 +117,58 @@ def rotate_image(
         )
 
     raise ValueError(f"Unsupported rotation: {angle}")
+
+
+def source_field_regions(ctx: Any, field: dict[str, Any], text: str | None) -> list[dict[str, Any]]:
+    """Undo orientation and perspective so boxes refer to the displayed upload."""
+    matrix = ctx.source_to_document
+    if matrix is None or field.get("polygon") is None:
+        return []
+    try:
+        inverse = np.linalg.inv(matrix).tolist()
+    except np.linalg.LinAlgError:
+        return []
+    region = source_polygon_region(field["polygon"], inverse, ctx.page.image_bgr.shape,
+                                   ctx.base_doc_crop.shape, ctx.rotation)
+    if region is None:
+        return []
+    return [{
+        "file_index": ctx.page.file_index, "page_number": ctx.page.page_index + 1,
+        **region, "text": text,
+    }]
+
+
+def source_polygon_region(points, inverse_matrix, source_shape, base_shape, rotation=0):
+    """Project oriented field vertices into the original page; inference-independent."""
+    if len(points) < 3 or rotation not in (0, 90, 180, 270):
+        return None
+    height, width = base_shape[:2]
+    page_height, page_width = source_shape[:2]
+    source = []
+    for point in points:
+        if len(point) != 2:
+            return None
+        x, y = map(float, point)
+        if rotation == 90:
+            x, y = y, height - 1 - x
+        elif rotation == 180:
+            x, y = width - 1 - x, height - 1 - y
+        elif rotation == 270:
+            x, y = width - 1 - y, x
+        m = inverse_matrix
+        denominator = m[2][0] * x + m[2][1] * y + m[2][2]
+        if not isfinite(denominator) or abs(denominator) < 1e-9:
+            return None
+        x_source = (m[0][0] * x + m[0][1] * y + m[0][2]) / denominator / page_width
+        y_source = (m[1][0] * x + m[1][1] * y + m[1][2]) / denominator / page_height
+        if not isfinite(x_source) or not isfinite(y_source):
+            return None
+        source.append((max(0.0, min(1.0, x_source)), max(0.0, min(1.0, y_source))))
+    left, top = min(p[0] for p in source), min(p[1] for p in source)
+    right, bottom = max(p[0] for p in source), max(p[1] for p in source)
+    if right <= left or bottom <= top:
+        return None
+    return dict(x=float(left), y=float(top), width=float(right - left), height=float(bottom - top))
 
 def crop_field_bbox(
     doc_bgr: np.ndarray,

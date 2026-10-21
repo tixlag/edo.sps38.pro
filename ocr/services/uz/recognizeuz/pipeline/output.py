@@ -31,7 +31,7 @@ from recognizeuz.core.config import (
     MIGRATION_FIO_GRID_ERASE_LINES,
     MIGRATION_FIO_GRID_GLM_FALLBACK_ENABLED,
 )
-from recognizeuz.image.geometry import polygon_to_list
+from recognizeuz.image.geometry import polygon_to_list, source_field_regions
 from recognizeuz.pipeline.types import DocumentContext
 from recognizeuz.text.normalization import normalize_ocr_text_for_match, paddle_and_glm_texts_match
 
@@ -69,6 +69,8 @@ def build_output_document(ctx: DocumentContext) -> dict[str, Any]:
                 "source": source,
                 "paddle_text": item.get("original_paddle_text", item.get("paddle_text")),
                 "paddle_confidence": float(paddle_score) if paddle_score is not None else None,
+                **({"regions": source_field_regions(ctx, field, item["final_text"])}
+                   if field.get("polygon") is not None else {}),
             })
 
     if ctx.page.options.debug:
