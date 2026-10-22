@@ -52,6 +52,8 @@ export function normalizeErpCandidate(
     (row.uuid as string).toLowerCase() !== chatUuid.toLowerCase()
   )
     throw new ErpCandidateError(502, false);
+  if (row.erpUid !== undefined && !uuidSchema.safeParse(row.erpUid).success)
+    throw new ErpCandidateError(502, false);
   const position = row.position as Record<string, unknown> | null | undefined;
   const fields: Field[] = [];
   if (
@@ -81,6 +83,9 @@ export function normalizeErpCandidate(
     throw new ErpCandidateError(502, false);
   const result: Record<string, unknown> = {
     uuid: chatUuid.toLowerCase(),
+    ...(typeof row.erpUid === "string"
+      ? { erpUid: row.erpUid.toLowerCase() }
+      : {}),
     citizenship: citizenship.toLowerCase(),
   };
   for (const [key, max] of [
@@ -122,6 +127,28 @@ export class ErpCandidateClient {
     chatUuid: string,
     signal?: AbortSignal,
   ): Promise<CandidateSnapshotDto> {
+    return normalizeErpCandidate(
+      await this.requestByChatUuid(chatUuid, signal),
+      chatUuid,
+    );
+  }
+  async resolveIdentityByChat(chatUuid: string): Promise<string | undefined> {
+    if (!this.config.get<string>("ERP_CANDIDATE_URL")) {
+      if (this.config.get<string>("ERP_COMMUNICATIONS_URL"))
+        throw new ErpCandidateError(503, false);
+      return undefined;
+    }
+    const raw = z
+      .object({ uuid: z.string().uuid(), erpUid: z.string().uuid() })
+      .safeParse(await this.requestByChatUuid(chatUuid));
+    if (!raw.success || raw.data.uuid.toLowerCase() !== chatUuid.toLowerCase())
+      throw new ErpCandidateError(502, false);
+    return raw.data.erpUid.toLowerCase();
+  }
+  private async requestByChatUuid(
+    chatUuid: string,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
     signal?.throwIfAborted();
     const endpoint = this.config.get<string>("ERP_CANDIDATE_URL");
     const token = this.config.get<string>("ERP_CANDIDATE_TOKEN");
@@ -177,7 +204,7 @@ export class ErpCandidateClient {
       } catch {
         throw new ErpCandidateError(502, false);
       }
-      return normalizeErpCandidate(raw, chatUuid);
+      return raw;
     } catch (error) {
       if (signal?.aborted) throw signal.reason;
       if (error instanceof ErpCandidateError) throw error;

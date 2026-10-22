@@ -7476,8 +7476,6 @@
       "AuditAction": {
         "type": "string",
         "enum": [
-          "COMMUNICATION_REQUESTED",
-          "COMMUNICATION_COMPLETED",
           "EMPLOYEE_CREATED",
           "DOCUMENT_UPLOADED",
           "DOCUMENT_UPLOAD_STARTED",
@@ -7493,7 +7491,9 @@
           "WORKFLOW_STAGE_CHANGED",
           "DATA_IMPORTED",
           "LK_REFERENCE_SYNCED",
-          "LK_EVENT_APPLIED"
+          "LK_EVENT_APPLIED",
+          "COMMUNICATION_REQUESTED",
+          "COMMUNICATION_COMPLETED"
         ]
       },
       "AuditLogItemDto": {
@@ -8182,6 +8182,11 @@
       "CandidateSnapshotDto": {
         "type": "object",
         "properties": {
+          "erpUid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ERP candidate identifier supplied by the trusted ERP service"
+          },
           "fullName": {
             "type": "string",
             "maxLength": 512
@@ -8261,7 +8266,8 @@
         "properties": {
           "chatUuid": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "nullable": true
           },
           "code1c": {
             "type": "string",

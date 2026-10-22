@@ -505,6 +505,14 @@ export class CandidateSnapshotMentorDto {
   code_1c?: string;
 }
 export class CandidateSnapshotDto {
+  @ApiPropertyOptional({
+    format: "uuid",
+    description: "ERP candidate identifier supplied by the trusted ERP service",
+  })
+  @IsOptional()
+  @IsUUID()
+  erpUid?: string;
+
   @ApiPropertyOptional({ maxLength: 512 })
   @IsOptional()
   @IsString()

@@ -54,8 +54,10 @@ function fixture(status: DocumentStatus) {
   const tx = {
     $queryRaw: vi.fn(async () => []),
     candidate: {
-      upsert: vi.fn(async () => ({ id: "owner" })),
+      findMany: vi.fn(async () => [{ id: "owner" }]),
       findUniqueOrThrow: vi.fn(async () => ({
+        id: "owner",
+        chatUuid: staged.metadata!.chat_uuid,
         code1c: null,
         locationId: null,
       })),

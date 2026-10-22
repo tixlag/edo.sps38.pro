@@ -6,6 +6,7 @@ import { CandidateContextService } from "../src/documents/candidate-context.serv
 const chatUuid = "019d0a2a-f080-762e-b2d0-c7bb7ddb1922";
 const card = {
   uuid: chatUuid,
+  erpUid: "796f7bb9-caf4-43f2-b5ab-c52bc6e94899",
   name: " Иван Петров ",
   citizenship: "RU",
   position: { code: "000491", name: "Сварщик" },
@@ -75,6 +76,27 @@ describe("ERP candidate adapter", () => {
       new ErpCandidateClient(config).findByChatUuid(chatUuid),
     ).rejects.toMatchObject({ transient: false });
   });
+  it("resolves trusted candidate identity even when the ERP profile is incomplete", async () => {
+    vi.stubGlobal("fetch", async () =>
+      Response.json({ uuid: chatUuid, erpUid: card.erpUid, position: null }),
+    );
+    expect(
+      await new ErpCandidateClient(config).resolveIdentityByChat(chatUuid),
+    ).toBe(card.erpUid);
+  });
+  it("fails closed when catalog is configured but trusted identity cannot be resolved", async () => {
+    await expect(
+      new ErpCandidateClient(
+        new ConfigService({
+          ERP_COMMUNICATIONS_URL: "https://erp.example/communications",
+        }),
+      ).resolveIdentityByChat(chatUuid),
+    ).rejects.toThrow();
+    vi.stubGlobal("fetch", async () => Response.json({ uuid: chatUuid }));
+    await expect(
+      new ErpCandidateClient(config).resolveIdentityByChat(chatUuid),
+    ).rejects.toThrow();
+  });
   it("fails closed without credentials and does not call ERP", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
@@ -106,6 +128,7 @@ function setup() {
     identity as never,
     erp as never,
     cache as never,
+    {} as never,
   );
   return { identity, erp, cache, service };
 }
@@ -122,6 +145,17 @@ describe("EDO candidate context", () => {
     identity.byUuid.mockResolvedValue({ chatUuid, code1c: "000123" });
     expect(await service.context(chatUuid)).toMatchObject({ code1c: "000123" });
     expect(identity.byUuid).toHaveBeenCalledTimes(2);
+    expect(erp.findByChatUuid).toHaveBeenCalledOnce();
+  });
+  it("refreshes a fresh legacy card that lacks the trusted ERP candidate identifier", async () => {
+    const { service, cache, erp } = setup();
+    const legacy: Partial<typeof card> = { ...card };
+    delete legacy.erpUid;
+    cache.get.mockResolvedValue({
+      snapshot: legacy,
+      freshUntil: Date.now() + 60000,
+    } as never);
+    await service.context(chatUuid);
     expect(erp.findByChatUuid).toHaveBeenCalledOnce();
   });
   it("never serves a cached profile when LK cannot verify the chat", async () => {

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -11,6 +12,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { StorageService } from "../storage/storage.service";
 import { OcrService } from "../ocr/ocr.service";
+import { ErpCandidateClient } from "./erp-candidate.client";
+import { resolveCandidateIdentity } from "./candidate-identity";
 import type { StagedUpload } from "./document-upload.service";
 import type { UploadAcceptedDto } from "./dto/document.dto";
 import { DocumentReadService } from "./document-read.service";
@@ -23,6 +26,7 @@ export class DocumentIngestionService {
     private readonly ocr: OcrService,
     private readonly audit: AuditService,
     private readonly reads: DocumentReadService,
+    @Optional() private readonly erp?: ErpCandidateClient,
   ) {}
 
   ensureAvailable(): void {
@@ -71,6 +75,17 @@ export class DocumentIngestionService {
       .digest("hex");
     const correlation = correlationId.slice(0, 64);
     const token = randomUUID();
+    let erpUid: string | undefined;
+    if (
+      this.erp &&
+      !(await this.prisma.candidate.findUnique({ where: { chatUuid } }))
+    ) {
+      try {
+        erpUid = await this.erp.resolveIdentityByChat(chatUuid);
+      } catch {
+        throw new ServiceUnavailableException("CANDIDATE_IDENTITY_UNAVAILABLE");
+      }
+    }
     const reserved = await this.reserve(
       chatUuid,
       key,
@@ -79,6 +94,7 @@ export class DocumentIngestionService {
       upload,
       correlation,
       token,
+      erpUid,
     );
     if (reserved.reused) {
       if (reserved.job.status === "UPLOADING")
@@ -157,19 +173,16 @@ export class DocumentIngestionService {
     upload: StagedUpload,
     correlationId: string,
     token: string,
+    erpUid?: string,
   ) {
     // Prisma's emulated upsert can race on a new chat; retry only DB uniqueness/deadlock conflicts.
     for (let retry = 0; ; retry++) {
       try {
         return await this.prisma.$transaction(async (tx) => {
-          const candidate = await tx.candidate.upsert({
-            where: { chatUuid },
-            update: {},
-            create: {
-              chatUuid,
-              identityKey: `chat:${chatUuid}`,
-              locationId: upload.locationId ?? null,
-            },
+          const candidate = await resolveCandidateIdentity(tx, {
+            chatUuid,
+            erpUid,
+            identityKey: `chat:${chatUuid}`,
           });
           await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${candidate.id} FOR UPDATE`;
           const existing = await tx.ocrJob.findUnique({
@@ -331,13 +344,24 @@ export class DocumentIngestionService {
 
   async link(chatUuid: string, code1c: string, correlationId: string) {
     chatUuid = chatUuid.toLowerCase();
+    let erpUid: string | undefined;
+    if (
+      this.erp &&
+      !(await this.prisma.candidate.findUnique({ where: { chatUuid } }))
+    ) {
+      try {
+        erpUid = await this.erp.resolveIdentityByChat(chatUuid);
+      } catch {
+        throw new ServiceUnavailableException("CANDIDATE_IDENTITY_UNAVAILABLE");
+      }
+    }
     for (let attempt = 0; ; attempt++) {
       try {
         const candidate = await this.prisma.$transaction(async (tx) => {
-          const reserved = await tx.candidate.upsert({
-            where: { chatUuid },
-            update: {},
-            create: { chatUuid, identityKey: `chat:${chatUuid}` },
+          const reserved = await resolveCandidateIdentity(tx, {
+            chatUuid,
+            erpUid,
+            identityKey: `chat:${chatUuid}`,
           });
           await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${reserved.id} FOR UPDATE`;
           const row = await tx.candidate.findUniqueOrThrow({

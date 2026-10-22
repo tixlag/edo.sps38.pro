@@ -1,4 +1,8 @@
 import {
+  candidateIdentityTransaction,
+  resolveCandidateIdentity,
+} from "../documents/candidate-identity";
+import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
@@ -419,8 +423,14 @@ export class CommunicationsService {
               principal.code1c!,
               text,
               file,
+              operation.id,
             )
-          : await this.lk.sendText(candidate.chatUuid, principal.code1c!, text);
+          : await this.lk.sendText(
+              candidate.chatUuid,
+              principal.code1c!,
+              text,
+              operation.id,
+            );
         result = {
           status: "SENT",
           providerId: providerId || null,
@@ -498,10 +508,12 @@ export class CommunicationsService {
       throw new ConflictException("Ссылка уже создаётся");
     try {
       const result = await this.erp.link(candidate.erpUid, principal.code1c!);
-      await this.prisma.$transaction(async (tx) => {
-        await tx.candidate.update({
-          where: { id: candidateId },
-          data: { chatUuid: result.chatUuid },
+      await candidateIdentityTransaction(this.prisma, async (tx) => {
+        await resolveCandidateIdentity(tx, {
+          expectedId: candidateId,
+          erpUid: candidate.erpUid,
+          chatUuid: result.chatUuid,
+          identityKey: `erp-candidate:${candidate.erpUid}`,
         });
         await this.audit.logInTransaction(tx, {
           actorId: principal.uuid,

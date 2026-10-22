@@ -147,6 +147,7 @@ export const candidateSnapshotSchema = z.preprocess(
   aliasSnapshotKeys,
   z
     .object({
+      erpUid: z.string().uuid().transform((value) => value.toLowerCase()).optional(),
       fullName: snapshotName(512),
       birthDate: snapshotBirthDate,
       citizenship: snapshotCitizenship,
@@ -171,6 +172,7 @@ export const candidateSnapshotSchema = z.preprocess(
     .transform((v) => ({
       // null = arrived-but-empty (clears the column); undefined = absent
       // (leaves the stored value untouched). Never collapse one into the other.
+      erpUid: v.erpUid,
       fullName: v.fullName,
       birthDate: v.birthDate,
       citizenship: v.citizenship,

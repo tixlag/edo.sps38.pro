@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+const optionalUrl = z.preprocess(
+  (value) => typeof value === 'string' && !value.trim() ? undefined : value,
+  z.string().url().optional(),
+);
+
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   API_PORT: z.coerce.number().default(3001),
@@ -34,8 +39,9 @@ const envSchema = z.object({
   ERP_CANDIDATE_TOKEN: z.string().optional(),
   ERP_USERNAME: z.string().optional(),
   ERP_PASSWORD: z.string().optional(),
-  ERP_COMMUNICATIONS_URL: z.string().url().optional(),
-  LK_CHAT_BASE_URL: z.string().url().optional(),
+  ERP_COMMUNICATIONS_URL: optionalUrl,
+  LK_CHAT_BASE_URL: optionalUrl,
+  LK_CANDIDATE_OPERATOR_TOKEN: z.string().optional(),
   LK_PUBLIC_BASE_URL: z.string().url().default('https://lk.sps38.pro'),
   CANDIDATE_CATALOG_SYNC_ENABLED: z.enum(['true', 'false']).default('true'),
   DOCUMENT_WORKER_ENABLED: z.enum(['true', 'false']).default('true'),

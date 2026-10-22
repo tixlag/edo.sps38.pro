@@ -3,7 +3,8 @@ import { IsUUID, Matches } from "class-validator";
 import { CatalogDocumentTypesDto, CandidateSnapshotDto } from "./document.dto";
 
 export class CandidateDocumentContextDto {
-  @ApiProperty({ format: "uuid" }) chatUuid!: string;
+  @ApiProperty({ type: String, format: "uuid", nullable: true })
+  chatUuid!: string | null;
   @ApiProperty({ type: String, nullable: true }) code1c!: string | null;
   @ApiProperty() positionCode1c!: string;
   @ApiProperty() citizenship!: string;

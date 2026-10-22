@@ -90,10 +90,17 @@ function catalogSetup() {
       ...data,
       id: "new-candidate",
     })),
-    update: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
+    update: vi.fn(
+      async ({ where, data }: { where: { id: string }; data: object }) => ({
+        ...data,
+        id: where.id,
+      }),
+    ),
   };
   const prisma = {
     candidate,
+    $queryRaw: vi.fn(),
     lkLocation: {
       findUnique: vi.fn(async () => ({ locationId: 98, deleted: false })),
     },
@@ -150,7 +157,6 @@ describe("ERP candidate catalog projection", () => {
       data: expect.objectContaining({
         erpUid,
         identityKey: `erp-candidate:${erpUid}`,
-        locationId: 98,
         chatUuid: null,
       }),
     });

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { Prisma, type DocumentStatus } from "@prisma/client";
@@ -18,6 +19,8 @@ import {
   validateFields,
 } from "./document-contract";
 import { snapshotUpdateInput } from "./candidate-profile";
+import { resolveCandidateIdentity } from "./candidate-identity";
+import { ErpCandidateClient } from "./erp-candidate.client";
 import type { StagedUpload } from "./document-upload.service";
 
 @Injectable()
@@ -27,6 +30,7 @@ export class ManualDocumentService {
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     private readonly catalog: DocumentCatalogService,
+    @Optional() private readonly erp?: ErpCandidateClient,
   ) {}
 
   async upload(
@@ -41,11 +45,20 @@ export class ManualDocumentService {
     const identityKey = metadata.chat_uuid
       ? `chat:${metadata.chat_uuid}`
       : `employee:${metadata.code_1c}`;
+    // erpUid was added as a trusted resolver hint. It must not change existing
+    // receipt fingerprints when an old context is refreshed after deployment.
+    const fingerprintSnapshot = metadata.candidateSnapshot
+      ? { ...metadata.candidateSnapshot }
+      : undefined;
+    if (fingerprintSnapshot) delete fingerprintSnapshot.erpUid;
     const fingerprint = createHash("sha256")
       .update(
         JSON.stringify({
           metadata: {
             ...metadata,
+            ...(fingerprintSnapshot
+              ? { candidateSnapshot: fingerprintSnapshot }
+              : {}),
             documentFields: Object.fromEntries(
               Object.entries(metadata.documentFields).sort(([a], [b]) =>
                 a.localeCompare(b),
@@ -69,7 +82,38 @@ export class ManualDocumentService {
       },
       include: { version: { include: { document: true } } },
     });
-    if (previous) return this.reuse(previous, fingerprint);
+    if (previous) {
+      const result = this.reuse(previous, fingerprint);
+      const erpUid = metadata.candidateSnapshot?.erpUid;
+      if (erpUid) {
+        const owners = await this.prisma.candidate.findMany({
+          where: {
+            OR: [{ id: result.candidateId }, { erpUid }],
+          },
+        });
+        if (
+          owners.length !== 1 ||
+          (owners[0].erpUid && owners[0].erpUid !== erpUid)
+        )
+          throw new ConflictException("CANDIDATE_IDENTITY_CONFLICT");
+      }
+      return result;
+    }
+    let erpUid = metadata.candidateSnapshot?.erpUid;
+    if (
+      !erpUid &&
+      metadata.chat_uuid &&
+      this.erp &&
+      !(await this.prisma.candidate.findUnique({
+        where: { chatUuid: metadata.chat_uuid },
+      }))
+    ) {
+      try {
+        erpUid = await this.erp.resolveIdentityByChat(metadata.chat_uuid);
+      } catch {
+        throw new ServiceUnavailableException("CANDIDATE_IDENTITY_UNAVAILABLE");
+      }
+    }
     await this.catalog.ensure();
     const type = await this.prisma.documentType.findUnique({
       where: { erpUid: metadata.documentUid },
@@ -113,6 +157,7 @@ export class ManualDocumentService {
       upload,
       locationId,
       correlation,
+      erpUid,
     );
     if (reserved.reused) return this.reuse(reserved.submission, fingerprint);
     const signal = AbortSignal.timeout(120000);
@@ -190,6 +235,7 @@ export class ManualDocumentService {
     upload: StagedUpload,
     locationId: number | undefined,
     correlationId: string,
+    erpUid?: string,
   ) {
     const metadata = upload.metadata!;
     for (let attempt = 0; ; attempt++) {
@@ -200,17 +246,16 @@ export class ManualDocumentService {
             // update the stored profile; uploads without a snapshot (or with
             // an empty one) never clear previously stored fields.
             const profile = snapshotUpdateInput(metadata.candidateSnapshot);
-            const owner = await tx.candidate.upsert({
-              where: { identityKey },
-              update: profile ?? {},
-              create: {
-                identityKey,
-                chatUuid: metadata.chat_uuid ?? null,
-                code1c: metadata.code_1c ?? null,
-                locationId: locationId ?? null,
-                ...(profile ?? {}),
-              },
+            const owner = await resolveCandidateIdentity(tx, {
+              identityKey,
+              chatUuid: metadata.chat_uuid,
+              erpUid,
             });
+            if (profile)
+              await tx.candidate.update({
+                where: { id: owner.id },
+                data: profile,
+              });
             await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${owner.id} FOR UPDATE`;
             const current = await tx.candidate.findUniqueOrThrow({
               where: { id: owner.id },

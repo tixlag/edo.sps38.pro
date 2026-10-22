@@ -20,8 +20,6 @@ export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const AuditAction = {
-  COMMUNICATION_REQUESTED: "COMMUNICATION_REQUESTED",
-  COMMUNICATION_COMPLETED: "COMMUNICATION_COMPLETED",
   EMPLOYEE_CREATED: "EMPLOYEE_CREATED",
   DOCUMENT_UPLOADED: "DOCUMENT_UPLOADED",
   DOCUMENT_UPLOAD_STARTED: "DOCUMENT_UPLOAD_STARTED",
@@ -38,6 +36,8 @@ export const AuditAction = {
   DATA_IMPORTED: "DATA_IMPORTED",
   LK_REFERENCE_SYNCED: "LK_REFERENCE_SYNCED",
   LK_EVENT_APPLIED: "LK_EVENT_APPLIED",
+  COMMUNICATION_REQUESTED: "COMMUNICATION_REQUESTED",
+  COMMUNICATION_COMPLETED: "COMMUNICATION_COMPLETED",
 } as const;
 
 export interface AuditLogItemDto {
@@ -312,6 +312,8 @@ export interface CandidateSnapshotMentorDto {
 }
 
 export interface CandidateSnapshotDto {
+  /** ERP candidate identifier supplied by the trusted ERP service */
+  erpUid?: string;
   /** @maxLength 512 */
   fullName?: string;
   /** @maxLength 512 */
@@ -348,7 +350,8 @@ export interface CandidateSnapshotDto {
 }
 
 export interface CandidateDocumentContextDto {
-  chatUuid: string;
+  /** @nullable */
+  chatUuid: string | null;
   /** @nullable */
   code1c: string | null;
   positionCode1c: string;

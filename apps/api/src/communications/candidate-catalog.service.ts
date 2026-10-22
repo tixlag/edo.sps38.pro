@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -11,6 +12,10 @@ import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.module";
 import { AuditService } from "../audit/audit.service";
 import { DocumentAccessService } from "../documents/document-access.service";
+import {
+  candidateIdentityTransaction,
+  resolveCandidateIdentity,
+} from "../documents/candidate-identity";
 import { toCandidateProfile } from "../documents/candidate-profile";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { ErpCommunicationsClient } from "./erp-communications.client";
@@ -91,67 +96,59 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
         for (const row of result.items) {
           if (!(await this.redis.compareAndExpire(lock, owner, 60000)))
             throw new Error("CATALOG_LOCK_LOST");
-          await this.prisma.$transaction(async (tx) => {
-            const rows = await tx.candidate.findMany({
-              where: {
-                OR: [
-                  { erpUid: row.erpUid },
-                  ...(row.chatUuid ? [{ chatUuid: row.chatUuid }] : []),
-                ],
-              },
-            });
-            if (
-              rows.length > 1 ||
-              (rows[0]?.erpUid && rows[0].erpUid !== row.erpUid)
-            ) {
-              this.logger.warn(`Candidate identity conflict: ${row.erpUid}`);
-              return;
-            }
-            const existing = rows[0];
-            const location = row.projectCode
-              ? await tx.lkLocation.findUnique({
-                  where: { code1c: row.projectCode },
-                })
-              : null;
-            const data = {
-              erpUid: row.erpUid,
-              erpDeleted: row.deleted,
-              chatUuid: row.chatUuid ?? existing?.chatUuid ?? null,
-              fullName: row.fullName || null,
-              projectCode: row.projectCode,
-              projectName: row.projectName,
-              positionCode: row.positionCode,
-              positionName: row.positionName,
-              locationId:
-                location?.deleted === false ? location.locationId : null,
-              catalogSyncedAt: new Date(),
-            };
-            const changed =
-              !existing ||
-              Object.entries(data).some(
-                ([field, value]) =>
-                  field !== "catalogSyncedAt" &&
-                  existing[field as keyof typeof existing] !== value,
-              );
-            const candidate = existing
-              ? await tx.candidate.update({ where: { id: existing.id }, data })
-              : await tx.candidate.create({
-                  data: {
-                    ...data,
-                    identityKey: row.chatUuid
-                      ? `chat:${row.chatUuid}`
-                      : `erp-candidate:${row.erpUid}`,
-                  },
-                });
-            if (changed)
-              await this.audit.logInTransaction(tx, {
-                action: "DATA_IMPORTED",
-                entityType: "CandidateCatalog",
-                entityId: candidate.id,
-                correlationId: owner,
-                after: { erpUid: row.erpUid, deleted: row.deleted },
+          try {
+            await candidateIdentityTransaction(this.prisma, async (tx) => {
+              const existing = await resolveCandidateIdentity(tx, {
+                erpUid: row.erpUid,
+                chatUuid: row.chatUuid,
+                identityKey: row.chatUuid
+                  ? `chat:${row.chatUuid}`
+                  : `erp-candidate:${row.erpUid}`,
               });
-          });
+              const location = row.projectCode
+                ? await tx.lkLocation.findUnique({
+                    where: { code1c: row.projectCode },
+                  })
+                : null;
+              const data = {
+                erpUid: row.erpUid,
+                erpDeleted: row.deleted,
+                chatUuid: row.chatUuid ?? existing?.chatUuid ?? null,
+                fullName: row.fullName || null,
+                projectCode: row.projectCode,
+                projectName: row.projectName,
+                positionCode: row.positionCode,
+                positionName: row.positionName,
+                locationId:
+                  location?.deleted === false ? location.locationId : null,
+                catalogSyncedAt: new Date(),
+              };
+              const changed =
+                !existing.catalogSyncedAt ||
+                Object.entries(data).some(
+                  ([field, value]) =>
+                    field !== "catalogSyncedAt" &&
+                    existing[field as keyof typeof existing] !== value,
+                );
+              const candidate = await tx.candidate.update({
+                where: { id: existing.id },
+                data,
+              });
+              if (changed)
+                await this.audit.logInTransaction(tx, {
+                  action: "DATA_IMPORTED",
+                  entityType: "CandidateCatalog",
+                  entityId: candidate.id,
+                  correlationId: owner,
+                  after: { erpUid: row.erpUid, deleted: row.deleted },
+                });
+            });
+          } catch (error) {
+            if (!(error instanceof ConflictException)) throw error;
+            this.logger.warn(
+              "Candidate identity conflict; projection retained for manual reconciliation",
+            );
+          }
         }
         if (result.nextCursor === null) {
           await checkpointAt("");
