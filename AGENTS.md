@@ -2,6 +2,153 @@
 
 This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read this before writing code.
 
+## Передача сессии: переписка ERP ↔ ЭДО ↔ ЛК (2026-10-22)
+
+**Пользователь отложил продолжение задачи. Не возобновлять интеграцию, merge или
+deploy автоматически.** Исправления сохранены и отправлены, но выпуск и приёмка
+на платформе 1С не завершены. Сначала перечитать этот раздел и проверить реальные
+ветки, незакоммиченные изменения, remotes и вершины MR/PR: checkout ЛК уже занят
+другой задачей. Worktree не создавать и ветки без необходимости не переключать.
+
+### Репозитории и сохранённый код
+
+SHA ниже фиксируют код завершённого корректирующего этапа; последующие коммиты
+передачи документации не означают дополнительную реализацию или выпуск.
+
+| Сервис | Checkout и его фактическая ветка при передаче | Код задачи | MR/PR и назначение |
+| --- | --- | --- | --- |
+| ЭДО API/web | `/home/tixlag/orca/projects/edo.sps38.pro`, `feat/candidate-chat-workspace` | `4d93fd3beef098432a7ce9c3f5c109735f5867d1` | [GitLab !16](https://glab.sps38.pro/webdevs/edo.sps38.pro/-/merge_requests/16) → `main`; код также отправлен в GitHub-зеркало |
+| 1С ERP | `/home/tixlag/orca/projects/1c-erp`, `feat/edo-candidate-communications` | `d5e5e372bed630e34d03a9b415c732fe1743c90f` | [GitLab !1286](https://glab.sps38.pro/1cdevs/1c-erp/-/merge_requests/1286) → `develop`; checkout чистый |
+| ЛК, текущая чужая работа | `/home/tixlag/PhpstormProjects/lk.sps38.pro`, **`feat/welding-repair-ux-training`**, HEAD `1674ae9f98b75cc6bb0dcc114ba20c680834c148` | Переписка находится **в другой ветке**: `fix/candidate-chat-multiple-sessions`, `eb08b81516d7a05f82cadf764c17e885a8598664` | Исправления запушены в `tixlag/lk.sps38.pro`; [upstream PR #2559](https://github.com/websps/lk.sps38.pro/pull/2559) → `websps/lk.sps38.pro:main` |
+
+- ЭДО: `gitlab` — основной GitLab; `origin` — GitHub-зеркало, но у него **два
+  push URL**, GitHub и GitLab. Использовать явный сервер для push. Отметка
+  `ahead` относительно старого `origin/*` не доказывает отсутствие push:
+  на момент передачи оба сервера содержали `4d93fd3b`.
+- ERP: remote `gitlab`; свежий удалённый `develop` уже
+  `fa34ea3616cdd0bead0eb224478d63316ffb3b8d`. Не откатывать его к baseline ревью.
+  `/Candidate` в целевой ветке расширен параметром **`code1c`**, а не `code_1c`.
+- ЛК: `fork` — `tixlag/lk.sps38.pro`, `origin` — upstream
+  `websps/lk.sps38.pro`. Не смешивать их `main`. Свежий upstream `main` при
+  передаче — `51a442cb19596bf86472dc90113a5d288294c632`.
+  Сохранить чужой untracked каталог
+  `docs/welding-management-report/exports/svarka_obuchenie_po_rolyam_2026-10-21-with-images/`.
+  Не сбрасывать и не коммитить его в задачу переписки. Текущая welding-ветка
+  не означает, что исправленный candidate chat-server запущен или развёрнут.
+
+### Что реализовано и согласовано
+
+Единый контракт и все wire-примеры:
+[`docs/integrations/candidate-communications-correction.md`](docs/integrations/candidate-communications-correction.md).
+Не изобретать вместо него отдельные протоколы для трёх сторон.
+
+- ERP: локальный явный JSON-разбор запроса/вложенного `file` и Telegram без
+  изменения глобального default `КоннекторHTTP`; `SENT` только при проверенном
+  подтверждении, явный отказ `FAILED`, возможная отправка без подтверждения
+  `UNKNOWN`. Старые транспортные сигнатуры и десять шаблонов сохранены.
+  API/форма используют общую каноническую ссылку с блокировкой конкретного
+  кандидата и устойчивым `erp_candidate_uuid`; существующий чат не заменяется.
+  Ответ `/Candidate` по чату дополнен доверенным `erpUid`. Форма получает grant
+  серверно, обновляет его и отображает операторские сообщения без дублей.
+- ЭДО: доверенное разрешение владельца по ERP UID/chat UUID сохраняет
+  `Candidate.id`, документы, отправки и старые квитанции. Новое поле `erpUid`
+  не меняет старые fingerprint/пространства `DocumentSubmission`. Конфликтующие
+  карточки не удаляются и не объединяются по ФИО, телефону или одному `code1c`.
+  Сохранено поведение документов сотрудника без чата из актуальной `main`.
+  Пустые необязательные URL не останавливают API. OpenAPI/Orval обновлены.
+- ЛК: короткоживущий grant ограничивает автора, чат, `can_send` и срок.
+  Закрыты старые анонимные операторские обходы WS/файлов/prepared files;
+  public candidate mode не получает операторскую роль. Текст/файл используют
+  стабильный `operation_id`, транзакционный реестр и адресный `send_ack` после
+  commit. Повтор того же содержимого возвращает прежнее сообщение, другое
+  содержимое отклоняется. Broadcast не является подтверждением; потеря ответа
+  остаётся `UNKNOWN` без автоповтора. Fanout нескольких подключений сохранён.
+  Добавочная миграция ЛК — `db/migrations/20261021150000.php`; её реестр не
+  удалять при откате кода.
+
+### Локальный стенд, оставленный работающим
+
+- Адрес: **https://edo.localhost:12443/**. Проверены root, `/review`, API live
+  и ready — HTTP 200; `/api/v1/me` без JWT — штатный 401. Сертификат принимается
+  локальным curl без отключения проверки TLS. Работают Vite `:5174` и API `:3001`
+  через существующий `lk_nginx`; штатная авторизация сохранена.
+- API перезапущен после зависшего старого watcher. Текущий запуск использует
+  **process env overrides**, root `.env` не менялся:
+  `NODE_ENV=development`, `LK_EVENTS_CONSUME=0`,
+  `DOCUMENT_WORKER_ENABLED=false`, `OCR_WORKER_ENABLED=false`,
+  `CANDIDATE_CATALOG_SYNC_ENABLED=false`. При перезапуске сохранить эти overrides;
+  root `.env` сам по себе включает часть workers/consumer.
+- `pnpm local:status` показывает managed-процессы; PID/starttime хранятся в
+  `.cache/local-stand/processes.json`, логи — `.cache/local-stand/{api,web}.log`.
+  `pnpm local:down` останавливает только эти процессы. Не останавливать чужие
+  процессы по совпадению порта или имени.
+- Используется существующий LK local stack: MariaDB `:12002`, только база
+  `edo`; Redis `:6379`; RabbitMQ `:5674`; S3 mock `:5000`.
+  При проверке только чтением в `edo` присутствовали нужные таблицы и 12
+  завершённых миграций. При подъёме стенда миграции, seed и изменения очередей
+  не выполнялись; данные не очищались.
+- `ERP_CANDIDATE_URL`, `ERP_COMMUNICATIONS_URL`, `LK_CHAT_BASE_URL` в текущем
+  локальном `.env` не заданы. **Доступный UI/readiness не подтверждают работающую
+  интеграцию переписки с ERP/ЛК.** Исправленный Go chat-server ЛК для этого
+  постоянного стенда не поднимался. Production-конфигурацию сюда не копировать.
+- Одноразовый контейнер проверок `edo-candidate-correction-20261021-db` с базами
+  `edo`/`lkchat` удалён после тестов; его credentials и harness markers удалены.
+  Не ожидать, что cross-runtime тестовый сервер ещё доступен.
+
+### Проверки и оставшиеся действия
+
+- Выполнено: изолированный API run **444 passed / 33 skipped**; после последнего
+  усиления replay — **8 MariaDB + 5 resubmission** tests; web **105 passed**;
+  API/web lint/build; OpenAPI → Orval. На одноразовой MariaDB проверены оба
+  порядка импорта/чата/документа, параллельные catalog/upload, старые квитанции
+  и сохранение конфликтующих владельцев.
+- Реальный клиент ЭДО против реальных Go routes и той же disposable MariaDB:
+  **7 passed**, текст/файл, независимые одинаковые тексты, replay/conflict,
+  подмена автора/чата, read-only grant, несколько окон/отключение одного,
+  потеря подтверждения после commit текста/файла. Внешних транспортов там нет.
+- ЛК: затронутые Go tests, race suites hub/grants/router/MariaDB, vet/build,
+  PHP syntax миграции прошли. Два прежних TempAppeal tests требуют реального
+  `TEST_REQUESTER_CODE_1C` и не запускались. ERP: JS из поставляемого ZIP **4/4**,
+  XML **8**, BSL LS 1.0.7 — **0 новых Error**, сохранены 44 legacy диагностики.
+  **Платформы 1С нет: исполнение BSL не проверено.**
+- ЭДО MR !16 конфликтует с `gitlab/main=9865a8990dcb4b9cac14d8088dc544cf004b4854`:
+  `prisma/schema.prisma`, `manual-document.service.ts`, `dashboard.spec.ts`,
+  `apps/api/openapi.json`, generated API client. Merge не выполнялся.
+  При отдельном согласовании сохранить действующие OCR-модели/аудит,
+  `submittedAt` и транзакционную постановку OCR; аргументы `ConfigService`
+  и нового `ErpCandidateClient` загрузчика не смешивать. Сохранить документы
+  без чата и актуальную сериализацию дат. Затем заново сгенерировать контракт
+  и проверить итоговый SHA. Не заменять целевую main старой веткой переписки.
+- ERP [pipeline 3799](https://glab.sps38.pro/1cdevs/1c-erp/-/pipelines/3799)
+  на итоговом `d5e5e372` failed в `validate:mr` из-за имени ветки:
+  нужен реальный номер задачи для `feature|bugfix|refactor/1C-<номер>[-описание]`.
+  Номер не придумывать, CI не обходить, ветку/MR самовольно не переименовывать.
+  Для итоговых SHA ЭДО/ЛК успешный CI run не зафиксирован.
+- На изолированной 1С со stub-транспортами остаётся smoke: JSON send/link/file,
+  Telegram success/refusal/malformed; параллельная ссылка ЭДО/форма и повтор
+  после потери ответа; роли/подмена автора/чата текста и файла; форма более
+  пяти минут с refresh и несколько окон без дублей. Реальным кандидатам
+  сообщения не отправлять.
+- Выпуск только отдельным этапом: добавочная схема → защищённый ЛК при
+  выключенной операторской отправке → совместимые ERP/ЭДО → включение оператором.
+  Существующий `ERP_CANDIDATE_TOKEN` сохраняется; для ЛК нужен серверный
+  `LK_CANDIDATE_OPERATOR_TOKEN`. Секреты не передавать браузеру и не печатать.
+  Откат сохраняет документы/версии, связи, переписку и реестры идемпотентности.
+
+### Ограничения и инциденты предыдущего этапа
+
+Merge, production deploy/миграции, force push, рабочие отправки, ротация секретов
+и изменение рабочих queues/bindings/volumes/S3 lifecycle не выполнялись.
+Первый legacy `lk-real-infra.spec.ts` всё же загрузил root `.env` и использовал
+две собственные временные очереди shared RabbitMQ; они удалены, отсутствие
+тестового префикса подтверждено узкой read-only проверкой. Не повторять:
+перед любыми тестами явно задавать disposable DSN и блокировать fallback к
+shared/external endpoints; обычный полный `pnpm test` без проверки env опасен.
+Также первоначальный диагностический вывод затронул прежние секреты из
+исходников/настроек/аргументов процессов. Значения не копировались в новые файлы,
+fixtures и коммиты; ротации не было. Не выводить полный env, командные строки
+процессов и содержащие credentials исходники/логи.
+
 ## Stack (do not change)
 
 - MariaDB only. Prisma `provider = "mysql"`. Never introduce PostgreSQL.
@@ -62,7 +209,7 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 
 - Root `.env` loaded explicitly by `apps/api` (`ConfigModule.envFilePath` + `main.ts` dotenv) and `apps/web` (`vite.config envDir` + loadEnv). Never rely on cwd.
 - New vars: `JWT_SECRET/JWT_ALG/JWT_ISSUER/ALLOW_INSECURE_DEV_AUTH`, `LK_BASE_URL/LK_EDO_OPENAPI_URL/LK_EDO_INTERNAL_TOKEN`, `RABBITMQ_URL/LK_EVENTS_EXCHANGE/EDO_LK_QUEUE`. Local dev uses the SHARED LK containers (MariaDB :12002/db `edo`, Redis :6379, RabbitMQ :5672); EDO runs no MariaDB/Redis/Rabbit of its own. CI (manual) uses its own disposable MariaDB + Redis + RabbitMQ services (isolated, never shared LK infra; destructive fault-injection only there).
-- Known deployment blocker (2026-10-19): the external GitLab `ci-templates/edo.yml` recreates production `.env` without `ERP_CANDIDATE_URL` and `ERP_CANDIDATE_TOKEN`. Access to that template is currently unavailable. Both settings were restored manually on production; this workaround can be overwritten by the next deployment. When deploying EDO, remind the user about this blocker and verify both settings remain nonempty in `/var/www/edo.sps38.pro/.env` and in the API container, without printing their values. If lost, restore from the protected production backup in `/var/www/edo.sps38.pro/.cache/` and recreate only the API with the current image. Obtain the actual compose file path from the container's `com.docker.compose.project.config_files` label. Once access is available, fix environment generation in the external template and remove this reminder after a successful deployment confirms persistence.
+- ERP runtime guard (по передаче пользователя от 2026-10-21): прежний блокер генерации production `.env` устранён во внешнем `webdevs/ci-templates`. Deploy останавливается до замены `.env`, если `ERP_CANDIDATE_URL` или `ERP_CANDIDATE_TOKEN` пусты, и проверяет наличие обоих внутри API после restart без вывода значений; pipeline 3682 прошёл эти проверки. Сохранить guard. Не выполнять ручное восстановление production на основании устаревшего блокера от 2026-10-19; в этой сессии production не проверялся и не менялся.
 
 ## UI
 
