@@ -128,7 +128,7 @@ CORS разрешает origin ЛК и заголовки Authorization/Idempote
 
 - `Idempotency-Key`: 1–128 печатных ASCII-символов без пробелов.
 - `metadata`: JSON, пример ниже.
-- `files[]`: 1–10 JPEG/PNG/WebP/PDF, смешанный комплект допустим, порядок сохраняется.
+- `files[]`: 1–10 JPEG/PNG/WebP/HEIC/HEIF/PDF, смешанный комплект допустим, порядок сохраняется. HEIC/HEIF однократно нормализуется в WebP при загрузке без ресайза; [алгоритм, лимиты, миграция и измерения](edo-heic-uploads.md).
 
 ```json
 {

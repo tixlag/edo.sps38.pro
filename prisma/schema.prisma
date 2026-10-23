@@ -385,18 +385,23 @@ model Candidate {
 }
 
 model DocumentVersionFile {
-  id         String          @id @default(cuid()) @db.VarChar(64)
-  versionId  String          @db.VarChar(64)
-  ordinal    Int
-  storageKey String          @db.VarChar(1024)
-  filename   String          @db.VarChar(255)
-  mimeType   String          @db.VarChar(128)
-  sizeBytes  Int
-  sha256     String?         @db.VarChar(64)
-  pageCount  Int             @default(1)
-  deletedAt  DateTime?       @db.DateTime(3)
-  version    DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
-  ocrRegions OcrRegion[]
+  sourceFilename  String?         @db.VarChar(255)
+  sourceMimeType  String?         @db.VarChar(128)
+  sourceSizeBytes Int?
+  sourceSha256    String?         @db.VarChar(64)
+  normalization   String?         @db.VarChar(32)
+  id              String          @id @default(cuid()) @db.VarChar(64)
+  versionId       String          @db.VarChar(64)
+  ordinal         Int
+  storageKey      String          @db.VarChar(1024)
+  filename        String          @db.VarChar(255)
+  mimeType        String          @db.VarChar(128)
+  sizeBytes       Int
+  sha256          String?         @db.VarChar(64)
+  pageCount       Int             @default(1)
+  deletedAt       DateTime?       @db.DateTime(3)
+  version         DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  ocrRegions      OcrRegion[]
 
   @@unique([versionId, ordinal])
   @@map("document_version_files")

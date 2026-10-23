@@ -9,7 +9,12 @@ import {
 } from "@nestjs/platform-fastify";
 import multipart from "@fastify/multipart";
 import { createServer, type Server } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { ManualDocumentService } from "../src/documents/manual-document.service";
+import { DocumentUploadService } from "../src/documents/document-upload.service";
+import { Readable } from "node:stream";
 import {
   S3Client,
   CreateBucketCommand,
@@ -211,6 +216,39 @@ suite("manual documents with isolated MariaDB/S3 and ERP stub", () => {
       }
       const chunks: Buffer[] = [];
       for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      if (req.url === "/candidate-documents-v2") {
+        const form = await new Response(Buffer.concat(chunks), {
+          headers: { "content-type": String(req.headers["content-type"]) },
+        }).formData();
+        const metadata = JSON.parse(String(form.get("metadata")));
+        const file = form.get("file") as File;
+        const bytes = Buffer.from(await file.arrayBuffer());
+        const hash = createHash("sha256").update(bytes).digest("hex");
+        posts.push({
+          ...metadata,
+          fileBytes: bytes,
+          mimeType: file.type,
+          deliveryId: req.headers["idempotency-key"],
+        });
+        res.writeHead(201, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            receiptId: randomUUID(),
+            deliveryId: req.headers["idempotency-key"],
+            duplicate: false,
+            candidateUid: randomUUID(),
+            documentUid: metadata.documentUid,
+            fileUid: randomUUID(),
+            period: "2026-10-23",
+            fileName: file.name,
+            mimeType: file.type,
+            fileSha256: hash,
+            fileSize: bytes.length,
+          }),
+        );
+        return;
+      }
       posts.push(JSON.parse(Buffer.concat(chunks).toString()));
       res.statusCode = erpStatus;
       if (erpStatus >= 400) {
@@ -680,4 +718,99 @@ suite("manual documents with isolated MariaDB/S3 and ERP stub", () => {
       ).statusCode,
     ).toBe(401);
   });
+  it("uploads HEIC as canonical WebP, reuses the source fingerprint across encoder changes and delivers that exact WebP", async () => {
+    const original = await readFile(
+      join(__dirname, "fixtures/heic/document.heic"),
+    );
+    const chat = randomUUID(),
+      key = randomUUID();
+    const form = requestForm(chat);
+    const metadata = String(form.get("metadata"));
+    form.delete("files[]");
+    form.append(
+      "files[]",
+      new Blob([new Uint8Array(original)], { type: "image/heic" }),
+      "IMG_1001.HEIC",
+    );
+    const response = await upload(form, key);
+    expect(response.status).toBe(202);
+    const accepted = await json(response);
+    const file = await prisma.documentVersionFile.findFirstOrThrow({
+      where: { version: { documentId: accepted.documentId, version: 1 } },
+    });
+    expect(file).toMatchObject({
+      filename: "IMG_1001.webp",
+      mimeType: "image/webp",
+      normalization: "heic-webp-v1",
+      sourceFilename: "IMG_1001.HEIC",
+      sourceMimeType: "image/heic",
+      sourceSizeBytes: original.length,
+      sourceSha256: createHash("sha256").update(original).digest("hex"),
+    });
+    const bytes = await app.get(StorageService).read(file.storageKey);
+    expect(file.sha256).toBe(createHash("sha256").update(bytes).digest("hex"));
+    expect((await sharp(bytes).metadata()).format).toBe("webp");
+    const parser = app.get(DocumentUploadService);
+    const staged = await parser.parse({
+      isMultipart: () => true,
+      parts: async function* () {
+        yield { type: "field", fieldname: "metadata", value: metadata };
+        yield {
+          type: "file",
+          fieldname: "files[]",
+          filename: "IMG_1001.HEIC",
+          file: Readable.from([original]),
+        };
+      },
+    } as never);
+    try {
+      // A future encoder may produce different derived bytes for the same HEIC.
+      staged.files[0].sha256 = "d".repeat(64);
+      staged.files[0].sizeBytes = 9;
+      const spy = vi.spyOn(app.get(StorageService), "upload");
+      const reused = await app
+        .get(ManualDocumentService)
+        .upload(staged, key, "same-source");
+      expect(reused).toMatchObject({
+        documentId: accepted.documentId,
+        version: 1,
+      });
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    } finally {
+      await parser.dispose(staged);
+    }
+    const config = app.get(ConfigService);
+    config.set("ERP_DOCUMENTS_TRANSPORT", "multipart-v2");
+    try {
+      const approved = await app.inject({
+        method: "POST",
+        url: `/api/v1/documents/${accepted.documentId}/versions/1/approve`,
+        headers: reviewer(),
+        payload: { revision: 0 },
+      });
+      expect(approved.statusCode).toBe(200);
+      const row = await prisma.documentVersion.findUniqueOrThrow({
+        where: {
+          documentId_version: { documentId: accepted.documentId, version: 1 },
+        },
+        include: { delivery: true },
+      });
+      expect(row.approvedMimeType).toBe("image/webp");
+      expect(row.approvedSha256).toBe(file.sha256);
+      await delivery.send(row.delivery!.id);
+      expect(
+        (
+          await prisma.erpDocumentDelivery.findUniqueOrThrow({
+            where: { id: row.delivery!.id },
+          })
+        ).status,
+      ).toBe("SENT");
+      expect((posts.at(-1)!.fileBytes as Buffer).equals(bytes)).toBe(true);
+      expect(posts.at(-1)!.mimeType).toBe("image/webp");
+      expect(posts.at(-1)!.deliveryId).toBe(row.delivery!.id);
+    } finally {
+      config.set("ERP_DOCUMENTS_TRANSPORT", "base64-v1");
+    }
+  }, 30000);
 });
