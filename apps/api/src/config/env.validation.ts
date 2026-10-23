@@ -29,6 +29,10 @@ const envSchema = z.object({
   REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
   EDO_LK_INTERNAL_TOKEN: z.string().optional(),
   ERP_DOCUMENTS_BASE_URL: z.string().url().default('https://api-erp.sps38.pro/ERP/hs/api/'),
+  ERP_DOCUMENTS_TRANSPORT: z.enum(['base64-v1', 'multipart-v2']).default('multipart-v2'),
+  // Enable only after idempotency acceptance on the target 1C publication.
+  ERP_DOCUMENTS_V2_AUTO_RETRY: z.enum(['true', 'false']).default('false'),
+  ERP_DOCUMENTS_V2_TIMEOUT_MS: z.coerce.number().int().min(60000).max(600000).default(300000),
   ERP_DOCUMENTS_TOKEN: z.string().optional(),
   ERP_CANDIDATE_URL: z.string().url().optional(),
   ERP_CANDIDATE_TOKEN: z.string().optional(),

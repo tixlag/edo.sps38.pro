@@ -140,6 +140,13 @@ model DocumentVersion {
   positionCode1c String? @db.VarChar(64)
   citizenship String? @db.VarChar(2)
   approvedStorageKey String? @db.VarChar(1024)
+  approvedMimeType String? @db.VarChar(128)
+  approvedFilename String? @db.VarChar(255)
+  approvedExtension String? @db.VarChar(8)
+  approvedSizeBytes Int?
+  approvedSha256 String? @db.VarChar(64)
+  approvedPageCount Int?
+  approvedPreparation String? @db.VarChar(32)
   pendingApprovalStorageKey String? @db.VarChar(1024)
   approvalLeaseUntil DateTime? @db.DateTime(3)
   rejectionReason String? @db.VarChar(1024)
@@ -454,6 +461,9 @@ model DocumentSubmission {
 }
 
 model ErpDocumentDelivery {
+  transport String @default("base64-v1") @db.VarChar(16)
+  attemptCount Int @default(0)
+  nextAttemptAt DateTime? @db.DateTime(3)
   id String @id @default(cuid()) @db.VarChar(64)
   versionId String @unique @db.VarChar(64)
   status String @default("PENDING") @db.VarChar(32)
@@ -466,6 +476,7 @@ model ErpDocumentDelivery {
   version DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
   attempts ErpDocumentAttempt[]
   @@index([status, leaseUntil])
+  @@index([status, nextAttemptAt])
   @@map("erp_document_deliveries")
 }
 
