@@ -12,6 +12,7 @@ function setup() {
     version: {
       documentId: "document",
       version: 1,
+      fields: [],
       approvedStorageKey: "approved.pdf",
     },
   };
@@ -30,6 +31,7 @@ function setup() {
   };
   const audit = { logInTransaction: vi.fn() };
   const config = new ConfigService({
+    ERP_DOCUMENTS_TRANSPORT: "multipart-v2",
     ERP_DOCUMENTS_BASE_URL: "https://erp.example/",
     ERP_DOCUMENTS_TOKEN: "private-token",
     ERP_USERNAME: "private-user",

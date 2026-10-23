@@ -1,0 +1,26 @@
+{
+  "passport.jpg": {
+    "sizeBytes": 909726,
+    "sha256": "b0c35b8dd9a1d58af8490a6a3c5a952dec3e3432989246e59e60cc4f90179e2c"
+  },
+  "text-photo.jpg": {
+    "sizeBytes": 336727,
+    "sha256": "a161a3d648f87e8bdfa2608cdc2fb13e01f4339c6799f8312a83106f551f8030"
+  },
+  "scan.png": {
+    "sizeBytes": 1898806,
+    "sha256": "156bd6d321d8422275d26cee4faf8b82df97badd3c2543ca05965b0ec9ca780b"
+  },
+  "document.webp": {
+    "sizeBytes": 544270,
+    "sha256": "a6c5b98cf4c16ac56b4ded2138a4b05e1c625d996d2b06049f8d8a7f5d3fbd4c"
+  },
+  "transparent.png": {
+    "sizeBytes": 2239,
+    "sha256": "fddd9a67be342ae2a460bb9e19be038956f41d2733f81b5b702bd1b7cfd759e8"
+  },
+  "multipage.pdf": {
+    "sizeBytes": 1270,
+    "sha256": "97cde0d1b6046a0815db28fc4ee3be0f2327c82d3beceb47248625f0d021c0e1"
+  }
+}

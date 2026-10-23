@@ -242,6 +242,7 @@ suite("manual documents with isolated MariaDB/S3 and ERP stub", () => {
       S3_BUCKET: bucket,
       S3_ACCESS_KEY: "test",
       S3_SECRET_KEY: "test",
+      ERP_DOCUMENTS_TRANSPORT: "base64-v1",
       ERP_DOCUMENTS_BASE_URL: `http://127.0.0.1:${port}/`,
       ERP_DOCUMENTS_TOKEN: "test-token",
       ERP_USERNAME: "test-user",
