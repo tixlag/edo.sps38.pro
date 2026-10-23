@@ -78,7 +78,7 @@ describe("EDO accessRules (key presence, not truthiness)", () => {
     for (const id of [
       EdoAccessRule.ACCESS,
       EdoAccessRule.EMPLOYEE_MANAGE,
-      EdoAccessRule.DOCUMENT_REVIEW,
+      EdoAccessRule.DOCUMENT_REVIEW_RU,
       EdoAccessRule.SIGNING,
       EdoAccessRule.CONFIG_MANAGE,
       EdoAccessRule.AUDIT_VIEW,
@@ -95,7 +95,7 @@ describe("EDO accessRules (key presence, not truthiness)", () => {
   it("20008 grants all locations but no action rights", () => {
     const rules = { "20008": [] };
     expect(hasAccessRule(rules, EdoAccessRule.EMPLOYEE_MANAGE)).toBe(false);
-    expect(hasAccessRule(rules, EdoAccessRule.DOCUMENT_REVIEW)).toBe(false);
+    expect(hasAccessRule(rules, EdoAccessRule.DOCUMENT_REVIEW_RU)).toBe(false);
     expect(hasAccessRule(rules, EdoAccessRule.ACCESS)).toBe(false);
     expect(hasAccessRule(rules, EdoAccessRule.ACCESS_ALL_LOCATIONS)).toBe(true);
   });

@@ -89,7 +89,7 @@ export function DocumentReviewWorkspace({
   const canReview =
     !readOnly &&
     !!permissions &&
-    ["20002", "20009"].some((rule) =>
+    [data.reviewGroup === "IG" ? "20011" : "20002", "20009"].some((rule) =>
       Object.prototype.hasOwnProperty.call(permissions, rule),
     );
   const canEdit = canReview && data.status === "IN_REVIEW";
@@ -276,7 +276,7 @@ export function DocumentReviewWorkspace({
     },
   });
   const canSend =
-    !readOnly &&
+    canReview &&
     !!permissions &&
     ["20006", "20009"].some((rule) =>
       Object.prototype.hasOwnProperty.call(permissions, rule),

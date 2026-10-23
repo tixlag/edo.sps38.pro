@@ -59,6 +59,9 @@ const reviewRoute = createRoute({
   component: ReviewPage,
 });
 
+const reviewIgRoute = createRoute({ getParentRoute: () => rootRoute, path: '/review-ig', component: () => <ReviewPage reviewGroup="IG" /> });
+const reviewIgDocumentRoute = createRoute({ getParentRoute: () => rootRoute, path: '/review-ig/$documentId', component: () => <ReviewDocumentPage reviewGroup="IG" /> });
+
 const reviewDocumentRoute = createRoute({ getParentRoute: () => rootRoute, path: '/review/$documentId', component: ReviewDocumentPage });
 
 const onboardingRoute = createRoute({
@@ -104,6 +107,8 @@ const routeTree = rootRoute.addChildren([
   tasksRoute,
   reviewRoute,
   reviewDocumentRoute,
+  reviewIgRoute,
+  reviewIgDocumentRoute,
   historyRoute,
   myReviewsRoute,
   onboardingRoute,

@@ -37,7 +37,6 @@ async function main() {
     new LkCandidateIdentityService(config),
     new ErpCandidateClient(config),
     new CandidateCardCache(redis),
-    prisma,
   );
   const loader = (uuid: string, signal: AbortSignal) =>
     contexts.context(uuid, signal);

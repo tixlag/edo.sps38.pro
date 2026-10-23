@@ -1,3 +1,4 @@
+import { candidateGroupAccessWhere } from "../documents/review-group";
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { AuditAction, EmployeeStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -42,11 +43,15 @@ export class DashboardService {
     // locationId NULL are invisible to scoped (20007) users. That is why a
     // RETURNED document outside the caller's scope keeps the rework KPI at 0
     // for that user — exactly as the /review queue hides it. Never broaden.
-    const documentWhere: Prisma.DocumentWhereInput = scope.all
+    const locationDocumentWhere: Prisma.DocumentWhereInput = scope.all
       ? {}
       : denied ? { id: '__denied__' } : {
         OR: [{ candidate: { locationId: { in: scope.locationIds } } }, { employee: { locationId: { in: scope.locationIds } } }],
       };
+    const group = candidateGroupAccessWhere(principal, true);
+    const documentWhere: Prisma.DocumentWhereInput = Object.keys(group).length && !denied
+      ? { AND: [locationDocumentWhere, { OR: [{ candidate: group }, ...(hasAccessRule(principal.accessRules, EdoAccessRule.DOCUMENT_REVIEW_RU) ? [{ candidateId: null }] : [])] }] }
+      : locationDocumentWhere;
     // UTC reporting week; new cases are not treated as hires or signatures.
     const monday = new Date();
     monday.setUTCHours(0, 0, 0, 0);
@@ -92,7 +97,7 @@ export class DashboardService {
       kpi.group === 'general'
         ? true
         : kpi.group === 'review'
-          ? hasAccessRule(principal.accessRules, EdoAccessRule.DOCUMENT_REVIEW)
+          ? (hasAccessRule(principal.accessRules, EdoAccessRule.DOCUMENT_REVIEW_RU) || hasAccessRule(principal.accessRules, EdoAccessRule.DOCUMENT_REVIEW_IG))
           : hasAccessRule(principal.accessRules, EdoAccessRule.SIGNING),
     );
     return {

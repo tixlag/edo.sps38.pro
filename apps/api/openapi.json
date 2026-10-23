@@ -4855,6 +4855,14 @@
             }
           },
           {
+            "name": "reviewGroup",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ReviewGroup"
+            }
+          },
+          {
             "name": "status",
             "required": false,
             "in": "query",
@@ -5118,6 +5126,14 @@
             }
           },
           {
+            "name": "reviewGroup",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ReviewGroup"
+            }
+          },
+          {
             "name": "status",
             "required": false,
             "in": "query",
@@ -5360,7 +5376,16 @@
     "/api/v1/review-documents/facets": {
       "get": {
         "operationId": "getReviewDocumentFacets",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "reviewGroup",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ReviewGroup"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -5478,6 +5503,14 @@
       "get": {
         "operationId": "listReviewCandidates",
         "parameters": [
+          {
+            "name": "reviewGroup",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ReviewGroup"
+            }
+          },
           {
             "name": "q",
             "required": false,
@@ -7283,6 +7316,12 @@
       "CandidateSnapshotDto": {
         "type": "object",
         "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Chat UUID, named uuid by 1C"
+          },
           "fullName": {
             "type": "string",
             "maxLength": 512
@@ -7532,9 +7571,23 @@
           "EXPIRED"
         ]
       },
+      "ReviewGroup": {
+        "type": "string",
+        "enum": [
+          "RU",
+          "IG"
+        ]
+      },
       "CandidateProfileDto": {
         "type": "object",
         "properties": {
+          "reviewGroup": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReviewGroup"
+              }
+            ]
+          },
           "id": {
             "type": "string"
           },
@@ -7615,6 +7668,7 @@
           }
         },
         "required": [
+          "reviewGroup",
           "id",
           "chatUuid",
           "code1c",
@@ -8339,6 +8393,13 @@
             "type": "string",
             "nullable": true,
             "description": "Verified JWT UUID of the reviewer"
+          },
+          "reviewGroup": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReviewGroup"
+              }
+            ]
           },
           "canStartOcr": {
             "type": "boolean",

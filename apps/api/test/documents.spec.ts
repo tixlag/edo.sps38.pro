@@ -88,12 +88,14 @@ describe("document authorization boundaries", () => {
   it("uses key presence and denies candidates without objects to scoped users", () => {
     const access = new DocumentAccessService({} as never);
     expect(access.candidateWhere(principal({ "20009": [] }))).toEqual({});
-    expect(access.candidateWhere(principal({ "20008": [] }))).toEqual({});
+    expect(access.candidateWhere(principal({ "20008": [] }))).toEqual({
+      id: { in: [] },
+    });
     expect(access.candidateWhere(principal({ "20007": ["98"] }))).toEqual({
-      locationId: { in: [98] },
+      AND: [{ locationId: { in: [98] } }, { id: { in: [] } }],
     });
     expect(access.candidateWhere(principal({ "20000": [] }))).toEqual({
-      locationId: { in: [] },
+      AND: [{ locationId: { in: [] } }, { id: { in: [] } }],
     });
   });
   it("disables stub by default and forbids it in production", () => {

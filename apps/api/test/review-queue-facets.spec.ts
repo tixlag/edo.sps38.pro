@@ -20,7 +20,7 @@ const fullAccess = {
 } as never;
 const scoped20007 = {
   ...fullAccess,
-  accessRules: { "20007": ["98"] },
+  accessRules: { "20002": [], "20007": ["98"] },
 } as never;
 
 const readsWith = (prisma: Record<string, unknown>) =>
@@ -94,7 +94,8 @@ describe("reviewDocumentFacets scope", () => {
     // documents never contribute candidate ids.
     expect(documentFind).toHaveBeenCalledWith({
       where: {
-        OR: expect.any(Array),
+        ...access.documentWhere(scoped20007),
+        candidate: { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] },
         currentVersion: { gt: 0 },
         candidateId: { not: null },
       },
@@ -236,7 +237,8 @@ describe("reviewCandidates", () => {
     } as never).reviewCandidates(scoped20007, { q: "иван" });
     expect(documentFind).toHaveBeenCalledWith({
       where: {
-        OR: expect.any(Array),
+        ...access.documentWhere(scoped20007),
+        candidate: { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] },
         currentVersion: { gt: 0 },
         candidateId: { not: null },
       },
@@ -335,7 +337,7 @@ describe("review queue exact filters", () => {
       managerCode1c: "M1",
     });
     expect(findMany.mock.calls[0][0].where).toMatchObject({
-      OR: expect.any(Array),
+      ...access.documentWhere(scoped20007),
       candidate: { AND: expect.arrayContaining([{ id: "c1" }]) },
     });
     const and = findMany.mock.calls[0][0].where.candidate.AND as unknown[];

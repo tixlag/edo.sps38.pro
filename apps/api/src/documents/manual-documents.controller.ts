@@ -1,3 +1,4 @@
+import { ReviewGroupQueryDto } from "./dto/document.dto";
 import {
   Controller,
   Get,
@@ -303,8 +304,11 @@ export class ManualDocumentReviewController {
       "Distinct manager/mentor/project/citizenship values inside the queue access scope",
   })
   @ApiResponse({ status: 200, type: ReviewDocumentFacetsDto })
-  facets(@CurrentPrincipal() principal: AuthPrincipal) {
-    return this.reads.reviewDocumentFacets(principal);
+  facets(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Query() query: ReviewGroupQueryDto,
+  ) {
+    return this.reads.reviewDocumentFacets(principal, query.reviewGroup);
   }
   @Get("review-candidates")
   @RequireAccessRule(EdoAccessRule.ACCESS)
@@ -346,7 +350,10 @@ export class ManualDocumentReviewController {
   }
   @Post("documents/:documentId/versions/:version/reject")
   @HttpCode(200)
-  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
+  @RequireAccessRule(
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
   @ApiOperation({
     operationId: "rejectDocument",
     summary: "Return current document for a better photo",

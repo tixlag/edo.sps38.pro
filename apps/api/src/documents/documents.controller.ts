@@ -192,7 +192,10 @@ export class DocumentsController {
 
   @Post("documents/:documentId/versions/:version/ocr/retry")
   @HttpCode(202)
-  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
+  @RequireAccessRule(
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
   @ApiOperation({
     summary:
       "Retry failed OCR for a supported current document with retained originals",
@@ -217,7 +220,10 @@ export class DocumentsController {
 
   @Post("documents/:documentId/versions/:version/ocr/start")
   @HttpCode(202)
-  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
+  @RequireAccessRule(
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
   @ApiOperation({
     summary:
       "Start OCR for a supported current document without a previous OCR job",
@@ -354,7 +360,10 @@ export class DocumentsController {
   }
 
   @Patch("documents/:documentId/versions/:version/fields")
-  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
+  @RequireAccessRule(
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
   @ApiOperation({
     summary: "Correct current document fields with optimistic concurrency",
     operationId: "editDocumentFields",
@@ -379,7 +388,10 @@ export class DocumentsController {
 
   @Post("documents/:documentId/versions/:version/approve")
   @HttpCode(200)
-  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
+  @RequireAccessRule(
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
   @ApiOperation({
     summary: "Approve the current reviewed document (does not trigger hiring)",
     operationId: "approveDocument",

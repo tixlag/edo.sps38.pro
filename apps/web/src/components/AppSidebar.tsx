@@ -28,7 +28,8 @@ export interface NavItem {
 export const WORK_NAV: NavItem[] = [
   { key: 'dashboard', label: 'Дашборд', icon: LayoutDashboard, to: '/' },
   { key: 'tasks', label: 'Мои задачи', icon: ClipboardCheck, to: '/tasks' },
-  { key: 'review', label: 'Проверка документов', icon: FileCheck2, to: '/review' },
+  { key: 'review', label: 'Проверка документов РУ', icon: FileCheck2, to: '/review' },
+  { key: 'review-ig', label: 'Проверка документов ИГ', icon: FileCheck2, to: '/review-ig' },
   { key: 'onboarding', label: 'Оформление', icon: Route, to: '/onboarding' },
   { key: 'signing', label: 'Подписание', icon: PenLine, to: '/signing' },
   { key: 'employees', label: 'Работники', icon: Users, to: '/employees' },
@@ -90,15 +91,17 @@ export function AppSidebar({
   const permissions = (profile?.permissions ?? {}) as Record<string, unknown>;
   const hasRule = (rule: number) => Object.prototype.hasOwnProperty.call(permissions, String(rule));
   const canAudit = hasRule(20005) || hasRule(20009);
-  const canReview = hasRule(20002) || hasRule(20009);
+  const canReviewRu = hasRule(20002) || hasRule(20009);
+  const canReviewIg = hasRule(20011) || hasRule(20009);
+  const canReview = canReviewRu || canReviewIg;
   const extraWorkNav: NavItem[] = [];
-  if (canAudit || hasRule(20002)) {
+  if (canAudit || canReview) {
     extraWorkNav.push({ key: 'history', label: 'История', icon: HistoryIcon, to: '/history' });
   }
   if (canReview || canAudit) {
     extraWorkNav.push({ key: 'my-reviews', label: 'Мои проверки', icon: UserCheck, to: '/my-reviews' });
   }
-  const workNav = [...WORK_NAV, ...extraWorkNav];
+  const workNav = [...WORK_NAV.filter((item) => item.key === "review" ? canReviewRu : item.key === "review-ig" ? canReviewIg : true), ...extraWorkNav];
   const sections = [
     { title: 'Работа', items: workNav },
     { title: 'Конфигурация', items: CONFIG_NAV },
@@ -107,12 +110,12 @@ export function AppSidebar({
     const all = [...workNav, ...CONFIG_NAV];
     return (
       <aside className="relative flex h-full w-[84px] flex-col items-center justify-between border-r border-[var(--border)] bg-[var(--sidebar)] px-[14px] py-[22px]">
-        <div className="flex w-full flex-col items-center gap-[22px]">
+        <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-[22px] overflow-y-auto">
           <div className="flex h-12 w-12 items-center justify-center rounded-[12px] bg-[var(--primary)] text-[13px] font-bold text-white">
             ЕЗД
           </div>
           <nav className="flex w-full flex-col items-center gap-2">
-            {all.slice(0, 10).map((item) => {
+            {all.map((item) => {
               const Icon = item.icon;
               const isActive = active === item.to || (item.to === '/' && active === '/');
               return (
@@ -136,7 +139,7 @@ export function AppSidebar({
             })}
           </nav>
         </div>
-        <div className="flex flex-col items-center gap-3">
+        <div className="flex shrink-0 flex-col items-center gap-3">
           <SidebarAvatar avatarUrl={avatarUrl} label={avatarTitle} initials={profileInitials(profile)} />
         </div>
         <button
