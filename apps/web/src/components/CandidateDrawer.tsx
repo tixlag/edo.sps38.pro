@@ -241,7 +241,10 @@ export function CandidateDrawer({
                     aria-label={`${doc.title}, ${returnedVersion ? "возвращённая " : ""}версия ${returnedVersion?.version ?? doc.currentVersion}`}
                     onClick={() =>
                       void navigate({
-                        to: "/review/$documentId",
+                        to:
+                          docs.data?.candidate?.reviewGroup === "IG"
+                            ? "/review-ig/$documentId"
+                            : "/review/$documentId",
                         params: { documentId: doc.id },
                         search: {
                           ...search,

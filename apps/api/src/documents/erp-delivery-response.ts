@@ -55,6 +55,7 @@ function sanitize(text: string, secrets: readonly string[]): string {
 export async function captureErpDeliveryResponse(
   response: Response,
   secrets: readonly string[],
+  inspect?: (raw: string) => void,
 ): Promise<ErpDeliveryResponse> {
   const result: ErpDeliveryResponse = {
     httpStatus: response.status,
@@ -130,6 +131,7 @@ export async function captureErpDeliveryResponse(
     result.responseBody = "[binary response omitted]";
     return result;
   }
+  inspect?.(bytesRead.toString("utf8"));
   const body = sanitize(bytesRead.toString("utf8"), secrets);
   result.responseBody = body.slice(0, MAX_RESPONSE_BYTES);
   result.responseTruncated ||= body.length > MAX_RESPONSE_BYTES;

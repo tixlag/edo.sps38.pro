@@ -35,6 +35,8 @@ RUN --mount=type=cache,id=edo-pnpm,target=/pnpm/store \
 # lk:recover, infra:check) работали через docker exec без изменений.
 # ---------------------------------------------------------------------------
 FROM source AS api-build
+# Native HEVC decoder; sharp prebuilt binaries decode AVIF, not HEIC/HEVC.
+RUN apk add --no-cache libheif-tools
 RUN pnpm --filter @edo/api prisma:generate \
  && pnpm turbo build --filter=@edo/api...
 

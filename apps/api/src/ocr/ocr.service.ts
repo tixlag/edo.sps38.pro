@@ -14,6 +14,8 @@ export interface OcrRequest {
   documentId: string;
   version: number;
   documentTypeCode: string;
+  documentUid?: string | null;
+  citizenship?: string | null;
   files: OcrInputFile[];
 }
 
@@ -23,6 +25,33 @@ export const ocrIssueSchema = z.object({
   fileOrdinal: z.number().int().nonnegative().nullable().default(null),
   pageNumber: z.number().int().positive().nullable().default(null),
 });
+
+/** Coordinates in the displayed source page, never in a detector crop. */
+export const ocrSourceRegionSchema = z
+  .object({
+    fileOrdinal: z.number().int().nonnegative(),
+    pageNumber: z.number().int().positive(),
+    x: z.number().finite().min(0).max(1),
+    y: z.number().finite().min(0).max(1),
+    width: z.number().finite().positive().max(1),
+    height: z.number().finite().positive().max(1),
+    text: z.string().max(16_384).nullable().optional(),
+  })
+  .refine(
+    (r) => r.x + r.width <= 1.000001 && r.y + r.height <= 1.000001,
+    "OCR region exceeds page bounds",
+  );
+
+export const ocrFieldSchema = z.object({
+  name: z.string().min(1).max(128),
+  documentFieldName: z.string().min(1).max(128).nullable(),
+  value: z.string().max(16384).nullable(),
+  source: z.enum(["PADDLE", "GLM", "MIXED"]),
+  paddleText: z.string().max(16384).nullable(),
+  paddleConfidence: z.number().finite().min(0).max(1).nullable(),
+  regions: z.array(ocrSourceRegionSchema).max(200).optional(),
+});
+export type OcrField = z.infer<typeof ocrFieldSchema>;
 
 const fieldsSchema = z
   .record(z.string().min(1).max(128), z.string().max(16_384).nullable())
@@ -39,6 +68,7 @@ const fieldsSchema = z
 export const ocrRegionSchema = z
   .object({
     fieldName: z.string().min(1).max(128),
+    ocrFieldOrdinal: z.number().int().nonnegative().optional(),
     fileOrdinal: z.number().int().nonnegative(),
     pageNumber: z.number().int().positive(),
     x: z.number().finite().min(0).max(1),
@@ -60,6 +90,8 @@ export const ocrResultSchema = z
       outcome: z.literal("SUCCEEDED"),
       source: z.enum(["STUB", "EXTERNAL"]),
       fields: fieldsSchema,
+      fieldTexts: fieldsSchema.optional(),
+      ocrFields: z.array(ocrFieldSchema).max(2000).optional(),
       regions: z.array(ocrRegionSchema).max(2000).optional(),
       raw: z.record(z.unknown()),
     }),
@@ -71,6 +103,18 @@ export const ocrResultSchema = z
     }),
   ])
   .superRefine((result, context) => {
+    if (
+      result.outcome === "SUCCEEDED" &&
+      (result.ocrFields ?? []).reduce(
+        (count, field) => count + (field.regions?.length ?? 0),
+        0,
+      ) > 2000
+    )
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ocrFields"],
+        message: "Too many OCR regions",
+      });
     if (result.outcome === "SUCCEEDED")
       for (const [index, region] of (result.regions ?? []).entries()) {
         if (
@@ -80,6 +124,15 @@ export const ocrResultSchema = z
             code: z.ZodIssueCode.custom,
             path: ["regions", index, "fieldName"],
             message: "OCR region references an unknown field",
+          });
+        if (
+          region.ocrFieldOrdinal !== undefined &&
+          !result.ocrFields?.[region.ocrFieldOrdinal]
+        )
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["regions", index],
+            message: "Unknown OCR observation",
           });
       }
   });
@@ -91,7 +144,10 @@ export function validateOcrResult(
 ): OcrResult {
   const result = ocrResultSchema.parse(input);
   if (result.outcome === "SUCCEEDED")
-    for (const region of result.regions ?? []) {
+    for (const region of [
+      ...(result.regions ?? []),
+      ...(result.ocrFields ?? []).flatMap((field) => field.regions ?? []),
+    ]) {
       const file = files.find((item) => item.ordinal === region.fileOrdinal);
       if (!file || region.pageNumber > file.pageCount)
         throw new Error("OCR_CONTRACT_INVALID");

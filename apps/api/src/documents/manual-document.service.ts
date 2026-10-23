@@ -2,9 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { Prisma, type DocumentStatus } from "@prisma/client";
+import { ConfigService } from "@nestjs/config";
+import { resolveOcrProfile } from "../ocr/ocr-profile";
 import { createHash, randomUUID } from "node:crypto";
 import { assertDocumentUploadAllowed } from "./document-upload-policy";
 import { PrismaService } from "../prisma/prisma.service";
@@ -27,6 +30,7 @@ export class ManualDocumentService {
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     private readonly catalog: DocumentCatalogService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   async upload(
@@ -52,14 +56,12 @@ export class ManualDocumentService {
               ),
             ),
           },
-          files: upload.files.map(
-            ({ filename, mimeType, sha256, pageCount }) => ({
-              filename,
-              mimeType,
-              sha256,
-              pageCount,
-            }),
-          ),
+          files: upload.files.map((file) => ({
+            filename: file.source?.filename ?? file.filename,
+            mimeType: file.source?.mimeType ?? file.mimeType,
+            sha256: file.source?.sha256 ?? file.sha256,
+            pageCount: file.pageCount,
+          })),
         }),
       )
       .digest("hex");
@@ -141,8 +143,30 @@ export class ManualDocumentService {
           throw new ConflictException("Upload lease expired");
         await tx.documentVersion.update({
           where: { id: reserved.submission.versionId },
-          data: { status: "IN_REVIEW" },
+          data: { status: "IN_REVIEW", submittedAt: new Date() },
         });
+        const profile = resolveOcrProfile({
+          documentUid: metadata.documentUid,
+          documentTypeCode: type.code,
+          citizenship: metadata.citizenship,
+        });
+        if (
+          profile &&
+          this.config?.get("OCR_MODE") === "external" &&
+          this.config.get("OCR_WORKER_ENABLED") !== "false"
+        ) {
+          await tx.ocrJob.create({
+            data: {
+              versionId: reserved.submission.versionId,
+              candidateId: reserved.submission.version.document.candidateId!,
+              idempotencyKey: `submission:${reserved.submission.id}`,
+              fingerprint,
+              correlationId: correlation,
+              status: "QUEUED",
+              outbox: { create: {} },
+            },
+          });
+        }
         await tx.document.updateMany({
           where: {
             id: reserved.submission.version.documentId,
@@ -163,6 +187,13 @@ export class ManualDocumentService {
             version: reserved.submission.version.version,
             source: "MANUAL",
             fileCount: upload.files.length,
+            ...(upload.files.some((f) => f.source)
+              ? {
+                  normalization: "heic-webp-v1",
+                  normalizedFileCount: upload.files.filter((f) => f.source)
+                    .length,
+                }
+              : {}),
           },
         });
       });
@@ -284,6 +315,15 @@ export class ManualDocumentService {
               sizeBytes: f.sizeBytes,
               sha256: f.sha256,
               pageCount: f.pageCount,
+              ...(f.source
+                ? {
+                    sourceFilename: f.source.filename,
+                    sourceMimeType: f.source.mimeType,
+                    sourceSizeBytes: f.source.sizeBytes,
+                    sourceSha256: f.source.sha256,
+                    normalization: f.normalization,
+                  }
+                : {}),
             }));
             const version = await tx.documentVersion.create({
               data: {

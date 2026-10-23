@@ -81,7 +81,7 @@ export function DashboardPage() {
   const permissions = profile?.permissions;
   const hasRule = (...rules: string[]) =>
     !!permissions && rules.some((rule) => Object.prototype.hasOwnProperty.call(permissions, rule));
-  const canReview = hasRule('20002', '20009');
+  const canReview = hasRule('20002', '20011', '20009');
   const canSign = hasRule('20003', '20009');
 
   const groupVisible = (group: KpiGroup) =>
@@ -118,7 +118,11 @@ export function DashboardPage() {
                 {kpisOf(group.key).map((kpi) => {
                   const meta = KPI_META[kpi.key] ?? FALLBACK_META;
                   const Icon = meta.icon;
-                  const to = meta.to;
+                  // A combined RU+IG count has no single queue destination.
+                  const combinedReview = hasRule("20002", "20009") && hasRule("20011", "20009");
+                  const to = meta.to === "/review"
+                    ? combinedReview ? undefined : hasRule("20002", "20009") ? "/review" : "/review-ig"
+                    : meta.to;
                   return (
                     <MetricCard
                       key={kpi.key}

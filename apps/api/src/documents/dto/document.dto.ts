@@ -53,6 +53,16 @@ export class CandidateQueryDto {
   @MaxLength(64)
   cursor?: string;
 }
+export class ReviewGroupQueryDto {
+  @ApiPropertyOptional({
+    enum: ["RU", "IG"],
+    enumName: "ReviewGroup",
+    default: "RU",
+  })
+  @IsOptional()
+  @IsIn(["RU", "IG"])
+  reviewGroup?: "RU" | "IG";
+}
 export class DocumentFileDto {
   @ApiProperty() id!: string;
   @ApiProperty({
@@ -102,6 +112,13 @@ export class OcrRegionDto {
 export class DocumentFieldDto {
   @ApiProperty() name!: string;
   @ApiProperty({ type: String, nullable: true }) originalValue!: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      "Unformatted OCR field text for exact comparison; originalValue is the typed suggestion",
+  })
+  ocrText?: string | null;
   @ApiProperty({ type: String, nullable: true }) value!: string | null;
   @ApiProperty({ type: String, nullable: true }) editedBy!: string | null;
   @ApiProperty({ type: String, nullable: true }) submittedValue!: string | null;
@@ -175,7 +192,60 @@ export class DocumentDeliveryDto {
   @ApiProperty({ type: [DocumentDeliveryAttemptDto] })
   attempts!: DocumentDeliveryAttemptDto[];
 }
-export class DocumentVersionDto {
+export class DocumentOcrFieldDto {
+  @ApiProperty() name!: string;
+  @ApiProperty({ type: String, nullable: true }) documentFieldName!:
+    | string
+    | null;
+  @ApiProperty({ type: String, nullable: true }) value!: string | null;
+  @ApiProperty({ enum: ["PADDLE", "GLM", "MIXED"] }) source!: string;
+  @ApiProperty({ type: String, nullable: true }) paddleText!: string | null;
+  @ApiProperty({ type: Number, nullable: true, minimum: 0, maximum: 1 })
+  paddleConfidence!: number | null;
+  @ApiPropertyOptional({ type: [OcrRegionDto] }) regions?: OcrRegionDto[];
+}
+export class DocumentOcrDetailsDto {
+  @ApiProperty() revision!: number;
+  @ApiProperty({ type: [DocumentOcrFieldDto] }) fields!: DocumentOcrFieldDto[];
+  @ApiProperty({ type: "object", additionalProperties: true, nullable: true })
+  raw!: unknown;
+}
+export class DocumentReviewMetadataDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    format: "date-time",
+    description:
+      "Successful submission time, UTC ISO 8601; null when historically unknown",
+  })
+  submittedAt!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    format: "date-time",
+    description: "Approval or return decision time, UTC ISO 8601",
+  })
+  reviewedAt!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "Verified JWT UUID of the reviewer",
+  })
+  reviewedBy!: string | null;
+}
+export class DocumentVersionDto extends DocumentReviewMetadataDto {
+  @ApiPropertyOptional({ enum: ["RU", "IG"], enumName: "ReviewGroup" })
+  reviewGroup?: "RU" | "IG";
+  @ApiProperty({
+    description:
+      "Current supported submitted version has no OCR attempt and retained originals",
+  })
+  canStartOcr!: boolean;
+  @ApiProperty({
+    description:
+      "Current supported version has a failed OCR attempt, retained originals, and enabled OCR",
+  })
+  canRetryOcr!: boolean;
   @ApiProperty() documentId!: string;
   @ApiProperty() version!: number;
   @ApiProperty({ enum: DocumentStatus, enumName: "DocumentStatus" })
@@ -185,6 +255,9 @@ export class DocumentVersionDto {
   ocrSource!: string | null;
   @ApiProperty({ type: [DocumentFileDto] }) files!: DocumentFileDto[];
   @ApiProperty({ type: [DocumentFieldDto] }) fields!: DocumentFieldDto[];
+  @ApiProperty({ type: [DocumentOcrFieldDto] })
+  ocrFields!: DocumentOcrFieldDto[];
+  @ApiProperty({ type: String, nullable: true }) reviewedByName!: string | null;
   @ApiProperty({ type: [OcrIssueDto] }) issues!: OcrIssueDto[];
   @ApiProperty({ type: OcrJobDto, nullable: true }) job!: OcrJobDto | null;
   @ApiProperty({ type: "object", additionalProperties: true, nullable: true })
@@ -199,6 +272,8 @@ export class DocumentVersionDto {
   delivery!: DocumentDeliveryDto | null;
 }
 export class CandidateProfileDto {
+  @ApiProperty({ enum: ["RU", "IG"], enumName: "ReviewGroup" })
+  reviewGroup!: "RU" | "IG";
   @ApiProperty() id!: string;
   @ApiProperty({ type: String, nullable: true, format: "uuid" }) chatUuid!:
     | string
@@ -235,7 +310,7 @@ export class CandidateProfileDto {
   requiredDocuments!: number | null;
 }
 /** Returned versions retained after a newer document upload. */
-export class ReturnedDocumentVersionDto {
+export class ReturnedDocumentVersionDto extends DocumentReviewMetadataDto {
   @ApiProperty() version!: number;
   @ApiProperty({ type: String, nullable: true }) rejectionReason!:
     | string
@@ -250,7 +325,10 @@ export class ReturnedDocumentVersionDto {
 }
 
 /** Document properties shared by candidate details and document-oriented APIs. */
-export class CandidateDocumentSummaryDto {
+export class CandidateDocumentSummaryDto extends DocumentReviewMetadataDto {
+  @ApiProperty({ enum: OcrJobStatus, enumName: "OcrJobStatus", nullable: true })
+  ocrStatus!: OcrJobStatus | null;
+  @ApiProperty({ type: String, nullable: true }) ocrErrorCode!: string | null;
   @ApiPropertyOptional({
     type: [ReturnedDocumentVersionDto],
     description:
@@ -380,7 +458,7 @@ export class ReviewCandidateDto {
 export class ReviewCandidateListDto {
   @ApiProperty({ type: [ReviewCandidateDto] }) items!: ReviewCandidateDto[];
 }
-export class ReviewCandidatesQueryDto {
+export class ReviewCandidatesQueryDto extends ReviewGroupQueryDto {
   @ApiPropertyOptional({ description: "Case-insensitive fullName search" })
   @IsOptional()
   @IsString()
@@ -505,6 +583,15 @@ export class CandidateSnapshotMentorDto {
   code_1c?: string;
 }
 export class CandidateSnapshotDto {
+  @ApiPropertyOptional({
+    type: String,
+    format: "uuid",
+    nullable: true,
+    description: "Chat UUID, named uuid by 1C",
+  })
+  @IsOptional()
+  @IsUUID()
+  uuid?: string | null;
   @ApiPropertyOptional({ maxLength: 512 })
   @IsOptional()
   @IsString()
@@ -646,6 +733,14 @@ export class DocumentUploadGrantDto {
   @ApiProperty({ format: "date-time" }) expiresAt!: string;
 }
 export class ReviewDocumentsQueryDto extends CandidateQueryDto {
+  @ApiPropertyOptional({
+    enum: ["RU", "IG"],
+    enumName: "ReviewGroup",
+    default: "RU",
+  })
+  @IsOptional()
+  @IsIn(["RU", "IG"])
+  reviewGroup?: "RU" | "IG";
   @ApiPropertyOptional({
     enum: ["IN_REVIEW", "ERP_PENDING", "RETURNED", "ALL"],
   })

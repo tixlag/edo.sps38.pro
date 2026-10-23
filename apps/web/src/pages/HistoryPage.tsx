@@ -97,7 +97,7 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
     profileReady && (hasAccessRule(profile.data, 20005) || hasAccessRule(profile.data, 20009));
   const allowed =
     profileReady &&
-    (canViewAll || hasAccessRule(profile.data, 20002));
+    (canViewAll || (hasAccessRule(profile.data, 20002) || hasAccessRule(profile.data, 20011)));
 
   const [scope, setScope] = React.useState<'mine' | 'all'>(lockMine ? 'mine' : 'all');
   const [action, setAction] = React.useState<string>(withTabs ? REVIEW_TABS[0].value : '');
@@ -177,7 +177,7 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
           <CardContent>
             <EmptyState
               title="Нет доступа"
-              description="Раздел доступен проверяющим (20002) и аудиту (20005)."
+              description="Раздел доступен проверяющим (20002, 20011) и аудиту (20005)."
             />
           </CardContent>
         </Card>

@@ -14,6 +14,7 @@ import {
   type CandidateCardEntry,
 } from "./candidate-card-cache";
 import type { CandidateSnapshotDto } from "./dto/document.dto";
+import type { CandidateDocumentContextDto } from "./dto/candidate-context.dto";
 
 @Injectable()
 export class CandidateContextService {
@@ -68,15 +69,67 @@ export class CandidateContextService {
       candidateSnapshot: snapshot,
     };
   }
+
+  /** Candidate is authoritative for profiles looked up by employee code too. */
+  async forEmployee(
+    code1c: string,
+    signal?: AbortSignal,
+  ): Promise<CandidateDocumentContextDto> {
+    const key = `code_1c:${code1c}`;
+    let request = this.pending.get(key);
+    if (!request) {
+      request = this.card(key, AbortSignal.timeout(19_000)).finally(() =>
+        this.pending.delete(key),
+      );
+      this.pending.set(key, request);
+    }
+    let snapshot: CandidateSnapshotDto;
+    try {
+      snapshot = signal
+        ? await withinDocumentDeadline(request, signal)
+        : await request;
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason;
+      if (
+        error instanceof Error &&
+        ["AbortError", "TimeoutError"].includes(error.name)
+      )
+        throw new CandidateDocumentError(Code.ERP_TIMEOUT);
+      if (error instanceof ErpCandidateError)
+        throw new CandidateDocumentError(error.code, error.fields);
+      throw error;
+    }
+    // A returned uuid is a chat identifier, but only LK can authorize its ownership.
+    let chatUuid: string | null = null;
+    if (snapshot.uuid) {
+      const identity = await this.identity.byUuid(snapshot.uuid, signal);
+      if (identity.code1c !== code1c)
+        throw new CandidateDocumentError(Code.LK_CONTRACT_ERROR);
+      chatUuid = identity.chatUuid;
+    }
+    return {
+      chatUuid,
+      code1c,
+      positionCode1c: (snapshot.position as { code: string }).code,
+      citizenship: snapshot.citizenship!,
+      projectCode1c:
+        (snapshot.project as { code?: string } | undefined)?.code ?? null,
+      candidateSnapshot: snapshot,
+    };
+  }
   private async card(
     uuid: string,
     signal?: AbortSignal,
   ): Promise<CandidateSnapshotDto> {
+    const fetchCard = () =>
+      uuid.startsWith("code_1c:")
+        ? this.erp.findByEmployeeCode(uuid.slice(8), signal)
+        : this.erp.findByChatUuid(uuid, signal);
     let previous: CandidateCardEntry | null;
     try {
       previous = await this.cache.get(uuid, signal);
     } catch {
-      return this.erp.findByChatUuid(uuid, signal);
+      return fetchCard();
     }
     if (previous && previous.freshUntil > Date.now()) return previous.snapshot;
     const owner = randomUUID();
@@ -84,7 +137,7 @@ export class CandidateContextService {
     try {
       acquired = await this.cache.acquire(uuid, owner, signal);
     } catch {
-      return this.erp.findByChatUuid(uuid, signal);
+      return fetchCard();
     }
     if (!acquired) {
       const deadline = Date.now() + 17_000;
@@ -95,7 +148,7 @@ export class CandidateContextService {
           if (current && current.freshUntil > Date.now())
             return current.snapshot;
         } catch {
-          return this.erp.findByChatUuid(uuid, signal);
+          return fetchCard();
         }
       }
       throw new CandidateDocumentError(Code.ERP_UNAVAILABLE);
@@ -106,7 +159,7 @@ export class CandidateContextService {
       if (current && current.freshUntil > Date.now()) return current.snapshot;
       let snapshot: CandidateSnapshotDto;
       try {
-        snapshot = await this.erp.findByChatUuid(uuid, signal);
+        snapshot = await fetchCard();
       } catch (error) {
         if (signal?.aborted) throw signal.reason;
         if (previous && (error as { transient?: boolean }).transient === true) {

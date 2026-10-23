@@ -13,8 +13,10 @@ import {
   useListCandidateReviewQueue,
   type CandidateDetailsDto,
   useGetDocumentInfo,
-  useGetDocumentVersion,
-  getGetDocumentVersionQueryKey,
+  useGetMe,
+  getListReviewCandidatesQueryKey,
+  getGetReviewDocumentFacetsQueryKey,
+  getListCandidateReviewQueueQueryKey,
 } from "@edo/api-client";
 import {
   PageHeader,
@@ -27,6 +29,7 @@ import {
 } from "@edo/ui";
 import { Clock, Check, X, ChevronRight } from "lucide-react";
 import { DocumentReviewWorkspace } from "../components/DocumentReviewWorkspace";
+import { useLiveDocumentVersion } from "../lib/use-live-document-version";
 import {
   SearchSelect,
   type SearchSelectOption,
@@ -253,7 +256,17 @@ function CandidateRow({
   );
 }
 
-export function ReviewPage() {
+export function ReviewPage({
+  reviewGroup = "RU",
+}: {
+  reviewGroup?: "RU" | "IG";
+}) {
+  const base = reviewGroup === "IG" ? "/review-ig" : "/review";
+  const profile = useGetMe();
+  const permissions = profile.data?.permissions ?? {};
+  const canReview = [reviewGroup === "IG" ? "20011" : "20002", "20009"].some(
+    (rule) => Object.prototype.hasOwnProperty.call(permissions, rule),
+  );
   const rawSearch = useSearch({ strict: false }) as Record<string, unknown>;
   const navigate = useNavigate();
   const filters = useMemo(
@@ -271,7 +284,7 @@ export function ReviewPage() {
       opts?: { keepCursor?: boolean },
     ) => {
       void navigate({
-        to: "/review",
+        to: base,
         search: (prev: Record<string, unknown>) => {
           const next: Record<string, unknown> = { ...prev };
           for (const [key, value] of Object.entries(patch)) {
@@ -283,7 +296,7 @@ export function ReviewPage() {
         },
       });
     },
-    [navigate],
+    [navigate, base],
   );
 
   const commit = useCallback(
@@ -318,16 +331,16 @@ export function ReviewPage() {
   const openCandidate = useCallback(
     (id: string) => {
       void navigate({
-        to: "/review",
+        to: base,
         search: (prev: Record<string, unknown>) => ({ ...prev, candidate: id }),
       });
     },
-    [navigate],
+    [navigate, base],
   );
 
   const closeCandidate = useCallback(() => {
     void navigate({
-      to: "/review",
+      to: base,
       replace: true,
       search: (prev: Record<string, unknown>) => {
         const next: Record<string, unknown> = { ...prev };
@@ -335,7 +348,7 @@ export function ReviewPage() {
         return next;
       },
     });
-  }, [navigate]);
+  }, [navigate, base]);
 
   // Async selector sources: candidates (ФИО) and the LK position directory.
   const [candidateQuery, setCandidateQuery] = useState("");
@@ -344,8 +357,9 @@ export function ReviewPage() {
     () => ({
       q: candidateQuery.trim() || undefined,
       limit: CANDIDATE_SELECTOR_LIMIT,
+      reviewGroup,
     }),
-    [candidateQuery],
+    [candidateQuery, reviewGroup],
   );
   const positionParams = useMemo(
     () => ({
@@ -354,14 +368,28 @@ export function ReviewPage() {
     }),
     [positionQuery],
   );
-  const candidates = useListReviewCandidates(candidateParams);
+  const candidates = useListReviewCandidates(candidateParams, {
+    query: {
+      queryKey: getListReviewCandidatesQueryKey(candidateParams),
+      enabled: canReview,
+    },
+  });
   const positions = useListPositions(positionParams);
-  const facets = useGetReviewDocumentFacets();
+  const facets = useGetReviewDocumentFacets(
+    { reviewGroup },
+    {
+      query: {
+        queryKey: getGetReviewDocumentFacetsQueryKey({ reviewGroup }),
+        enabled: canReview,
+      },
+    },
+  );
   const docTypesParams = useMemo(() => ({ catalogOnly: true as const }), []);
   const docTypes = useListDocumentTypes(docTypesParams);
 
   const queryParams = useMemo(
     () => ({
+      reviewGroup,
       status: filters.status,
       limit: PAGE_LIMIT,
       cursor: filters.cursor,
@@ -376,9 +404,14 @@ export function ReviewPage() {
       positionCode: filters.positionCode,
       projectCode: filters.projectCode,
     }),
-    [filters],
+    [filters, reviewGroup],
   );
-  const list = useListCandidateReviewQueue(queryParams);
+  const list = useListCandidateReviewQueue(queryParams, {
+    query: {
+      queryKey: getListCandidateReviewQueueQueryKey(queryParams),
+      enabled: canReview,
+    },
+  });
 
   const groups = list.data?.items ?? [];
 
@@ -471,10 +504,19 @@ export function ReviewPage() {
 
   const filtersActive = hasActiveReviewFilters(filters);
 
+  if (!canReview)
+    return (
+      <div className="p-4 text-sm">
+        {profile.isLoading
+          ? "Загрузка прав доступа…"
+          : "Нет доступа к этой очереди проверки."}
+      </div>
+    );
+
   return (
     <div className="h-full overflow-auto p-3 sm:p-7">
       <PageHeader
-        title="Проверка документов"
+        title={`Проверка документов ${reviewGroup === "IG" ? "ИГ" : "РУ"}`}
         subtitle="Документы кандидатов и сотрудников"
       />
       <div className="my-4 flex flex-wrap gap-2">
@@ -724,7 +766,11 @@ export function ReviewPage() {
     </div>
   );
 }
-export function ReviewDocumentPage() {
+export function ReviewDocumentPage({
+  reviewGroup = "RU",
+}: {
+  reviewGroup?: "RU" | "IG";
+}) {
   const { documentId } = useParams({ strict: false }) as { documentId: string };
   const navigate = useNavigate();
   // Versioned deep link from history: /review/$documentId?version=N.
@@ -740,6 +786,8 @@ export function ReviewDocumentPage() {
   useEffect(() => {
     setSelectedVersion(undefined);
   }, [urlVersion, documentId]);
+  const group = info.data?.candidate?.reviewGroup ?? reviewGroup;
+  const base = group === "IG" ? "/review-ig" : "/review";
   const currentVersion = info.data?.currentVersion;
   const number =
     selectedVersion ??
@@ -749,18 +797,13 @@ export function ReviewDocumentPage() {
       : (info.data?.pendingDeliveryVersions[0] ??
         info.data?.currentVersion ??
         0));
-  const version = useGetDocumentVersion(documentId, number, {
-    query: {
-      queryKey: getGetDocumentVersionQueryKey(documentId, number),
-      enabled: !!number,
-    },
-  });
+  const version = useLiveDocumentVersion(documentId, number);
   const historic = isHistoricVersion(version.data?.version, currentVersion);
   const unknownVersionFallback = urlVersion === undefined;
   const chooseVersion = (next: number) => {
     setSelectedVersion(next);
     void navigate({
-      to: "/review/$documentId",
+      to: group === "IG" ? "/review-ig/$documentId" : "/review/$documentId",
       params: { documentId },
       search: (prev: Record<string, unknown>) => ({ ...prev, version: next }),
     });
@@ -772,24 +815,25 @@ export function ReviewDocumentPage() {
   const viewedStatus = version.data
     ? (VERSION_STATUS_LABEL[version.data.status] ?? version.data.status)
     : "";
+  const candidateSurname = info.data?.candidate?.fullName
+    ?.trim()
+    .split(/\s+/u)[0];
   const decidedAt = version.data?.approvedAt
     ? new Date(version.data.approvedAt).toLocaleString("ru-RU")
     : null;
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto p-3 sm:p-4 lg:overflow-hidden">
       <Link
-        to="/review"
+        to={base}
         search={{ ...parseReviewSearchParams(search) }}
         className="mb-2 inline-block text-[13px] text-[var(--muted-foreground)] underline underline-offset-4 hover:text-[var(--foreground)]"
       >
         ← Очередь проверки
       </Link>
       <PageHeader
-        title={info.data?.title ?? "Проверка документа"}
+        title={candidateSurname || info.data?.title || "Проверка документа"}
         subtitle={
-          info.data?.code1c
-            ? `Сотрудник ${info.data.code1c} · Версия ${number}`
-            : `Чат ${info.data?.chatUuid ?? ""} · Версия ${number || "—"}`
+          info.data ? `${info.data.title} · Версия ${number || "—"}` : undefined
         }
         actions={
           version.data && (
@@ -904,6 +948,7 @@ export function ReviewDocumentPage() {
       {version.data && (
         <div className="mt-3 min-h-0 lg:flex-1">
           <DocumentReviewWorkspace
+            key={`${version.data.documentId}-${version.data.version}`}
             candidateId={info.data?.candidateId ?? undefined}
             data={version.data}
             readOnly={historic}

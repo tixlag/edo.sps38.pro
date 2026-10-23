@@ -1,0 +1,48 @@
+{
+  "uz": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "signature": "arguments(posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[])"
+    },
+    {
+      "method": "POST",
+      "path": "/recognize",
+      "signature": "arguments(posonlyargs=[], args=[arg(arg='files', annotation=Subscript(value=Name(id='list', ctx=Load()), slice=Name(id='UploadFile', ctx=Load()), ctx=Load())), arg(arg='debug', annotation=Name(id='bool', ctx=Load())), arg(arg='ocr_improve', annotation=Name(id='bool', ctx=Load())), arg(arg='debug_form', annotation=BinOp(left=Name(id='bool', ctx=Load()), op=BitOr(), right=Constant(value=None))), arg(arg='ocr_improve_form', annotation=BinOp(left=Name(id='bool', ctx=Load()), op=BitOr(), right=Constant(value=None)))], kwonlyargs=[], kw_defaults=[], defaults=[Call(func=Name(id='File', ctx=Load()), args=[Constant(value=Ellipsis)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[]), Call(func=Name(id='Form', ctx=Load()), args=[Constant(value=None)], keywords=[keyword(arg='alias', value=Constant(value='debug'))]), Call(func=Name(id='Form', ctx=Load()), args=[Constant(value=None)], keywords=[keyword(arg='alias', value=Constant(value='ocr_improve'))])])"
+    },
+    {
+      "method": "POST",
+      "path": "/recognize-base64",
+      "signature": "arguments(posonlyargs=[], args=[arg(arg='request', annotation=Name(id='Base64Request', ctx=Load())), arg(arg='debug', annotation=Name(id='bool', ctx=Load())), arg(arg='ocr_improve', annotation=Name(id='bool', ctx=Load()))], kwonlyargs=[], kw_defaults=[], defaults=[Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[])])"
+    }
+  ],
+  "uz_modular": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "signature": "arguments(posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[])"
+    },
+    {
+      "method": "POST",
+      "path": "/recognize",
+      "signature": "arguments(posonlyargs=[], args=[arg(arg='files', annotation=Subscript(value=Name(id='list', ctx=Load()), slice=Name(id='UploadFile', ctx=Load()), ctx=Load())), arg(arg='debug', annotation=Name(id='bool', ctx=Load())), arg(arg='ocr_improve', annotation=Name(id='bool', ctx=Load())), arg(arg='save_segments', annotation=Name(id='bool', ctx=Load())), arg(arg='dump_segments', annotation=Name(id='bool', ctx=Load())), arg(arg='debug_form', annotation=BinOp(left=Name(id='bool', ctx=Load()), op=BitOr(), right=Constant(value=None))), arg(arg='ocr_improve_form', annotation=BinOp(left=Name(id='bool', ctx=Load()), op=BitOr(), right=Constant(value=None))), arg(arg='save_segments_form', annotation=BinOp(left=Name(id='bool', ctx=Load()), op=BitOr(), right=Constant(value=None)))], kwonlyargs=[], kw_defaults=[], defaults=[Call(func=Name(id='File', ctx=Load()), args=[Constant(value=Ellipsis)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[]), Call(func=Name(id='Form', ctx=Load()), args=[Constant(value=None)], keywords=[keyword(arg='alias', value=Constant(value='debug'))]), Call(func=Name(id='Form', ctx=Load()), args=[Constant(value=None)], keywords=[keyword(arg='alias', value=Constant(value='ocr_improve'))]), Call(func=Name(id='Form', ctx=Load()), args=[Constant(value=None)], keywords=[keyword(arg='alias', value=Constant(value='save_segments'))])])"
+    },
+    {
+      "method": "POST",
+      "path": "/recognize-base64",
+      "signature": "arguments(posonlyargs=[], args=[arg(arg='request', annotation=Name(id='Base64Request', ctx=Load())), arg(arg='debug', annotation=Name(id='bool', ctx=Load())), arg(arg='ocr_improve', annotation=Name(id='bool', ctx=Load())), arg(arg='save_segments', annotation=Name(id='bool', ctx=Load())), arg(arg='dump_segments', annotation=Name(id='bool', ctx=Load()))], kwonlyargs=[], kw_defaults=[], defaults=[Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[])])"
+    }
+  ],
+  "ru": [
+    {
+      "method": "POST",
+      "path": "/parse",
+      "signature": "arguments(posonlyargs=[], args=[arg(arg='files', annotation=Subscript(value=Name(id='List', ctx=Load()), slice=Name(id='UploadFile', ctx=Load()), ctx=Load())), arg(arg='doc_type', annotation=Name(id='str', ctx=Load())), arg(arg='ollama_model', annotation=Name(id='str', ctx=Load())), arg(arg='ollama_url', annotation=Name(id='str', ctx=Load())), arg(arg='dpi', annotation=Name(id='int', ctx=Load())), arg(arg='ocr_engine', annotation=Name(id='str', ctx=Load())), arg(arg='debug', annotation=Name(id='bool', ctx=Load())), arg(arg='async_proc', annotation=Name(id='bool', ctx=Load())), arg(arg='no_llm', annotation=Name(id='bool', ctx=Load()))], kwonlyargs=[], kw_defaults=[], defaults=[Call(func=Name(id='File', ctx=Load()), args=[Constant(value=Ellipsis)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value='passport_ru')], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value='qwen2.5vl:7b')], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value='http://localhost:11434')], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=500)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value='paddle')], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=True)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=True)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=False)], keywords=[])])"
+    },
+    {
+      "method": "POST",
+      "path": "/parse-id-birthday",
+      "signature": "arguments(posonlyargs=[], args=[arg(arg='files', annotation=Subscript(value=Name(id='List', ctx=Load()), slice=Name(id='UploadFile', ctx=Load()), ctx=Load())), arg(arg='doc_type', annotation=Name(id='str', ctx=Load())), arg(arg='ollama_model', annotation=Name(id='str', ctx=Load())), arg(arg='ollama_url', annotation=Name(id='str', ctx=Load())), arg(arg='dpi', annotation=Name(id='int', ctx=Load())), arg(arg='ocr_engine', annotation=Name(id='str', ctx=Load())), arg(arg='debug', annotation=Name(id='bool', ctx=Load())), arg(arg='async_proc', annotation=Name(id='bool', ctx=Load()))], kwonlyargs=[], kw_defaults=[], defaults=[Call(func=Name(id='File', ctx=Load()), args=[Constant(value=Ellipsis)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value='passport_ru')], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value='qwen2.5vl:7b')], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value='http://localhost:11434')], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=500)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value='paddle_GLM')], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=True)], keywords=[]), Call(func=Name(id='Query', ctx=Load()), args=[Constant(value=True)], keywords=[])])"
+    }
+  ]
+}

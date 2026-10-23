@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import type { CandidateSnapshot } from "./document-contract";
+import { candidateReviewGroup } from "./review-group";
 
 /** Review queue profile filters (all optional, combined with AND). */
 export interface ReviewProfileFilters {
@@ -142,6 +143,7 @@ export function toCandidateProfile(
   if (!row) return null;
   return {
     id: row.id,
+    reviewGroup: candidateReviewGroup(row),
     chatUuid: row.chatUuid,
     code1c: row.code1c,
     fullName: row.fullName,

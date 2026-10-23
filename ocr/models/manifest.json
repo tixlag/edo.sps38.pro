@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "bundle": "recognizeuz-models-2026-10-20",
+  "files": [
+    {
+      "path": "ru/multiline.pt",
+      "size": 5374277,
+      "sha256": "22f025e13344a8947ba2f6be356bb24fa08abb36511c0ae3be4bc403123f09cd"
+    },
+    {
+      "path": "ru/passport_fields.pt",
+      "size": 45174710,
+      "sha256": "1cd1f5a8dc6ebc362fea8bbede860f9fc45fbbb4e4251715beff0ff01d1cf27f"
+    },
+    {
+      "path": "ru/passport_ocr/inference.json",
+      "size": 217712,
+      "sha256": "09556e3349a275899e599c8d5e6254cff3c1a8ec455d99f53a591f2fe539182d"
+    },
+    {
+      "path": "ru/passport_ocr/inference.pdiparams",
+      "size": 7972691,
+      "sha256": "a180514ddd21006d62880e1dd79e4ee1b365ee58c7f95da5bc8d10280db42399"
+    },
+    {
+      "path": "ru/passport_ocr/inference.yml",
+      "size": 6991,
+      "sha256": "5c76cc91fa98410178a09f498db10050d0ec1634a660053d3005ab7be581f501"
+    },
+    {
+      "path": "uz/doc_detector.pt",
+      "size": 6659933,
+      "sha256": "7ad23be6c2e4a9caeae52cab34fcffdb45cb3fbf074212dd9dfb1a2e761dceec"
+    },
+    {
+      "path": "uz/migration_fields.pt",
+      "size": 6671837,
+      "sha256": "2dbb2c247774c6810591d3adade9f8ed23706b0426cfbd2b4a9a45806bd5c866"
+    },
+    {
+      "path": "uz/migration_ocr/dict.txt",
+      "size": 162,
+      "sha256": "60abc24605ae253dbe910d387e4d8d2cb25aa269841ef8bfebb82cf5cc5ec5bc"
+    },
+    {
+      "path": "uz/migration_ocr/inference.json",
+      "size": 217706,
+      "sha256": "089c231e0b141132d16500b36e02f18dd112461682941a4a5aed3c8c20e501f5"
+    },
+    {
+      "path": "uz/migration_ocr/inference.pdiparams",
+      "size": 7593233,
+      "sha256": "c83b3af910b616640328e2926ba604280b4e31a5e12a7a4aa6a3c82529220b37"
+    },
+    {
+      "path": "uz/migration_ocr/inference.yml",
+      "size": 1186,
+      "sha256": "fc14297233755edd01e777704837770846fb47d3bfc496f7233bc9f065813981"
+    },
+    {
+      "path": "uz/passport_fields.pt",
+      "size": 92577238,
+      "sha256": "c1af509e6fe485123add4eb9078a8d6dafa46b4f1d7c5b09d316618c7e605f9b"
+    },
+    {
+      "path": "uz/passport_ocr/dict.txt",
+      "size": 2616,
+      "sha256": "ccbcc45730b3fbbd9050c5bc74db6a99067141ef1035e3d14889a84a6b9b1aff"
+    },
+    {
+      "path": "uz/passport_ocr/inference.json",
+      "size": 217712,
+      "sha256": "e5b78c95ae972cd89ab72c908ddf0ca8cb80ccd85eca0f38a0024669f2b1b093"
+    },
+    {
+      "path": "uz/passport_ocr/inference.pdiparams",
+      "size": 7965915,
+      "sha256": "25ed0f61e6b09d6896eb7e08a8b7572c4f7d89fa708d99f5c1b4ae7013f50f86"
+    },
+    {
+      "path": "uz/passport_ocr/inference.yml",
+      "size": 6761,
+      "sha256": "3f0a94fd6f6998b8eae041505fb236368916ab99c5705c7c6042bd91f820df09"
+    }
+  ]
+}

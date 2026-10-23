@@ -13,6 +13,14 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 - When creating an MR via the GitLab API or a CLI, specify the full target project explicitly. GitLab push options can also create an MR via the selected checkout's `gitlab` remote (`git push gitlab HEAD -o merge_request.create -o merge_request.target=<base-branch>`); for EDO, push the branch through `origin` first so it also reaches GitHub. Never send GitLab push options to EDO's dual-destination `origin`.
 - To start Codex CLI with both directories writable, run `bash scripts/codex-with-erp.sh` from EDO (additional Codex arguments are forwarded). For an application-managed session, include both checkout directories in its workspace permissions; cloning alone does not expand an existing session's writable roots.
 
+## Передача между сессиями (2026-10-20)
+
+- Ветка `feat/candidate-chat-workspace` сохранена отдельно на `e47cc7465d00bedd3a8d55e0cbabec649488468f`. Следующим этапом нужно задеплоить изменения из той сессии; текущая задача сама по себе не означает, что они уже интегрированы или развёрнуты.
+- Новая задача OCR и метаданных проверки ведётся в `feat/ocr-fields-review-metadata` от актуального `gitlab/main` (`5be72be`), по уточнению пользователя. `origin/main` отстаёт; не подменять им актуальную базу и не переносить изменения прежней ветки без необходимости.
+- Перед будущим деплоем сверить оставшиеся коммиты прежней ветки с актуальной `main`, сохранить её работу и выполнить отдельный этап интеграции/деплоя. Сейчас деплой не запрошен.
+- OCR выпускается первым отдельным этапом через GitLab runner; на машине агента нет весов, локальные OCR inference/Python-тесты не запускать. Дождаться сообщения пользователя о результате runner на `10.10.5.184` (UZ/миграция:8000, РФ:8001), затем выполнять отдельный этап деплоя API/web и включения `OCR_MODE=external`. До подтверждения сохранять ручной режим. Реализация ЭДО подготовлена в `feat/ocr-fields-review-metadata`.
+- Доработка проверки (2026-10-21): координаты OCR относительно оригинала, inline-подсказки, строгие исходные расхождения, live-обновление без потери черновика и автоподстановка только нетронутых пустых полей. Для API/web нужна миграция `0015_ocr_observation_regions`; все OCR-области защищены `20010 — EDO_OCR_DETAILS_VIEW` (20009 включает). Отдельное назначение 20010 требует регистрации кода в каталоге прав ЛК. Порядок выпуска OCR → подтверждение пользователя → отдельный deploy API/web сохраняется.
+
 ## Stack (do not change)
 
 - MariaDB only. Prisma `provider = "mysql"`. Never introduce PostgreSQL.
@@ -37,7 +45,7 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 - Backend: `JwtService.verify()` + global `JwtAuthGuard` attach typed `AuthPrincipal` (uuid/code_1c/sid/accessRules). Dev bypass ONLY via `ALLOW_INSECURE_DEV_AUTH=true` AND `NODE_ENV=development/test` (accepts literal `dev-demo-token`). Default off.
 - Access JWT in React memory ONLY (`apps/web/src/lib/auth-token.ts`). NEVER localStorage/sessionStorage/IndexedDB.
 - Refresh token in HttpOnly cookie; restore session via configured refresh endpoint adapter. Frontend dev fallback (`dev-demo-token`) ONLY when `VITE_ALLOW_INSECURE_DEV_AUTH=true` in dev.
-- EDO access rules 20000–20009 (`EdoAccessRule` enum). Key presence grants (`hasOwnProperty`), NEVER truthiness. Location scope: 20009/20008 → all, else 20007 → listed ids, else denied. Enforce via `@RequireAccessRule(...)` + `AccessRuleGuard` and `resolveLocationScope`/`isLocationAllowed` helpers — never hand-check in controllers. `GET /api/v1/me` exposes permissions + locationScope for UI decisions only; backend re-checks every action.
+- EDO access rules 20000–20011 (`EdoAccessRule` enum); 20010 is `EDO_OCR_DETAILS_VIEW` (all OCR observations/regions), implied by 20009. Review rights: 20002 = `EDO_DOCUMENT_REVIEW_RU`, 20011 = `EDO_DOCUMENT_REVIEW_IG`; 20009 implies both. Candidate group is RU when `chatUuid` exists OR citizenship is `ru`, otherwise IG. Administrative candidate/document reads intersect group access with location scope; mutations use `DocumentAccessService.documentReviewWhere` inside the transaction (audit read permission never grants mutation rights). Own-document and guest capabilities keep their separate owner checks. Key presence grants (`hasOwnProperty`), NEVER truthiness. Location scope: 20009/20008 → all, else 20007 → listed ids, else denied. Enforce via `@RequireAccessRule(...)` + `AccessRuleGuard` and `resolveLocationScope`/`isLocationAllowed` helpers — never hand-check in controllers. `GET /api/v1/me` exposes permissions + locationScope for UI decisions only; backend re-checks every action.
 
 ## LK master-data integration (source of truth = lk.sps38.pro)
 
@@ -73,7 +81,7 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 
 - Root `.env` loaded explicitly by `apps/api` (`ConfigModule.envFilePath` + `main.ts` dotenv) and `apps/web` (`vite.config envDir` + loadEnv). Never rely on cwd.
 - New vars: `JWT_SECRET/JWT_ALG/JWT_ISSUER/ALLOW_INSECURE_DEV_AUTH`, `LK_BASE_URL/LK_EDO_OPENAPI_URL/LK_EDO_INTERNAL_TOKEN`, `RABBITMQ_URL/LK_EVENTS_EXCHANGE/EDO_LK_QUEUE`. Local dev uses the SHARED LK containers (MariaDB :12002/db `edo`, Redis :6379, RabbitMQ :5672); EDO runs no MariaDB/Redis/Rabbit of its own. CI (manual) uses its own disposable MariaDB + Redis + RabbitMQ services (isolated, never shared LK infra; destructive fault-injection only there).
-- Known deployment blocker (2026-10-19): the external GitLab `ci-templates/edo.yml` recreates production `.env` without `ERP_CANDIDATE_URL` and `ERP_CANDIDATE_TOKEN`. Access to that template is currently unavailable. Both settings were restored manually on production; this workaround can be overwritten by the next deployment. When deploying EDO, remind the user about this blocker and verify both settings remain nonempty in `/var/www/edo.sps38.pro/.env` and in the API container, without printing their values. If lost, restore from the protected production backup in `/var/www/edo.sps38.pro/.cache/` and recreate only the API with the current image. Obtain the actual compose file path from the container's `com.docker.compose.project.config_files` label. Once access is available, fix environment generation in the external template and remove this reminder after a successful deployment confirms persistence.
+- ERP runtime guard (resolved 2026-10-21): `webdevs/ci-templates` now stops production deployment before replacing `.env` if `ERP_CANDIDATE_URL` or `ERP_CANDIDATE_TOKEN` is empty, and checks both inside `edo-api` after restart without printing values. Deployment pipeline 3682 passed these checks; the production `RUNTIME_ENV`, `.env`, and API container retain both settings. Keep the template guard in place.
 
 ## UI
 
@@ -96,3 +104,15 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 - ERP Candidate citizenship defaults to `ru` in EDO when missing, null, empty, or whitespace-only. Preserve explicitly supplied valid citizenship (normalized to lowercase); malformed nonempty values remain contract errors. A missing position still returns the actionable incomplete-profile error.
 - LK PHP exposes only canonical chat identity via the narrow internal API. Chat-server retains atomic employee-link outbox delivery. EDO never reads LK tables.
 - Auth-service is the only user JWT issuer. Own-document APIs use verified `code_1c` without administrative EDO permissions; guest chat-link access remains a separate capability.
+
+## OCR source component (`ocr/`)
+
+- Existing Russian passport, Uzbekistan passport and migration-card recognizers are maintained under `ocr/` for a shared agent workspace. Read `ocr/AGENTS.md` before editing that component; its relative paths start at `ocr/`.
+- `ocr/` is the only maintained OCR source and runtime. The former RecognizeUZ/DocRecognizer projects and intermediate monorepo-export are legacy; do not start or patch them. Use `ocr/docs/operations.md` for service management.
+- Python recognizers remain independent external processes behind the existing `OcrService` boundary. Their public ports/routes and fallback behavior are preserved. Source co-location does not enable the EDO worker or provide an EDO adapter.
+- EDO keeps its current pnpm/Turbo stack and root environment rules. OCR has separate Python environments and service-local `.env` files described in `ocr/README.md`; never import Python/GPU dependencies into the NestJS application or root Docker build.
+- No models, archives, private documents, inference results or Python environments in Git. Model weights are distributed privately as an archive; only `ocr/models/manifest.json` is tracked.
+- OCR checks: from `ocr/`, run `.venv-test/bin/python -m unittest discover -s tests -v` and `python3 scripts/check_repository.py`. Check real inference separately with private inputs.
+- GitLab CI entry point is `edo.yml@webdevs/ci-templates`, which includes `ocr/.gitlab-ci.yml` from the pipeline commit. Protected main pushes changing `ocr/**/*` validate and deploy through runner tag `deploy-ocr-pc`. Do not replace this entry point or trigger GitHub Actions/e2e.
+- Runtime is managed under `/home/neuro/.local/share/edo-ocr/current`, separate from developer checkouts. Never edit releases/current or copy private runtime data into Git. Read `ocr/docs/ci-cd.md` before changing deployment, runner, dependency caches or rollback.
+- See `docs/integrations/document-ocr-sources.md` for the boundary, setup and remaining EDO adapter work.

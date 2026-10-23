@@ -11,8 +11,10 @@ import { AuditService } from "../audit/audit.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { DocumentAccessService } from "./document-access.service";
 import { DocumentReadService } from "./document-read.service";
+import type { ApprovedArtifact } from "./approved-artifact";
 import { DocumentPdfService } from "./document-pdf.service";
 import {
+  formatDateForErp,
   shouldOmitPositionUid,
   textValue,
   typedValue,
@@ -93,7 +95,8 @@ export class DocumentReviewService {
         version.fields.map((f) => [f.name, typedValue(f.value, f.kind)]),
       ),
     );
-    const key = await this.pdf.prepare(version.id, revision);
+    const artifact = await this.pdf.prepare(version.id, revision);
+    const key = artifact.key;
     try {
       await this.change(
         documentId,
@@ -102,7 +105,7 @@ export class DocumentReviewService {
         principal,
         correlationId,
         undefined,
-        key,
+        artifact,
       );
     } catch (error) {
       const current = await this.prisma.documentVersion.findUnique({
@@ -142,9 +145,10 @@ export class DocumentReviewService {
     principal: AuthPrincipal,
     correlationId: string,
     edits?: Record<string, string | boolean | null>,
-    approvedKey?: string,
+    artifact?: ApprovedArtifact,
     rejectionReason?: string,
   ) {
+    const approvedKey = artifact?.key;
     await this.prisma.$transaction(
       async (tx) => {
         // Lock candidate first, matching ingestion's lock order. Recheck scope inside the transaction.
@@ -155,7 +159,7 @@ export class DocumentReviewService {
           await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${initial.candidateId} FOR UPDATE`;
         await tx.$queryRaw`SELECT id FROM documents WHERE id = ${documentId} FOR UPDATE`;
         const doc = await tx.document.findFirst({
-          where: { id: documentId, ...this.access.documentWhere(principal) },
+          where: { id: documentId, ...this.access.documentReviewWhere(principal) },
         });
         if (!doc) {
           // Reuse the same 404 for inaccessible documents.
@@ -166,6 +170,7 @@ export class DocumentReviewService {
           include: {
             fields: true,
             submission: true,
+            job: true,
             document: { include: { documentType: true, candidate: true } },
           },
         });
@@ -189,20 +194,41 @@ export class DocumentReviewService {
         if (edits && version.submission) {
           validateFields(version.fields, edits);
         }
+        const reviewedAt = new Date();
         const changed = await tx.documentVersion.updateMany({
-          where: { id: version.id, revision, status: "IN_REVIEW" },
+          where: {
+            id: version.id,
+            revision,
+            status: "IN_REVIEW",
+            ...(approvedKey
+              ? {
+                  pendingApprovalStorageKey: approvedKey,
+                  approvalLeaseUntil: { gt: new Date() },
+                  approvedStorageKey: null,
+                }
+              : {}),
+          },
           data: {
             revision: { increment: 1 },
             ...(edits
               ? {}
               : {
                   status: rejectionReason ? "RETURNED" : "APPROVED",
+                  reviewedAt,
+                  reviewedBy: principal.uuid,
                   ...(rejectionReason
                     ? { rejectionReason, cleanupPending: true }
-                    : { approvedAt: new Date(), approvedBy: principal.uuid }),
+                    : { approvedAt: reviewedAt, approvedBy: principal.uuid }),
                   ...(approvedKey
                     ? {
                         approvedStorageKey: approvedKey,
+                        approvedMimeType: artifact!.mimeType,
+                        approvedFilename: artifact!.filename,
+                        approvedExtension: artifact!.extension,
+                        approvedSizeBytes: artifact!.sizeBytes,
+                        approvedSha256: artifact!.sha256,
+                        approvedPageCount: artifact!.pageCount,
+                        approvedPreparation: artifact!.preparation,
                         pendingApprovalStorageKey: null,
                         approvalLeaseUntil: null,
                       }
@@ -233,6 +259,24 @@ export class DocumentReviewService {
             });
           }
         } else {
+          if (
+            version.job &&
+            ["UPLOADING", "QUEUED", "RUNNING"].includes(version.job.status)
+          ) {
+            await tx.ocrJob.updateMany({
+              where: {
+                id: version.job.id,
+                status: { in: ["UPLOADING", "QUEUED", "RUNNING"] },
+              },
+              data: {
+                status: "CANCELLED",
+                leaseToken: null,
+                leaseUntil: null,
+                cleanupPending: false,
+                errorCode: null,
+              },
+            });
+          }
           await tx.document.update({
             where: { id: documentId },
             data: { status: rejectionReason ? "RETURNED" : "APPROVED" },
@@ -243,11 +287,17 @@ export class DocumentReviewService {
             const documentFields = Object.fromEntries(
               version.fields.map((f) => {
                 const value = typedValue(f.value, f.kind);
-                return [
-                  f.name,
+                const erpValue =
                   typeof value === "string" && !value.trim()
                     ? ""
-                    : value ?? (f.kind === "boolean" ? false : ""),
+                    : (value ?? (f.kind === "boolean" ? false : ""));
+                return [
+                  f.name,
+                  artifact!.transport === "base64-v1" &&
+                  f.kind === "date" &&
+                  typeof erpValue === "string"
+                    ? formatDateForErp(erpValue)
+                    : erpValue,
                 ];
               }),
             );
@@ -261,6 +311,7 @@ export class DocumentReviewService {
             await tx.erpDocumentDelivery.create({
               data: {
                 versionId: version.id,
+                transport: artifact!.transport,
                 status: uid && chatUid ? "PENDING" : "WAITING_CONTRACT",
                 payload: { documentUid: uid, chatUid, documentFields },
               },
@@ -290,6 +341,8 @@ export class DocumentReviewService {
               : {
                   status: rejectionReason ? "RETURNED" : "APPROVED",
                   rejectionReason,
+                  reviewedAt: reviewedAt.toISOString(),
+                  reviewedBy: principal.uuid,
                 }),
           },
         });

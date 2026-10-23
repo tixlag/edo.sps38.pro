@@ -42,14 +42,23 @@ function namedCode(value: unknown) {
 }
 export function normalizeErpCandidate(
   raw: unknown,
-  chatUuid: string,
+  chatUuid?: string,
+  code1c?: string,
 ): CandidateSnapshotDto {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     throw new ErpCandidateError(502, false);
   const row = raw as Record<string, unknown>;
+  // 1C calls the chat identifier `uuid`; keep that wire name unchanged.
+  const returnedUuid =
+    row.uuid == null || (typeof row.uuid === "string" && !row.uuid.trim())
+      ? null
+      : row.uuid;
   if (
-    !uuidSchema.safeParse(row.uuid).success ||
-    (row.uuid as string).toLowerCase() !== chatUuid.toLowerCase()
+    (returnedUuid !== null && !uuidSchema.safeParse(returnedUuid).success) ||
+    (chatUuid &&
+      (typeof returnedUuid !== "string" ||
+        returnedUuid.toLowerCase() !== chatUuid.toLowerCase())) ||
+    (code1c && row.code1C !== code1c)
   )
     throw new ErpCandidateError(502, false);
   const position = row.position as Record<string, unknown> | null | undefined;
@@ -80,7 +89,7 @@ export function normalizeErpCandidate(
   )
     throw new ErpCandidateError(502, false);
   const result: Record<string, unknown> = {
-    uuid: chatUuid.toLowerCase(),
+    uuid: typeof returnedUuid === "string" ? returnedUuid.toLowerCase() : null,
     citizenship: citizenship.toLowerCase(),
   };
   for (const [key, max] of [
@@ -122,6 +131,21 @@ export class ErpCandidateClient {
     chatUuid: string,
     signal?: AbortSignal,
   ): Promise<CandidateSnapshotDto> {
+    return this.request({ uuid: chatUuid }, signal);
+  }
+
+  async findByEmployeeCode(
+    code1c: string,
+    signal?: AbortSignal,
+  ): Promise<CandidateSnapshotDto> {
+    if (!/^\S{1,64}$/.test(code1c)) throw new ErpCandidateError(502, false);
+    return this.request({ code_1c: code1c }, signal);
+  }
+
+  private async request(
+    lookup: { uuid: string } | { code_1c: string },
+    signal?: AbortSignal,
+  ): Promise<CandidateSnapshotDto> {
     signal?.throwIfAborted();
     const endpoint = this.config.get<string>("ERP_CANDIDATE_URL");
     const token = this.config.get<string>("ERP_CANDIDATE_TOKEN");
@@ -150,7 +174,10 @@ export class ErpCandidateClient {
         Code.DOCUMENTS_INTEGRATION_MISCONFIGURED,
       );
     }
-    url.searchParams.set("uuid", chatUuid);
+    url.searchParams.delete("uuid");
+    url.searchParams.delete("code_1c");
+    for (const [key, value] of Object.entries(lookup))
+      url.searchParams.set(key, value);
     let response: Response;
     const timeout = AbortSignal.timeout(15_000);
     try {
@@ -177,7 +204,9 @@ export class ErpCandidateClient {
       } catch {
         throw new ErpCandidateError(502, false);
       }
-      return normalizeErpCandidate(raw, chatUuid);
+      return "uuid" in lookup
+        ? normalizeErpCandidate(raw, lookup.uuid)
+        : normalizeErpCandidate(raw, undefined, lookup.code_1c);
     } catch (error) {
       if (signal?.aborted) throw signal.reason;
       if (error instanceof ErpCandidateError) throw error;

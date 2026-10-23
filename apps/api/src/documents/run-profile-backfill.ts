@@ -32,6 +32,7 @@ async function main() {
     throw new Error("REFUSED_NON_EDO_DATABASE");
   const config = new ConfigService(process.env);
   const redis = new RedisService(config);
+  const prisma = new PrismaService();
   const contexts = new CandidateContextService(
     new LkCandidateIdentityService(config),
     new ErpCandidateClient(config),
@@ -39,7 +40,6 @@ async function main() {
   );
   const loader = (uuid: string, signal: AbortSignal) =>
     contexts.context(uuid, signal);
-  const prisma = new PrismaService();
   try {
     const report = await new CandidateProfileBackfill(
       prisma,

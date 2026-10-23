@@ -1,0 +1,16 @@
+ru/multiline.pt <- rus_passport_multiline.pt
+ru/passport_fields.pt <- PASPORT_SEGMENT_MODEL.pt
+ru/passport_ocr/inference.json <- inference.json
+ru/passport_ocr/inference.pdiparams <- inference.pdiparams
+ru/passport_ocr/inference.yml <- inference.yml
+uz/doc_detector.pt <- runs/segment/runs_doc/doc_type_seg/weights/best.pt
+uz/migration_fields.pt <- runs/segment/runs_fields/migration_fields_seg/weights/best.pt
+uz/migration_ocr/dict.txt <- paddleocr_migration_rec/dict.txt
+uz/migration_ocr/inference.json <- paddleocr/inference/ocr/migration_rec_v3/inference.json
+uz/migration_ocr/inference.pdiparams <- paddleocr/inference/ocr/migration_rec_v3/inference.pdiparams
+uz/migration_ocr/inference.yml <- paddleocr/inference/ocr/migration_rec_v3/inference.yml
+uz/passport_fields.pt <- runs/segment/runs_fields_yolo26m/passport_fields_yolo26m_doc_safe/weights/best.pt
+uz/passport_ocr/dict.txt <- ppocrv5_latin_dict.txt
+uz/passport_ocr/inference.json <- paddleocr/inference/ocr/passport_rec_exp_g_hard_mix/inference.json
+uz/passport_ocr/inference.pdiparams <- paddleocr/inference/ocr/passport_rec_exp_g_hard_mix/inference.pdiparams
+uz/passport_ocr/inference.yml <- paddleocr/inference/ocr/passport_rec_exp_g_hard_mix/inference.yml

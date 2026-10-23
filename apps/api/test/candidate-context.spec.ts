@@ -25,6 +25,37 @@ afterEach(() => {
 });
 
 describe("ERP candidate adapter", () => {
+  it("looks up IG by code_1c and accepts an empty chat uuid", async () => {
+    let requested: URL | undefined;
+    vi.stubGlobal("fetch", async (url: URL) => {
+      requested = url;
+      return Response.json({
+        ...card,
+        uuid: "",
+        code1C: "000123",
+        citizenship: "UZ",
+      });
+    });
+    const result = await new ErpCandidateClient(config).findByEmployeeCode(
+      "000123",
+    );
+    expect(requested?.searchParams.get("code_1c")).toBe("000123");
+    expect(requested?.searchParams.has("uuid")).toBe(false);
+    expect(result).toMatchObject({
+      uuid: null,
+      code1C: "000123",
+      citizenship: "uz",
+    });
+  });
+
+  it("rejects a card belonging to another employee on a code_1c lookup", async () => {
+    vi.stubGlobal("fetch", async () =>
+      Response.json({ ...card, uuid: null, code1C: "other" }),
+    );
+    await expect(
+      new ErpCandidateClient(config).findByEmployeeCode("000123"),
+    ).rejects.toMatchObject({ transient: false });
+  });
   it("requests the card using server credentials and normalizes its profile", async () => {
     let request: Request | undefined;
     vi.stubGlobal(
@@ -110,6 +141,38 @@ function setup() {
   return { identity, erp, cache, service };
 }
 describe("EDO candidate context", () => {
+  it("gets a chatless IG employee profile from Candidate, without querying the LK projection", async () => {
+    const { service, erp } = setup();
+    Object.assign(erp, {
+      findByEmployeeCode: vi.fn(async () => ({
+        ...card,
+        uuid: null,
+        code1C: "000123",
+        citizenship: "uz",
+      })),
+    });
+    expect(await service.forEmployee("000123")).toMatchObject({
+      chatUuid: null,
+      code1c: "000123",
+      citizenship: "uz",
+      positionCode1c: "000491",
+    });
+  });
+
+  it("does not let a returned chat uuid attach another employee's documents", async () => {
+    const { service, erp, identity } = setup();
+    Object.assign(erp, {
+      findByEmployeeCode: vi.fn(async () => ({
+        ...card,
+        code1C: "000123",
+        citizenship: "uz",
+      })),
+    });
+    identity.byUuid.mockResolvedValue({ chatUuid, code1c: "other" });
+    await expect(service.forEmployee("000123")).rejects.toMatchObject({
+      code: "LK_CONTRACT_ERROR",
+    });
+  });
   it("combines ERP profile with the authoritative LK employee link and rechecks LK on cache hits", async () => {
     const { service, identity, erp } = setup();
     expect(await service.context(chatUuid)).toMatchObject({
