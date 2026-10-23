@@ -47,7 +47,22 @@ export function normalizeErpCandidate(
 ): CandidateSnapshotDto {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     throw new ErpCandidateError(502, false);
-  const row = raw as Record<string, unknown>;
+  const envelope = raw as Record<string, unknown>;
+  let row = envelope;
+  if (Object.prototype.hasOwnProperty.call(envelope, "candidate")) {
+    const candidate = envelope.candidate;
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate))
+      throw new ErpCandidateError(502, false);
+    // Production nests personal fields under candidate; reference data is
+    // top-level. Flat normalized snapshots remain valid when read from cache.
+    row = {
+      ...candidate,
+      position: envelope.position,
+      project: envelope.project,
+      manager: envelope.manager,
+      mentor: envelope.mentor,
+    };
+  }
   // 1C calls the chat identifier `uuid`; keep that wire name unchanged.
   const returnedUuid =
     row.uuid == null || (typeof row.uuid === "string" && !row.uuid.trim())
@@ -102,6 +117,9 @@ export function normalizeErpCandidate(
     const value = text(row[key], max);
     if (value) result[key] = value;
   }
+  const manager = namedCode(row.manager);
+  if (manager?.name) result.manager = manager.name;
+  if (manager?.code) result.managerCode1C = manager.code;
   if (typeof row.isReemployment === "boolean")
     result.isReemployment = row.isReemployment;
   for (const key of ["position", "project"]) {
@@ -139,11 +157,11 @@ export class ErpCandidateClient {
     signal?: AbortSignal,
   ): Promise<CandidateSnapshotDto> {
     if (!/^\S{1,64}$/.test(code1c)) throw new ErpCandidateError(502, false);
-    return this.request({ code_1c: code1c }, signal);
+    return this.request({ code1c }, signal);
   }
 
   private async request(
-    lookup: { uuid: string } | { code_1c: string },
+    lookup: { uuid: string } | { code1c: string },
     signal?: AbortSignal,
   ): Promise<CandidateSnapshotDto> {
     signal?.throwIfAborted();
@@ -176,6 +194,7 @@ export class ErpCandidateClient {
     }
     url.searchParams.delete("uuid");
     url.searchParams.delete("code_1c");
+    url.searchParams.delete("code1c");
     for (const [key, value] of Object.entries(lookup))
       url.searchParams.set(key, value);
     let response: Response;
@@ -206,7 +225,7 @@ export class ErpCandidateClient {
       }
       return "uuid" in lookup
         ? normalizeErpCandidate(raw, lookup.uuid)
-        : normalizeErpCandidate(raw, undefined, lookup.code_1c);
+        : normalizeErpCandidate(raw, undefined, lookup.code1c);
     } catch (error) {
       if (signal?.aborted) throw signal.reason;
       if (error instanceof ErpCandidateError) throw error;

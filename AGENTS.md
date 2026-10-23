@@ -90,6 +90,7 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 ## Candidate documents boundary
 
 - EDO owns browser document APIs and ERP Candidate context. Surveys owns adaptation authoring/progress and keeps `{{documents}}` / `DOCUMENTS`, but never proxies document requests.
+- ERP Candidate requests by employee use the exact query parameter `code1c` (not EDO's `code_1c`). Production response nests personal fields under `candidate` (`uuid`, `code1C`, `name`, `birthDate`, `citizenship`, `isReemployment`); `position`, `project`, `manager` and `mentor` are top-level. A missing LK chat link and absent `lkEmployee` projection must not block this ERP-backed path. Never rename the 1C `uuid` field.
 - ERP Candidate citizenship defaults to `ru` in EDO when missing, null, empty, or whitespace-only. Preserve explicitly supplied valid citizenship (normalized to lowercase); malformed nonempty values remain contract errors. A missing position still returns the actionable incomplete-profile error.
 - LK PHP exposes only canonical chat identity via the narrow internal API. Chat-server retains atomic employee-link outbox delivery. EDO never reads LK tables.
 - Auth-service is the only user JWT issuer. Own-document APIs use verified `code_1c` without administrative EDO permissions; guest chat-link access remains a separate capability.
