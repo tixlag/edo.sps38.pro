@@ -321,6 +321,7 @@ describe("review decision metadata", () => {
   );
   it("serializes UTC dates and resolves reviewer from projection without inventing a name", async () => {
     const row = {
+      document: { documentType: null },
       status: "APPROVED",
       revision: 3,
       fields: [],

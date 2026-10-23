@@ -10,6 +10,7 @@ import sharp from "sharp";
 import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, readdir, stat } from "node:fs/promises";
+import { isHeic, normalizeHeic } from "./heic-normalization";
 import { join, basename } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -35,6 +36,13 @@ export interface StagedFile {
   sizeBytes: number;
   sha256: string;
   pageCount: number;
+  source?: {
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    sha256: string;
+  };
+  normalization?: string;
 }
 export interface StagedUpload {
   directory: string;
@@ -57,6 +65,7 @@ export class DocumentUploadService {
     const fields = new Map<string, string>();
     const files: StagedFile[] = [];
     let total = 0;
+    let storedTotal = 0;
     try {
       for await (const part of req.parts({
         limits: {
@@ -112,18 +121,47 @@ export class DocumentUploadService {
         );
         if (part.file.truncated)
           throw new PayloadTooLargeException("File exceeds 10 MiB");
-        const { mimeType, pageCount } = await this.inspect(
-          await readFile(path),
-        );
+        const original = await readFile(path);
+        const filename = basename(part.filename || "document").slice(0, 255);
+        const sourceSha256 = hash.digest("hex");
+        let canonicalPath = path,
+          canonicalName = filename,
+          canonicalBytes = original;
+        let source: StagedFile["source"], normalization: string | undefined;
+        if (isHeic(original)) {
+          canonicalPath = `${path}.webp`;
+          const converted = await normalizeHeic(path, canonicalPath);
+          canonicalBytes = await readFile(canonicalPath);
+          canonicalName = `${filename.replace(/\.(heic|heif)$/i, "").slice(0, 250)}.webp`;
+          normalization = converted.algorithm;
+          source = {
+            filename,
+            mimeType: "image/heic",
+            sizeBytes,
+            sha256: sourceSha256,
+          };
+        }
+        storedTotal += canonicalBytes.length;
+        if (
+          canonicalBytes.length > MAX_FILE_BYTES ||
+          storedTotal > MAX_TOTAL_BYTES
+        )
+          throw new PayloadTooLargeException(
+            "Normalized upload size limit exceeded",
+          );
+        const { mimeType, pageCount } = await this.inspect(canonicalBytes);
         files.push({
           id,
-          path,
+          path: canonicalPath,
           ordinal: files.length,
-          filename: basename(part.filename || "document").slice(0, 255),
+          filename: canonicalName,
           mimeType,
-          sizeBytes,
-          sha256: hash.digest("hex"),
+          sizeBytes: canonicalBytes.length,
+          sha256: source
+            ? createHash("sha256").update(canonicalBytes).digest("hex")
+            : sourceSha256,
           pageCount,
+          ...(source ? { source, normalization } : {}),
         });
       }
       let metadata: DocumentMetadata | undefined;

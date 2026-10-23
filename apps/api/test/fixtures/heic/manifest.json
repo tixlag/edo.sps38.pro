@@ -1,0 +1,54 @@
+{
+  "document.heic": {
+    "sizeBytes": 84771,
+    "sha256": "d49cbbf9d7067b31946b2bf180075817c7424b18f93368f7320ded5e309a0010"
+  },
+  "orientation-1.heic": {
+    "sizeBytes": 84771,
+    "sha256": "d49cbbf9d7067b31946b2bf180075817c7424b18f93368f7320ded5e309a0010"
+  },
+  "orientation-2.heic": {
+    "sizeBytes": 84782,
+    "sha256": "ded8c05435e219206089c1509f864b5e27717f27ca71006cb80345b44c0483f1"
+  },
+  "orientation-3.heic": {
+    "sizeBytes": 84782,
+    "sha256": "a1a39732351aa6e01cd2af7124be4a39a03a7814b17c60493f1b6ce94f1563e0"
+  },
+  "orientation-4.heic": {
+    "sizeBytes": 84782,
+    "sha256": "8fb6882ad1c49be64054553dbfed1cd2c8b9b014e8c3a921eea65c60a6dba741"
+  },
+  "orientation-5.heic": {
+    "sizeBytes": 84793,
+    "sha256": "11012da103d39ef1288eb5e905fbc87db8a64651bae6606f66c427fbdd01354d"
+  },
+  "orientation-6.heic": {
+    "sizeBytes": 84782,
+    "sha256": "8dcc55a03164f272286b7bda75a2b0911bc4e9514e484ded19fc2133428fc6f7"
+  },
+  "orientation-7.heic": {
+    "sizeBytes": 84793,
+    "sha256": "d63cf92b82b2a03bd2b142d3a90363c7fa7f74f1ac370281ff4f679df38b4951"
+  },
+  "orientation-8.heic": {
+    "sizeBytes": 84782,
+    "sha256": "df750415b276da8b371173b538fdc832219da0d1dcb0d173b4d29af3b3030187"
+  },
+  "alpha.heic": {
+    "sizeBytes": 4611,
+    "sha256": "1e14a19e3b60e79086c65012a278d2bd0e4d29988141daaa20f2dd8d4bf2a0c9"
+  },
+  "multiple.heic": {
+    "sizeBytes": 89141,
+    "sha256": "d6fd062cfce9d937c993252c4db882d098706961b7897d1ee7116beb553af2be"
+  },
+  "exif-only.heic": {
+    "sizeBytes": 84554,
+    "sha256": "46e9780858bc4c714b4883b543060393f4e276e2f1d659369c9fea5ee7b3ee18"
+  },
+  "display-p3.heic": {
+    "sizeBytes": 85768,
+    "sha256": "40512dc4a7672bd4651413ff7e1724b7de45c08ff3245edcec3f0c4681996a5f"
+  }
+}

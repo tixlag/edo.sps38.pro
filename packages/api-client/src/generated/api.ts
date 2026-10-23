@@ -1134,7 +1134,7 @@ export type UploadCandidateDocumentBody = {
   /** @minimum 1 */
   locationId?: number;
   /**
-   * JPEG, PNG, WebP or PDF; mixed bundle allowed. File order is preserved.
+   * JPEG, PNG, WebP, HEIC/HEIF or PDF. HEIC is normalized once to WebP without resizing; stored/downloaded MIME is image/webp. File order is preserved.
    * @minItems 1
    * @maxItems 10
    */
@@ -1162,6 +1162,7 @@ export type SubmitCandidateDocumentBody = {
   /** JSON: documentUid, chat_uuid and/or code_1c, position_code_1c, citizenship (default ru), documentFields, optional project_code_1c/locationId */
   metadata: string;
   /**
+   * JPEG, PNG, WebP, HEIC/HEIF or PDF; HEIC is normalized once to WebP without resizing. Stored/downloaded MIME is image/webp.
    * @minItems 1
    * @maxItems 10
    */
@@ -1300,6 +1301,7 @@ export type SubmitCandidateDocumentDirectBody = {
   /** JSON with documentUid and documentFields only; owner and candidate context come from the upload grant */
   metadata: string;
   /**
+   * JPEG, PNG, WebP, HEIC/HEIF or PDF; HEIC is normalized once to WebP without resizing. Stored/downloaded MIME is image/webp.
    * @minItems 1
    * @maxItems 10
    */

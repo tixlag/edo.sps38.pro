@@ -39,6 +39,7 @@ function fixture() {
     regions: [region, { ...region, id: "duplicate" }],
   };
   const row = {
+    document: { documentType: null },
     status: "IN_REVIEW",
     revision: 5,
     reviewedBy: null,
@@ -75,7 +76,12 @@ describe("OCR review data boundaries", () => {
     row.fields[0].submittedValue = "";
     expect((await reads.version("document", 4)).fields[0].mismatch).toBe(false);
   });
-  it("preserves strict source comparison and redacts full OCR on the shared version serializer", async () => {
+  it("retains a mismatch for different dates", async () => {
+    const { reads, row } = fixture();
+    row.fields[0].submittedValue = "2026-10-21";
+    expect((await reads.version("document", 4)).fields[0].mismatch).toBe(true);
+  });
+  it("normalizes equivalent dates and redacts full OCR on the shared version serializer", async () => {
     const { reads } = fixture();
     const result = await reads.version("document", 4);
     expect(result.raw).toBeNull();
@@ -84,7 +90,7 @@ describe("OCR review data boundaries", () => {
       value: "2026-10-20",
       originalValue: "2026-10-20",
       ocrText: "20.10.2026",
-      mismatch: true,
+      mismatch: false,
     });
     expect(result.fields[1]).toMatchObject({
       originalValue: null,

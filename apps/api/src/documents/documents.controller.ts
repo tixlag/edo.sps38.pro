@@ -111,7 +111,7 @@ export class CandidateIntegrationController {
           maxItems: 10,
           items: { type: "string", format: "binary" },
           description:
-            "JPEG, PNG, WebP or PDF; mixed bundle allowed. File order is preserved.",
+            "JPEG, PNG, WebP, HEIC/HEIF or PDF. HEIC is normalized once to WebP without resizing; stored/downloaded MIME is image/webp. File order is preserved.",
         },
       },
     },

@@ -113,7 +113,8 @@ export class ManualDocumentIntegrationController {
   @HttpCode(202)
   @ApiOperation({
     operationId: "submitCandidateDocument",
-    summary: "Submit a document for manual review with optional asynchronous OCR enrichment",
+    summary:
+      "Submit a document for manual review with optional asynchronous OCR enrichment",
   })
   @ApiConsumes("multipart/form-data")
   @ApiHeader({ name: "Idempotency-Key", required: true })
@@ -128,6 +129,8 @@ export class ManualDocumentIntegrationController {
             "JSON: documentUid, chat_uuid and/or code_1c, position_code_1c, citizenship (default ru), documentFields, optional project_code_1c/locationId",
         },
         "files[]": {
+          description:
+            "JPEG, PNG, WebP, HEIC/HEIF or PDF; HEIC is normalized once to WebP without resizing. Stored/downloaded MIME is image/webp.",
           type: "array",
           minItems: 1,
           maxItems: 10,
@@ -227,6 +230,8 @@ export class CandidateDocumentUploadController {
             "JSON with documentUid and documentFields only; owner and candidate context come from the upload grant",
         },
         "files[]": {
+          description:
+            "JPEG, PNG, WebP, HEIC/HEIF or PDF; HEIC is normalized once to WebP without resizing. Stored/downloaded MIME is image/webp.",
           type: "array",
           minItems: 1,
           maxItems: 10,
