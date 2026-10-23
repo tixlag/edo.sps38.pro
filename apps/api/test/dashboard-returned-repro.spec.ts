@@ -25,23 +25,21 @@ type FakeDoc = {
   employee: { locationId: number | null } | null;
 };
 
-function inScope(locationId: number | null | undefined, ids: number[]): boolean {
-  // MariaDB/Prisma: NULL never satisfies `IN (...)`; `IN ()` matches nothing.
-  return typeof locationId === 'number' && ids.includes(locationId);
+function matchesDocumentWhere(doc: FakeDoc, where: Record<string, unknown>): boolean {
+  return matchesWhere({ ...doc, candidateId: doc.candidate ? 'cand-1' : null,
+    candidate: doc.candidate ? { chatUuid: 'chat', citizenship: 'ru', ...doc.candidate } : null }, where);
 }
 
-function matchesDocumentWhere(doc: FakeDoc, where: Record<string, unknown>): boolean {
-  // Prisma applies ALL top-level conditions as AND: id must match (when
-  // present) AND the scope OR-branch must match. Checking `id` first alone
-  // would wrongly short-circuit the scope check.
-  if (typeof where['id'] === 'string' && doc.id !== where['id']) return false;
-  if (!where || Object.keys(where).length === 0) return true;
-  if (!('OR' in where)) return true;
-  const or = (where['OR'] ?? []) as Array<Record<string, { locationId?: { in?: number[] } }>>;
-  return or.some((branch) => {
-    if (branch.candidate) return inScope(doc.candidate?.locationId, branch.candidate.locationId?.in ?? []);
-    if (branch.employee) return inScope(doc.employee?.locationId, branch.employee.locationId?.in ?? []);
-    return false;
+function matchesWhere(row: Record<string, unknown>, where: Record<string, unknown>): boolean {
+  return Object.entries(where).every(([key, value]) => {
+    if (key === 'AND') return (value as Record<string, unknown>[]).every((item) => matchesWhere(row, item));
+    if (key === 'OR') return (value as Record<string, unknown>[]).some((item) => matchesWhere(row, item));
+    const actual = row[key];
+    if (value === null || typeof value !== 'object') return actual === value;
+    const filter = value as Record<string, unknown>;
+    if ('in' in filter) return (filter.in as unknown[]).includes(actual);
+    if ('not' in filter) return actual !== filter.not;
+    return actual != null && matchesWhere(actual as Record<string, unknown>, filter);
   });
 }
 

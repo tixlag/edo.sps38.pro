@@ -53,6 +53,16 @@ export class CandidateQueryDto {
   @MaxLength(64)
   cursor?: string;
 }
+export class ReviewGroupQueryDto {
+  @ApiPropertyOptional({
+    enum: ["RU", "IG"],
+    enumName: "ReviewGroup",
+    default: "RU",
+  })
+  @IsOptional()
+  @IsIn(["RU", "IG"])
+  reviewGroup?: "RU" | "IG";
+}
 export class DocumentFileDto {
   @ApiProperty() id!: string;
   @ApiProperty({
@@ -224,6 +234,8 @@ export class DocumentReviewMetadataDto {
   reviewedBy!: string | null;
 }
 export class DocumentVersionDto extends DocumentReviewMetadataDto {
+  @ApiPropertyOptional({ enum: ["RU", "IG"], enumName: "ReviewGroup" })
+  reviewGroup?: "RU" | "IG";
   @ApiProperty({
     description:
       "Current supported submitted version has no OCR attempt and retained originals",
@@ -260,6 +272,8 @@ export class DocumentVersionDto extends DocumentReviewMetadataDto {
   delivery!: DocumentDeliveryDto | null;
 }
 export class CandidateProfileDto {
+  @ApiProperty({ enum: ["RU", "IG"], enumName: "ReviewGroup" })
+  reviewGroup!: "RU" | "IG";
   @ApiProperty() id!: string;
   @ApiProperty({ type: String, nullable: true, format: "uuid" }) chatUuid!:
     | string
@@ -444,7 +458,7 @@ export class ReviewCandidateDto {
 export class ReviewCandidateListDto {
   @ApiProperty({ type: [ReviewCandidateDto] }) items!: ReviewCandidateDto[];
 }
-export class ReviewCandidatesQueryDto {
+export class ReviewCandidatesQueryDto extends ReviewGroupQueryDto {
   @ApiPropertyOptional({ description: "Case-insensitive fullName search" })
   @IsOptional()
   @IsString()
@@ -569,6 +583,15 @@ export class CandidateSnapshotMentorDto {
   code_1c?: string;
 }
 export class CandidateSnapshotDto {
+  @ApiPropertyOptional({
+    type: String,
+    format: "uuid",
+    nullable: true,
+    description: "Chat UUID, named uuid by 1C",
+  })
+  @IsOptional()
+  @IsUUID()
+  uuid?: string | null;
   @ApiPropertyOptional({ maxLength: 512 })
   @IsOptional()
   @IsString()
@@ -710,6 +733,14 @@ export class DocumentUploadGrantDto {
   @ApiProperty({ format: "date-time" }) expiresAt!: string;
 }
 export class ReviewDocumentsQueryDto extends CandidateQueryDto {
+  @ApiPropertyOptional({
+    enum: ["RU", "IG"],
+    enumName: "ReviewGroup",
+    default: "RU",
+  })
+  @IsOptional()
+  @IsIn(["RU", "IG"])
+  reviewGroup?: "RU" | "IG";
   @ApiPropertyOptional({
     enum: ["IN_REVIEW", "ERP_PENDING", "RETURNED", "ALL"],
   })

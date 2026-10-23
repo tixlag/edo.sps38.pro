@@ -216,6 +216,7 @@ describe("snapshot persistence mapping", () => {
       }),
     ).toEqual({
       id: "c1",
+      reviewGroup: "RU",
       chatUuid: "chat",
       code1c: null,
       fullName: "Иван",
@@ -401,6 +402,7 @@ describe("reviewDocuments with profile filters", () => {
     documentType: { code: "PASSPORT", title: "Паспорт", erpUid: "u1" },
     candidate: {
       id: "c1",
+      reviewGroup: "RU",
       chatUuid: "chat",
       code1c: null,
       fullName: "Иван Петров",
@@ -483,18 +485,25 @@ describe("reviewDocuments with profile filters", () => {
     const findMany = vi.fn(async (args: { select?: unknown }) =>
       args.select ? [{ id: "d1" }] : [row],
     );
-    const scoped = { ...fullAccess, accessRules: { "20007": ["98"] } } as never;
+    const scoped = {
+      ...fullAccess,
+      accessRules: { "20002": [], "20007": ["98"] },
+    } as never;
     await readsWith(findMany).reviewDocuments(scoped, {
       limit: 50,
       manager: "Сид",
     });
     expect(findMany.mock.calls[0][0].where).toMatchObject({
-      OR: expect.any(Array),
+      AND: expect.any(Array),
       candidate: {
-        OR: [
-          { managerName: { contains: "Сид" } },
-          { managerCode1c: { contains: "Сид" } },
-        ],
+        AND: expect.arrayContaining([
+          {
+            OR: [
+              { managerName: { contains: "Сид" } },
+              { managerCode1c: { contains: "Сид" } },
+            ],
+          },
+        ]),
       },
     });
   });
@@ -607,13 +616,13 @@ describe("reviewDocuments candidate progress", () => {
     try {
       const scoped = {
         ...fullAccess,
-        accessRules: { "20007": ["98"] },
+        accessRules: { "20002": [], "20007": ["98"] },
       } as never;
       const result = await service.candidateDocuments("c1", scoped);
       expect(guard).toHaveBeenCalledWith("c1", scoped);
       expect(findMany.mock.calls[0][0].where).toMatchObject({
         candidateId: "c1",
-        OR: expect.any(Array),
+        AND: expect.any(Array),
       });
       expect(findMany.mock.calls[0][0].where).not.toHaveProperty("status");
       expect(result.items.map((doc) => doc.status)).toEqual([
@@ -627,7 +636,7 @@ describe("reviewDocuments candidate progress", () => {
       });
       expect(groupBy.mock.calls[0][0].where).toMatchObject({
         candidateId: { in: ["c1"] },
-        OR: expect.any(Array),
+        AND: expect.any(Array),
       });
     } finally {
       guard.mockRestore();
@@ -675,7 +684,7 @@ describe("reviewDocuments candidate progress", () => {
     const docs = [docRow("d1", profileRow(), "RETURNED")];
     const scoped = {
       ...fullAccess,
-      accessRules: { "20007": ["98"] },
+      accessRules: { "20002": [], "20007": ["98"] },
     } as never;
     const { service, findMany, groupBy } = setup(docs, { catalog });
     const page = await service.reviewDocuments(scoped, {
@@ -686,14 +695,14 @@ describe("reviewDocuments candidate progress", () => {
     // Queue itself is tab-filtered and scoped...
     expect(findMany.mock.calls[0][0].where).toMatchObject({
       versions: { some: { status: "RETURNED" } },
-      OR: expect.any(Array),
+      AND: expect.any(Array),
     });
     // ...but the APPROVED counter ignores the tab filter and reuses the scope,
     // so foreign-location candidates never leak into the counters.
     expect(groupBy).toHaveBeenCalledTimes(1);
     const counterWhere = groupBy.mock.calls[0][0].where;
     expect(counterWhere.candidateId).toEqual({ in: ["c1"] });
-    expect(counterWhere.OR).toBeDefined();
+    expect(counterWhere.AND).toBeDefined();
     expect(counterWhere).not.toHaveProperty("status");
     expect(page.items[0].candidate).toMatchObject({
       projectCode: "PRJ",

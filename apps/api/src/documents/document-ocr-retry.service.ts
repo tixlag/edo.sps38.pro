@@ -76,7 +76,7 @@ export class DocumentOcrRetryService {
         await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${initial.candidateId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM documents WHERE id = ${documentId} FOR UPDATE`;
       const doc = await tx.document.findFirst({
-        where: { id: documentId, ...this.access.documentWhere(principal) },
+        where: { id: documentId, ...this.access.documentReviewWhere(principal) },
       });
       if (!doc) throw new NotFoundException("Document not found");
       if (

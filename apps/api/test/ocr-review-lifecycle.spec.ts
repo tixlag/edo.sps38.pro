@@ -281,7 +281,7 @@ describe("review decision metadata", () => {
       };
       const service = new DocumentReviewService(
         prisma as never,
-        { document: vi.fn(), documentWhere: () => ({}) } as never,
+        { document: vi.fn(), documentReviewWhere: () => ({}) } as never,
         audit as never,
         { version: vi.fn() } as never,
         {} as never,

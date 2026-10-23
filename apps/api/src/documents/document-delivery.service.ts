@@ -102,7 +102,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
           await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${doc.candidateId} FOR UPDATE`;
         if (
           !(await tx.document.findFirst({
-            where: { id: doc.id, ...this.access.documentWhere(principal) },
+            where: { id: doc.id, ...this.access.documentReviewWhere(principal) },
           }))
         )
           throw new ConflictException("Document access has changed");

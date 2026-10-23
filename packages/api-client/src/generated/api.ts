@@ -312,6 +312,11 @@ export interface CandidateSnapshotMentorDto {
 }
 
 export interface CandidateSnapshotDto {
+  /**
+   * Chat UUID, named uuid by 1C
+   * @nullable
+   */
+  uuid?: string | null;
   /** @maxLength 512 */
   fullName?: string;
   /** @maxLength 512 */
@@ -443,7 +448,16 @@ export const DocumentStatus = {
   EXPIRED: "EXPIRED",
 } as const;
 
+export type ReviewGroup = (typeof ReviewGroup)[keyof typeof ReviewGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ReviewGroup = {
+  RU: "RU",
+  IG: "IG",
+} as const;
+
 export interface CandidateProfileDto {
+  reviewGroup: ReviewGroup;
   id: string;
   /** @nullable */
   chatUuid: string | null;
@@ -864,6 +878,7 @@ export interface DocumentVersionDto {
    * @nullable
    */
   reviewedBy: string | null;
+  reviewGroup?: ReviewGroup;
   /** Current supported submitted version has no OCR attempt and retained originals */
   canStartOcr: boolean;
   /** Current supported version has a failed OCR attempt, retained originals, and enabled OCR */
@@ -1188,6 +1203,7 @@ export type ListCandidateReviewQueueParams = {
    * Candidate id from nextCursor
    */
   cursor?: string;
+  reviewGroup?: ReviewGroup;
   status?: ListCandidateReviewQueueStatus;
   /**
    * Case-insensitive fullName search
@@ -1236,6 +1252,7 @@ export const ListCandidateReviewQueueStatus = {
 export type ListReviewDocumentsParams = {
   limit?: number;
   cursor?: string;
+  reviewGroup?: ReviewGroup;
   status?: ListReviewDocumentsStatus;
   /**
    * Case-insensitive fullName search
@@ -1281,7 +1298,12 @@ export const ListReviewDocumentsStatus = {
   ALL: "ALL",
 } as const;
 
+export type GetReviewDocumentFacetsParams = {
+  reviewGroup?: ReviewGroup;
+};
+
 export type ListReviewCandidatesParams = {
+  reviewGroup?: ReviewGroup;
   /**
    * Case-insensitive fullName search
    */
@@ -5000,36 +5022,48 @@ export function useListReviewDocuments<
 /**
  * @summary Distinct manager/mentor/project/citizenship values inside the queue access scope
  */
-export const getReviewDocumentFacets = (signal?: AbortSignal) => {
+export const getReviewDocumentFacets = (
+  params?: GetReviewDocumentFacetsParams,
+  signal?: AbortSignal,
+) => {
   return customInstance<ReviewDocumentFacetsDto>({
     url: `/api/v1/review-documents/facets`,
     method: "GET",
+    params,
     signal,
   });
 };
 
-export const getGetReviewDocumentFacetsQueryKey = () => {
-  return [`/api/v1/review-documents/facets`] as const;
+export const getGetReviewDocumentFacetsQueryKey = (
+  params?: GetReviewDocumentFacetsParams,
+) => {
+  return [
+    `/api/v1/review-documents/facets`,
+    ...(params ? [params] : []),
+  ] as const;
 };
 
 export const getGetReviewDocumentFacetsQueryOptions = <
   TData = Awaited<ReturnType<typeof getReviewDocumentFacets>>,
   TError = ApiErrorDto,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getReviewDocumentFacets>>,
-    TError,
-    TData
-  >;
-}) => {
+>(
+  params?: GetReviewDocumentFacetsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+      TError,
+      TData
+    >;
+  },
+) => {
   const { query: queryOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ?? getGetReviewDocumentFacetsQueryKey();
+    queryOptions?.queryKey ?? getGetReviewDocumentFacetsQueryKey(params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof getReviewDocumentFacets>>
-  > = ({ signal }) => getReviewDocumentFacets(signal);
+  > = ({ signal }) => getReviewDocumentFacets(params, signal);
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getReviewDocumentFacets>>,
@@ -5050,14 +5084,17 @@ export type GetReviewDocumentFacetsQueryError = ApiErrorDto;
 export function useGetReviewDocumentFacets<
   TData = Awaited<ReturnType<typeof getReviewDocumentFacets>>,
   TError = ApiErrorDto,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getReviewDocumentFacets>>,
-    TError,
-    TData
-  >;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetReviewDocumentFacetsQueryOptions(options);
+>(
+  params?: GetReviewDocumentFacetsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetReviewDocumentFacetsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -1,4 +1,10 @@
 import {
+  candidateReviewGroup,
+  requireReviewGroup,
+  reviewGroupWhere,
+  type ReviewGroup,
+} from "./review-group";
+import {
   BadRequestException,
   ForbiddenException,
   Injectable,
@@ -65,7 +71,7 @@ const documentSummaryInclude = {
 } satisfies Prisma.DocumentInclude;
 
 const versionInclude = {
-  document: { include: { documentType: true } },
+  document: { include: { documentType: true, candidate: true } },
   submission: { select: { id: true, status: true } },
   files: { orderBy: { ordinal: "asc" as const } },
   fields: {
@@ -334,6 +340,9 @@ export class DocumentReadService {
     return {
       documentId,
       version,
+      reviewGroup: row.document.candidate
+        ? candidateReviewGroup(row.document.candidate)
+        : "RU",
       status: row.status,
       revision: row.revision,
       canRetryOcr: canRetryDocumentOcr(row, ocrEnabled),
@@ -624,8 +633,9 @@ export class DocumentReadService {
    */
   async reviewDocumentFacets(
     principal: AuthPrincipal,
+    reviewGroup: ReviewGroup = "RU",
   ): Promise<ReviewDocumentFacetsDto> {
-    const ids = await this.reviewCandidateIds(principal);
+    const ids = await this.reviewCandidateIds(principal, reviewGroup);
     if (ids.length === 0)
       return { managers: [], mentors: [], projects: [], citizenships: [] };
     const candidates = await this.prisma.candidate.findMany({
@@ -689,7 +699,10 @@ export class DocumentReadService {
     query: ReviewCandidatesQueryDto,
   ): Promise<ReviewCandidateListDto> {
     const { limit = 20 } = query;
-    const ids = await this.reviewCandidateIds(principal);
+    const ids = await this.reviewCandidateIds(
+      principal,
+      query.reviewGroup ?? "RU",
+    );
     if (ids.length === 0) return { items: [] };
     const needle = query.q?.trim();
     const rows = await this.prisma.candidate.findMany({
@@ -709,12 +722,15 @@ export class DocumentReadService {
   /** Distinct candidate ids owning live (currentVersion > 0) scoped documents. */
   private async reviewCandidateIds(
     principal: AuthPrincipal,
+    reviewGroup: ReviewGroup,
   ): Promise<string[]> {
+    requireReviewGroup(principal, reviewGroup);
     const docs = await this.prisma.document.findMany({
       where: {
         ...this.access.documentWhere(principal),
         currentVersion: { gt: 0 },
         candidateId: { not: null },
+        candidate: reviewGroupWhere(reviewGroup),
       },
       select: { candidateId: true },
       distinct: ["candidateId"],
@@ -796,11 +812,17 @@ export class DocumentReadService {
   /** The same document predicate selects candidates and their nested documents. */
   private reviewDocumentWhere(
     principal: AuthPrincipal,
-    query: { status?: string; documentTypeCode?: string },
+    query: {
+      status?: string;
+      documentTypeCode?: string;
+      reviewGroup?: ReviewGroup;
+    },
   ): Prisma.DocumentWhereInput {
-    const { status, documentTypeCode } = query;
+    const { status, documentTypeCode, reviewGroup = "RU" } = query;
+    requireReviewGroup(principal, reviewGroup);
     return {
       ...this.access.documentWhere(principal),
+      candidate: reviewGroupWhere(reviewGroup),
       currentVersion: { gt: 0 },
       ...(documentTypeCode ? { documentType: { code: documentTypeCode } } : {}),
       ...(status === "ALL"
@@ -825,10 +847,18 @@ export class DocumentReadService {
     principal: AuthPrincipal,
     query: CandidateReviewQueueQueryDto = {},
   ): Promise<CandidateReviewQueueDto> {
-    const { limit = 50, cursor, status, documentTypeCode, ...profile } = query;
+    const {
+      limit = 50,
+      cursor,
+      status,
+      documentTypeCode,
+      reviewGroup = "RU",
+      ...profile
+    } = query;
     const documentsWhere = this.reviewDocumentWhere(principal, {
       status,
       documentTypeCode,
+      reviewGroup,
     });
     const rows = await this.prisma.candidate.findMany({
       where: {
@@ -868,12 +898,32 @@ export class DocumentReadService {
     principal: AuthPrincipal,
     query: ReviewDocumentsQueryDto = {},
   ) {
-    const { limit = 50, cursor, status, documentTypeCode, ...profile } = query;
+    const {
+      limit = 50,
+      cursor,
+      status,
+      documentTypeCode,
+      reviewGroup = "RU",
+      ...profile
+    } = query;
     const candidate = buildCandidateProfileWhere(profile);
     const where: Prisma.DocumentWhereInput = {
-      ...this.reviewDocumentWhere(principal, { status, documentTypeCode }),
+      ...this.reviewDocumentWhere(principal, {
+        status,
+        documentTypeCode,
+        reviewGroup,
+      }),
       ...(cursor ? { id: { gt: cursor } } : {}),
-      ...(candidate ? { candidate } : {}),
+      ...(candidate
+        ? {
+            candidate: {
+              AND: [
+                reviewGroupWhere(reviewGroup),
+                ...(Array.isArray(candidate.AND) ? candidate.AND : [candidate]),
+              ],
+            },
+          }
+        : {}),
     };
     const rows = await this.prisma.document.findMany({
       where,

@@ -63,7 +63,7 @@ function fixture() {
   };
   const service = new DocumentOcrRetryService(
     { $transaction: (run) => run(tx) } as never,
-    { documentWhere: () => ({ candidate: { locationId: 10 } }) } as never,
+    { documentReviewWhere: () => ({ candidate: { locationId: 10 } }) } as never,
     audit as never,
     reads as never,
     { get: (key) => config[key] } as never,
