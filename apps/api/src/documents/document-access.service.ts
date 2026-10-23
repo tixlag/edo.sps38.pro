@@ -55,10 +55,15 @@ export class DocumentAccessService {
   }
 
   documentReviewWhere(principal: AuthPrincipal): Prisma.DocumentWhereInput {
+    const document = this.documentWhere(principal);
     const group = candidateGroupAccessWhere(principal, true);
+    // Both review groups impose no additional restriction. An empty relation
+    // branch inside OR is omitted by Prisma and would leave only candidateId
+    // IS NULL, denying every candidate document to full-access reviewers.
+    if (!Object.keys(group).length) return document;
     return {
       AND: [
-        this.documentWhere(principal),
+        document,
         {
           OR: [
             { candidate: group },
