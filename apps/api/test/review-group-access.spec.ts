@@ -20,6 +20,20 @@ const principal = (rules: Record<string, string[]>): AuthPrincipal => ({
 });
 
 describe("review group isolation", () => {
+  it.each([{ "20009": [] }, { "20002": [], "20011": [] }])(
+    "does not add an empty relation filter when both groups are granted: %j",
+    (rules) => {
+      const access = new DocumentAccessService(null as never);
+      expect(access.documentReviewWhere(principal(rules))).toEqual({});
+      const scoped = principal({ ...rules, "20007": ["98"] });
+      delete scoped.accessRules["20008"];
+      // FULL_ACCESS still implies all locations; a RU+IG reviewer keeps 20007.
+      expect(access.documentReviewWhere(scoped)).toEqual(
+        access.documentWhere(scoped),
+      );
+    },
+  );
+
   it.each([
     [{ chatUuid: "chat", citizenship: "uz" }, "RU"],
     [{ chatUuid: null, citizenship: "ru" }, "RU"],
