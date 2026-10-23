@@ -1,0 +1,132 @@
+{
+  "date": "2026-10-23",
+  "fixtures": "synthetic, no real personal data",
+  "sizes": [
+    {
+      "name": "passport-photo",
+      "inputBytes": 909726,
+      "oldBytes": 2498522,
+      "newBytes": 909726,
+      "savingPercent": 63.59
+    },
+    {
+      "name": "text-photo",
+      "inputBytes": 336727,
+      "oldBytes": 2203218,
+      "newBytes": 336727,
+      "savingPercent": 84.72
+    },
+    {
+      "name": "png-scan",
+      "inputBytes": 1898806,
+      "oldBytes": 1580308,
+      "newBytes": 1898806,
+      "savingPercent": -20.15
+    },
+    {
+      "name": "webp",
+      "inputBytes": 544270,
+      "oldBytes": 2237366,
+      "newBytes": 544270,
+      "savingPercent": 75.67
+    },
+    {
+      "name": "passport-two-sides",
+      "inputBytes": 1246453,
+      "oldBytes": 4701127,
+      "newBytes": 1247744,
+      "savingPercent": 73.46
+    },
+    {
+      "name": "pdf-and-photo",
+      "inputBytes": 910996,
+      "oldBytes": 2499200,
+      "newBytes": 911354,
+      "savingPercent": 63.53
+    }
+  ],
+  "orientationRasters": [
+    {
+      "orientation": 1,
+      "width": 300,
+      "height": 225,
+      "meanAbsoluteError": 2.0983555555555555
+    },
+    {
+      "orientation": 2,
+      "width": 300,
+      "height": 225,
+      "meanAbsoluteError": 1.380962962962963
+    },
+    {
+      "orientation": 3,
+      "width": 300,
+      "height": 225,
+      "meanAbsoluteError": 1.380962962962963
+    },
+    {
+      "orientation": 4,
+      "width": 300,
+      "height": 225,
+      "meanAbsoluteError": 2.2728148148148146
+    },
+    {
+      "orientation": 5,
+      "width": 225,
+      "height": 300,
+      "meanAbsoluteError": 1.3803802469135802
+    },
+    {
+      "orientation": 6,
+      "width": 225,
+      "height": 300,
+      "meanAbsoluteError": 1.3803802469135802
+    },
+    {
+      "orientation": 7,
+      "width": 225,
+      "height": 300,
+      "meanAbsoluteError": 1.3803802469135802
+    },
+    {
+      "orientation": 8,
+      "width": 225,
+      "height": 300,
+      "meanAbsoluteError": 1.3803802469135802
+    }
+  ],
+  "alphaMeanAbsoluteError": 1.2141753472222223,
+  "qrVerifiedImages": 12,
+  "qrPayload": "EDO-ARTIFACT-READABILITY-2026",
+  "streaming100MiB": {
+    "node": "v22.23.4",
+    "fileSize": 104857600,
+    "fileSha256": "394b9f19e81dc9321671b668015a0a09dca4b5ef1260c392dffa42ea66c0aeb1",
+    "elapsedMs": 559,
+    "baselineRss": 140767232,
+    "peakRss": 177000448,
+    "rssDelta": 36233216,
+    "baselineExternal": 8231087,
+    "peakExternal": 41784117,
+    "baselineHeap": 41176248,
+    "peakHeap": 46050704,
+    "openStreamsAfter": 0,
+    "errorCode": null
+  },
+  "tests": {
+    "api": {
+      "passed": 531,
+      "failed": 0,
+      "skipped": 2,
+      "files": 49,
+      "excluded": [
+        "lk-real-infra.spec.ts"
+      ]
+    },
+    "web": {
+      "passed": 123,
+      "failed": 0,
+      "files": 14
+    }
+  }
+}
