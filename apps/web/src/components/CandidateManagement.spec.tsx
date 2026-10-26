@@ -231,6 +231,71 @@ describe("candidate manager flows", () => {
     );
   });
 
+  it("confirms an existing physical person when creating a new admission and reuses that signed choice after a lost response", async () => {
+    state.create.mockRejectedValueOnce(new Error("Lost response"));
+    await render(<CandidatesPage />);
+    await click("Создать кандидата");
+    const form = view.querySelector("form")!;
+    const inputs = form.querySelectorAll<HTMLInputElement>(
+      "fieldset > label > input",
+    );
+    type(inputs[0], "Иванов Иван");
+    type(inputs[1], "+79000000000");
+    type(inputs[2], "1990-02-03");
+    await pick("Должность", "Водитель");
+    await pick("Менеджер", "Анна Менеджер");
+    await act(async () =>
+      view
+        .querySelector<HTMLInputElement>(
+          '[aria-label="Повторный приём при создании"]',
+        )!
+        .click(),
+    );
+    await submit("Создание кандидата");
+    expect(state.create).not.toHaveBeenCalled();
+    vi.useFakeTimers();
+    const searchInput = view.querySelector<HTMLInputElement>(
+      'input[aria-label="Поиск физлица"]',
+    )!;
+    await act(async () =>
+      searchInput.dispatchEvent(new FocusEvent("focusin", { bubbles: true })),
+    );
+    type(searchInput, "Иван");
+    await act(async () => vi.advanceTimersByTime(301));
+    await pick("Поиск физлица", "Иванов Иван · 03.02.1990");
+    await submit("Создание кандидата");
+    expect(state.create).not.toHaveBeenCalled();
+    expect(view.textContent).toContain("03.02.1990");
+    const confirmation = form.querySelector<HTMLInputElement>(
+      'section input[type="checkbox"]:not([aria-label])',
+    )!;
+    await act(async () => confirmation.click());
+    await submit("Создание кандидата");
+    expect(state.create).toHaveBeenCalledWith({
+      data: {
+        requestId: expect.any(String),
+        fields: expect.objectContaining({
+          fullName: "Иванов Иван",
+          projectCode: null,
+        }),
+        personSelection: "signed-opaque-person",
+      },
+    });
+    expect(confirmation.disabled).toBe(true);
+    expect(searchInput.disabled).toBe(true);
+    expect(
+      form.querySelector<HTMLInputElement>(
+        '[aria-label="Повторный приём при создании"]',
+      )!.disabled,
+    ).toBe(true);
+    expect(button("Отмена").disabled).toBe(true);
+    expect(view.textContent).not.toContain("signed-opaque-person");
+    await submit("Создание кандидата");
+    expect(state.create.mock.calls[1][0]).toEqual(
+      state.create.mock.calls[0][0],
+    );
+  });
+
   it("patches changed fields only, keeps mentor read-only and refreshes requirements", async () => {
     await render(<CandidateManagement candidateId="current-cycle" />);
     await click("Редактировать данные");

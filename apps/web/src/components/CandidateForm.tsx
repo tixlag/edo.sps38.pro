@@ -9,6 +9,7 @@ import {
 } from "@edo/api-client";
 import { Button } from "@edo/ui";
 import { SearchSelect } from "./SearchSelect";
+import { CandidatePersonPicker } from "./CandidatePersonPicker";
 
 export const CANDIDATE_CONTROL =
   "w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] disabled:opacity-60";
@@ -87,10 +88,12 @@ export function CandidateForm({
   pending: boolean;
   locked: boolean;
   error: string;
-  onSubmit: (fields: CandidateFieldsDto) => void;
+  onSubmit: (fields: CandidateFieldsDto, personSelection?: string) => void;
   onCancel: () => void;
 }) {
   const [fields, setFields] = useState(() => candidateFormFields(profile));
+  const [personEnabled, setPersonEnabled] = useState(false);
+  const [personSelection, setPersonSelection] = useState<string>();
   const [managerQuery, setManagerQuery] = useState("");
   const [positionQuery, setPositionQuery] = useState("");
   const [projectQuery, setProjectQuery] = useState("");
@@ -103,7 +106,12 @@ export function CandidateForm({
     setFields((previous) => ({ ...previous, [key]: value }));
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (fields.positionCode && fields.managerId) onSubmit(fields);
+    if (
+      fields.positionCode &&
+      fields.managerId &&
+      (profile || !personEnabled || personSelection)
+    )
+      onSubmit(fields, personEnabled ? personSelection : undefined);
   };
   return (
     <form
@@ -216,6 +224,40 @@ export function CandidateForm({
           />
         </div>
       </fieldset>
+      {!profile && (
+        <section
+          className="space-y-3 border-t border-[var(--border)] pt-4"
+          aria-label="Существующее физлицо"
+        >
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              aria-label="Повторный приём при создании"
+              checked={personEnabled}
+              disabled={pending || locked}
+              onChange={(event) => {
+                setPersonEnabled(event.target.checked);
+                setPersonSelection(undefined);
+              }}
+            />
+            Повторный приём · выбрать существующее физлицо
+          </label>
+          {personEnabled && (
+            <>
+              <p className="text-sm text-[var(--muted-foreground)]">
+                Новый цикл оформления будет создан с выбранным физлицом ERP.
+                Прежнюю карточку кандидата искать не требуется. Кадровый приём
+                выполняется в ERP.
+              </p>
+              <CandidatePersonPicker
+                disabled={pending || locked}
+                onChange={setPersonSelection}
+              />
+            </>
+          )}
+        </section>
+      )}
       {profile?.mentor && (
         <p className="text-sm text-[var(--muted-foreground)]">
           Наставник: {profile.mentor.name}
@@ -232,7 +274,12 @@ export function CandidateForm({
       <div className="flex flex-wrap gap-2">
         <Button
           type="submit"
-          disabled={pending || !fields.positionCode || !fields.managerId}
+          disabled={
+            pending ||
+            !fields.positionCode ||
+            !fields.managerId ||
+            (!profile && personEnabled && !personSelection)
+          }
         >
           {pending
             ? "Сохранение…"

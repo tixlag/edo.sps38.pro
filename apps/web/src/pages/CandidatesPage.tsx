@@ -26,11 +26,18 @@ function CreateCandidate({ onCancel }: { onCancel: () => void }) {
   const request = useCandidateRequest();
   const navigate = useNavigate();
   const cache = useQueryClient();
-  const submit = async (fields: CandidateFieldsDto) => {
+  const submit = async (
+    fields: CandidateFieldsDto,
+    personSelection?: string,
+  ) => {
     request.begin();
     try {
       const candidate = await create.mutateAsync({
-        data: { requestId: request.requestId, fields },
+        data: {
+          requestId: request.requestId,
+          fields,
+          ...(personSelection ? { personSelection } : {}),
+        },
       });
       await cache.invalidateQueries({
         queryKey: getListCommunicationCandidatesQueryKey(),
@@ -55,7 +62,9 @@ function CreateCandidate({ onCancel }: { onCancel: () => void }) {
         pending={create.isPending}
         locked={request.locked}
         error={request.error}
-        onSubmit={(fields) => void submit(fields)}
+        onSubmit={(fields, personSelection) =>
+          void submit(fields, personSelection)
+        }
         onCancel={onCancel}
       />
     </section>

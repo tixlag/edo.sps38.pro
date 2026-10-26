@@ -10,7 +10,6 @@ import {
   useChangeCandidateStatus,
   useListCandidateStatuses,
   useListCandidateProjects,
-  useSearchCandidatePersons,
   useLinkCandidatePerson,
   type CandidateWorkspaceDto,
   type CandidateFieldsDto,
@@ -26,6 +25,7 @@ import {
 import { SearchSelect } from "./SearchSelect";
 import { formatBirthDateRu } from "../lib/review-groups";
 import { CandidatePreviousDocuments } from "./CandidatePreviousDocuments";
+import { CandidatePersonPicker } from "./CandidatePersonPicker";
 
 function useConfirmedCandidate(candidateId: string) {
   const cache = useQueryClient();
@@ -264,38 +264,24 @@ function CandidatePersonLink({
   profile: CandidateWorkspaceDto;
   onClose: () => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [selection, setSelection] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
-  const persons = useSearchCandidatePersons(
-    { q: query.trim() || undefined },
-    {
-      query: {
-        enabled: query.trim().length >= 3,
-        queryKey: ["/api/v1/candidates/references/persons", query.trim()],
-        refetchOnWindowFocus: false,
-        staleTime: 14 * 60_000,
-      },
-    },
-  );
+  const [personSelection, setPersonSelection] = useState<string>();
   const mutation = useLinkCandidatePerson();
   const request = useCandidateRequest();
   const savedProfile = useConfirmedCandidate(profile.id);
-  const selected = persons.data?.items.find((item) => item.id === selection);
   return (
     <form
       aria-label="Повторный приём"
       className="space-y-3"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!selected || !confirmed) return;
+        if (!personSelection) return;
         request.begin();
         void mutation
           .mutateAsync({
             candidateId: profile.id,
             data: {
               requestId: request.requestId,
-              personSelection: selected.id,
+              personSelection,
             },
           })
           .then(async (saved) => {
@@ -309,66 +295,17 @@ function CandidatePersonLink({
         Выберите существующее физлицо из ERP для текущего оформления. Это свяжет
         документы, но не оформит кадровый приём.
       </p>
-      <SearchSelect
-        label="Поиск физлица"
-        placeholder="Введите не менее 3 символов ФИО"
-        value={selection}
-        selectedLabel={
-          selected
-            ? `${selected.name} · ${formatBirthDateRu(selected.birthDate)}`
-            : undefined
-        }
-        options={(query.trim().length >= 3
-          ? (persons.data?.items ?? [])
-          : []
-        ).map((person) => ({
-          value: person.id,
-          label: `${person.name} · ${formatBirthDateRu(person.birthDate)}`,
-        }))}
-        onSearchChange={(value) => {
-          setQuery(value);
-          setConfirmed(false);
-        }}
-        onChange={(value) => {
-          setSelection(value ?? "");
-          setConfirmed(false);
-        }}
+      <CandidatePersonPicker
         disabled={request.locked || mutation.isPending}
-        emptyText={
-          query.trim().length < 3
-            ? "Введите не менее 3 символов ФИО"
-            : "Физлица не найдены"
-        }
-        isLoading={query.trim().length >= 3 && persons.isLoading}
-        isError={persons.isError}
-        onRetry={() => void persons.refetch()}
+        onChange={setPersonSelection}
       />
-      {selected && (
-        <div className="space-y-2 rounded-md bg-[var(--muted)] p-3 text-sm">
-          <p className="font-medium">{selected.name}</p>
-          <p>Дата рождения: {formatBirthDateRu(selected.birthDate)}</p>
-          <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={confirmed}
-              disabled={request.locked || mutation.isPending}
-              onChange={(event) => setConfirmed(event.target.checked)}
-            />
-            Подтверждаю, что это нужный человек для текущего оформления
-          </label>
-        </div>
-      )}
       {request.error && (
         <p role="alert" className="text-sm text-[var(--danger)]">
           {request.error}
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button
-          type="submit"
-          disabled={mutation.isPending || !selected || !confirmed}
-        >
+        <Button type="submit" disabled={mutation.isPending || !personSelection}>
           {mutation.isPending
             ? "Связывание…"
             : request.error
