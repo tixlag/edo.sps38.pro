@@ -129,11 +129,7 @@ describe('DashboardService', () => {
     expect(page.items[0].status).toBe('RETURNED');
     const scopeWhere = access.documentWhere(scopedPrincipal);
     expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({
-        ...scopeWhere,
-        versions: { some: { status: 'RETURNED' } },
-        currentVersion: { gt: 0 },
-      }) }),
+      expect.objectContaining({ where: expect.objectContaining({ ...scopeWhere, versions: { some: { status: 'RETURNED' } }, currentVersion: { gt: 0 } }) }),
     );
   });
 

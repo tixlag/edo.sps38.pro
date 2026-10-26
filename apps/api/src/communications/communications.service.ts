@@ -67,7 +67,7 @@ export class CommunicationsService {
     return (
       !!principal.code1c &&
       hasAccessRule(principal.accessRules, EdoAccessRule.ACCESS) &&
-      hasAccessRule(principal.accessRules, EdoAccessRule.DOCUMENT_REVIEW)
+      hasAccessRule(principal.accessRules, EdoAccessRule.DOCUMENT_REVIEW_RU)
     );
   }
   private assertSend(principal: AuthPrincipal) {

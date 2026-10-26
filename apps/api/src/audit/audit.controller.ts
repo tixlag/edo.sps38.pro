@@ -25,7 +25,7 @@ export class AuditController {
   // Guard passes for DOCUMENT_REVIEW or AUDIT_VIEW holders (FULL_ACCESS
   // implies both). The service additionally rejects bare DOCUMENT_REVIEW
   // callers on unfiltered history, so reviewers must use mine=true.
-  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW, EdoAccessRule.AUDIT_VIEW)
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_RU, EdoAccessRule.DOCUMENT_REVIEW_IG, EdoAccessRule.AUDIT_VIEW)
   @ApiOperation({
     summary: 'List audit history within user location scope',
     operationId: 'listAuditLogs',

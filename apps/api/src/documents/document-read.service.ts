@@ -1,14 +1,33 @@
 import {
+  candidateReviewGroup,
+  requireReviewGroup,
+  reviewGroupWhere,
+  type ReviewGroup,
+} from "./review-group";
+import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import {
+  canRetryDocumentOcr,
+  canStartDocumentOcr,
+} from "../ocr/ocr-retry-policy";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
+import { hasAccessRule } from "../auth/access-rules";
+import { EdoAccessRule } from "../auth/edo-access-rule";
 import { StorageService } from "../storage/storage.service";
 import { DocumentAccessService } from "./document-access.service";
 import { applicable, FIELD_LABELS } from "./document-contract";
+import {
+  normalizeRussianPassportSeries,
+  resolveOcrProfile,
+} from "../ocr/ocr-profile";
 import {
   buildCandidateProfileWhere,
   toCandidateProfile,
@@ -25,6 +44,7 @@ import type {
   DocumentDto,
   DocumentListDto,
   DocumentVersionDto,
+  DocumentOcrDetailsDto,
   DownloadDto,
   PositionListDto,
   ReviewCandidateListDto,
@@ -41,12 +61,18 @@ const documentSummaryInclude = {
       revision: true,
       status: true,
       rejectionReason: true,
+      submittedAt: true,
+      reviewedAt: true,
+      reviewedBy: true,
+      job: { select: { status: true, errorCode: true } },
       delivery: { select: { status: true } },
     },
   },
 } satisfies Prisma.DocumentInclude;
 
 const versionInclude = {
+  document: { include: { documentType: true, candidate: true } },
+  submission: { select: { id: true, status: true } },
   files: { orderBy: { ordinal: "asc" as const } },
   fields: {
     orderBy: [{ ordinal: "asc" as const }, { name: "asc" as const }],
@@ -62,11 +88,66 @@ const versionInclude = {
     },
   },
   issues: true,
+  ocrFields: { orderBy: { ordinal: "asc" as const } },
   job: true,
   delivery: {
     include: { attempts: { orderBy: { startedAt: "desc" as const } } },
   },
 } satisfies Prisma.DocumentVersionInclude;
+
+function comparableDate(value: string): string | null {
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const localized = /^(\d{2})[./-](\d{2})[./-](\d{4})$/.exec(value);
+  const match = iso ?? localized;
+  if (!match) return null;
+
+  const [, first, second, third] = match;
+  const year = Number(iso ? first : third);
+  const month = Number(second);
+  const day = Number(iso ? third : first);
+  if (year < 1 || month < 1 || month > 12) return null;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [
+    31,
+    leapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ][month - 1];
+  if (!daysInMonth || day < 1 || day > daysInMonth) return null;
+
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function ocrValuesMatch(
+  candidateValue: string,
+  ocrValue: string,
+  field: { name: string; kind: string },
+  isRussianPassport: boolean,
+): boolean {
+  if (candidateValue === ocrValue) return true;
+  if (field.kind === "date") {
+    const candidateDate = comparableDate(candidateValue.trim());
+    const ocrDate = comparableDate(ocrValue.trim());
+    return candidateDate !== null && candidateDate === ocrDate;
+  }
+
+  // Older Russian-passport OCR records may still contain spaces in the series.
+  if (isRussianPassport && field.name === "series")
+    return (
+      normalizeRussianPassportSeries(candidateValue) ===
+      normalizeRussianPassportSeries(ocrValue)
+    );
+
+  return false;
+}
 
 @Injectable()
 export class DocumentReadService {
@@ -74,6 +155,7 @@ export class DocumentReadService {
     private readonly prisma: PrismaService,
     private readonly access: DocumentAccessService,
     private readonly storage: StorageService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   candidateDto(c: {
@@ -140,6 +222,9 @@ export class DocumentReadService {
       .map((v) => ({
         version: v.version,
         rejectionReason: v.rejectionReason,
+        submittedAt: v.submittedAt?.toISOString() ?? null,
+        reviewedAt: v.reviewedAt?.toISOString() ?? null,
+        reviewedBy: v.reviewedBy ?? null,
         supersededByVersion:
           d.currentVersion > v.version ? d.currentVersion : null,
       }));
@@ -150,6 +235,11 @@ export class DocumentReadService {
       status: d.status,
       currentVersion: d.currentVersion,
       revision: current?.revision ?? 0,
+      submittedAt: current?.submittedAt?.toISOString() ?? null,
+      reviewedAt: current?.reviewedAt?.toISOString() ?? null,
+      reviewedBy: current?.reviewedBy ?? null,
+      ocrStatus: current?.job?.status ?? null,
+      ocrErrorCode: current?.job?.errorCode ?? null,
       title: d.documentType?.title ?? "Документ",
       documentUid: d.documentType?.erpUid ?? null,
       deliveryStatus: current?.delivery?.status ?? null,
@@ -231,11 +321,60 @@ export class DocumentReadService {
       include: versionInclude,
     });
     if (!row) throw new NotFoundException("Document version not found");
+    const isRussianPassport =
+      resolveOcrProfile({
+        documentUid: row.document.documentType?.erpUid,
+        documentTypeCode: row.document.documentType?.code ?? "",
+        citizenship: row.citizenship,
+      }) === "passport_ru";
+    const reviewers = row.reviewedBy
+      ? await this.prisma.lkEmployee.findMany({
+          where: { uuid: row.reviewedBy },
+          select: { fullName: true },
+          take: 2,
+        })
+      : [];
+    const ocrEnabled =
+      this.config?.get("OCR_MODE") === "external" &&
+      this.config.get("OCR_WORKER_ENABLED") !== "false";
     return {
       documentId,
       version,
+      reviewGroup: row.document.candidate
+        ? candidateReviewGroup(row.document.candidate)
+        : "RU",
       status: row.status,
       revision: row.revision,
+      canRetryOcr: canRetryDocumentOcr(row, ocrEnabled),
+      canStartOcr: canStartDocumentOcr(row, ocrEnabled),
+      submittedAt: row.submittedAt?.toISOString() ?? null,
+      reviewedAt: row.reviewedAt?.toISOString() ?? null,
+      reviewedBy: row.reviewedBy ?? null,
+      reviewedByName: reviewers.length === 1 ? reviewers[0].fullName : null,
+      ocrFields: (row.ocrFields ?? [])
+        .filter((observation) =>
+          row.fields.some(
+            (field) =>
+              field.required && field.name === observation.documentFieldName,
+          ),
+        )
+        .map(
+          ({
+            name,
+            documentFieldName,
+            value,
+            source,
+            paddleText,
+            paddleConfidence,
+          }) => ({
+            name,
+            documentFieldName,
+            value,
+            source,
+            paddleText,
+            paddleConfidence,
+          }),
+        ),
       ocrSource: row.ocrSource,
       files: row.files.map((f) => ({
         id: f.id,
@@ -246,31 +385,45 @@ export class DocumentReadService {
         pageCount: f.pageCount,
         deleted: f.deletedAt !== null,
       })),
-      fields: row.fields.map((f) => ({
-        name: f.name,
-        originalValue: f.originalValue,
-        value: f.value,
-        editedBy: f.editedBy,
-        submittedValue: f.submittedValue,
-        label: FIELD_LABELS[f.name] ?? f.name,
-        kind: f.kind,
-        required: f.required,
-        mismatch:
-          f.submittedValue !== null &&
-          f.originalValue !== null &&
-          f.submittedValue !== f.originalValue,
-        regions: f.regions.map((region) => ({
-          id: region.id,
-          fileId: region.fileId,
-          fileOrdinal: region.file.ordinal,
-          pageNumber: region.pageNumber,
-          x: region.x,
-          y: region.y,
-          width: region.width,
-          height: region.height,
-          text: region.text,
-        })),
-      })),
+      fields: row.fields.map((f) => {
+        const rawOcrText = f.ocrText ?? f.originalValue;
+        const isRussianSeries = isRussianPassport && f.name === "series";
+        return {
+          name: f.name,
+          originalValue: f.required
+            ? isRussianSeries
+              ? normalizeRussianPassportSeries(f.originalValue)
+              : f.originalValue
+            : null,
+          ocrText: f.required
+            ? isRussianSeries
+              ? normalizeRussianPassportSeries(rawOcrText)
+              : rawOcrText
+            : null,
+          value: f.value,
+          editedBy: f.editedBy,
+          submittedValue: f.submittedValue,
+          label: FIELD_LABELS[f.name] ?? f.name,
+          kind: f.kind,
+          required: f.required,
+          mismatch:
+            !!f.submittedValue?.trim() &&
+            f.required &&
+            !!rawOcrText?.trim() &&
+            !ocrValuesMatch(f.submittedValue, rawOcrText, f, isRussianPassport),
+          regions: (f.required ? f.regions : []).map((region) => ({
+            id: region.id,
+            fileId: region.fileId,
+            fileOrdinal: region.file.ordinal,
+            pageNumber: region.pageNumber,
+            x: region.x,
+            y: region.y,
+            width: region.width,
+            height: region.height,
+            text: region.text,
+          })),
+        };
+      }),
       issues: row.issues.map((i) => ({
         code: i.code,
         message: i.message,
@@ -285,7 +438,7 @@ export class DocumentReadService {
             cleanupPending: row.job.cleanupPending,
           }
         : null,
-      raw: row.ocrRaw,
+      raw: null,
       approvedAt: row.approvedAt?.toISOString() ?? null,
       approvedBy: row.approvedBy,
       rejectionReason: row.rejectionReason,
@@ -306,6 +459,67 @@ export class DocumentReadService {
             })),
           }
         : null,
+    };
+  }
+
+  async ocrDetails(
+    documentId: string,
+    version: number,
+    principal: AuthPrincipal,
+  ): Promise<DocumentOcrDetailsDto> {
+    if (!hasAccessRule(principal.accessRules, EdoAccessRule.OCR_DETAILS_VIEW))
+      throw new ForbiddenException("Missing required EDO access rule");
+    await this.access.document(documentId, principal);
+    const row = await this.prisma.documentVersion.findUnique({
+      where: { documentId_version: { documentId, version } },
+      include: {
+        ocrFields: {
+          orderBy: { ordinal: "asc" },
+          include: {
+            regions: { include: { file: { select: { ordinal: true } } } },
+          },
+        },
+      },
+    });
+    if (!row) throw new NotFoundException("Document version not found");
+    return {
+      revision: row.revision,
+      fields: row.ocrFields.map((field) => ({
+        name: field.name,
+        documentFieldName: field.documentFieldName,
+        value: field.value,
+        source: field.source,
+        paddleText: field.paddleText,
+        paddleConfidence: field.paddleConfidence,
+        // A single source segment may feed both series and number.
+        regions: Array.from(
+          new Map(
+            field.regions.map((region) => [
+              JSON.stringify([
+                region.fileId,
+                region.pageNumber,
+                region.x,
+                region.y,
+                region.width,
+                region.height,
+                region.text,
+              ]),
+              {
+                id: region.id,
+                fileId: region.fileId,
+                fileOrdinal: region.file.ordinal,
+                pageNumber: region.pageNumber,
+                x: region.x,
+                y: region.y,
+                width: region.width,
+                height: region.height,
+                text: region.text,
+              },
+            ]),
+          ).values(),
+        ),
+      })),
+      raw: row.ocrRaw,
     };
   }
 
@@ -419,8 +633,9 @@ export class DocumentReadService {
    */
   async reviewDocumentFacets(
     principal: AuthPrincipal,
+    reviewGroup: ReviewGroup = "RU",
   ): Promise<ReviewDocumentFacetsDto> {
-    const ids = await this.reviewCandidateIds(principal);
+    const ids = await this.reviewCandidateIds(principal, reviewGroup);
     if (ids.length === 0)
       return { managers: [], mentors: [], projects: [], citizenships: [] };
     const candidates = await this.prisma.candidate.findMany({
@@ -484,7 +699,10 @@ export class DocumentReadService {
     query: ReviewCandidatesQueryDto,
   ): Promise<ReviewCandidateListDto> {
     const { limit = 20 } = query;
-    const ids = await this.reviewCandidateIds(principal);
+    const ids = await this.reviewCandidateIds(
+      principal,
+      query.reviewGroup ?? "RU",
+    );
     if (ids.length === 0) return { items: [] };
     const needle = query.q?.trim();
     const rows = await this.prisma.candidate.findMany({
@@ -504,12 +722,15 @@ export class DocumentReadService {
   /** Distinct candidate ids owning live (currentVersion > 0) scoped documents. */
   private async reviewCandidateIds(
     principal: AuthPrincipal,
+    reviewGroup: ReviewGroup,
   ): Promise<string[]> {
+    requireReviewGroup(principal, reviewGroup);
     const docs = await this.prisma.document.findMany({
       where: {
         ...this.access.documentWhere(principal),
         currentVersion: { gt: 0 },
         candidateId: { not: null },
+        candidate: reviewGroupWhere(reviewGroup),
       },
       select: { candidateId: true },
       distinct: ["candidateId"],
@@ -591,11 +812,17 @@ export class DocumentReadService {
   /** The same document predicate selects candidates and their nested documents. */
   private reviewDocumentWhere(
     principal: AuthPrincipal,
-    query: { status?: string; documentTypeCode?: string },
+    query: {
+      status?: string;
+      documentTypeCode?: string;
+      reviewGroup?: ReviewGroup;
+    },
   ): Prisma.DocumentWhereInput {
-    const { status, documentTypeCode } = query;
+    const { status, documentTypeCode, reviewGroup = "RU" } = query;
+    requireReviewGroup(principal, reviewGroup);
     return {
       ...this.access.documentWhere(principal),
+      candidate: reviewGroupWhere(reviewGroup),
       currentVersion: { gt: 0 },
       ...(documentTypeCode ? { documentType: { code: documentTypeCode } } : {}),
       ...(status === "ALL"
@@ -620,10 +847,18 @@ export class DocumentReadService {
     principal: AuthPrincipal,
     query: CandidateReviewQueueQueryDto = {},
   ): Promise<CandidateReviewQueueDto> {
-    const { limit = 50, cursor, status, documentTypeCode, ...profile } = query;
+    const {
+      limit = 50,
+      cursor,
+      status,
+      documentTypeCode,
+      reviewGroup = "RU",
+      ...profile
+    } = query;
     const documentsWhere = this.reviewDocumentWhere(principal, {
       status,
       documentTypeCode,
+      reviewGroup,
     });
     const rows = await this.prisma.candidate.findMany({
       where: {
@@ -663,12 +898,32 @@ export class DocumentReadService {
     principal: AuthPrincipal,
     query: ReviewDocumentsQueryDto = {},
   ) {
-    const { limit = 50, cursor, status, documentTypeCode, ...profile } = query;
+    const {
+      limit = 50,
+      cursor,
+      status,
+      documentTypeCode,
+      reviewGroup = "RU",
+      ...profile
+    } = query;
     const candidate = buildCandidateProfileWhere(profile);
     const where: Prisma.DocumentWhereInput = {
-      ...this.reviewDocumentWhere(principal, { status, documentTypeCode }),
+      ...this.reviewDocumentWhere(principal, {
+        status,
+        documentTypeCode,
+        reviewGroup,
+      }),
       ...(cursor ? { id: { gt: cursor } } : {}),
-      ...(candidate ? { candidate } : {}),
+      ...(candidate
+        ? {
+            candidate: {
+              AND: [
+                reviewGroupWhere(reviewGroup),
+                ...(Array.isArray(candidate.AND) ? candidate.AND : [candidate]),
+              ],
+            },
+          }
+        : {}),
     };
     const rows = await this.prisma.document.findMany({
       where,

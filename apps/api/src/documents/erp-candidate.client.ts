@@ -42,14 +42,38 @@ function namedCode(value: unknown) {
 }
 export function normalizeErpCandidate(
   raw: unknown,
-  chatUuid: string,
+  chatUuid?: string,
+  code1c?: string,
 ): CandidateSnapshotDto {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     throw new ErpCandidateError(502, false);
-  const row = raw as Record<string, unknown>;
+  const envelope = raw as Record<string, unknown>;
+  let row = envelope;
+  if (Object.prototype.hasOwnProperty.call(envelope, "candidate")) {
+    const candidate = envelope.candidate;
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate))
+      throw new ErpCandidateError(502, false);
+    // Production nests personal fields under candidate; reference data is
+    // top-level. Flat normalized snapshots remain valid when read from cache.
+    row = {
+      ...candidate,
+      position: envelope.position,
+      project: envelope.project,
+      manager: envelope.manager,
+      mentor: envelope.mentor,
+    };
+  }
+  // 1C calls the chat identifier `uuid`; keep that wire name unchanged.
+  const returnedUuid =
+    row.uuid == null || (typeof row.uuid === "string" && !row.uuid.trim())
+      ? null
+      : row.uuid;
   if (
-    !uuidSchema.safeParse(row.uuid).success ||
-    (row.uuid as string).toLowerCase() !== chatUuid.toLowerCase()
+    (returnedUuid !== null && !uuidSchema.safeParse(returnedUuid).success) ||
+    (chatUuid &&
+      (typeof returnedUuid !== "string" ||
+        returnedUuid.toLowerCase() !== chatUuid.toLowerCase())) ||
+    (code1c && row.code1C !== code1c)
   )
     throw new ErpCandidateError(502, false);
   if (row.erpUid !== undefined && !uuidSchema.safeParse(row.erpUid).success)
@@ -82,10 +106,8 @@ export function normalizeErpCandidate(
   )
     throw new ErpCandidateError(502, false);
   const result: Record<string, unknown> = {
-    uuid: chatUuid.toLowerCase(),
-    ...(typeof row.erpUid === "string"
-      ? { erpUid: row.erpUid.toLowerCase() }
-      : {}),
+    uuid: typeof returnedUuid === "string" ? returnedUuid.toLowerCase() : null,
+    ...(typeof row.erpUid === "string" ? { erpUid: row.erpUid.toLowerCase() } : {}),
     citizenship: citizenship.toLowerCase(),
   };
   for (const [key, max] of [
@@ -98,6 +120,9 @@ export function normalizeErpCandidate(
     const value = text(row[key], max);
     if (value) result[key] = value;
   }
+  const manager = namedCode(row.manager);
+  if (manager?.name) result.manager = manager.name;
+  if (manager?.code) result.managerCode1C = manager.code;
   if (typeof row.isReemployment === "boolean")
     result.isReemployment = row.isReemployment;
   for (const key of ["position", "project"]) {
@@ -127,28 +152,30 @@ export class ErpCandidateClient {
     chatUuid: string,
     signal?: AbortSignal,
   ): Promise<CandidateSnapshotDto> {
-    return normalizeErpCandidate(
-      await this.requestByChatUuid(chatUuid, signal),
-      chatUuid,
-    );
+    return this.request({ uuid: chatUuid }, signal);
   }
+
   async resolveIdentityByChat(chatUuid: string): Promise<string | undefined> {
     if (!this.config.get<string>("ERP_CANDIDATE_URL")) {
       if (this.config.get<string>("ERP_COMMUNICATIONS_URL"))
         throw new ErpCandidateError(503, false);
       return undefined;
     }
-    const raw = z
-      .object({ uuid: z.string().uuid(), erpUid: z.string().uuid() })
-      .safeParse(await this.requestByChatUuid(chatUuid));
-    if (!raw.success || raw.data.uuid.toLowerCase() !== chatUuid.toLowerCase())
-      throw new ErpCandidateError(502, false);
-    return raw.data.erpUid.toLowerCase();
+    return (await this.findByChatUuid(chatUuid)).erpUid;
   }
-  private async requestByChatUuid(
-    chatUuid: string,
+
+  async findByEmployeeCode(
+    code1c: string,
     signal?: AbortSignal,
-  ): Promise<unknown> {
+  ): Promise<CandidateSnapshotDto> {
+    if (!/^\S{1,64}$/.test(code1c)) throw new ErpCandidateError(502, false);
+    return this.request({ code1c }, signal);
+  }
+
+  private async request(
+    lookup: { uuid: string } | { code1c: string },
+    signal?: AbortSignal,
+  ): Promise<CandidateSnapshotDto> {
     signal?.throwIfAborted();
     const endpoint = this.config.get<string>("ERP_CANDIDATE_URL");
     const token = this.config.get<string>("ERP_CANDIDATE_TOKEN");
@@ -177,7 +204,11 @@ export class ErpCandidateClient {
         Code.DOCUMENTS_INTEGRATION_MISCONFIGURED,
       );
     }
-    url.searchParams.set("uuid", chatUuid);
+    url.searchParams.delete("uuid");
+    url.searchParams.delete("code_1c");
+    url.searchParams.delete("code1c");
+    for (const [key, value] of Object.entries(lookup))
+      url.searchParams.set(key, value);
     let response: Response;
     const timeout = AbortSignal.timeout(15_000);
     try {
@@ -204,7 +235,9 @@ export class ErpCandidateClient {
       } catch {
         throw new ErpCandidateError(502, false);
       }
-      return raw;
+      return "uuid" in lookup
+        ? normalizeErpCandidate(raw, lookup.uuid)
+        : normalizeErpCandidate(raw, undefined, lookup.code1c);
     } catch (error) {
       if (signal?.aborted) throw signal.reason;
       if (error instanceof ErpCandidateError) throw error;

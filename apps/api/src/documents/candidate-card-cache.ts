@@ -65,7 +65,9 @@ export class CandidateCardCache {
     if (!Number.isFinite(entry.freshUntil))
       throw new Error("Invalid cached candidate");
     return {
-      snapshot: normalizeErpCandidate(entry.snapshot, uuid),
+      snapshot: uuid.startsWith("code_1c:")
+        ? normalizeErpCandidate(entry.snapshot, undefined, uuid.slice(8))
+        : normalizeErpCandidate(entry.snapshot, uuid),
       freshUntil: entry.freshUntil,
     };
   }

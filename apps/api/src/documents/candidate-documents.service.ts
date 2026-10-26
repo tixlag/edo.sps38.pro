@@ -51,7 +51,7 @@ export class CandidateDocumentsService {
   private ownContextFor(identity: OwnIdentity, signal?: AbortSignal) {
     return identity.chat
       ? this.contexts.forIdentity(identity.chat, signal)
-      : this.contexts.forEmployee(identity.code1c);
+      : this.contexts.forEmployee(identity.code1c, signal);
   }
   private ownScope(identity: OwnIdentity) {
     return identity.chat

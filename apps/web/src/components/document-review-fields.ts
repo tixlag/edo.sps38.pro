@@ -1,5 +1,12 @@
-import type { DocumentVersionDto } from "@edo/api-client";
+import type { DocumentVersionDto, DocumentFieldDto } from "@edo/api-client";
 import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
+
+/** An OCR suggestion fills an absent candidate value only until a reviewer edits it. */
+export function getReviewFieldValue(field: DocumentFieldDto): string {
+  if (!field.submittedValue?.trim() && !field.editedBy && !field.value?.length)
+    return field.originalValue ?? "";
+  return field.value ?? "";
+}
 
 /**
  * required is the version's snapshot of the 1C requiredFields contract.

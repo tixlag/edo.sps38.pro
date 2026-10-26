@@ -1,3 +1,4 @@
+import { ReviewGroupQueryDto } from "./dto/document.dto";
 import {
   Controller,
   Get,
@@ -113,7 +114,8 @@ export class ManualDocumentIntegrationController {
   @HttpCode(202)
   @ApiOperation({
     operationId: "submitCandidateDocument",
-    summary: "Submit a document for manual review without OCR",
+    summary:
+      "Submit a document for manual review with optional asynchronous OCR enrichment",
   })
   @ApiConsumes("multipart/form-data")
   @ApiHeader({ name: "Idempotency-Key", required: true })
@@ -128,6 +130,8 @@ export class ManualDocumentIntegrationController {
             "JSON: documentUid, chat_uuid and/or code_1c, position_code_1c, citizenship (default ru), documentFields, optional project_code_1c/locationId",
         },
         "files[]": {
+          description:
+            "JPEG, PNG, WebP, HEIC/HEIF or PDF; HEIC is normalized once to WebP without resizing. Stored/downloaded MIME is image/webp.",
           type: "array",
           minItems: 1,
           maxItems: 10,
@@ -227,6 +231,8 @@ export class CandidateDocumentUploadController {
             "JSON with documentUid and documentFields only; owner and candidate context come from the upload grant",
         },
         "files[]": {
+          description:
+            "JPEG, PNG, WebP, HEIC/HEIF or PDF; HEIC is normalized once to WebP without resizing. Stored/downloaded MIME is image/webp.",
           type: "array",
           minItems: 1,
           maxItems: 10,
@@ -298,8 +304,11 @@ export class ManualDocumentReviewController {
       "Distinct manager/mentor/project/citizenship values inside the queue access scope",
   })
   @ApiResponse({ status: 200, type: ReviewDocumentFacetsDto })
-  facets(@CurrentPrincipal() principal: AuthPrincipal) {
-    return this.reads.reviewDocumentFacets(principal);
+  facets(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Query() query: ReviewGroupQueryDto,
+  ) {
+    return this.reads.reviewDocumentFacets(principal, query.reviewGroup);
   }
   @Get("review-candidates")
   @RequireAccessRule(EdoAccessRule.ACCESS)
@@ -341,7 +350,10 @@ export class ManualDocumentReviewController {
   }
   @Post("documents/:documentId/versions/:version/reject")
   @HttpCode(200)
-  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
+  @RequireAccessRule(
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
   @ApiOperation({
     operationId: "rejectDocument",
     summary: "Return current document for a better photo",

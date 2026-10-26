@@ -99,6 +99,11 @@ describe("candidate review queue", () => {
       revision: 4,
       deliveryStatus: null,
       pendingDeliveryVersions: [1],
+      submittedAt: null,
+      reviewedAt: null,
+      reviewedBy: null,
+      ocrStatus: null,
+      ocrErrorCode: null,
     });
     const page2 = await reads.candidateReviewQueue(principal, {
       limit: 1,
@@ -120,7 +125,10 @@ describe("candidate review queue", () => {
   it("applies candidate location and profile filters AND the same scoped document predicate inside each group", async () => {
     const { reads, prisma, access } = setup();
     prisma.candidate.findMany.mockResolvedValue([]);
-    const scoped = { ...principal, accessRules: { "20007": ["98"] } };
+    const scoped = {
+      ...principal,
+      accessRules: { "20002": [], "20007": ["98"] },
+    };
     await reads.candidateReviewQueue(scoped, {
       status: "RETURNED",
       documentTypeCode: "PASSPORT",
@@ -149,6 +157,7 @@ describe("candidate review queue", () => {
     );
     expect(nested).toEqual({
       ...access.documentWhere(scoped),
+      candidate: { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] },
       currentVersion: { gt: 0 },
       versions: { some: { status: "RETURNED" } },
       documentType: { code: "PASSPORT" },
@@ -283,19 +292,36 @@ describe("candidate review queue", () => {
       status: "RETURNED",
     });
     expect(page.items[0].documents[0].returnedVersions).toEqual([
-      { version: 2, rejectionReason: "Поля", supersededByVersion: null },
-      { version: 1, rejectionReason: "Фото", supersededByVersion: 2 },
+      {
+        version: 2,
+        rejectionReason: "Поля",
+        supersededByVersion: null,
+        submittedAt: null,
+        reviewedAt: null,
+        reviewedBy: null,
+      },
+      {
+        version: 1,
+        rejectionReason: "Фото",
+        supersededByVersion: 2,
+        submittedAt: null,
+        reviewedAt: null,
+        reviewedBy: null,
+      },
     ]);
   });
 
   it("fails closed for callers with no location scope", async () => {
-    const { reads, prisma } = setup();
+    const { reads, prisma, access } = setup();
     prisma.candidate.findMany.mockResolvedValue([]);
     expect(
-      await reads.candidateReviewQueue({ ...principal, accessRules: {} }),
+      await reads.candidateReviewQueue({
+        ...principal,
+        accessRules: { "20002": [] },
+      }),
     ).toEqual({ items: [], nextCursor: null });
     expect(prisma.candidate.findMany.mock.calls[0][0].where.AND).toContainEqual(
-      { locationId: { in: [] } },
+      access.candidateWhere({ ...principal, accessRules: { "20002": [] } }),
     );
   });
 
@@ -337,7 +363,10 @@ describe("candidate details", () => {
 
   it("returns all live documents with scope checks and rejects an inaccessible candidate", async () => {
     const { reads, prisma, access } = setup();
-    const scoped = { ...principal, accessRules: { "20007": ["98"] } };
+    const scoped = {
+      ...principal,
+      accessRules: { "20002": [], "20007": ["98"] },
+    };
     prisma.candidate.findFirst
       .mockResolvedValueOnce(owner("c1"))
       .mockResolvedValueOnce(null);
@@ -347,7 +376,7 @@ describe("candidate details", () => {
     );
     expect(prisma.candidate.findFirst.mock.calls[0][0].where).toEqual({
       id: "c1",
-      locationId: { in: [98] },
+      ...access.candidateWhere(scoped),
     });
     expect(prisma.document.findMany.mock.calls[0][0].where).toEqual({
       candidateId: "c1",

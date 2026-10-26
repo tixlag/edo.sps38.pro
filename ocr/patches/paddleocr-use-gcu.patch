@@ -1,0 +1,13 @@
+diff --git a/tools/infer/utility.py b/tools/infer/utility.py
+index fb4833459b..91a8b35fd1 100644
+--- a/tools/infer/utility.py
++++ b/tools/infer/utility.py
+@@ -412,7 +412,7 @@ def create_predictor(args, mode, logger):
+         # enable memory optim
+         config.enable_memory_optim()
+         config.disable_glog_info()
+-        if not args.use_gcu:  # for Enflame GCU(General Compute Unit)
++        if not getattr(args, 'use_gcu', False):  # for Enflame GCU(General Compute Unit)
+             config.delete_pass("conv_transpose_eltwiseadd_bn_fuse_pass")
+         config.delete_pass("matmul_transpose_reshape_fuse_pass")
+         if mode == "rec" and args.rec_algorithm == "SRN":

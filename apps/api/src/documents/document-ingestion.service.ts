@@ -62,14 +62,12 @@ export class DocumentIngestionService {
         JSON.stringify({
           type: type.code,
           locationId: upload.locationId ?? null,
-          files: upload.files.map(
-            ({ filename, mimeType, sha256, pageCount }) => ({
-              filename,
-              mimeType,
-              sha256,
-              pageCount,
-            }),
-          ),
+          files: upload.files.map((file) => ({
+            filename: file.source?.filename ?? file.filename,
+            mimeType: file.source?.mimeType ?? file.mimeType,
+            sha256: file.source?.sha256 ?? file.sha256,
+            pageCount: file.pageCount,
+          })),
         }),
       )
       .digest("hex");
@@ -132,7 +130,7 @@ export class DocumentIngestionService {
           throw new ConflictException("Upload lease expired");
         await tx.documentVersion.update({
           where: { id: reserved.job.versionId },
-          data: { status: "OCR_PENDING" },
+          data: { status: "OCR_PENDING", submittedAt: new Date() },
         });
         await tx.document.updateMany({
           where: {
@@ -155,6 +153,14 @@ export class DocumentIngestionService {
             version: reserved.accepted.version,
             jobId: reserved.job.id,
             fileCount: reserved.files.length,
+            ...(reserved.files.some((f) => f.normalization)
+              ? {
+                  normalization: "heic-webp-v1",
+                  normalizedFileCount: reserved.files.filter(
+                    (f) => f.normalization,
+                  ).length,
+                }
+              : {}),
           },
         });
       });
@@ -249,6 +255,15 @@ export class DocumentIngestionService {
             sizeBytes: f.sizeBytes,
             sha256: f.sha256,
             pageCount: f.pageCount,
+            ...(f.source
+              ? {
+                  sourceFilename: f.source.filename,
+                  sourceMimeType: f.source.mimeType,
+                  sourceSizeBytes: f.source.sizeBytes,
+                  sourceSha256: f.source.sha256,
+                  normalization: f.normalization,
+                }
+              : {}),
           }));
           const version = await tx.documentVersion.create({
             data: {

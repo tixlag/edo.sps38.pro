@@ -31,7 +31,7 @@ const staged: StagedUpload = {
     documentFields: {},
   },
 };
-function fixture(status: DocumentStatus) {
+function fixture(status: DocumentStatus, externalOcr = false) {
   const document = {
     id: "document",
     status,
@@ -52,6 +52,7 @@ function fixture(status: DocumentStatus) {
     };
   } | null = null;
   const tx = {
+    ocrJob: { create: vi.fn() },
     $queryRaw: vi.fn(async () => []),
     candidate: {
       findMany: vi.fn(async () => [{ id: "owner" }]),
@@ -116,6 +117,7 @@ function fixture(status: DocumentStatus) {
     documentType: {
       findUnique: vi.fn(async () => ({
         id: "type",
+        code: "PASSPORT",
         catalogSyncedAt: new Date(),
         allRu: true,
         allForeign: false,
@@ -144,6 +146,13 @@ function fixture(status: DocumentStatus) {
     {
       ensure: vi.fn(async () => undefined),
     } as unknown as DocumentCatalogService,
+    {
+      get: (key: string) =>
+        ({
+          OCR_MODE: externalOcr ? "external" : "disabled",
+          OCR_WORKER_ENABLED: "true",
+        })[key],
+    } as never,
   );
   return { service, tx, storage };
 }
@@ -165,6 +174,29 @@ describe("candidate document resubmission", () => {
     await expect(service.upload(staged, "another-bundle", "")).rejects.toThrow(
       "DOCUMENT_IN_REVIEW",
     );
+  });
+  it("dates a successful replacement and queues enrichment exactly once, without copying review metadata", async () => {
+    const { service, tx } = fixture("RETURNED", true);
+    await service.upload(staged, "bundle", "");
+    expect(tx.documentVersion.update).toHaveBeenCalledWith({
+      where: { id: "version" },
+      data: { status: "IN_REVIEW", submittedAt: expect.any(Date) },
+    });
+    expect(tx.ocrJob.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        versionId: "version",
+        status: "QUEUED",
+        outbox: { create: {} },
+      }),
+    });
+    const creation = tx.documentVersion.create.mock.calls[0] as unknown as [
+      { data: Record<string, unknown> },
+    ];
+    expect(creation[0].data).not.toHaveProperty("reviewedAt");
+    expect(creation[0].data).not.toHaveProperty("reviewedBy");
+    await service.upload(staged, "bundle", "");
+    expect(tx.documentVersion.update).toHaveBeenCalledTimes(1);
+    expect(tx.ocrJob.create).toHaveBeenCalledTimes(1);
   });
   it("blocks a simultaneous new bundle while the first transfer is still uploading", async () => {
     const { service, tx, storage } = fixture("RETURNED");

@@ -106,7 +106,7 @@ export class CommunicationsController {
 
   @Post(":candidateId/communications/messages")
   @HttpCode(200)
-  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_RU)
   @ApiOperation({
     operationId: "sendCommunicationMessage",
     summary: "Send a candidate message; requestId makes retries safe",
@@ -136,7 +136,7 @@ export class CommunicationsController {
   }
 
   @Post(":candidateId/communications/attachments")
-  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_RU)
   @ApiConsumes("multipart/form-data")
   @ApiBody({
     schema: {
@@ -190,7 +190,7 @@ export class CommunicationsController {
 
   @Post(":candidateId/communications/lk-link")
   @HttpCode(200)
-  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW)
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_RU)
   @ApiOperation({
     operationId: "createCommunicationLkLink",
     summary: "Get or create the candidate’s canonical LK chat link",

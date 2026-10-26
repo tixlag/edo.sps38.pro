@@ -38,6 +38,8 @@ export const AuditAction = {
   LK_EVENT_APPLIED: "LK_EVENT_APPLIED",
   COMMUNICATION_REQUESTED: "COMMUNICATION_REQUESTED",
   COMMUNICATION_COMPLETED: "COMMUNICATION_COMPLETED",
+  DOCUMENT_OCR_RETRIED: "DOCUMENT_OCR_RETRIED",
+  DOCUMENT_OCR_REQUESTED: "DOCUMENT_OCR_REQUESTED",
 } as const;
 
 export interface AuditLogItemDto {
@@ -314,6 +316,11 @@ export interface CandidateSnapshotMentorDto {
 export interface CandidateSnapshotDto {
   /** ERP candidate identifier supplied by the trusted ERP service */
   erpUid?: string;
+  /**
+   * Chat UUID, named uuid by 1C
+   * @nullable
+   */
+  uuid?: string | null;
   /** @maxLength 512 */
   fullName?: string;
   /** @maxLength 512 */
@@ -390,7 +397,35 @@ export interface CatalogDocumentTypesDto {
   items: CatalogDocumentTypeDto[];
 }
 
+export type OcrJobStatus = (typeof OcrJobStatus)[keyof typeof OcrJobStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const OcrJobStatus = {
+  UPLOADING: "UPLOADING",
+  QUEUED: "QUEUED",
+  RUNNING: "RUNNING",
+  SUCCEEDED: "SUCCEEDED",
+  REJECTED: "REJECTED",
+  FAILED: "FAILED",
+  CANCELLED: "CANCELLED",
+} as const;
+
 export interface ReturnedDocumentVersionDto {
+  /**
+   * Successful submission time, UTC ISO 8601; null when historically unknown
+   * @nullable
+   */
+  submittedAt: string | null;
+  /**
+   * Approval or return decision time, UTC ISO 8601
+   * @nullable
+   */
+  reviewedAt: string | null;
+  /**
+   * Verified JWT UUID of the reviewer
+   * @nullable
+   */
+  reviewedBy: string | null;
   version: number;
   /** @nullable */
   rejectionReason: string | null;
@@ -417,7 +452,16 @@ export const DocumentStatus = {
   EXPIRED: "EXPIRED",
 } as const;
 
+export type ReviewGroup = (typeof ReviewGroup)[keyof typeof ReviewGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ReviewGroup = {
+  RU: "RU",
+  IG: "IG",
+} as const;
+
 export interface CandidateProfileDto {
+  reviewGroup: ReviewGroup;
   id: string;
   /** @nullable */
   chatUuid: string | null;
@@ -460,12 +504,36 @@ export interface CandidateProfileDto {
 }
 
 /**
+ * @nullable
+ */
+export type DocumentDtoOcrStatus = OcrJobStatus | null;
+
+/**
  * LK candidate profile snapshot, if one was provided
  * @nullable
  */
 export type DocumentDtoCandidate = CandidateProfileDto | null;
 
 export interface DocumentDto {
+  /**
+   * Successful submission time, UTC ISO 8601; null when historically unknown
+   * @nullable
+   */
+  submittedAt: string | null;
+  /**
+   * Approval or return decision time, UTC ISO 8601
+   * @nullable
+   */
+  reviewedAt: string | null;
+  /**
+   * Verified JWT UUID of the reviewer
+   * @nullable
+   */
+  reviewedBy: string | null;
+  /** @nullable */
+  ocrStatus: DocumentDtoOcrStatus;
+  /** @nullable */
+  ocrErrorCode: string | null;
   /** Returned versions, newest first, including versions superseded by a new upload */
   returnedVersions?: ReturnedDocumentVersionDto[];
   /** Approved versions awaiting manual ERP delivery */
@@ -646,6 +714,11 @@ export interface DocumentFieldDto {
   name: string;
   /** @nullable */
   originalValue: string | null;
+  /**
+   * Unformatted OCR field text for exact comparison; originalValue is the typed suggestion
+   * @nullable
+   */
+  ocrText?: string | null;
   /** @nullable */
   value: string | null;
   /** @nullable */
@@ -657,6 +730,34 @@ export interface DocumentFieldDto {
   required: boolean;
   mismatch: boolean;
   regions: OcrRegionDto[];
+}
+
+export type DocumentOcrFieldDtoSource =
+  (typeof DocumentOcrFieldDtoSource)[keyof typeof DocumentOcrFieldDtoSource];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentOcrFieldDtoSource = {
+  PADDLE: "PADDLE",
+  GLM: "GLM",
+  MIXED: "MIXED",
+} as const;
+
+export interface DocumentOcrFieldDto {
+  name: string;
+  /** @nullable */
+  documentFieldName: string | null;
+  /** @nullable */
+  value: string | null;
+  source: DocumentOcrFieldDtoSource;
+  /** @nullable */
+  paddleText: string | null;
+  /**
+   * @minimum 0
+   * @maximum 1
+   * @nullable
+   */
+  paddleConfidence: number | null;
+  regions?: OcrRegionDto[];
 }
 
 export type OcrIssueDtoCode =
@@ -682,18 +783,6 @@ export interface OcrIssueDto {
    */
   pageNumber: number | null;
 }
-
-export type OcrJobStatus = (typeof OcrJobStatus)[keyof typeof OcrJobStatus];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const OcrJobStatus = {
-  UPLOADING: "UPLOADING",
-  QUEUED: "QUEUED",
-  RUNNING: "RUNNING",
-  SUCCEEDED: "SUCCEEDED",
-  REJECTED: "REJECTED",
-  FAILED: "FAILED",
-} as const;
 
 export interface OcrJobDto {
   id: string;
@@ -778,6 +867,26 @@ export type DocumentVersionDtoRaw = { [key: string]: unknown } | null;
 export type DocumentVersionDtoDelivery = DocumentDeliveryDto | null;
 
 export interface DocumentVersionDto {
+  /**
+   * Successful submission time, UTC ISO 8601; null when historically unknown
+   * @nullable
+   */
+  submittedAt: string | null;
+  /**
+   * Approval or return decision time, UTC ISO 8601
+   * @nullable
+   */
+  reviewedAt: string | null;
+  /**
+   * Verified JWT UUID of the reviewer
+   * @nullable
+   */
+  reviewedBy: string | null;
+  reviewGroup?: ReviewGroup;
+  /** Current supported submitted version has no OCR attempt and retained originals */
+  canStartOcr: boolean;
+  /** Current supported version has a failed OCR attempt, retained originals, and enabled OCR */
+  canRetryOcr: boolean;
   documentId: string;
   version: number;
   status: DocumentStatus;
@@ -786,6 +895,9 @@ export interface DocumentVersionDto {
   ocrSource: DocumentVersionDtoOcrSource;
   files: DocumentFileDto[];
   fields: DocumentFieldDto[];
+  ocrFields: DocumentOcrFieldDto[];
+  /** @nullable */
+  reviewedByName: string | null;
   issues: OcrIssueDto[];
   /** @nullable */
   job: DocumentVersionDtoJob;
@@ -817,6 +929,11 @@ export interface CandidateDto {
   createdAt: string;
 }
 
+export interface ReviewRevisionDto {
+  /** @minimum 0 */
+  revision: number;
+}
+
 export interface DocumentTypeDto {
   code: string;
   title: string;
@@ -832,7 +949,31 @@ export interface CandidateListDto {
   nextCursor: string | null;
 }
 
+/**
+ * @nullable
+ */
+export type CandidateDocumentSummaryDtoOcrStatus = OcrJobStatus | null;
+
 export interface CandidateDocumentSummaryDto {
+  /**
+   * Successful submission time, UTC ISO 8601; null when historically unknown
+   * @nullable
+   */
+  submittedAt: string | null;
+  /**
+   * Approval or return decision time, UTC ISO 8601
+   * @nullable
+   */
+  reviewedAt: string | null;
+  /**
+   * Verified JWT UUID of the reviewer
+   * @nullable
+   */
+  reviewedBy: string | null;
+  /** @nullable */
+  ocrStatus: CandidateDocumentSummaryDtoOcrStatus;
+  /** @nullable */
+  ocrErrorCode: string | null;
   /** Returned versions, newest first, including versions superseded by a new upload */
   returnedVersions?: ReturnedDocumentVersionDto[];
   /** Approved versions awaiting manual ERP delivery */
@@ -855,6 +996,18 @@ export interface CandidateDetailsDto {
   documents: CandidateDocumentSummaryDto[];
 }
 
+/**
+ * @nullable
+ */
+export type DocumentOcrDetailsDtoRaw = { [key: string]: unknown } | null;
+
+export interface DocumentOcrDetailsDto {
+  revision: number;
+  fields: DocumentOcrFieldDto[];
+  /** @nullable */
+  raw: DocumentOcrDetailsDtoRaw;
+}
+
 export interface DownloadDto {
   url: string;
   expiresAt: string;
@@ -872,11 +1025,6 @@ export interface EditDocumentFieldsDto {
   revision: number;
   /** Field names mapped to new values; null clears a value. Maximum 200 fields, 16384 characters per value. */
   fields: EditDocumentFieldsDtoFields;
-}
-
-export interface ReviewRevisionDto {
-  /** @minimum 0 */
-  revision: number;
 }
 
 export interface Object {
@@ -1117,7 +1265,7 @@ export type UploadCandidateDocumentBody = {
   /** @minimum 1 */
   locationId?: number;
   /**
-   * JPEG, PNG, WebP or PDF; mixed bundle allowed. File order is preserved.
+   * JPEG, PNG, WebP, HEIC/HEIF or PDF. HEIC is normalized once to WebP without resizing; stored/downloaded MIME is image/webp. File order is preserved.
    * @minItems 1
    * @maxItems 10
    */
@@ -1145,6 +1293,7 @@ export type SubmitCandidateDocumentBody = {
   /** JSON: documentUid, chat_uuid and/or code_1c, position_code_1c, citizenship (default ru), documentFields, optional project_code_1c/locationId */
   metadata: string;
   /**
+   * JPEG, PNG, WebP, HEIC/HEIF or PDF; HEIC is normalized once to WebP without resizing. Stored/downloaded MIME is image/webp.
    * @minItems 1
    * @maxItems 10
    */
@@ -1170,6 +1319,7 @@ export type ListCandidateReviewQueueParams = {
    * Candidate id from nextCursor
    */
   cursor?: string;
+  reviewGroup?: ReviewGroup;
   status?: ListCandidateReviewQueueStatus;
   /**
    * Case-insensitive fullName search
@@ -1218,6 +1368,7 @@ export const ListCandidateReviewQueueStatus = {
 export type ListReviewDocumentsParams = {
   limit?: number;
   cursor?: string;
+  reviewGroup?: ReviewGroup;
   status?: ListReviewDocumentsStatus;
   /**
    * Case-insensitive fullName search
@@ -1263,7 +1414,12 @@ export const ListReviewDocumentsStatus = {
   ALL: "ALL",
 } as const;
 
+export type GetReviewDocumentFacetsParams = {
+  reviewGroup?: ReviewGroup;
+};
+
 export type ListReviewCandidatesParams = {
+  reviewGroup?: ReviewGroup;
   /**
    * Case-insensitive fullName search
    */
@@ -1283,6 +1439,7 @@ export type SubmitCandidateDocumentDirectBody = {
   /** JSON with documentUid and documentFields only; owner and candidate context come from the upload grant */
   metadata: string;
   /**
+   * JPEG, PNG, WebP, HEIC/HEIF or PDF; HEIC is normalized once to WebP without resizing. Stored/downloaded MIME is image/webp.
    * @minItems 1
    * @maxItems 10
    */
@@ -3233,6 +3390,176 @@ export const useLinkCandidateEmployee = <
 };
 
 /**
+ * @summary Retry failed OCR for a supported current document with retained originals
+ */
+export const retryDocumentOcr = (
+  documentId: string,
+  version: number,
+  reviewRevisionDto: ReviewRevisionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentVersionDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/ocr/retry`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: reviewRevisionDto,
+    signal,
+  });
+};
+
+export const getRetryDocumentOcrMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryDocumentOcr>>,
+    TError,
+    { documentId: string; version: number; data: ReviewRevisionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof retryDocumentOcr>>,
+  TError,
+  { documentId: string; version: number; data: ReviewRevisionDto },
+  TContext
+> => {
+  const mutationKey = ["retryDocumentOcr"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof retryDocumentOcr>>,
+    { documentId: string; version: number; data: ReviewRevisionDto }
+  > = (props) => {
+    const { documentId, version, data } = props ?? {};
+
+    return retryDocumentOcr(documentId, version, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RetryDocumentOcrMutationResult = NonNullable<
+  Awaited<ReturnType<typeof retryDocumentOcr>>
+>;
+export type RetryDocumentOcrMutationBody = ReviewRevisionDto;
+export type RetryDocumentOcrMutationError = ApiErrorDto;
+
+/**
+ * @summary Retry failed OCR for a supported current document with retained originals
+ */
+export const useRetryDocumentOcr = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryDocumentOcr>>,
+    TError,
+    { documentId: string; version: number; data: ReviewRevisionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof retryDocumentOcr>>,
+  TError,
+  { documentId: string; version: number; data: ReviewRevisionDto },
+  TContext
+> => {
+  const mutationOptions = getRetryDocumentOcrMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Start OCR for a supported current document without a previous OCR job
+ */
+export const startDocumentOcr = (
+  documentId: string,
+  version: number,
+  reviewRevisionDto: ReviewRevisionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentVersionDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/ocr/start`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: reviewRevisionDto,
+    signal,
+  });
+};
+
+export const getStartDocumentOcrMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startDocumentOcr>>,
+    TError,
+    { documentId: string; version: number; data: ReviewRevisionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof startDocumentOcr>>,
+  TError,
+  { documentId: string; version: number; data: ReviewRevisionDto },
+  TContext
+> => {
+  const mutationKey = ["startDocumentOcr"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof startDocumentOcr>>,
+    { documentId: string; version: number; data: ReviewRevisionDto }
+  > = (props) => {
+    const { documentId, version, data } = props ?? {};
+
+    return startDocumentOcr(documentId, version, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StartDocumentOcrMutationResult = NonNullable<
+  Awaited<ReturnType<typeof startDocumentOcr>>
+>;
+export type StartDocumentOcrMutationBody = ReviewRevisionDto;
+export type StartDocumentOcrMutationError = ApiErrorDto;
+
+/**
+ * @summary Start OCR for a supported current document without a previous OCR job
+ */
+export const useStartDocumentOcr = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startDocumentOcr>>,
+    TError,
+    { documentId: string; version: number; data: ReviewRevisionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof startDocumentOcr>>,
+  TError,
+  { documentId: string; version: number; data: ReviewRevisionDto },
+  TContext
+> => {
+  const mutationOptions = getStartDocumentOcrMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
  * @summary List supported document type codes
  */
 export const listDocumentTypes = (
@@ -3753,6 +4080,104 @@ export function useGetDocumentVersion<
 }
 
 /**
+ * @summary Get all OCR observations and source regions
+ */
+export const getDocumentOcrDetails = (
+  documentId: string,
+  version: number,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentOcrDetailsDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/ocr-details`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetDocumentOcrDetailsQueryKey = (
+  documentId: string,
+  version: number,
+) => {
+  return [
+    `/api/v1/documents/${documentId}/versions/${version}/ocr-details`,
+  ] as const;
+};
+
+export const getGetDocumentOcrDetailsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  version: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetDocumentOcrDetailsQueryKey(documentId, version);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getDocumentOcrDetails>>
+  > = ({ signal }) => getDocumentOcrDetails(documentId, version, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(documentId && version),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDocumentOcrDetailsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDocumentOcrDetails>>
+>;
+export type GetDocumentOcrDetailsQueryError = ApiErrorDto;
+
+/**
+ * @summary Get all OCR observations and source regions
+ */
+
+export function useGetDocumentOcrDetails<
+  TData = Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  version: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDocumentOcrDetailsQueryOptions(
+    documentId,
+    version,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
  * @summary Get a private file download URL (expires in 5 minutes)
  */
 export const getDocumentFileDownload = (
@@ -4114,7 +4539,7 @@ export function useGetCandidateDocumentCatalog<
 }
 
 /**
- * @summary Submit a document for manual review without OCR
+ * @summary Submit a document for manual review with optional asynchronous OCR enrichment
  */
 export const submitCandidateDocument = (
   submitCandidateDocumentBody: SubmitCandidateDocumentBody,
@@ -4179,7 +4604,7 @@ export type SubmitCandidateDocumentMutationBody = SubmitCandidateDocumentBody;
 export type SubmitCandidateDocumentMutationError = ApiErrorDto;
 
 /**
- * @summary Submit a document for manual review without OCR
+ * @summary Submit a document for manual review with optional asynchronous OCR enrichment
  */
 export const useSubmitCandidateDocument = <
   TError = ApiErrorDto,
@@ -4732,36 +5157,48 @@ export function useListReviewDocuments<
 /**
  * @summary Distinct manager/mentor/project/citizenship values inside the queue access scope
  */
-export const getReviewDocumentFacets = (signal?: AbortSignal) => {
+export const getReviewDocumentFacets = (
+  params?: GetReviewDocumentFacetsParams,
+  signal?: AbortSignal,
+) => {
   return customInstance<ReviewDocumentFacetsDto>({
     url: `/api/v1/review-documents/facets`,
     method: "GET",
+    params,
     signal,
   });
 };
 
-export const getGetReviewDocumentFacetsQueryKey = () => {
-  return [`/api/v1/review-documents/facets`] as const;
+export const getGetReviewDocumentFacetsQueryKey = (
+  params?: GetReviewDocumentFacetsParams,
+) => {
+  return [
+    `/api/v1/review-documents/facets`,
+    ...(params ? [params] : []),
+  ] as const;
 };
 
 export const getGetReviewDocumentFacetsQueryOptions = <
   TData = Awaited<ReturnType<typeof getReviewDocumentFacets>>,
   TError = ApiErrorDto,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getReviewDocumentFacets>>,
-    TError,
-    TData
-  >;
-}) => {
+>(
+  params?: GetReviewDocumentFacetsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+      TError,
+      TData
+    >;
+  },
+) => {
   const { query: queryOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ?? getGetReviewDocumentFacetsQueryKey();
+    queryOptions?.queryKey ?? getGetReviewDocumentFacetsQueryKey(params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof getReviewDocumentFacets>>
-  > = ({ signal }) => getReviewDocumentFacets(signal);
+  > = ({ signal }) => getReviewDocumentFacets(params, signal);
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getReviewDocumentFacets>>,
@@ -4782,14 +5219,17 @@ export type GetReviewDocumentFacetsQueryError = ApiErrorDto;
 export function useGetReviewDocumentFacets<
   TData = Awaited<ReturnType<typeof getReviewDocumentFacets>>,
   TError = ApiErrorDto,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getReviewDocumentFacets>>,
-    TError,
-    TData
-  >;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetReviewDocumentFacetsQueryOptions(options);
+>(
+  params?: GetReviewDocumentFacetsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetReviewDocumentFacetsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

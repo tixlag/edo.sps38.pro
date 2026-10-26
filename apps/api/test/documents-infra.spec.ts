@@ -415,10 +415,19 @@ describe.skipIf(!enabled)(
       expect(
         edit.json().fields.find((f: { name: string }) => f.name === "number"),
       ).toMatchObject({
-        originalValue: "000123",
+        // Non-required OCR values are protected by the shared serializer.
+        originalValue: null,
         value: "000999",
         editedBy: "reviewer",
       });
+      expect(
+        await prisma.documentVersionField.findFirstOrThrow({
+          where: {
+            version: { documentId: a.documentId, version: 1 },
+            name: "number",
+          },
+        }),
+      ).toMatchObject({ originalValue: "000123", value: "000999" });
       expect(edit.json().raw).toEqual(r.raw);
       const stale = await app.inject({
         method: "PATCH",

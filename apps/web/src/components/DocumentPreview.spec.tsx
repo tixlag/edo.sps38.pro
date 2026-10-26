@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import type { DocumentFieldDto, DocumentFileDto } from "@edo/api-client";
+import type {
+  DocumentFieldDto,
+  DocumentFileDto,
+  DocumentOcrFieldDto,
+} from "@edo/api-client";
 import { DocumentPreview } from "./DocumentPreview";
 
 vi.mock("@edo/api-client", () => ({
@@ -80,26 +84,31 @@ function renderPreview(props: {
   onHoverRegion: (name: string | null, region: unknown) => void;
   file?: DocumentFileDto;
   selectedRegionId?: string;
+  observations?: DocumentOcrFieldDto[];
+  fields?: DocumentFieldDto[];
 }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  act(() => {
-    root.render(
-      <DocumentPreview
-        documentId="doc-1"
-        version={1}
-        file={props.file ?? file}
-        pageNumber={1}
-        fields={fields}
-        selectedField={null}
-        selectedRegionId={props.selectedRegionId ?? null}
-        hoveredField={null}
-        onSelectRegion={props.onSelectRegion as never}
-        onHoverRegion={props.onHoverRegion as never}
-      />,
-    );
-  });
+  const render = (nextFields = props.fields ?? fields) =>
+    act(() => {
+      root.render(
+        <DocumentPreview
+          documentId="doc-1"
+          version={1}
+          file={props.file ?? file}
+          pageNumber={1}
+          fields={nextFields}
+          observations={props.observations}
+          selectedField={null}
+          selectedRegionId={props.selectedRegionId ?? null}
+          hoveredField={null}
+          onSelectRegion={props.onSelectRegion as never}
+          onHoverRegion={props.onHoverRegion as never}
+        />,
+      );
+    });
+  render();
   const img = container.querySelector("img");
   if (img) {
     Object.defineProperties(img, {
@@ -112,6 +121,7 @@ function renderPreview(props: {
   }
   return {
     container,
+    rerender: render,
     cleanup: () => {
       act(() => {
         root.unmount();
@@ -128,6 +138,93 @@ describe("DocumentPreview hover vs select", () => {
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
+  });
+  it("does not recenter the document when OCR text or draft data refreshes", () => {
+    const view = renderPreview({
+      onSelectRegion: vi.fn(),
+      onHoverRegion: vi.fn(),
+      selectedRegionId: "r-last",
+    });
+    try {
+      const scroll = vi.mocked(HTMLElement.prototype.scrollTo);
+      const count = scroll.mock.calls.length;
+      view.rerender(
+        fields.map((field) => ({
+          ...field,
+          originalValue: "Новый текст OCR",
+          value: "Правка",
+          regions: field.regions.map((region) => ({ ...region })),
+        })),
+      );
+      expect(scroll).toHaveBeenCalledTimes(count);
+      act(() =>
+        view.container
+          .querySelector('[data-region="r-last"]')!
+          .dispatchEvent(new MouseEvent("mouseover", { bubbles: true })),
+      );
+      expect(scroll).toHaveBeenCalledTimes(count);
+    } finally {
+      view.cleanup();
+    }
+  });
+  it("shows segment text immediately on hover without selecting or focusing a field", () => {
+    const onSelectRegion = vi.fn();
+    const view = renderPreview({ onSelectRegion, onHoverRegion: vi.fn() });
+    try {
+      const before = document.activeElement;
+      act(() =>
+        view.container
+          .querySelector('[data-region="r-last"]')!
+          .dispatchEvent(new MouseEvent("mouseover", { bubbles: true })),
+      );
+      expect(
+        view.container.querySelector('[role="tooltip"]')?.textContent,
+      ).toContain("OCR: «Иванов»");
+      expect(onSelectRegion).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(before);
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("all-regions mode includes unmapped text without enabling field navigation", () => {
+    const onSelectRegion = vi.fn();
+    const view = renderPreview({
+      onSelectRegion,
+      onHoverRegion: vi.fn(),
+      observations: [
+        {
+          name: "pas_nationality",
+          documentFieldName: null,
+          value: "UZBEKISTAN",
+          source: "PADDLE",
+          paddleText: "UZBEKISTAN",
+          paddleConfidence: 0.99,
+          regions: [
+            {
+              ...fields[0].regions[0],
+              id: "unmapped",
+              y: 0.5,
+              text: "UZBEKISTAN",
+            },
+          ],
+        },
+      ],
+    });
+    try {
+      const box = view.container.querySelector('[data-region="unmapped"]')!;
+      expect(box.getAttribute("role")).toBe("img");
+      act(() =>
+        box.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })),
+      );
+      expect(
+        view.container.querySelector('[role="tooltip"]')?.textContent,
+      ).toContain("UZBEKISTAN");
+      act(() => box.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      expect(onSelectRegion).not.toHaveBeenCalled();
+    } finally {
+      view.cleanup();
+    }
   });
   it("hover области зовёт onHoverRegion и НЕ зовёт onSelectRegion", () => {
     const onSelectRegion = vi.fn();

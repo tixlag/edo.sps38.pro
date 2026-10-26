@@ -1982,7 +1982,7 @@
                       "type": "string",
                       "format": "binary"
                     },
-                    "description": "JPEG, PNG, WebP or PDF; mixed bundle allowed. File order is preserved."
+                    "description": "JPEG, PNG, WebP, HEIC/HEIF or PDF. HEIC is normalized once to WebP without resizing; stored/downloaded MIME is image/webp. File order is preserved."
                   }
                 }
               }
@@ -2377,6 +2377,294 @@
         "summary": "Explicitly link candidate chat to future/existing LK code1c",
         "tags": [
           "candidate-integration"
+        ]
+      }
+    },
+    "/api/v1/documents/{documentId}/versions/{version}/ocr/retry": {
+      "post": {
+        "operationId": "retryDocumentOcr",
+        "parameters": [
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRevisionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentVersionDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Retry failed OCR for a supported current document with retained originals",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/{documentId}/versions/{version}/ocr/start": {
+      "post": {
+        "operationId": "startDocumentOcr",
+        "parameters": [
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRevisionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentVersionDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Start OCR for a supported current document without a previous OCR job",
+        "tags": [
+          "documents"
         ]
       }
     },
@@ -3156,6 +3444,140 @@
         ]
       }
     },
+    "/api/v1/documents/{documentId}/versions/{version}/ocr-details": {
+      "get": {
+        "operationId": "getDocumentOcrDetails",
+        "parameters": [
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentOcrDetailsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Get all OCR observations and source regions",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/v1/documents/{documentId}/versions/{version}/files/{fileId}/download": {
       "get": {
         "operationId": "getDocumentFileDownload",
@@ -3749,6 +4171,7 @@
                     "description": "JSON: documentUid, chat_uuid and/or code_1c, position_code_1c, citizenship (default ru), documentFields, optional project_code_1c/locationId"
                   },
                   "files[]": {
+                    "description": "JPEG, PNG, WebP, HEIC/HEIF or PDF; HEIC is normalized once to WebP without resizing. Stored/downloaded MIME is image/webp.",
                     "type": "array",
                     "minItems": 1,
                     "maxItems": 10,
@@ -3869,7 +4292,7 @@
             "lk-service-token": []
           }
         ],
-        "summary": "Submit a document for manual review without OCR",
+        "summary": "Submit a document for manual review with optional asynchronous OCR enrichment",
         "tags": [
           "candidate-documents"
         ]
@@ -4432,6 +4855,14 @@
             }
           },
           {
+            "name": "reviewGroup",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ReviewGroup"
+            }
+          },
+          {
             "name": "status",
             "required": false,
             "in": "query",
@@ -4695,6 +5126,14 @@
             }
           },
           {
+            "name": "reviewGroup",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ReviewGroup"
+            }
+          },
+          {
             "name": "status",
             "required": false,
             "in": "query",
@@ -4937,7 +5376,16 @@
     "/api/v1/review-documents/facets": {
       "get": {
         "operationId": "getReviewDocumentFacets",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "reviewGroup",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ReviewGroup"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -5055,6 +5503,14 @@
       "get": {
         "operationId": "listReviewCandidates",
         "parameters": [
+          {
+            "name": "reviewGroup",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ReviewGroup"
+            }
+          },
           {
             "name": "q",
             "required": false,
@@ -5994,6 +6450,7 @@
                     "description": "JSON with documentUid and documentFields only; owner and candidate context come from the upload grant"
                   },
                   "files[]": {
+                    "description": "JPEG, PNG, WebP, HEIC/HEIF or PDF; HEIC is normalized once to WebP without resizing. Stored/downloaded MIME is image/webp.",
                     "type": "array",
                     "minItems": 1,
                     "maxItems": 10,
@@ -7493,7 +7950,9 @@
           "LK_REFERENCE_SYNCED",
           "LK_EVENT_APPLIED",
           "COMMUNICATION_REQUESTED",
-          "COMMUNICATION_COMPLETED"
+          "COMMUNICATION_COMPLETED",
+          "DOCUMENT_OCR_RETRIED",
+          "DOCUMENT_OCR_REQUESTED"
         ]
       },
       "AuditLogItemDto": {
@@ -8187,6 +8646,12 @@
             "format": "uuid",
             "description": "ERP candidate identifier supplied by the trusted ERP service"
           },
+          "uuid": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Chat UUID, named uuid by 1C"
+          },
           "fullName": {
             "type": "string",
             "maxLength": 512
@@ -8368,9 +8833,38 @@
           "items"
         ]
       },
+      "OcrJobStatus": {
+        "type": "string",
+        "enum": [
+          "UPLOADING",
+          "QUEUED",
+          "RUNNING",
+          "SUCCEEDED",
+          "REJECTED",
+          "FAILED",
+          "CANCELLED"
+        ]
+      },
       "ReturnedDocumentVersionDto": {
         "type": "object",
         "properties": {
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Successful submission time, UTC ISO 8601; null when historically unknown"
+          },
+          "reviewedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Approval or return decision time, UTC ISO 8601"
+          },
+          "reviewedBy": {
+            "type": "string",
+            "nullable": true,
+            "description": "Verified JWT UUID of the reviewer"
+          },
           "version": {
             "type": "number"
           },
@@ -8385,6 +8879,9 @@
           }
         },
         "required": [
+          "submittedAt",
+          "reviewedAt",
+          "reviewedBy",
           "version",
           "rejectionReason",
           "supersededByVersion"
@@ -8404,9 +8901,23 @@
           "EXPIRED"
         ]
       },
+      "ReviewGroup": {
+        "type": "string",
+        "enum": [
+          "RU",
+          "IG"
+        ]
+      },
       "CandidateProfileDto": {
         "type": "object",
         "properties": {
+          "reviewGroup": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReviewGroup"
+              }
+            ]
+          },
           "id": {
             "type": "string"
           },
@@ -8487,6 +8998,7 @@
           }
         },
         "required": [
+          "reviewGroup",
           "id",
           "chatUuid",
           "code1c",
@@ -8511,6 +9023,35 @@
       "DocumentDto": {
         "type": "object",
         "properties": {
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Successful submission time, UTC ISO 8601; null when historically unknown"
+          },
+          "reviewedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Approval or return decision time, UTC ISO 8601"
+          },
+          "reviewedBy": {
+            "type": "string",
+            "nullable": true,
+            "description": "Verified JWT UUID of the reviewer"
+          },
+          "ocrStatus": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OcrJobStatus"
+              }
+            ]
+          },
+          "ocrErrorCode": {
+            "type": "string",
+            "nullable": true
+          },
           "returnedVersions": {
             "description": "Returned versions, newest first, including versions superseded by a new upload",
             "type": "array",
@@ -8579,6 +9120,11 @@
           }
         },
         "required": [
+          "submittedAt",
+          "reviewedAt",
+          "reviewedBy",
+          "ocrStatus",
+          "ocrErrorCode",
           "pendingDeliveryVersions",
           "id",
           "documentTypeCode",
@@ -8915,6 +9461,11 @@
             "type": "string",
             "nullable": true
           },
+          "ocrText": {
+            "type": "string",
+            "nullable": true,
+            "description": "Unformatted OCR field text for exact comparison; originalValue is the typed suggestion"
+          },
           "value": {
             "type": "string",
             "nullable": true
@@ -8964,6 +9515,54 @@
           "regions"
         ]
       },
+      "DocumentOcrFieldDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "documentFieldName": {
+            "type": "string",
+            "nullable": true
+          },
+          "value": {
+            "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "PADDLE",
+              "GLM",
+              "MIXED"
+            ]
+          },
+          "paddleText": {
+            "type": "string",
+            "nullable": true
+          },
+          "paddleConfidence": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OcrRegionDto"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "documentFieldName",
+          "value",
+          "source",
+          "paddleText",
+          "paddleConfidence"
+        ]
+      },
       "OcrIssueDto": {
         "type": "object",
         "properties": {
@@ -8993,17 +9592,6 @@
           "message",
           "fileOrdinal",
           "pageNumber"
-        ]
-      },
-      "OcrJobStatus": {
-        "type": "string",
-        "enum": [
-          "UPLOADING",
-          "QUEUED",
-          "RUNNING",
-          "SUCCEEDED",
-          "REJECTED",
-          "FAILED"
         ]
       },
       "OcrJobDto": {
@@ -9119,6 +9707,38 @@
       "DocumentVersionDto": {
         "type": "object",
         "properties": {
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Successful submission time, UTC ISO 8601; null when historically unknown"
+          },
+          "reviewedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Approval or return decision time, UTC ISO 8601"
+          },
+          "reviewedBy": {
+            "type": "string",
+            "nullable": true,
+            "description": "Verified JWT UUID of the reviewer"
+          },
+          "reviewGroup": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReviewGroup"
+              }
+            ]
+          },
+          "canStartOcr": {
+            "type": "boolean",
+            "description": "Current supported submitted version has no OCR attempt and retained originals"
+          },
+          "canRetryOcr": {
+            "type": "boolean",
+            "description": "Current supported version has a failed OCR attempt, retained originals, and enabled OCR"
+          },
           "documentId": {
             "type": "string"
           },
@@ -9154,6 +9774,16 @@
             "items": {
               "$ref": "#/components/schemas/DocumentFieldDto"
             }
+          },
+          "ocrFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentOcrFieldDto"
+            }
+          },
+          "reviewedByName": {
+            "type": "string",
+            "nullable": true
           },
           "issues": {
             "type": "array",
@@ -9197,6 +9827,11 @@
           }
         },
         "required": [
+          "submittedAt",
+          "reviewedAt",
+          "reviewedBy",
+          "canStartOcr",
+          "canRetryOcr",
           "documentId",
           "version",
           "status",
@@ -9204,6 +9839,8 @@
           "ocrSource",
           "files",
           "fields",
+          "ocrFields",
+          "reviewedByName",
           "issues",
           "job",
           "raw",
@@ -9257,6 +9894,18 @@
           "createdAt"
         ]
       },
+      "ReviewRevisionDto": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "revision"
+        ]
+      },
       "DocumentTypeDto": {
         "type": "object",
         "properties": {
@@ -9308,6 +9957,35 @@
       "CandidateDocumentSummaryDto": {
         "type": "object",
         "properties": {
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Successful submission time, UTC ISO 8601; null when historically unknown"
+          },
+          "reviewedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Approval or return decision time, UTC ISO 8601"
+          },
+          "reviewedBy": {
+            "type": "string",
+            "nullable": true,
+            "description": "Verified JWT UUID of the reviewer"
+          },
+          "ocrStatus": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OcrJobStatus"
+              }
+            ]
+          },
+          "ocrErrorCode": {
+            "type": "string",
+            "nullable": true
+          },
           "returnedVersions": {
             "description": "Returned versions, newest first, including versions superseded by a new upload",
             "type": "array",
@@ -9355,6 +10033,11 @@
           }
         },
         "required": [
+          "submittedAt",
+          "reviewedAt",
+          "reviewedBy",
+          "ocrStatus",
+          "ocrErrorCode",
           "pendingDeliveryVersions",
           "id",
           "documentTypeCode",
@@ -9382,6 +10065,30 @@
         "required": [
           "candidate",
           "documents"
+        ]
+      },
+      "DocumentOcrDetailsDto": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "number"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentOcrFieldDto"
+            }
+          },
+          "raw": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          }
+        },
+        "required": [
+          "revision",
+          "fields",
+          "raw"
         ]
       },
       "DownloadDto": {
@@ -9427,18 +10134,6 @@
         "required": [
           "revision",
           "fields"
-        ]
-      },
-      "ReviewRevisionDto": {
-        "type": "object",
-        "properties": {
-          "revision": {
-            "type": "number",
-            "minimum": 0
-          }
-        },
-        "required": [
-          "revision"
         ]
       },
       "Object": {
