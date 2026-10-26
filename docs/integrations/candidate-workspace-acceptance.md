@@ -56,8 +56,9 @@ Actual isolated 1C acceptance must still verify platform/metadata compilation, s
 | EDO web | Full Vitest suite, TypeScript/Vite build and lint | 153 tests in 18 suites passed; build and lint passed |
 | Schema upgrade | Exact main migrations → two feature migrations, with pre-existing OCR audit rows | 19 migrations applied; OCR rows preserved; no added schema drift relative to main |
 | API contract | OpenAPI export and Orval regeneration, API build/lint | Passed |
+| EDO CI | Existing external edo.yml template inspected; feature MR has no head pipeline | Build jobs only run for the default branch. CI was not changed, bypassed or disabled; no main build/deploy was triggered |
 | ERP | 7 static contract checks, affected metadata XML and targeted BSL analysis | Passed static checks; no platform execution |
-| ERP CI | Pipeline 4020 | `validate:mr` and `scope:erpdev-profi` passed; `review-policy:mr` remains a manual gate |
+| ERP CI | Final pipeline 4039 (after merging develop f4493db3) | `validate:mr` and `scope:erpdev-profi` passed; `review-policy:mr` remains a manual gate |
 | LK chat | Core Go tests, independent disconnect under race detector, targeted build/vet, real-handler multi-window fixture | Passed; full `go build ./...` remains blocked by the pre-existing missing broadcasts/usecases package |
 | LK rights | PHP syntax and isolated PHPUnit, without application bootstrap/.env | 2 tests, 49 assertions passed |
 
@@ -76,4 +77,4 @@ Actual isolated 1C acceptance must still verify platform/metadata compilation, s
 3. Verify actual document replay, altered-content conflict and lost response after commit against 1C v2; retain `ERP_DOCUMENTS_V2_AUTO_RETRY=false`. A local mock receipt does not authorize enabling automatic retries.
 4. Back up and review the complete EDO migration plan before the separately authorized release. New production work is additive; the approved correction concerns only the unreleased communications migration. Reconcile unresolved historical identities individually, without mass merges, deletions or citizenship-based classification.
 5. Verify the existing server-only ERP communications/base URLs, credentials and S2S upload-grant tokens are paired for the test environment. Preserve document upload-grants, existing client upload limits and `ERP_DOCUMENTS_TRANSPORT=multipart-v2`. No new operator chat token/grant is required; LK has no new migrations or runtime settings for these PRs.
-6. Finish the manual ERP review gate and inspect the final EDO GitLab pipeline. Merge and deployment are separate owner actions; neither was performed by this task.
+6. Finish the manual ERP review gate. The existing EDO template only builds the default branch, so it creates no feature-branch pipeline; local build/test evidence is recorded above. The owner must account for this limitation during acceptance rather than treating an absent pipeline as passed. Merge and deployment are separate owner actions; neither was performed by this task.
