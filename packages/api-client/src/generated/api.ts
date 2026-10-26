@@ -5300,7 +5300,7 @@ export const useCreateCandidateDocumentUploadGrant = <
 };
 
 /**
- * Profile filters select candidates; status and documentTypeCode select their nested documents. RETURNED includes documents with any returned version, even after a newer upload; returnedVersions contains the history. Progress counts all accessible approved documents across tabs. Candidates and documents must both be in the caller's location scope.
+ * Profile filters select candidates; status and documentTypeCode select their nested documents. RETURNED includes documents with any returned version, even after a newer upload; returnedVersions contains the history. Progress counts all accessible approved documents across tabs. Reviewers can access every candidate and document in their confirmed RU or IG direction without location permissions; other administrative access retains its location scope.
  * @summary Candidates with matching documents, paginated by candidate id
  */
 export const listCandidateReviewQueue = (
