@@ -339,39 +339,48 @@ describe("candidate manager flows", () => {
     expect(button("Сохранить статус").disabled).toBe(true);
   });
 
-  it("requires explicit confirmation and sends an opaque ERP choice for the existing current cycle", async () => {
-    await render(<CandidateManagement candidateId="current-cycle" />);
-    await click("Повторный приём");
-    expect(state.persons.mock.calls.at(-1)?.[1]).toEqual(
-      expect.objectContaining({
-        query: expect.objectContaining({ enabled: false }),
-      }),
-    );
-    vi.useFakeTimers();
-    const searchInput = view.querySelector<HTMLInputElement>(
-      'input[aria-label="Поиск физлица"]',
-    )!;
-    await act(async () =>
-      searchInput.dispatchEvent(new FocusEvent("focusin", { bubbles: true })),
-    );
-    type(searchInput, "Иван");
-    await act(async () => vi.advanceTimersByTime(301));
-    await pick("Поиск физлица", "Иванов Иван · 03.02.1990");
-    expect(view.textContent).toContain("03.02.1990");
-    expect(button("Связать с текущим кандидатом").disabled).toBe(true);
-    await act(async () =>
-      view.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(),
-    );
-    await submit("Повторный приём");
-    expect(state.link).toHaveBeenCalledWith({
-      candidateId: "current-cycle",
-      data: {
-        requestId: expect.any(String),
-        personSelection: "signed-opaque-person",
-      },
-    });
-    expect(view.textContent).not.toContain("signed-opaque-person");
-  });
+  it.each([false, true])(
+    "requires explicit current-cycle confirmation even when ERP already reports a linked person (%s)",
+    async (alreadyLinked) => {
+      state.profile.linkedPerson = alreadyLinked;
+      await render(<CandidateManagement candidateId="current-cycle" />);
+      await click(
+        alreadyLinked ? "Подтвердить связь с физлицом" : "Повторный приём",
+      );
+      expect(view.textContent).toContain("Кадровый приём выполняется в ERP");
+      expect(state.persons.mock.calls.at(-1)?.[1]).toEqual(
+        expect.objectContaining({
+          query: expect.objectContaining({ enabled: false }),
+        }),
+      );
+      vi.useFakeTimers();
+      const searchInput = view.querySelector<HTMLInputElement>(
+        'input[aria-label="Поиск физлица"]',
+      )!;
+      await act(async () =>
+        searchInput.dispatchEvent(new FocusEvent("focusin", { bubbles: true })),
+      );
+      type(searchInput, "Иван");
+      await act(async () => vi.advanceTimersByTime(301));
+      await pick("Поиск физлица", "Иванов Иван · 03.02.1990");
+      expect(view.textContent).toContain("03.02.1990");
+      expect(button("Связать с текущим кандидатом").disabled).toBe(true);
+      await act(async () =>
+        view.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(),
+      );
+      await submit(
+        alreadyLinked ? "Подтверждение связи с физлицом" : "Повторный приём",
+      );
+      expect(state.link).toHaveBeenCalledWith({
+        candidateId: "current-cycle",
+        data: {
+          requestId: expect.any(String),
+          personSelection: "signed-opaque-person",
+        },
+      });
+      expect(view.textContent).not.toContain("signed-opaque-person");
+    },
+  );
 
   it("shows old documents as requiring review and explicitly saves current-cycle recheck", async () => {
     state.profile.linkedPerson = true;

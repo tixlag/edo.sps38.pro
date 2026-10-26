@@ -270,7 +270,11 @@ function CandidatePersonLink({
   const savedProfile = useConfirmedCandidate(profile.id);
   return (
     <form
-      aria-label="Повторный приём"
+      aria-label={
+        profile.linkedPerson
+          ? "Подтверждение связи с физлицом"
+          : "Повторный приём"
+      }
       className="space-y-3"
       onSubmit={(event) => {
         event.preventDefault();
@@ -292,8 +296,8 @@ function CandidatePersonLink({
       }}
     >
       <p className="text-sm text-[var(--muted-foreground)]">
-        Выберите существующее физлицо из ERP для текущего оформления. Это свяжет
-        документы, но не оформит кадровый приём.
+        Выберите существующее физлицо из ERP и подтвердите связь с текущим
+        оформлением. Кадровый приём выполняется в ERP.
       </p>
       <CandidatePersonPicker
         disabled={request.locked || mutation.isPending}
@@ -366,15 +370,15 @@ export function CandidateManagement({ candidateId }: { candidateId: string }) {
               >
                 Изменить статус
               </Button>
-              {!profile.linkedPerson && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setAction("person")}
-                >
-                  Повторный приём
-                </Button>
-              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setAction("person")}
+              >
+                {profile.linkedPerson
+                  ? "Подтвердить связь с физлицом"
+                  : "Повторный приём"}
+              </Button>
             </>
           )}
         </div>
@@ -402,9 +406,7 @@ export function CandidateManagement({ candidateId }: { candidateId: string }) {
               ["Статус", profile.status?.name || "Не указан"],
               [
                 "Связь с физлицом",
-                profile.linkedPerson
-                  ? "Подтверждена ERP"
-                  : "Пока не установлена",
+                profile.linkedPerson ? "Указана в ERP" : "Пока не установлена",
               ],
             ].map(([label, value]) => (
               <div key={label} className="min-w-0">
