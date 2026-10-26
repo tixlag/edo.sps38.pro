@@ -28,25 +28,11 @@ const historyEvent = z.object({
     entries: z.array(entrySchema).nullish(),
   }),
 });
-const sendAckSchema = z.object({
-  action: z.literal("send_ack"),
-  operation_id: z.string().uuid(),
-  status: z.enum(["SENT", "FAILED", "UNKNOWN"]),
-  message_uuid: z.string().uuid().nullable(),
-  chat_uuid: z.string().uuid(),
-  actor_user_code_1c: z.string(),
-  error_code: z.string().nullable(),
-  replayed: z.boolean(),
-});
-
 @Injectable()
 export class LkChatClient {
   constructor(private readonly config: ConfigService) {}
   configured() {
-    return (
-      !!this.config.get<string>("LK_CHAT_BASE_URL") &&
-      !!this.config.get<string>("LK_CANDIDATE_OPERATOR_TOKEN")
-    );
+    return !!this.config.get<string>("LK_CHAT_BASE_URL");
   }
   private base() {
     const raw = this.config.get<string>("LK_CHAT_BASE_URL");
@@ -62,62 +48,19 @@ export class LkChatClient {
       throw new ServiceUnavailableException("LK_CHAT_NOT_CONFIGURED");
     return url;
   }
-  private async grant(chatUuid: string, actor = "", canSend = false) {
-    const token = this.config.get<string>("LK_CANDIDATE_OPERATOR_TOKEN");
-    if (!token) throw new CommunicationSourceError("LK_CHAT_NOT_CONFIGURED");
-    try {
-      const response = await fetch(
-        new URL("/candidates/operator-grants", this.base()),
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            chat_uuid: chatUuid,
-            actor_user_code_1c: actor,
-            can_send: canSend,
-          }),
-          redirect: "error",
-          signal: AbortSignal.timeout(10000),
-        },
-      );
-      if (!response.ok) {
-        await response.body?.cancel();
-        throw new CommunicationSourceError("LK_CHAT_AUTHORIZATION_FAILED");
-      }
-      const body = await response.text();
-      if (body.length > 16384) throw new Error();
-      const grant = z
-        .object({
-          grant: z.string().min(1).max(8192),
-          expires_at: z.string().datetime({ offset: true }),
-        })
-        .parse(JSON.parse(body));
-      if (Date.parse(grant.expires_at) <= Date.now()) throw new Error();
-      return grant.grant;
-    } catch (error) {
-      if (error instanceof CommunicationSourceError) throw error;
-      throw new CommunicationSourceError("LK_CHAT_AUTHORIZATION_UNAVAILABLE");
-    }
-  }
   private async socket(
     chatUuid: string,
     limit = 50,
     offset = 0,
-    actor = "",
-    canSend = false,
   ) {
-    const grant = await this.grant(chatUuid, actor, canSend);
     const url = new URL("/ws/candidates/chat", this.base());
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.searchParams.set("chat_uuid", chatUuid);
+    url.searchParams.set("candidate_flag", "false");
     url.searchParams.set("use_limit_offset", "true");
     url.searchParams.set("limit", String(limit));
     url.searchParams.set("offset", String(offset));
     const ws = new WebSocket(url, {
-      headers: { Authorization: `Bearer ${grant}` },
       handshakeTimeout: 10000,
       maxPayload: 2 * 1024 * 1024,
       perMessageDeflate: false,
@@ -289,36 +232,16 @@ export class LkChatClient {
       close?.();
     };
   }
-  private acknowledge(
-    raw: unknown,
-    operationId: string,
-    chatUuid: string,
-    actor: string,
-  ): string {
-    const ack = sendAckSchema.parse(raw);
-    if (
-      ack.operation_id !== operationId ||
-      ack.chat_uuid !== chatUuid ||
-      ack.actor_user_code_1c !== actor
-    )
-      throw new CommunicationSourceError("LK_CHAT_ACK_MISMATCH", true);
-    if (ack.status !== "SENT")
-      throw new CommunicationSourceError(
-        ack.error_code ?? "LK_CHAT_SEND_FAILED",
-        ack.status === "UNKNOWN",
-      );
-    if (!ack.message_uuid)
-      throw new CommunicationSourceError("LK_CHAT_ACK_INVALID", true);
-    return ack.message_uuid;
-  }
   async sendText(
     chatUuid: string,
     actor: string,
     text: string,
-    operationId: string,
+    _operationId: string,
   ): Promise<string> {
-    const ws = await this.socket(chatUuid, 1, 0, actor, true);
+    // Legacy chat has no request receipt. Dispatch once; never retry after uncertainty.
+    const ws = await this.socket(chatUuid, 1, 0);
     return new Promise<string>((resolve, reject) => {
+      const seen = new Set<string>();
       let dispatched = false,
         settled = false;
       const timer = setTimeout(
@@ -347,28 +270,33 @@ export class LkChatClient {
           if (!dispatched && history.success) {
             if (history.data.chat.uuid !== chatUuid)
               return finish(new CommunicationSourceError("LK_CHAT_CONTRACT"));
+            for (const entry of history.data.chat.entries ?? []) {
+              if (entry.message) seen.add(entry.message.uuid);
+            }
             dispatched = true;
             ws.send(
               JSON.stringify({
                 event: "send_message",
                 data: {
-                  operation_id: operationId,
+                  user_code_1c: actor,
                   chat_uuid: chatUuid,
                   message: text,
                 },
               }),
             );
-          } else {
-            if (
-              raw &&
-              typeof raw === "object" &&
-              "action" in raw &&
-              raw.action === "send_ack"
-            )
-              finish(
-                undefined,
-                this.acknowledge(raw, operationId, chatUuid, actor),
-              );
+          } else if (dispatched) {
+            const event = z.object({
+              action: z.literal("new_entry"),
+              chat_id: z.string().uuid(),
+              entry: z.object({ message: rawMessage }),
+            }).safeParse(raw);
+            if (!event.success) return;
+            const message = event.data.entry.message;
+            if (event.data.chat_id !== chatUuid || message.chat_uuid !== chatUuid)
+              return finish(new CommunicationSourceError("LK_CHAT_CONTRACT", true));
+            if (!seen.has(message.uuid) && message.content === text &&
+                message.actor_user_code_1c === actor && message.member?.member_type_id === 4)
+              finish(undefined, message.uuid);
           }
         } catch (error) {
           finish(
@@ -385,47 +313,27 @@ export class LkChatClient {
     actor: string,
     text: string,
     file: { filename: string; mimeType: string; bytes: Buffer },
-    operationId: string,
+    _operationId: string,
   ): Promise<string> {
-    const grant = await this.grant(chatUuid, actor, true);
-    const url = new URL("/candidates/operator/files", this.base());
+    const url = new URL("/chats/upload/file-message", this.base());
+    url.searchParams.set("chat_uuid", chatUuid);
+    url.searchParams.set("operator_1c", "true");
+    url.searchParams.set("operator_code_1c", actor);
+    url.searchParams.set("message", text);
     const form = new FormData();
-    form.append(
-      "file",
-      new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }),
-      file.filename,
-    );
-    form.append("message", text);
-    form.append("chat_uuid", chatUuid);
-    form.append("operation_id", operationId);
+    form.append("file", new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }), file.filename);
     try {
       const response = await fetch(url, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${grant}` },
-        body: form,
-        redirect: "error",
-        signal: AbortSignal.timeout(45000),
+        method: "POST", body: form, redirect: "error", signal: AbortSignal.timeout(45000),
       });
       const body = await response.text();
       if (body.length > 65536) throw new Error();
-      let payload: unknown;
-      try {
-        payload = JSON.parse(body);
-      } catch {
-        payload = null;
-      }
-      const ack = sendAckSchema.safeParse(payload);
-      if (ack.success) {
-        if (!response.ok && ack.data.status === "SENT")
-          throw new CommunicationSourceError("LK_CHAT_ACK_INVALID", true);
-        return this.acknowledge(ack.data, operationId, chatUuid, actor);
-      }
       if (!response.ok)
-        throw new CommunicationSourceError(
-          `LK_CHAT_HTTP_${response.status}`,
-          response.status >= 500,
-        );
-      throw new CommunicationSourceError("LK_CHAT_ACK_INVALID", true);
+        throw new CommunicationSourceError(`LK_CHAT_HTTP_${response.status}`, response.status >= 500);
+      const parsed = rawMessage.safeParse(JSON.parse(body));
+      if (!parsed.success || parsed.data.chat_uuid !== chatUuid || parsed.data.member?.member_type_id !== 4)
+        throw new CommunicationSourceError("LK_CHAT_CONTRACT", true);
+      return parsed.data.uuid;
     } catch (error) {
       if (error instanceof CommunicationSourceError) throw error;
       throw new CommunicationSourceError("LK_CHAT_SEND_UNCERTAIN", true);

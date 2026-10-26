@@ -46,33 +46,10 @@ const message = {
   created_at: "2026-10-20T01:00:00Z",
   member: { member_type_id: 4 },
 };
-const ack = (operationId = operation, patch = {}) => ({
-  action: "send_ack",
-  operation_id: operationId,
-  status: "SENT",
-  message_uuid: message.uuid,
-  chat_uuid: uuid,
-  actor_user_code_1c: "EMP01",
-  error_code: null,
-  replayed: false,
-  ...patch,
-});
-const client = () =>
-  new LkChatClient(
-    new ConfigService({
-      LK_CHAT_BASE_URL: "https://chat.example.invalid:8091",
-      LK_CANDIDATE_OPERATOR_TOKEN: "test-service-only",
-      LK_PUBLIC_BASE_URL: "https://lk.example.invalid",
-      JWT_SECRET: "secret",
-    }),
-  );
-const grantResponse = () =>
-  new Response(
-    JSON.stringify({
-      grant: "test-scoped-grant",
-      expires_at: new Date(Date.now() + 300000).toISOString(),
-    }),
-  );
+const client = () => new LkChatClient(new ConfigService({
+  LK_CHAT_BASE_URL: "https://chat.example.invalid:8091",
+  LK_PUBLIC_BASE_URL: "https://lk.example.invalid", JWT_SECRET: "secret",
+}));
 const emit = (socket: (typeof sockets)[number], payload: unknown) =>
   socket.emit("message", Buffer.from(JSON.stringify(payload)));
 const history = { action: "history_chat", chat: { uuid, entries: [] } };
@@ -80,230 +57,88 @@ async function opened(count = 1) {
   await vi.waitFor(() => expect(sockets).toHaveLength(count));
   return sockets[count - 1];
 }
-beforeEach(() =>
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => grantResponse()),
-  ),
-);
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.useRealTimers();
-  sockets.length = 0;
-});
-describe("LK protected operator protocol adapter", () => {
-  it("authorizes read-only history using a server credential and binds the socket to a grant", async () => {
+beforeEach(() => vi.stubGlobal("fetch", vi.fn()));
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); sockets.length = 0; });
+describe("LK existing candidate chat protocol", () => {
+  it("reads operator history without grants or new server credentials", async () => {
     const promise = client().history("c1", uuid, 50, 100);
     const socket = await opened();
-    expect(new URL(socket.url).searchParams.get("offset")).toBe("100");
-    expect(socket.options).toMatchObject({
-      headers: { Authorization: "Bearer test-scoped-grant" },
-      followRedirects: false,
-    });
-    const request = vi.mocked(fetch).mock.calls[0][1]!;
-    expect(JSON.parse(request.body as string)).toEqual({
-      chat_uuid: uuid,
-      actor_user_code_1c: "",
-      can_send: false,
-    });
-    expect(request.headers).toMatchObject({
-      Authorization: "Bearer test-service-only",
-    });
-    emit(socket, {
-      ...history,
-      chat: {
-        uuid,
-        entries: [
-          {
-            message: {
-              ...message,
-              metadata: {
-                url: "/upload/file.pdf",
-                original_name: "file.pdf",
-                mime: "application/pdf",
-                size_bytes: 100,
-              },
-            },
-          },
-        ],
-      },
-    });
+    const url = new URL(socket.url);
+    expect(url.pathname).toBe("/ws/candidates/chat");
+    expect(url.searchParams.get("offset")).toBe("100");
+    expect(url.searchParams.get("candidate_flag")).toBe("false");
+    expect(socket.options).not.toHaveProperty("headers");
+    expect(fetch).not.toHaveBeenCalled();
+    emit(socket, { ...history, chat: { uuid, entries: [{ message: {
+      ...message, metadata: { url: "/upload/file.pdf", original_name: "file.pdf", mime: "application/pdf" },
+    } }] } });
     const result = await promise;
-    expect(
-      verifyAttachment("secret", result.items[0].attachments[0].id, "c1"),
-    ).toMatchObject({ chatUuid: uuid, id: "/upload/file.pdf" });
+    expect(verifyAttachment("secret", result.items[0].attachments[0].id, "c1"))
+      .toMatchObject({ chatUuid: uuid, id: "/upload/file.pdf" });
   });
   it("rejects history belonging to another chat", async () => {
     const promise = client().history("c1", uuid, 50, 0);
     const socket = await opened();
-    emit(socket, {
-      ...history,
-      chat: {
-        uuid,
-        entries: [{ message: { ...message, chat_uuid: message.uuid } }],
-      },
-    });
+    emit(socket, { ...history, chat: { uuid, entries: [{ message: { ...message, chat_uuid: message.uuid } }] } });
     await expect(promise).rejects.toThrow("LK_CHAT_CONTRACT");
   });
-  it("uses independent operation acknowledgements for identical text and ignores broadcast", async () => {
-    const first = client().sendText(uuid, "EMP01", message.content, operation);
-    const second = client().sendText(
-      uuid,
-      "EMP01",
-      message.content,
-      otherOperation,
-    );
-    await opened(2);
-    for (const socket of sockets) {
-      emit(socket, history);
-      emit(socket, { action: "new_entry", entry: { message } });
-    }
-    expect(JSON.parse(sockets[0].sent[0]).data).toEqual({
-      chat_uuid: uuid,
-      message: message.content,
-      operation_id: operation,
-    });
-    let settled = false;
-    void second.then(() => {
-      settled = true;
-    });
-    emit(sockets[0], ack());
-    expect(await first).toBe(message.uuid);
-    await Promise.resolve();
-    expect(settled).toBe(false);
-    emit(sockets[1], ack(otherOperation));
-    expect(await second).toBe(message.uuid);
-  });
-  it.each([
-    { chat_uuid: message.uuid },
-    { actor_user_code_1c: "OTHER" },
-    { operation_id: otherOperation },
-  ])("rejects a mismatched ack %j", async (patch) => {
-    const promise = client().sendText(
-      uuid,
-      "EMP01",
-      message.content,
-      operation,
-    );
+  it("sends the existing event with the server-verified actor, without an operation protocol", async () => {
+    const promise = client().sendText(uuid, "EMP01", message.content, operation);
     const socket = await opened();
     emit(socket, history);
-    emit(socket, ack(operation, patch));
-    await expect(promise).rejects.toMatchObject({ uncertain: true });
+    expect(JSON.parse(socket.sent[0])).toEqual({event: "send_message", data: {
+      chat_uuid: uuid, message: message.content, user_code_1c: "EMP01",
+    }});
+    emit(socket, { action: "new_entry", chat_id: uuid, entry: {message} });
+    await expect(promise).resolves.toBe(message.uuid);
   });
-  it("keeps a lost acknowledgement UNKNOWN and does not resend", async () => {
-    const promise = client().sendText(
-      uuid,
-      "EMP01",
-      message.content,
-      operation,
-    );
+  it("does not mistake a historical or unrelated message for the new send", async () => {
+    const promise = client().sendText(uuid, "EMP01", message.content, operation);
     const socket = await opened();
-    emit(socket, history);
+    emit(socket, {...history, chat:{uuid, entries:[{message}]}});
+    emit(socket, {action:"new_entry", chat_id:uuid, entry:{message}});
+    emit(socket, {action:"new_entry", chat_id:uuid, entry:{message:{...message,uuid:otherOperation,actor_user_code_1c:"OTHER"}}});
     socket.emit("close");
-    await expect(promise).rejects.toMatchObject({ uncertain: true });
+    await expect(promise).rejects.toMatchObject({uncertain:true});
     expect(socket.sent).toHaveLength(1);
   });
-  it("uses the same ack and operation protocol for files", async () => {
-    const fetcher = vi
-      .fn()
-      .mockResolvedValueOnce(grantResponse())
-      .mockResolvedValueOnce(new Response(JSON.stringify(ack())));
-    vi.stubGlobal("fetch", fetcher);
-    expect(
-      await client().sendFile(
-        uuid,
-        "EMP01",
-        "Caption",
-        {
-          filename: "photo.jpg",
-          mimeType: "image/jpeg",
-          bytes: Buffer.from("photo"),
-        },
-        operation,
-      ),
-    ).toBe(message.uuid);
-    expect(new URL(String(fetcher.mock.calls[1][0])).pathname).toBe(
-      "/candidates/operator/files",
-    );
-    const request = fetcher.mock.calls[1][1];
-    expect(request.headers).toEqual({
-      Authorization: "Bearer test-scoped-grant",
+  it("leaves a lost response uncertain and never resends", async () => {
+    const promise = client().sendText(uuid, "EMP01", message.content, operation);
+    const socket = await opened();
+    emit(socket, history); socket.emit("close");
+    await expect(promise).rejects.toMatchObject({uncertain:true});
+    expect(socket.sent).toHaveLength(1);
+  });
+  it("uses the existing file route and validates the saved message", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(message)));
+    vi.stubGlobal("fetch",fetcher);
+    await expect(client().sendFile(uuid,"EMP01",message.content,{
+      filename:"file.pdf",mimeType:"application/pdf",bytes:Buffer.from("file"),
+    },operation)).resolves.toBe(message.uuid);
+    const [raw,request] = fetcher.mock.calls[0] as unknown as [URL,{headers?: unknown; body: FormData}];
+    const url = new URL(raw);
+    expect(url.pathname).toBe("/chats/upload/file-message");
+    expect(url.searchParams.get("operator_1c")).toBe("true");
+    expect(url.searchParams.get("operator_code_1c")).toBe("EMP01");
+    expect(request.headers).toBeUndefined();
+    expect((request.body as FormData).get("operation_id")).toBeNull();
+    expect((request.body as FormData).get("file")).toBeInstanceOf(Blob);
+  });
+  it.each([new Response("bad",{status:502}), new Response(JSON.stringify({...message,chat_uuid:otherOperation}))])(
+    "does not confirm an uncertain or mismatched file response", async response => {
+      vi.stubGlobal("fetch",vi.fn(async()=>response));
+      await expect(client().sendFile(uuid,"EMP01","",{
+        filename:"file.pdf",mimeType:"application/pdf",bytes:Buffer.from("file"),
+      },operation)).rejects.toMatchObject({uncertain:true});
     });
-    expect(request.body.get("operation_id")).toBe(operation);
-    expect(request.body.get("chat_uuid")).toBe(uuid);
+  it("enables configured legacy chat without operator secrets", () => {
+    expect(client().configured()).toBe(true);
+    expect(new LkChatClient(new ConfigService({})).configured()).toBe(false);
   });
-  it("rejects a successful HTTP file response without a persisted operation acknowledgement", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(grantResponse())
-        .mockResolvedValueOnce(new Response(JSON.stringify(message))),
-    );
-    await expect(
-      client().sendFile(
-        uuid,
-        "EMP01",
-        "",
-        {
-          filename: "file.pdf",
-          mimeType: "application/pdf",
-          bytes: Buffer.from("file"),
-        },
-        operation,
-      ),
-    ).rejects.toMatchObject({ uncertain: true });
-  });
-  it("retains explicit provider refusals and replayed confirmations", async () => {
-    for (const response of [
-      ack(operation, { replayed: true }),
-      ack(operation, {
-        status: "FAILED",
-        message_uuid: null,
-        error_code: "OPERATION_CONFLICT",
-      }),
-    ]) {
-      vi.stubGlobal(
-        "fetch",
-        vi
-          .fn()
-          .mockResolvedValueOnce(grantResponse())
-          .mockResolvedValueOnce(new Response(JSON.stringify(response))),
-      );
-      const promise = client().sendFile(
-        uuid,
-        "EMP01",
-        "",
-        {
-          filename: "file.pdf",
-          mimeType: "application/pdf",
-          bytes: Buffer.from("file"),
-        },
-        operation,
-      );
-      if (response.status === "SENT") expect(await promise).toBe(message.uuid);
-      else
-        await expect(promise).rejects.toMatchObject({
-          uncertain: false,
-          code: "OPERATION_CONFLICT",
-        });
-    }
-  });
-  it("disables LK when its service credential is missing", () =>
-    expect(
-      new LkChatClient(
-        new ConfigService({ LK_CHAT_BASE_URL: "https://chat.example.invalid" }),
-      ).configured(),
-    ).toBe(false));
   it("downloads through LK nginx and rejects other origins and paths", async () => {
-    const fetcher = vi.fn(async () => new Response("file"));
-    vi.stubGlobal("fetch", fetcher);
-    expect((await client().download("/upload/file.pdf")).toString()).toBe(
-      "file",
-    );
-    await expect(
-      client().download("https://other.example/upload/file.pdf"),
-    ).rejects.toThrow("INVALID");
+    const fetcher = vi.fn(async()=>new Response("file"));vi.stubGlobal("fetch",fetcher);
+    expect((await client().download("/upload/file.pdf")).toString()).toBe("file");
+    await expect(client().download("https://other.example/upload/file.pdf")).rejects.toThrow("INVALID");
     await expect(client().download("/api/private")).rejects.toThrow("INVALID");
     expect(fetcher).toHaveBeenCalledTimes(1);
   });

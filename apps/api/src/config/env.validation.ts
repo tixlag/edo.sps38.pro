@@ -45,7 +45,6 @@ const envSchema = z.object({
   ERP_PASSWORD: z.string().optional(),
   ERP_COMMUNICATIONS_URL: optionalUrl,
   LK_CHAT_BASE_URL: optionalUrl,
-  LK_CANDIDATE_OPERATOR_TOKEN: z.string().optional(),
   LK_PUBLIC_BASE_URL: z.string().url().default('https://lk.sps38.pro'),
   CANDIDATE_CATALOG_SYNC_ENABLED: z.enum(['true', 'false']).default('true'),
   DOCUMENT_WORKER_ENABLED: z.enum(['true', 'false']).default('true'),
