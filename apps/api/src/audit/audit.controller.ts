@@ -27,7 +27,7 @@ export class AuditController {
   // callers on unfiltered history, so reviewers must use mine=true.
   @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_RU, EdoAccessRule.DOCUMENT_REVIEW_IG, EdoAccessRule.AUDIT_VIEW)
   @ApiOperation({
-    summary: 'List audit history within user location scope',
+    summary: 'List history within document direction and independent audit scope',
     operationId: 'listAuditLogs',
   })
   @ApiResponse({ status: 200, type: AuditLogListDto })

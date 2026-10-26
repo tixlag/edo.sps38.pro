@@ -155,7 +155,7 @@ describe('AuditLogsService object scope', () => {
     expect(prisma2.employee.findMany).not.toHaveBeenCalled();
   });
 
-  it('5. 20002+mine shows own actions, still object-scoped', async () => {
+  it('5. review history uses direction globally while employee actions retain object scope', async () => {
     const prisma = mockPrisma({
       $queryRaw: vi.fn().mockResolvedValue([docRow('a1', 'doc-own')]),
     });
@@ -257,7 +257,6 @@ describe('AuditLogsService object scope', () => {
     for (const rules of [
       { '20005': [] },
       { '20005': [], '20007': [] },
-      { '20002': [] },
     ]) {
       const prisma = mockPrisma({
         $queryRaw: vi.fn(),
@@ -268,7 +267,6 @@ describe('AuditLogsService object scope', () => {
         rules['20002'] && !rules['20005'] ? ({ mine: true }) as never : ({} as never),
       );
       void dto;
-      // 20002+mine with empty location list: scoped, no locations -> empty.
       // Others: 403 (no AUDIT_VIEW) or empty (no locations) — either way
       // the audit table is never read.
       expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
@@ -285,6 +283,22 @@ describe('AuditLogsService object scope', () => {
     expect(dto).toEqual({ items: [], nextCursor: null });
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
     expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([['20002','RU'],['20011','IG']])('reviewer %s reads its direction without object grants', async (rule,group) => {
+    const prisma = mockPrisma({$queryRaw:vi.fn().mockResolvedValue([docRow('own','document')])});
+    const result = await new AuditLogsService(prisma as never).list(principal({[rule]:[]}) as never,{mine:true} as never);
+    expect(result.items).toHaveLength(1);
+    expect(rawArg(prisma).values).toContain(group);
+    expect(rawArg(prisma).sql).toContain('d.reviewGroup IN');
+    expect(rawArg(prisma).sql).not.toMatch(/citizenship|chatUuid/);
+  });
+
+  it('allows all authors in a specific permitted review document, never in general history', async () => {
+    const prisma = mockPrisma({document:{findFirst:vi.fn().mockResolvedValue({id:'doc'})}});
+    await new AuditLogsService(prisma as never).list(principal({'20002':[]}) as never,{entityType:'Document',entityId:'doc'} as never);
+    expect(prisma.document.findFirst).toHaveBeenCalledWith(expect.objectContaining({where:{id:'doc',OR:[{reviewGroup:{in:['RU']}}]}}));
+    expect(rawArg(prisma).values).not.toContain('reviewer-1');
   });
 
   it('10. entityId probing of foreign objects is closed (Employee + Candidate)', async () => {
