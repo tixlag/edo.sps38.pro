@@ -125,10 +125,12 @@ function StaticSearchSelect({
  */
 function CandidateRow({
   group,
+  reviewGroup,
   onOpen,
   returnedHistory = false,
 }: {
   group: CandidateDetailsDto;
+  reviewGroup: "RU" | "IG";
   onOpen: () => void;
   returnedHistory?: boolean;
 }) {
@@ -154,7 +156,7 @@ function CandidateRow({
       <div className="relative flex w-full flex-wrap items-center gap-3 bg-[var(--muted)] px-3 py-2.5">
         <button
           type="button"
-          aria-label={`Открыть чат и документы: ${heading}`}
+          aria-label={`${reviewGroup === "IG" ? "Открыть документы" : "Открыть чат и документы"}: ${heading}`}
           onClick={onOpen}
           className="absolute inset-0 rounded-[10px] hover:bg-[var(--border)]/30 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--primary)]"
         />
@@ -340,7 +342,7 @@ export function ReviewPage({
         }),
       });
     },
-    [navigate, base],
+    [navigate, base, reviewGroup],
   );
 
   const closeCandidate = useCallback(() => {
@@ -503,11 +505,11 @@ export function ReviewPage({
   const docTypeLabel = docType?.title;
 
   useEffect(() => {
-    if (filters.candidate) {
+    if (reviewGroup === "RU" && filters.candidate) {
       const next = { ...rawSearch }; delete next.candidate;
       void navigate({ to: "/review/candidates/$candidateId", params: { candidateId: filters.candidate }, search: next, replace: true });
     }
-  }, [filters.candidate, navigate, rawSearch]);
+  }, [filters.candidate, navigate, rawSearch, reviewGroup]);
 
   const filtersActive = hasActiveReviewFilters(filters);
 
@@ -725,6 +727,7 @@ export function ReviewPage({
                 <CandidateRow
                   key={group.candidate.id}
                   group={group}
+                  reviewGroup={reviewGroup}
                   returnedHistory={filters.status === "RETURNED"}
                   onOpen={() => openCandidate(group.candidate.id)}
                 />
