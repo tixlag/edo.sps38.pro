@@ -30,6 +30,7 @@ const historyEvent = z.object({
 });
 @Injectable()
 export class LkChatClient {
+  private readonly sends = new Map<string, Promise<void>>();
   constructor(private readonly config: ConfigService) {}
   configured() {
     return !!this.config.get<string>("LK_CHAT_BASE_URL");
@@ -232,7 +233,22 @@ export class LkChatClient {
       close?.();
     };
   }
-  async sendText(
+  async sendText(chatUuid: string, actor: string, text: string, operationId: string): Promise<string> {
+    // Legacy broadcasts carry no request ID. Keep this adapter's sends in order
+    // so concurrent identical messages cannot consume the same echoed record.
+    const previous = this.sends.get(chatUuid) ?? Promise.resolve();
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    this.sends.set(chatUuid, pending);
+    await previous;
+    try {
+      return await this.sendTextOnce(chatUuid, actor, text, operationId);
+    } finally {
+      release();
+      if (this.sends.get(chatUuid) === pending) this.sends.delete(chatUuid);
+    }
+  }
+  private async sendTextOnce(
     chatUuid: string,
     actor: string,
     text: string,

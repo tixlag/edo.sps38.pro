@@ -92,6 +92,19 @@ describe("LK existing candidate chat protocol", () => {
     emit(socket, { action: "new_entry", chat_id: uuid, entry: {message} });
     await expect(promise).resolves.toBe(message.uuid);
   });
+  it("serializes identical sends and never consumes one echo for two operations", async () => {
+    const adapter = client();
+    const first = adapter.sendText(uuid,"EMP01",message.content,operation);
+    const second = adapter.sendText(uuid,"EMP01",message.content,otherOperation);
+    const one = await opened(); emit(one,history);
+    expect(sockets).toHaveLength(1);
+    emit(one,{action:"new_entry",chat_id:uuid,entry:{message}});
+    expect(await first).toBe(message.uuid);
+    const two = await opened(2);
+    emit(two,{...history,chat:{uuid,entries:[{message}]}});
+    emit(two,{action:"new_entry",chat_id:uuid,entry:{message:{...message,uuid:otherOperation}}});
+    expect(await second).toBe(otherOperation);
+  });
   it("does not mistake a historical or unrelated message for the new send", async () => {
     const promise = client().sendText(uuid, "EMP01", message.content, operation);
     const socket = await opened();
