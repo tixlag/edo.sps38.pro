@@ -28,6 +28,7 @@ export interface NavItem {
 export const WORK_NAV: NavItem[] = [
   { key: 'dashboard', label: 'Дашборд', icon: LayoutDashboard, to: '/' },
   { key: 'tasks', label: 'Мои задачи', icon: ClipboardCheck, to: '/tasks' },
+  { key: 'candidates', label: 'Кандидаты · Россия', icon: Users, to: '/candidates' },
   { key: 'review', label: 'Проверка документов РУ', icon: FileCheck2, to: '/review' },
   { key: 'review-ig', label: 'Проверка документов ИГ', icon: FileCheck2, to: '/review-ig' },
   { key: 'onboarding', label: 'Оформление', icon: Route, to: '/onboarding' },
@@ -101,7 +102,7 @@ export function AppSidebar({
   if (canReview || canAudit) {
     extraWorkNav.push({ key: 'my-reviews', label: 'Мои проверки', icon: UserCheck, to: '/my-reviews' });
   }
-  const workNav = [...WORK_NAV.filter((item) => item.key === "review" ? canReviewRu : item.key === "review-ig" ? canReviewIg : true), ...extraWorkNav];
+  const workNav = [...WORK_NAV.filter((item) => (item.key === "review" || item.key === "candidates") ? canReviewRu : item.key === "review-ig" ? canReviewIg : true), ...extraWorkNav];
   const sections = [
     { title: 'Работа', items: workNav },
     { title: 'Конфигурация', items: CONFIG_NAV },

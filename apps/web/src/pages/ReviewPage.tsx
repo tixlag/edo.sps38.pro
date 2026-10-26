@@ -196,7 +196,7 @@ function CandidateRow({
               {candidate?.managerCode1c ? (
                 <span className="pointer-events-auto">
                   <LkLink code1c={candidate.managerCode1c}>
-                    {candidate.managerName ?? candidate.managerCode1c}
+                    {candidate.managerName ?? "Менеджер"}
                   </LkLink>
                 </span>
               ) : (
@@ -208,7 +208,7 @@ function CandidateRow({
               {candidate?.mentorCode1c ? (
                 <span className="pointer-events-auto">
                   <LkLink code1c={candidate.mentorCode1c}>
-                    {candidate.mentorName ?? candidate.mentorCode1c}
+                    {candidate.mentorName ?? "Наставник"}
                     {candidate.mentorPosition
                       ? ` · ${candidate.mentorPosition}`
                       : ""}
@@ -525,6 +525,7 @@ export function ReviewPage({
       <PageHeader
         title={`Проверка документов ${reviewGroup === "IG" ? "ИГ" : "РУ"}`}
         subtitle="Документы кандидатов и сотрудников"
+        actions={reviewGroup === "RU" ? <Button onClick={() => void navigate({ to: "/candidates" })}>Каталог и создание кандидатов</Button> : undefined}
       />
       <div className="my-4 flex flex-wrap gap-2">
         {TABS.map((tab) => (
@@ -793,7 +794,12 @@ export function ReviewDocumentPage({
   useEffect(() => {
     setSelectedVersion(undefined);
   }, [urlVersion, documentId]);
-  const group = info.data?.candidate?.reviewGroup ?? reviewGroup;
+  const group = info.data?.reviewGroup ?? reviewGroup;
+  useEffect(() => {
+    if (info.data?.reviewGroup && info.data.reviewGroup !== reviewGroup) {
+      void navigate({ to: info.data.reviewGroup === "IG" ? "/review-ig/$documentId" : "/review/$documentId", params: { documentId }, search: (previous: Record<string, unknown>) => previous, replace: true });
+    }
+  }, [info.data?.reviewGroup, reviewGroup, documentId, navigate]);
   const base = group === "IG" ? "/review-ig" : "/review";
   const currentVersion = info.data?.currentVersion;
   const number =

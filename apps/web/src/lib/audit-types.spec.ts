@@ -123,7 +123,10 @@ describe('access-rule gating (UI-only, backend re-checks)', () => {
     const reviewerNoRead = meWith({ '20002': [] });
     expect(canOpenAuditObject(reader, 'Document')).toBe(true);
     expect(canOpenAuditObject(reader, 'Employee')).toBe(true);
-    expect(canOpenAuditObject(reviewerNoRead, 'Document')).toBe(false);
+    expect(canOpenAuditObject(reviewerNoRead, 'Document')).toBe(true);
+    expect(canOpenAuditObject(reviewerNoRead, 'Employee')).toBe(false);
+    expect(canOpenAuditObject(meWith({ '20011': [] }), 'Document')).toBe(true);
+    expect(canOpenAuditObject(meWith({ '20005': [] }), 'Document')).toBe(false);
     expect(canOpenAuditObject(reader, 'Candidate')).toBe(false);
     expect(canOpenAuditObject(undefined, 'Document')).toBe(false);
   });

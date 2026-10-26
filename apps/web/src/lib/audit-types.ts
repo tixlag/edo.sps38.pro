@@ -117,6 +117,7 @@ export function canOpenAuditObject(
   entityType: string,
 ): boolean {
   if (entityType !== 'Document' && entityType !== 'Employee') return false;
+  if (entityType === "Document") return canReadDocuments(profile) || hasAccessRule(profile, 20002) || hasAccessRule(profile, 20011);
   return canReadDocuments(profile);
 }
 

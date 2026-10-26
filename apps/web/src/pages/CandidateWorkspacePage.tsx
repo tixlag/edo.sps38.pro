@@ -7,9 +7,9 @@ import {
 } from "@tanstack/react-router";
 import {
   useGetCandidateDetails,
+  useGetMe,
+  useGetCandidateWorkspace,
   useGetDocumentInfo,
-  useGetDocumentVersion,
-  getGetDocumentVersionQueryKey,
   useListCommunicationCandidates,
   type CandidateDocumentSummaryDto,
 } from "@edo/api-client";
@@ -24,6 +24,9 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { CandidateManagement } from "../components/CandidateManagement";
+import { CandidateRequirements } from "../components/CandidateRequirements";
+import { hasAccessRule } from "../lib/audit-types";
 import { CandidateChat } from "../components/CandidateChat";
 import { DocumentReviewWorkspace } from "../components/DocumentReviewWorkspace";
 import { LkLink } from "../components/LkLink";
@@ -34,6 +37,7 @@ import {
   formatDocumentProgress,
   parseReviewSearchParams,
 } from "../lib/review-groups";
+import { useLiveDocumentVersion } from "../lib/use-live-document-version";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
 
 function CandidateDocumentReview({
@@ -50,12 +54,7 @@ function CandidateDocumentReview({
   const info = useGetDocumentInfo(documentId);
   const number = requestedVersion ?? info.data?.currentVersion ?? 0;
   const correctOwner = info.data?.candidateId === candidateId;
-  const version = useGetDocumentVersion(documentId, number, {
-    query: {
-      queryKey: getGetDocumentVersionQueryKey(documentId, number),
-      enabled: correctOwner && !!number,
-    },
-  });
+  const version = useLiveDocumentVersion(documentId, correctOwner ? number : 0);
   const historic = isHistoricVersion(number, info.data?.currentVersion);
   if (info.isLoading || (correctOwner && version.isLoading))
     return (
@@ -135,12 +134,20 @@ function CandidateDocumentReview({
 }
 
 export function CandidateWorkspacePage() {
+  const me = useGetMe();
+  const { candidateId } = useParams({ strict: false }) as { candidateId: string };
+  if (!hasAccessRule(me.data, 20002) && !hasAccessRule(me.data, 20009)) return <div className="p-4"><EmptyState title={me.isLoading ? "Загрузка прав…" : "Нет доступа"} description="Карточка кандидата доступна сотрудникам направления Россия." /></div>;
+  return <CandidateWorkspace key={candidateId} />;
+}
+
+function CandidateWorkspace() {
   const { candidateId } = useParams({ strict: false }) as {
     candidateId: string;
   };
   const search = useSearch({ strict: false }) as Record<string, unknown>;
   const navigate = useNavigate();
   const details = useGetCandidateDetails(candidateId);
+  const workspace = useGetCandidateWorkspace(candidateId);
   const [collapsed, setCollapsed] = useState(
     () =>
       typeof window.matchMedia === "function" &&
@@ -222,6 +229,7 @@ export function CandidateWorkspacePage() {
       ? search.document
       : undefined;
   const version = parseVersionParam(search.version);
+  const showProfile = !documentId && search.section === "profile";
   const queueSearch = { ...parseReviewSearchParams(search) };
   delete queueSearch.candidate;
   const openDocument = (
@@ -253,6 +261,7 @@ export function CandidateWorkspacePage() {
           <ArrowLeft size={15} />
           Очередь проверки
         </Link>
+        <Link to="/candidates" className="text-sm text-[var(--primary)] underline underline-offset-4">Каталог кандидатов</Link>
         <Button
           size="sm"
           variant="outline"
@@ -437,7 +446,7 @@ export function CandidateWorkspacePage() {
               <>
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="min-w-0 break-words text-base font-semibold">
-                    {profile?.fullName || "Кандидат"}
+                    {workspace.data?.fullName || profile?.fullName || "Кандидат"}
                   </h1>
                   {profile?.citizenship && (
                     <Badge>{profile.citizenship.toUpperCase()}</Badge>
@@ -513,6 +522,11 @@ export function CandidateWorkspacePage() {
           ) : (
             details.data && (
               <>
+                <nav aria-label="Разделы карточки" className="flex shrink-0 flex-wrap gap-2">
+                  <Button size="sm" variant={showProfile ? "default" : "outline"} onClick={() => void navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (previous: Record<string, unknown>) => ({ ...previous, document: undefined, version: undefined, section: "profile" }) })}>Данные и оформление</Button>
+                  <Button size="sm" variant={!showProfile && !documentId ? "default" : "outline"} onClick={() => void navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (previous: Record<string, unknown>) => ({ ...previous, document: undefined, version: undefined, section: "chat" }) })}><MessageSquare size={15} />Переписка</Button>
+                </nav>
+                {showProfile && <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-4"><CandidateManagement candidateId={candidateId} /></div>}
                 {documentId && (
                   <div className="flex shrink-0 items-center">
                     <Button
@@ -538,7 +552,7 @@ export function CandidateWorkspacePage() {
                 )}
                 {/* Keep the chat mounted while checking documents: connection, scroll
               position and an unsent draft survive switching the center view. */}
-                <div className={`min-h-0 flex-1 ${documentId ? "hidden" : ""}`}>
+                <div className={`min-h-0 flex-1 ${documentId || showProfile ? "hidden" : ""}`}>
                   <CandidateChat key={candidateId} candidateId={candidateId} />
                 </div>
                 {documentId && (
@@ -595,6 +609,7 @@ export function CandidateWorkspacePage() {
             </p>
           )}
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            <CandidateRequirements candidateId={candidateId} documents={documents} />
             {details.isLoading && (
               <p role="status" className="p-2 text-sm">
                 Загрузка документов…

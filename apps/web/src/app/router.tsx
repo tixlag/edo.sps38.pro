@@ -4,6 +4,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { EmployeesPage } from '../pages/EmployeesPage';
 import { EmployeeDetailPage } from '../pages/EmployeeDetailPage';
 import { ReviewPage, ReviewDocumentPage } from '../pages/ReviewPage';
+import { CandidatesPage } from '../pages/CandidatesPage';
 import { CandidateWorkspacePage } from '../pages/CandidateWorkspacePage';
 import { HistoryPage, MyReviews } from '../pages/HistoryPage';
 import { useEmployeeRouteId } from './AppShell';
@@ -64,6 +65,7 @@ const reviewIgRoute = createRoute({ getParentRoute: () => rootRoute, path: '/rev
 const reviewIgDocumentRoute = createRoute({ getParentRoute: () => rootRoute, path: '/review-ig/$documentId', component: () => <ReviewDocumentPage reviewGroup="IG" /> });
 
 const reviewDocumentRoute = createRoute({ getParentRoute: () => rootRoute, path: '/review/$documentId', component: ReviewDocumentPage });
+const candidatesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/candidates', component: CandidatesPage });
 const candidateWorkspaceRoute = createRoute({ getParentRoute: () => rootRoute, path: '/review/candidates/$candidateId', component: CandidateWorkspacePage });
 
 const onboardingRoute = createRoute({
@@ -110,6 +112,7 @@ const routeTree = rootRoute.addChildren([
   reviewRoute,
   reviewDocumentRoute,
   candidateWorkspaceRoute,
+  candidatesRoute,
   reviewIgRoute,
   reviewIgDocumentRoute,
   historyRoute,

@@ -58,6 +58,7 @@ if (!Element.prototype.scrollTo) {
 function buildData(): DocumentVersionDto {
   return {
     documentId: "doc-1",
+    reviewGroup: "RU",
     version: 1,
     status: "IN_REVIEW",
     revision: 3,
@@ -302,6 +303,24 @@ describe("DocumentReviewWorkspace hover vs select", () => {
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
+  });
+  it.each([
+    ["RU", "20002", true],
+    ["IG", "20011", true],
+    ["IG", "20002", false],
+    ["RU", "20011", false],
+    ["RU", "20005", false],
+    [undefined, "20002", false],
+    ["IG", "20009", true],
+  ] as const)("saved direction %s requires its reviewer right %s without location grants", (group, rule, allowed) => {
+    vi.mocked(useGetMe).mockReturnValue({ data: { permissions: { [rule]: [] }, locationScope: { type: "none" } } } as never);
+    const data = buildData();
+    data.reviewGroup = group;
+    const view = renderWorkspace(data);
+    try {
+      expect(!!view.container.querySelector('[aria-label="Подтвердить документ"]')).toBe(allowed);
+      expect(!!view.container.querySelector('[aria-label="Отклонить документ"]')).toBe(allowed);
+    } finally { view.cleanup(); }
   });
   it("substitutes OCR only in the draft and retains the original yellow mismatch after saving", () => {
     const mutate = vi.fn();

@@ -14,6 +14,7 @@ const CRUMBS: Record<string, string> = {
   '/employee': 'Карточка работника',
   '/tasks': 'Мои задачи',
   '/review': 'Проверка документов РУ',
+  '/candidates': 'Кандидаты · Россия',
   '/review-ig': 'Проверка документов ИГ',
   '/history': 'История',
   '/my-reviews': 'Мои проверки',
