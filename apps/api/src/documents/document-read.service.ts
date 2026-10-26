@@ -1,9 +1,4 @@
-import {
-  candidateReviewGroup,
-  requireReviewGroup,
-  reviewGroupWhere,
-  type ReviewGroup,
-} from "./review-group";
+import { requireReviewGroup, type ReviewGroup } from "./review-group";
 import {
   BadRequestException,
   ForbiddenException,
@@ -340,9 +335,7 @@ export class DocumentReadService {
     return {
       documentId,
       version,
-      reviewGroup: row.document.candidate
-        ? candidateReviewGroup(row.document.candidate)
-        : "RU",
+      reviewGroup: row.document.reviewGroup,
       status: row.status,
       revision: row.revision,
       canRetryOcr: canRetryDocumentOcr(row, ocrEnabled),
@@ -730,7 +723,7 @@ export class DocumentReadService {
         ...this.access.documentWhere(principal),
         currentVersion: { gt: 0 },
         candidateId: { not: null },
-        candidate: reviewGroupWhere(reviewGroup),
+        reviewGroup,
       },
       select: { candidateId: true },
       distinct: ["candidateId"],
@@ -744,27 +737,34 @@ export class DocumentReadService {
     ];
   }
   scopeWhere(scope: {
+    candidateId?: string;
     chat_uuid?: string;
     code_1c?: string;
   }): Prisma.DocumentWhereInput {
-    if (!scope.chat_uuid && !scope.code_1c)
+    if (!scope.candidateId && !scope.chat_uuid && !scope.code_1c)
       throw new BadRequestException("Document owner is required");
     return {
       candidate: {
-        ...(scope.chat_uuid
-          ? { chatUuid: scope.chat_uuid.toLowerCase() }
-          : { code1c: scope.code_1c }),
+        ...(scope.candidateId
+          ? { id: scope.candidateId }
+          : scope.chat_uuid
+            ? { chatUuid: scope.chat_uuid.toLowerCase() }
+            : { code1c: scope.code_1c }),
       },
     };
   }
-  async internalDocuments(scope: { chat_uuid?: string; code_1c?: string }) {
+  async internalDocuments(scope: {
+    candidateId?: string;
+    chat_uuid?: string;
+    code_1c?: string;
+  }) {
     return this.documents({
       ...this.scopeWhere(scope),
       currentVersion: { gt: 0 },
     });
   }
   async internalDraft(
-    scope: { chat_uuid?: string; code_1c?: string },
+    scope: { candidateId?: string; chat_uuid?: string; code_1c?: string },
     documentUid: string,
   ): Promise<CandidateDocumentDraftDto> {
     const document = await this.prisma.document.findFirst({
@@ -822,7 +822,7 @@ export class DocumentReadService {
     requireReviewGroup(principal, reviewGroup);
     return {
       ...this.access.documentWhere(principal),
-      candidate: reviewGroupWhere(reviewGroup),
+      reviewGroup,
       currentVersion: { gt: 0 },
       ...(documentTypeCode ? { documentType: { code: documentTypeCode } } : {}),
       ...(status === "ALL"
@@ -918,7 +918,6 @@ export class DocumentReadService {
         ? {
             candidate: {
               AND: [
-                reviewGroupWhere(reviewGroup),
                 ...(Array.isArray(candidate.AND) ? candidate.AND : [candidate]),
               ],
             },

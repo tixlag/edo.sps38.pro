@@ -7,6 +7,9 @@ export async function resolveCandidateIdentity(
   tx: Prisma.TransactionClient,
   identity: {
     erpUid?: string | null;
+    personUid?: string | null;
+    code1c?: string | null;
+    reviewGroup?: "RU" | "IG";
     chatUuid?: string | null;
     identityKey: string;
     expectedId?: string;
@@ -22,12 +25,32 @@ export async function resolveCandidateIdentity(
   if (rows.length > 1)
     throw new ConflictException("CANDIDATE_IDENTITY_CONFLICT");
   if (!rows.length) {
+    // A legacy employee namespace does not prove an admission cycle. Refuse a
+    // second card until that unresolved history is reconciled explicitly.
+    if (
+      identity.code1c &&
+      (await tx.candidate.findFirst({
+        where: {
+          code1c: identity.code1c,
+          erpUid: null,
+          OR: [
+            { identityKey: `employee:${identity.code1c}` },
+            { reviewGroup: null },
+          ],
+        },
+      }))
+    )
+      throw new ConflictException(
+        "LEGACY_CANDIDATE_IDENTITY_REQUIRES_RECONCILIATION",
+      );
     if (identity.expectedId)
       throw new ConflictException("CANDIDATE_IDENTITY_CHANGED");
     return tx.candidate.create({
       data: {
         identityKey: identity.identityKey,
         erpUid: identity.erpUid ?? null,
+        personUid: identity.personUid ?? null,
+        reviewGroup: identity.reviewGroup ?? null,
         chatUuid: identity.chatUuid ?? null,
       },
     });
@@ -38,6 +61,12 @@ export async function resolveCandidateIdentity(
   });
   if (
     (identity.expectedId && owner.id !== identity.expectedId) ||
+    (identity.reviewGroup &&
+      owner.reviewGroup &&
+      owner.reviewGroup !== identity.reviewGroup) ||
+    (identity.personUid &&
+      owner.personUid &&
+      owner.personUid !== identity.personUid) ||
     (identity.erpUid && owner.erpUid && owner.erpUid !== identity.erpUid) ||
     (identity.chatUuid &&
       owner.chatUuid &&
@@ -45,6 +74,8 @@ export async function resolveCandidateIdentity(
   )
     throw new ConflictException("CANDIDATE_IDENTITY_CONFLICT");
   if (
+    (identity.personUid && !owner.personUid) ||
+    (identity.reviewGroup && !owner.reviewGroup) ||
     (identity.erpUid && !owner.erpUid) ||
     (identity.chatUuid && !owner.chatUuid)
   ) {
@@ -52,6 +83,8 @@ export async function resolveCandidateIdentity(
       where: { id: owner.id },
       data: {
         ...(identity.erpUid ? { erpUid: identity.erpUid } : {}),
+        ...(identity.personUid ? { personUid: identity.personUid } : {}),
+        ...(identity.reviewGroup ? { reviewGroup: identity.reviewGroup } : {}),
         ...(identity.chatUuid ? { chatUuid: identity.chatUuid } : {}),
       },
     });

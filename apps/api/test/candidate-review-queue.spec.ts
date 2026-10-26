@@ -157,7 +157,7 @@ describe("candidate review queue", () => {
     );
     expect(nested).toEqual({
       ...access.documentWhere(scoped),
-      candidate: { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] },
+      reviewGroup: "RU",
       currentVersion: { gt: 0 },
       versions: { some: { status: "RETURNED" } },
       documentType: { code: "PASSPORT" },

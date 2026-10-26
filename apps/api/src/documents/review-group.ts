@@ -7,26 +7,15 @@ import { EdoAccessRule } from "../auth/edo-access-rule";
 export type ReviewGroup = "RU" | "IG";
 
 export function candidateReviewGroup(candidate: {
-  chatUuid: string | null;
-  citizenship: string | null;
-}): ReviewGroup {
-  return candidate.chatUuid?.trim() ||
-    candidate.citizenship?.trim().toLowerCase() === "ru"
-    ? "RU"
-    : "IG";
+  reviewGroup?: ReviewGroup | null;
+}): ReviewGroup | null {
+  return candidate.reviewGroup ?? null;
 }
 
 export function reviewGroupWhere(
   group: ReviewGroup,
 ): Prisma.CandidateWhereInput {
-  return group === "RU"
-    ? { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] }
-    : {
-        AND: [
-          { chatUuid: null },
-          { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
-        ],
-      };
+  return { reviewGroup: group };
 }
 
 export function canReviewGroup(
@@ -63,7 +52,7 @@ export function candidateGroupAccessWhere(
     return {};
   const ru = canReviewGroup(principal, "RU"),
     ig = canReviewGroup(principal, "IG");
-  if (ru && ig) return {};
+  if (ru && ig) return { reviewGroup: { in: ["RU", "IG"] } };
   if (ru || ig) return reviewGroupWhere(ru ? "RU" : "IG");
   return { id: { in: [] } };
 }

@@ -37,6 +37,15 @@ describe("EDO candidate browser API with unified auth", () => {
     byEmployee: vi.fn(async (code1c: string) => ({ chatUuid: uuid, code1c })),
   };
   const contexts = {
+    forEmployee: vi.fn(async (code1c: string) => ({
+      candidateId: "edo-current-cycle",
+      chatUuid: uuid,
+      code1c,
+      positionCode1c: "000491",
+      citizenship: "ru",
+      projectCode1c: "00008",
+      candidateSnapshot: { uuid, name: "Иван" },
+    })),
     context: vi.fn(async () => ({
       chatUuid: uuid,
       code1c: "000123",
@@ -162,7 +171,7 @@ describe("EDO candidate browser API with unified auth", () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().chatUuid).toBe(uuid);
-    expect(identity.byEmployee).toHaveBeenCalledWith(
+    expect(contexts.forEmployee).toHaveBeenCalledWith(
       "000123",
       expect.any(AbortSignal),
     );
@@ -232,7 +241,11 @@ describe("EDO candidate browser API with unified auth", () => {
   });
   it.each([null, "other-employee"])(
     "refuses a mismatched canonical employee association (%s)",
-    async (code1c) => {
+    async (_code1c) => {
+      contexts.forEmployee.mockRejectedValueOnce(
+        new CandidateDocumentError(Code.ERP_CONTRACT_ERROR),
+      );
+      /* legacy LK association no longer used
       identity.byEmployee.mockResolvedValueOnce({
         chatUuid: uuid,
         code1c,
@@ -240,7 +253,7 @@ describe("EDO candidate browser API with unified auth", () => {
         citizenship: "ru",
         projectCode1c: null,
         candidateSnapshot: { uuid, name: "Other" },
-      } as never);
+      } as never); */
       const token = jwt.signForTest({
         uuid: "employee",
         code_1c: "000123",
@@ -252,7 +265,7 @@ describe("EDO candidate browser API with unified auth", () => {
         headers: { authorization: "Bearer " + token },
       });
       expect(response.statusCode).toBe(502);
-      expect(response.json().code).toBe("LK_CONTRACT_ERROR");
+      expect(response.json().code).toBe("ERP_CONTRACT_ERROR");
       expect(response.body).not.toContain("Other");
     },
   );
@@ -269,7 +282,7 @@ describe("EDO candidate browser API with unified auth", () => {
     };
   }
   it("returns forms and catalog from one canonical Unicode employee lookup", async () => {
-    identity.byEmployee.mockClear();
+    contexts.forEmployee.mockClear();
     identity.byUuid.mockClear();
     const response = await app.inject({
       method: "GET",
@@ -281,11 +294,11 @@ describe("EDO candidate browser API with unified auth", () => {
       context: { code1c: "УП000123" },
       catalog: { items: [] },
     });
-    expect(identity.byEmployee).toHaveBeenCalledOnce();
+    expect(contexts.forEmployee).toHaveBeenCalledOnce();
     expect(identity.byUuid).not.toHaveBeenCalled();
   });
   it.each(["statuses", `documents/${uuid}/draft`, "stream-grant"])(
-    "reads own %s without ERP or administrative permissions",
+    "reads own %s after confirmed ERP identity without administrative permissions",
     async (path) => {
       contexts.context.mockClear();
       contexts.forIdentity.mockClear();
@@ -330,7 +343,7 @@ describe("EDO candidate browser API with unified auth", () => {
     });
   });
   it("preserves actionable profile errors and safe field names through the global filter", async () => {
-    contexts.forIdentity.mockRejectedValueOnce(
+    contexts.forEmployee.mockRejectedValueOnce(
       new CandidateDocumentError(Code.CANDIDATE_PROFILE_INCOMPLETE, [
         Field.CITIZENSHIP,
       ]),

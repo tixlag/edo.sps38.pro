@@ -197,6 +197,7 @@ describe("snapshot persistence mapping", () => {
     expect(
       toCandidateProfile({
         id: "c1",
+        reviewGroup: "RU",
         chatUuid: "chat",
         code1c: null,
         fullName: "Иван",
@@ -216,6 +217,9 @@ describe("snapshot persistence mapping", () => {
       }),
     ).toEqual({
       id: "c1",
+      statusId: null,
+      statusName: null,
+      managerId: null,
       reviewGroup: "RU",
       chatUuid: "chat",
       code1c: null,
@@ -402,6 +406,9 @@ describe("reviewDocuments with profile filters", () => {
     documentType: { code: "PASSPORT", title: "Паспорт", erpUid: "u1" },
     candidate: {
       id: "c1",
+      statusId: null,
+      statusName: null,
+      managerId: null,
       reviewGroup: "RU",
       chatUuid: "chat",
       code1c: null,
@@ -494,7 +501,7 @@ describe("reviewDocuments with profile filters", () => {
       manager: "Сид",
     });
     expect(findMany.mock.calls[0][0].where).toMatchObject({
-      AND: expect.any(Array),
+      reviewGroup: "RU",
       candidate: {
         AND: expect.arrayContaining([
           {
@@ -622,7 +629,7 @@ describe("reviewDocuments candidate progress", () => {
       expect(guard).toHaveBeenCalledWith("c1", scoped);
       expect(findMany.mock.calls[0][0].where).toMatchObject({
         candidateId: "c1",
-        AND: expect.any(Array),
+        reviewGroup: { in: ["RU"] },
       });
       expect(findMany.mock.calls[0][0].where).not.toHaveProperty("status");
       expect(result.items.map((doc) => doc.status)).toEqual([
@@ -636,7 +643,7 @@ describe("reviewDocuments candidate progress", () => {
       });
       expect(groupBy.mock.calls[0][0].where).toMatchObject({
         candidateId: { in: ["c1"] },
-        AND: expect.any(Array),
+        reviewGroup: { in: ["RU"] },
       });
     } finally {
       guard.mockRestore();
@@ -695,14 +702,14 @@ describe("reviewDocuments candidate progress", () => {
     // Queue itself is tab-filtered and scoped...
     expect(findMany.mock.calls[0][0].where).toMatchObject({
       versions: { some: { status: "RETURNED" } },
-      AND: expect.any(Array),
+      reviewGroup: "RU",
     });
     // ...but the APPROVED counter ignores the tab filter and reuses the scope,
     // so foreign-location candidates never leak into the counters.
     expect(groupBy).toHaveBeenCalledTimes(1);
     const counterWhere = groupBy.mock.calls[0][0].where;
     expect(counterWhere.candidateId).toEqual({ in: ["c1"] });
-    expect(counterWhere.AND).toBeDefined();
+    expect(counterWhere.reviewGroup).toEqual({ in: ["RU"] });
     expect(counterWhere).not.toHaveProperty("status");
     expect(page.items[0].candidate).toMatchObject({
       projectCode: "PRJ",

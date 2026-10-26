@@ -3,7 +3,6 @@ import {
   CandidateDocumentError,
   withinDocumentDeadline,
 } from "./candidate-document.error";
-import type { EdoCandidateChat } from "@edo/lk-client";
 import { CandidateDocumentErrorCode as Code } from "./dto/candidate-error.dto";
 import { CandidateContextService } from "./candidate-context.service";
 import { LkCandidateIdentityService } from "./lk-candidate-identity.service";
@@ -16,7 +15,7 @@ import type {
   CandidateDocumentUploadRequestDto,
 } from "./dto/candidate-context.dto";
 
-type OwnIdentity = { code1c: string; chat: EdoCandidateChat | null };
+type OwnIdentity = CandidateDocumentContextDto;
 
 @Injectable()
 export class CandidateDocumentsService {
@@ -34,29 +33,15 @@ export class CandidateDocumentsService {
   private async ownIdentity(code1c: string | null, signal?: AbortSignal) {
     if (!code1c)
       throw new CandidateDocumentError(Code.EMPLOYEE_IDENTITY_REQUIRED);
-    try {
-      const chat = await this.identity.byEmployee(code1c, signal);
-      if (chat.code1c !== code1c)
-        throw new CandidateDocumentError(Code.LK_CONTRACT_ERROR);
-      return { code1c, chat };
-    } catch (error) {
-      if (
-        error instanceof CandidateDocumentError &&
-        error.code === Code.CANDIDATE_LINK_MISSING
-      )
-        return { code1c, chat: null };
-      throw error;
-    }
+    return this.contexts.forEmployee(code1c, signal);
   }
-  private ownContextFor(identity: OwnIdentity, signal?: AbortSignal) {
-    return identity.chat
-      ? this.contexts.forIdentity(identity.chat, signal)
-      : this.contexts.forEmployee(identity.code1c, signal);
+  private ownContextFor(identity: OwnIdentity, _signal?: AbortSignal) {
+    return Promise.resolve(identity);
   }
   private ownScope(identity: OwnIdentity) {
-    return identity.chat
-      ? { chat_uuid: identity.chat.chatUuid }
-      : { code_1c: identity.code1c };
+    if (!identity.candidateId)
+      throw new CandidateDocumentError(Code.ERP_CONTRACT_ERROR);
+    return { candidateId: identity.candidateId };
   }
   private ownOperation<T>(
     code1c: string | null,

@@ -59,6 +59,10 @@ export const erpCandidateSchema = z.object({
   positionCode: z.string().max(64).nullable(),
   positionName: z.string().max(512).nullable(),
   deleted: z.boolean(),
+  statusId: z.string().max(128).nullish(),
+  statusName: z.string().max(256).nullish(),
+  managerId: z.string().max(64).nullish(),
+  managerName: z.string().max(512).nullish(),
 });
 export const erpCatalogSchema = z.object({
   items: z.array(erpCandidateSchema).max(100),

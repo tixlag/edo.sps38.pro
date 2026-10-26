@@ -2,48 +2,50 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, type Candidate } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
+import { EdoAccessRule } from "../auth/edo-access-rule";
+import { hasAccessRule } from "../auth/access-rules";
 import { resolveLocationScope } from "../auth/access-rules";
-import { candidateGroupAccessWhere, canReviewGroup } from "./review-group";
+import { canReviewGroup } from "./review-group";
 
 @Injectable()
 export class DocumentAccessService {
   constructor(private readonly prisma: PrismaService) {}
 
   candidateWhere(principal: AuthPrincipal): Prisma.CandidateWhereInput {
+    if (hasAccessRule(principal.accessRules, EdoAccessRule.FULL_ACCESS))
+      return {};
+    const groups = (["RU", "IG"] as const).filter((g) =>
+      canReviewGroup(principal, g),
+    );
+    const review: Prisma.CandidateWhereInput = { reviewGroup: { in: groups } };
+    if (!hasAccessRule(principal.accessRules, EdoAccessRule.AUDIT_VIEW))
+      return review;
     const scope = resolveLocationScope(principal);
-    const group = candidateGroupAccessWhere(principal);
-    const location = scope.all ? {} : { locationId: { in: scope.locationIds } };
-    return Object.keys(group).length
-      ? scope.all
-        ? group
-        : { AND: [location, group] }
-      : location;
+    return {
+      OR: [review, scope.all ? {} : { locationId: { in: scope.locationIds } }],
+    };
   }
 
   documentWhere(principal: AuthPrincipal): Prisma.DocumentWhereInput {
+    if (hasAccessRule(principal.accessRules, EdoAccessRule.FULL_ACCESS))
+      return {};
+    const review = this.documentReviewWhere(principal);
+    if (!hasAccessRule(principal.accessRules, EdoAccessRule.AUDIT_VIEW))
+      return review;
     const scope = resolveLocationScope(principal);
-    const location: Prisma.DocumentWhereInput = scope.all
-      ? {}
-      : {
-          OR: [
-            { candidate: { locationId: { in: scope.locationIds } } },
-            { employee: { locationId: { in: scope.locationIds } } },
-          ],
-        };
-    const group = candidateGroupAccessWhere(principal);
-    if (!Object.keys(group).length) return location;
-    // The employee relation can widen location access, never candidate-group access.
-    return {
+    const audit: Prisma.DocumentWhereInput = {
       AND: [
-        location,
-        {
-          OR: [
-            { candidate: group },
-            ...(canReviewGroup(principal, "RU") ? [{ candidateId: null }] : []),
-          ],
-        },
+        scope.all
+          ? {}
+          : {
+              OR: [
+                { candidate: { locationId: { in: scope.locationIds } } },
+                { employee: { locationId: { in: scope.locationIds } } },
+              ],
+            },
       ],
     };
+    return { OR: [review, audit] };
   }
 
   async candidate(id: string, principal: AuthPrincipal): Promise<Candidate> {
@@ -55,23 +57,10 @@ export class DocumentAccessService {
   }
 
   documentReviewWhere(principal: AuthPrincipal): Prisma.DocumentWhereInput {
-    const document = this.documentWhere(principal);
-    const group = candidateGroupAccessWhere(principal, true);
-    // Both review groups impose no additional restriction. An empty relation
-    // branch inside OR is omitted by Prisma and would leave only candidateId
-    // IS NULL, denying every candidate document to full-access reviewers.
-    if (!Object.keys(group).length) return document;
-    return {
-      AND: [
-        document,
-        {
-          OR: [
-            { candidate: group },
-            ...(canReviewGroup(principal, "RU") ? [{ candidateId: null }] : []),
-          ],
-        },
-      ],
-    };
+    const groups = (["RU", "IG"] as const).filter((g) =>
+      canReviewGroup(principal, g),
+    );
+    return { reviewGroup: { in: groups } };
   }
 
   async document(id: string, principal: AuthPrincipal) {

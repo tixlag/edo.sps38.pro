@@ -102,7 +102,10 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
           await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${doc.candidateId} FOR UPDATE`;
         if (
           !(await tx.document.findFirst({
-            where: { id: doc.id, ...this.access.documentReviewWhere(principal) },
+            where: {
+              id: doc.id,
+              ...this.access.documentReviewWhere(principal),
+            },
           }))
         )
           throw new ConflictException("Document access has changed");
@@ -179,7 +182,19 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
           },
           metadata: {
             documentUid: String(payload.documentUid),
-            chatUid: String(payload.chatUid),
+            ...(typeof payload.chatUid === "string"
+              ? { chatUid: payload.chatUid }
+              : {}),
+            ...(typeof payload.candidateUid === "string"
+              ? { candidateUid: payload.candidateUid }
+              : {}),
+            ...(payload.recipientType === "person"
+              ? {
+                  recipientType: "person" as const,
+                  personUid: String(payload.personUid),
+                  code1c: String(payload.code1c),
+                }
+              : {}),
             documentFields: payload.documentFields as object,
           },
           deliveryId: id,

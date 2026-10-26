@@ -73,17 +73,11 @@ export class DocumentIngestionService {
       .digest("hex");
     const correlation = correlationId.slice(0, 64);
     const token = randomUUID();
-    let erpUid: string | undefined;
-    if (
-      this.erp &&
-      !(await this.prisma.candidate.findUnique({ where: { chatUuid } }))
-    ) {
-      try {
-        erpUid = await this.erp.resolveIdentityByChat(chatUuid);
-      } catch {
-        throw new ServiceUnavailableException("CANDIDATE_IDENTITY_UNAVAILABLE");
-      }
-    }
+    if (!this.erp)
+      throw new ServiceUnavailableException("CANDIDATE_IDENTITY_UNAVAILABLE");
+    const erpUid = await this.erp.resolveIdentityByChat(chatUuid);
+    if (!erpUid)
+      throw new ServiceUnavailableException("CANDIDATE_IDENTITY_UNAVAILABLE");
     const reserved = await this.reserve(
       chatUuid,
       key,
@@ -188,7 +182,8 @@ export class DocumentIngestionService {
           const candidate = await resolveCandidateIdentity(tx, {
             chatUuid,
             erpUid,
-            identityKey: `chat:${chatUuid}`,
+            identityKey: `erp:${erpUid}`,
+            reviewGroup: "RU",
           });
           await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${candidate.id} FOR UPDATE`;
           const existing = await tx.ocrJob.findUnique({
@@ -237,9 +232,17 @@ export class DocumentIngestionService {
             create: {
               candidateId: candidate.id,
               documentTypeId: typeId,
+              reviewGroup: "RU",
               currentVersion: 0,
             },
           });
+          if (doc.reviewGroup && doc.reviewGroup !== "RU")
+            throw new ConflictException("DOCUMENT_PROCESS_CONFLICT");
+          if (!doc.reviewGroup)
+            await tx.document.update({
+              where: { id: doc.id },
+              data: { reviewGroup: "RU" },
+            });
           await assertDocumentUploadAllowed(tx, doc);
           const last = await tx.documentVersion.aggregate({
             where: { documentId: doc.id },
@@ -359,24 +362,26 @@ export class DocumentIngestionService {
 
   async link(chatUuid: string, code1c: string, correlationId: string) {
     chatUuid = chatUuid.toLowerCase();
-    let erpUid: string | undefined;
+    if (!this.erp)
+      throw new ServiceUnavailableException("CANDIDATE_IDENTITY_UNAVAILABLE");
+    const identity = await this.erp.resolveCurrentIdentity(code1c);
     if (
-      this.erp &&
-      !(await this.prisma.candidate.findUnique({ where: { chatUuid } }))
-    ) {
-      try {
-        erpUid = await this.erp.resolveIdentityByChat(chatUuid);
-      } catch {
-        throw new ServiceUnavailableException("CANDIDATE_IDENTITY_UNAVAILABLE");
-      }
-    }
+      identity.reviewGroup !== "RU" ||
+      identity.chatUuid !== chatUuid ||
+      !identity.erpUid
+    )
+      throw new ConflictException("ERP_CURRENT_CANDIDATE_LINK_NOT_CONFIRMED");
+    const erpUid = identity.erpUid;
     for (let attempt = 0; ; attempt++) {
       try {
         const candidate = await this.prisma.$transaction(async (tx) => {
           const reserved = await resolveCandidateIdentity(tx, {
             chatUuid,
             erpUid,
-            identityKey: `chat:${chatUuid}`,
+            code1c,
+            personUid: identity.personUid,
+            identityKey: `erp:${erpUid}`,
+            reviewGroup: "RU",
           });
           await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${reserved.id} FOR UPDATE`;
           const row = await tx.candidate.findUniqueOrThrow({

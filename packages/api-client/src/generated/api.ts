@@ -313,7 +313,18 @@ export interface CandidateSnapshotMentorDto {
   code_1c?: string;
 }
 
+export type CandidateSnapshotDtoReviewGroup =
+  (typeof CandidateSnapshotDtoReviewGroup)[keyof typeof CandidateSnapshotDtoReviewGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateSnapshotDtoReviewGroup = {
+  RU: "RU",
+  IG: "IG",
+} as const;
+
 export interface CandidateSnapshotDto {
+  reviewGroup?: CandidateSnapshotDtoReviewGroup;
+  personUid?: string;
   /** ERP candidate identifier supplied by the trusted ERP service */
   erpUid?: string;
   /**
@@ -357,6 +368,7 @@ export interface CandidateSnapshotDto {
 }
 
 export interface CandidateDocumentContextDto {
+  candidateId?: string;
   /** @nullable */
   chatUuid: string | null;
   /** @nullable */
@@ -460,8 +472,20 @@ export const ReviewGroup = {
   IG: "IG",
 } as const;
 
+/**
+ * @nullable
+ */
+export type CandidateProfileDtoReviewGroup = ReviewGroup | null;
+
 export interface CandidateProfileDto {
-  reviewGroup: ReviewGroup;
+  /** @nullable */
+  statusId?: string | null;
+  /** @nullable */
+  statusName?: string | null;
+  /** @nullable */
+  managerId?: string | null;
+  /** @nullable */
+  reviewGroup: CandidateProfileDtoReviewGroup;
   id: string;
   /** @nullable */
   chatUuid: string | null;
@@ -1123,6 +1147,178 @@ export interface RejectDocumentDto {
   reason: string;
 }
 
+export interface CandidateReferenceDto {
+  id: string;
+  name: string;
+  code?: string;
+  /** @nullable */
+  birthDate?: string | null;
+  editable?: boolean;
+  requiresProject?: boolean;
+  requiresPlannedArrivalDate?: boolean;
+}
+
+export interface CandidateReferencesDto {
+  items: CandidateReferenceDto[];
+}
+
+export interface CandidateFieldsDto {
+  fullName: string;
+  phone: string;
+  birthDate: string;
+  citizenship: string;
+  positionCode: string;
+  /** @nullable */
+  projectCode?: string | null;
+  managerId: string;
+}
+
+export interface CreateCandidateDto {
+  requestId: string;
+  fields: CandidateFieldsDto;
+  /** Opaque choice returned by searchCandidatePersons */
+  personSelection?: string;
+}
+
+export interface CandidateNamedCodeDto {
+  code: string;
+  name: string;
+}
+
+export interface CandidateNamedIdDto {
+  id: string;
+  name: string;
+}
+
+export interface CandidateMentorDto {
+  name: string;
+  position?: string;
+}
+
+export interface CandidateStatusHistoryDto {
+  date: string;
+  author: string;
+  statusId: string;
+  statusName: string;
+  comment: string;
+}
+
+export type CandidateWorkspaceDtoReviewGroup =
+  (typeof CandidateWorkspaceDtoReviewGroup)[keyof typeof CandidateWorkspaceDtoReviewGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateWorkspaceDtoReviewGroup = {
+  RU: "RU",
+} as const;
+
+/**
+ * @nullable
+ */
+export type CandidateWorkspaceDtoPosition = CandidateNamedCodeDto | null;
+
+/**
+ * @nullable
+ */
+export type CandidateWorkspaceDtoProject = CandidateNamedCodeDto | null;
+
+/**
+ * @nullable
+ */
+export type CandidateWorkspaceDtoManager = CandidateNamedIdDto | null;
+
+/**
+ * @nullable
+ */
+export type CandidateWorkspaceDtoMentor = CandidateMentorDto | null;
+
+export interface CandidateWorkspaceDto {
+  id: string;
+  reviewGroup: CandidateWorkspaceDtoReviewGroup;
+  fullName: string;
+  phone: string;
+  birthDate: string;
+  citizenship: string;
+  /** @nullable */
+  position: CandidateWorkspaceDtoPosition;
+  /** @nullable */
+  project: CandidateWorkspaceDtoProject;
+  /** @nullable */
+  manager: CandidateWorkspaceDtoManager;
+  /** @nullable */
+  mentor: CandidateWorkspaceDtoMentor;
+  status: CandidateNamedIdDto;
+  linkedPerson: boolean;
+  hasChat: boolean;
+  history: CandidateStatusHistoryDto[];
+}
+
+export interface CandidatePatchFieldsDto {
+  fullName?: string;
+  phone?: string;
+  birthDate?: string;
+  citizenship?: string;
+  positionCode?: string;
+  /** @nullable */
+  projectCode?: string | null;
+  managerId?: string;
+}
+
+export interface UpdateCandidateDto {
+  requestId: string;
+  fields: CandidatePatchFieldsDto;
+}
+
+export interface CandidateStatusRequestDto {
+  requestId: string;
+  statusId: string;
+  comment?: string;
+  projectCode?: string;
+  plannedArrivalDate?: string;
+}
+
+export interface CandidatePersonLinkDto {
+  requestId: string;
+  personSelection: string;
+}
+
+export type CandidateRecheckStatus =
+  (typeof CandidateRecheckStatus)[keyof typeof CandidateRecheckStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateRecheckStatus = {
+  REQUIRES_REVIEW: "REQUIRES_REVIEW",
+  CONFIRMED: "CONFIRMED",
+  REPLACE: "REPLACE",
+  MISSING: "MISSING",
+  ORIGINAL_UNAVAILABLE: "ORIGINAL_UNAVAILABLE",
+} as const;
+
+export type CandidatePreviousDocumentDtoFields = { [key: string]: unknown };
+
+export interface CandidatePreviousDocumentDto {
+  id: string;
+  title: string;
+  /** @nullable */
+  documentUid: string | null;
+  fields: CandidatePreviousDocumentDtoFields;
+  /** @nullable */
+  expiresAt: string | null;
+  originalAvailable: boolean;
+  status: CandidateRecheckStatus;
+  /** @nullable */
+  reviewedBy: string | null;
+  /** @nullable */
+  reviewedAt: string | null;
+}
+
+export interface CandidatePreviousDocumentsDto {
+  items: CandidatePreviousDocumentDto[];
+}
+
+export interface CandidateRecheckRequestDto {
+  status: CandidateRecheckStatus;
+}
+
 export interface CommunicationCandidatesDto {
   items: CandidateProfileDto[];
   /** @nullable */
@@ -1446,9 +1642,28 @@ export type SubmitCandidateDocumentDirectBody = {
   "files[]": Blob[];
 };
 
+export type ListCandidateManagersParams = {
+  q?: string;
+};
+
+export type ListCandidatePositionsParams = {
+  q?: string;
+};
+
+export type ListCandidateProjectsParams = {
+  q?: string;
+};
+
+export type SearchCandidatePersonsParams = {
+  q?: string;
+};
+
 export type ListCommunicationCandidatesParams = {
   cursor?: string;
   limit?: number;
+  statusId?: string;
+  managerId?: string;
+  projectCode?: string;
   q?: string;
 };
 
@@ -1466,7 +1681,7 @@ export type GetCommunicationAttachmentDownloadParams = {
 };
 
 /**
- * @summary List audit history within user location scope
+ * @summary List history within document direction and independent audit scope
  */
 export const listAuditLogs = (
   params?: ListAuditLogsParams,
@@ -1518,7 +1733,7 @@ export type ListAuditLogsQueryResult = NonNullable<
 export type ListAuditLogsQueryError = void;
 
 /**
- * @summary List audit history within user location scope
+ * @summary List history within document direction and independent audit scope
  */
 
 export function useListAuditLogs<
@@ -3723,6 +3938,89 @@ export function useListCandidates<
 }
 
 /**
+ * @summary Create candidate in ERP with durable requestId, initial status Подбор
+ */
+export const createCandidate = (
+  createCandidateDto: CreateCandidateDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateWorkspaceDto>({
+    url: `/api/v1/candidates`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: createCandidateDto,
+    signal,
+  });
+};
+
+export const getCreateCandidateMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCandidate>>,
+    TError,
+    { data: CreateCandidateDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCandidate>>,
+  TError,
+  { data: CreateCandidateDto },
+  TContext
+> => {
+  const mutationKey = ["createCandidate"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCandidate>>,
+    { data: CreateCandidateDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createCandidate(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCandidateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCandidate>>
+>;
+export type CreateCandidateMutationBody = CreateCandidateDto;
+export type CreateCandidateMutationError = ApiErrorDto;
+
+/**
+ * @summary Create candidate in ERP with durable requestId, initial status Подбор
+ */
+export const useCreateCandidate = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCandidate>>,
+    TError,
+    { data: CreateCandidateDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCandidate>>,
+  TError,
+  { data: CreateCandidateDto },
+  TContext
+> => {
+  const mutationOptions = getCreateCandidateMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
  * @summary Candidate profile with all accessible live documents
  */
 export const getCandidateDetails = (
@@ -5884,6 +6182,1046 @@ export const useSubmitCandidateDocumentDirect = <
 
   return useMutation(mutationOptions);
 };
+
+/**
+ * @summary ERP managers
+ */
+export const listCandidateManagers = (
+  params?: ListCandidateManagersParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateReferencesDto>({
+    url: `/api/v1/candidates/references/managers`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListCandidateManagersQueryKey = (
+  params?: ListCandidateManagersParams,
+) => {
+  return [
+    `/api/v1/candidates/references/managers`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListCandidateManagersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCandidateManagers>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCandidateManagersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateManagers>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListCandidateManagersQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCandidateManagers>>
+  > = ({ signal }) => listCandidateManagers(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCandidateManagers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCandidateManagersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCandidateManagers>>
+>;
+export type ListCandidateManagersQueryError = ApiErrorDto;
+
+/**
+ * @summary ERP managers
+ */
+
+export function useListCandidateManagers<
+  TData = Awaited<ReturnType<typeof listCandidateManagers>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCandidateManagersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateManagers>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCandidateManagersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary ERP positions
+ */
+export const listCandidatePositions = (
+  params?: ListCandidatePositionsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateReferencesDto>({
+    url: `/api/v1/candidates/references/positions`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListCandidatePositionsQueryKey = (
+  params?: ListCandidatePositionsParams,
+) => {
+  return [
+    `/api/v1/candidates/references/positions`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListCandidatePositionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCandidatePositions>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCandidatePositionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidatePositions>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListCandidatePositionsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCandidatePositions>>
+  > = ({ signal }) => listCandidatePositions(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCandidatePositions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCandidatePositionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCandidatePositions>>
+>;
+export type ListCandidatePositionsQueryError = ApiErrorDto;
+
+/**
+ * @summary ERP positions
+ */
+
+export function useListCandidatePositions<
+  TData = Awaited<ReturnType<typeof listCandidatePositions>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCandidatePositionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidatePositions>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCandidatePositionsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary ERP projects
+ */
+export const listCandidateProjects = (
+  params?: ListCandidateProjectsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateReferencesDto>({
+    url: `/api/v1/candidates/references/projects`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListCandidateProjectsQueryKey = (
+  params?: ListCandidateProjectsParams,
+) => {
+  return [
+    `/api/v1/candidates/references/projects`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListCandidateProjectsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCandidateProjects>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCandidateProjectsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateProjects>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListCandidateProjectsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCandidateProjects>>
+  > = ({ signal }) => listCandidateProjects(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCandidateProjects>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCandidateProjectsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCandidateProjects>>
+>;
+export type ListCandidateProjectsQueryError = ApiErrorDto;
+
+/**
+ * @summary ERP projects
+ */
+
+export function useListCandidateProjects<
+  TData = Awaited<ReturnType<typeof listCandidateProjects>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCandidateProjectsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateProjects>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCandidateProjectsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary All ERP candidate statuses and business transition requirements
+ */
+export const listCandidateStatuses = (signal?: AbortSignal) => {
+  return customInstance<CandidateReferencesDto>({
+    url: `/api/v1/candidates/references/statuses`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListCandidateStatusesQueryKey = () => {
+  return [`/api/v1/candidates/references/statuses`] as const;
+};
+
+export const getListCandidateStatusesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCandidateStatuses>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCandidateStatuses>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCandidateStatusesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCandidateStatuses>>
+  > = ({ signal }) => listCandidateStatuses(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCandidateStatuses>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCandidateStatusesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCandidateStatuses>>
+>;
+export type ListCandidateStatusesQueryError = ApiErrorDto;
+
+/**
+ * @summary All ERP candidate statuses and business transition requirements
+ */
+
+export function useListCandidateStatuses<
+  TData = Awaited<ReturnType<typeof listCandidateStatuses>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCandidateStatuses>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCandidateStatusesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Explicit ERP physical person selection, search requires 3 characters
+ */
+export const searchCandidatePersons = (
+  params?: SearchCandidatePersonsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateReferencesDto>({
+    url: `/api/v1/candidates/references/persons`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getSearchCandidatePersonsQueryKey = (
+  params?: SearchCandidatePersonsParams,
+) => {
+  return [
+    `/api/v1/candidates/references/persons`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getSearchCandidatePersonsQueryOptions = <
+  TData = Awaited<ReturnType<typeof searchCandidatePersons>>,
+  TError = ApiErrorDto,
+>(
+  params?: SearchCandidatePersonsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchCandidatePersons>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getSearchCandidatePersonsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof searchCandidatePersons>>
+  > = ({ signal }) => searchCandidatePersons(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof searchCandidatePersons>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type SearchCandidatePersonsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof searchCandidatePersons>>
+>;
+export type SearchCandidatePersonsQueryError = ApiErrorDto;
+
+/**
+ * @summary Explicit ERP physical person selection, search requires 3 characters
+ */
+
+export function useSearchCandidatePersons<
+  TData = Awaited<ReturnType<typeof searchCandidatePersons>>,
+  TError = ApiErrorDto,
+>(
+  params?: SearchCandidatePersonsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchCandidatePersons>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getSearchCandidatePersonsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Confirmed ERP candidate card and status history
+ */
+export const getCandidateWorkspace = (
+  candidateId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateWorkspaceDto>({
+    url: `/api/v1/candidates/${candidateId}/workspace`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCandidateWorkspaceQueryKey = (candidateId: string) => {
+  return [`/api/v1/candidates/${candidateId}/workspace`] as const;
+};
+
+export const getGetCandidateWorkspaceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateWorkspace>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateWorkspace>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidateWorkspaceQueryKey(candidateId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateWorkspace>>
+  > = ({ signal }) => getCandidateWorkspace(candidateId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateWorkspace>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateWorkspaceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateWorkspace>>
+>;
+export type GetCandidateWorkspaceQueryError = ApiErrorDto;
+
+/**
+ * @summary Confirmed ERP candidate card and status history
+ */
+
+export function useGetCandidateWorkspace<
+  TData = Awaited<ReturnType<typeof getCandidateWorkspace>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateWorkspace>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateWorkspaceQueryOptions(
+    candidateId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Patch editable candidate fields through ERP business logic
+ */
+export const updateCandidateWorkspace = (
+  candidateId: string,
+  updateCandidateDto: UpdateCandidateDto,
+) => {
+  return customInstance<CandidateWorkspaceDto>({
+    url: `/api/v1/candidates/${candidateId}/workspace`,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    data: updateCandidateDto,
+  });
+};
+
+export const getUpdateCandidateWorkspaceMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCandidateWorkspace>>,
+    TError,
+    { candidateId: string; data: UpdateCandidateDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateCandidateWorkspace>>,
+  TError,
+  { candidateId: string; data: UpdateCandidateDto },
+  TContext
+> => {
+  const mutationKey = ["updateCandidateWorkspace"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateCandidateWorkspace>>,
+    { candidateId: string; data: UpdateCandidateDto }
+  > = (props) => {
+    const { candidateId, data } = props ?? {};
+
+    return updateCandidateWorkspace(candidateId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateCandidateWorkspaceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateCandidateWorkspace>>
+>;
+export type UpdateCandidateWorkspaceMutationBody = UpdateCandidateDto;
+export type UpdateCandidateWorkspaceMutationError = ApiErrorDto;
+
+/**
+ * @summary Patch editable candidate fields through ERP business logic
+ */
+export const useUpdateCandidateWorkspace = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCandidateWorkspace>>,
+    TError,
+    { candidateId: string; data: UpdateCandidateDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateCandidateWorkspace>>,
+  TError,
+  { candidateId: string; data: UpdateCandidateDto },
+  TContext
+> => {
+  const mutationOptions = getUpdateCandidateWorkspaceMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary ERP status transition and optional comment
+ */
+export const changeCandidateStatus = (
+  candidateId: string,
+  candidateStatusRequestDto: CandidateStatusRequestDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateWorkspaceDto>({
+    url: `/api/v1/candidates/${candidateId}/status`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: candidateStatusRequestDto,
+    signal,
+  });
+};
+
+export const getChangeCandidateStatusMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof changeCandidateStatus>>,
+    TError,
+    { candidateId: string; data: CandidateStatusRequestDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof changeCandidateStatus>>,
+  TError,
+  { candidateId: string; data: CandidateStatusRequestDto },
+  TContext
+> => {
+  const mutationKey = ["changeCandidateStatus"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof changeCandidateStatus>>,
+    { candidateId: string; data: CandidateStatusRequestDto }
+  > = (props) => {
+    const { candidateId, data } = props ?? {};
+
+    return changeCandidateStatus(candidateId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ChangeCandidateStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof changeCandidateStatus>>
+>;
+export type ChangeCandidateStatusMutationBody = CandidateStatusRequestDto;
+export type ChangeCandidateStatusMutationError = ApiErrorDto;
+
+/**
+ * @summary ERP status transition and optional comment
+ */
+export const useChangeCandidateStatus = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof changeCandidateStatus>>,
+    TError,
+    { candidateId: string; data: CandidateStatusRequestDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof changeCandidateStatus>>,
+  TError,
+  { candidateId: string; data: CandidateStatusRequestDto },
+  TContext
+> => {
+  const mutationOptions = getChangeCandidateStatusMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Confirm existing physical person for current cycle, without employment admission
+ */
+export const linkCandidatePerson = (
+  candidateId: string,
+  candidatePersonLinkDto: CandidatePersonLinkDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateWorkspaceDto>({
+    url: `/api/v1/candidates/${candidateId}/person-link`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: candidatePersonLinkDto,
+    signal,
+  });
+};
+
+export const getLinkCandidatePersonMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof linkCandidatePerson>>,
+    TError,
+    { candidateId: string; data: CandidatePersonLinkDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof linkCandidatePerson>>,
+  TError,
+  { candidateId: string; data: CandidatePersonLinkDto },
+  TContext
+> => {
+  const mutationKey = ["linkCandidatePerson"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof linkCandidatePerson>>,
+    { candidateId: string; data: CandidatePersonLinkDto }
+  > = (props) => {
+    const { candidateId, data } = props ?? {};
+
+    return linkCandidatePerson(candidateId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LinkCandidatePersonMutationResult = NonNullable<
+  Awaited<ReturnType<typeof linkCandidatePerson>>
+>;
+export type LinkCandidatePersonMutationBody = CandidatePersonLinkDto;
+export type LinkCandidatePersonMutationError = ApiErrorDto;
+
+/**
+ * @summary Confirm existing physical person for current cycle, without employment admission
+ */
+export const useLinkCandidatePerson = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof linkCandidatePerson>>,
+    TError,
+    { candidateId: string; data: CandidatePersonLinkDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof linkCandidatePerson>>,
+  TError,
+  { candidateId: string; data: CandidatePersonLinkDto },
+  TContext
+> => {
+  const mutationOptions = getLinkCandidatePersonMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary All available linked ERP person documents, requiring cycle-specific recheck
+ */
+export const listCandidatePreviousDocuments = (
+  candidateId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidatePreviousDocumentsDto>({
+    url: `/api/v1/candidates/${candidateId}/previous-documents`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListCandidatePreviousDocumentsQueryKey = (
+  candidateId: string,
+) => {
+  return [`/api/v1/candidates/${candidateId}/previous-documents`] as const;
+};
+
+export const getListCandidatePreviousDocumentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCandidatePreviousDocuments>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidatePreviousDocuments>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListCandidatePreviousDocumentsQueryKey(candidateId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCandidatePreviousDocuments>>
+  > = ({ signal }) => listCandidatePreviousDocuments(candidateId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCandidatePreviousDocuments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCandidatePreviousDocumentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCandidatePreviousDocuments>>
+>;
+export type ListCandidatePreviousDocumentsQueryError = ApiErrorDto;
+
+/**
+ * @summary All available linked ERP person documents, requiring cycle-specific recheck
+ */
+
+export function useListCandidatePreviousDocuments<
+  TData = Awaited<ReturnType<typeof listCandidatePreviousDocuments>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidatePreviousDocuments>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCandidatePreviousDocumentsQueryOptions(
+    candidateId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Save review for current admission cycle without changing historical ERP decisions
+ */
+export const recheckCandidatePreviousDocument = (
+  candidateId: string,
+  documentId: string,
+  candidateRecheckRequestDto: CandidateRecheckRequestDto,
+) => {
+  return customInstance<CandidatePreviousDocumentsDto>({
+    url: `/api/v1/candidates/${candidateId}/previous-documents/${documentId}`,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    data: candidateRecheckRequestDto,
+  });
+};
+
+export const getRecheckCandidatePreviousDocumentMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recheckCandidatePreviousDocument>>,
+    TError,
+    {
+      candidateId: string;
+      documentId: string;
+      data: CandidateRecheckRequestDto;
+    },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof recheckCandidatePreviousDocument>>,
+  TError,
+  { candidateId: string; documentId: string; data: CandidateRecheckRequestDto },
+  TContext
+> => {
+  const mutationKey = ["recheckCandidatePreviousDocument"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof recheckCandidatePreviousDocument>>,
+    {
+      candidateId: string;
+      documentId: string;
+      data: CandidateRecheckRequestDto;
+    }
+  > = (props) => {
+    const { candidateId, documentId, data } = props ?? {};
+
+    return recheckCandidatePreviousDocument(candidateId, documentId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RecheckCandidatePreviousDocumentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof recheckCandidatePreviousDocument>>
+>;
+export type RecheckCandidatePreviousDocumentMutationBody =
+  CandidateRecheckRequestDto;
+export type RecheckCandidatePreviousDocumentMutationError = ApiErrorDto;
+
+/**
+ * @summary Save review for current admission cycle without changing historical ERP decisions
+ */
+export const useRecheckCandidatePreviousDocument = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recheckCandidatePreviousDocument>>,
+    TError,
+    {
+      candidateId: string;
+      documentId: string;
+      data: CandidateRecheckRequestDto;
+    },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof recheckCandidatePreviousDocument>>,
+  TError,
+  { candidateId: string; documentId: string; data: CandidateRecheckRequestDto },
+  TContext
+> => {
+  const mutationOptions =
+    getRecheckCandidatePreviousDocumentMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Authorized binary original from linked ERP physical person
+ */
+export const getCandidatePreviousDocumentOriginal = (
+  candidateId: string,
+  documentId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<Blob>({
+    url: `/api/v1/candidates/${candidateId}/previous-documents/${documentId}/original`,
+    method: "GET",
+    responseType: "blob",
+    signal,
+  });
+};
+
+export const getGetCandidatePreviousDocumentOriginalQueryKey = (
+  candidateId: string,
+  documentId: string,
+) => {
+  return [
+    `/api/v1/candidates/${candidateId}/previous-documents/${documentId}/original`,
+  ] as const;
+};
+
+export const getGetCandidatePreviousDocumentOriginalQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidatePreviousDocumentOriginal>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  documentId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidatePreviousDocumentOriginal>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetCandidatePreviousDocumentOriginalQueryKey(candidateId, documentId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidatePreviousDocumentOriginal>>
+  > = ({ signal }) =>
+    getCandidatePreviousDocumentOriginal(candidateId, documentId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(candidateId && documentId),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidatePreviousDocumentOriginal>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidatePreviousDocumentOriginalQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidatePreviousDocumentOriginal>>
+>;
+export type GetCandidatePreviousDocumentOriginalQueryError = ApiErrorDto;
+
+/**
+ * @summary Authorized binary original from linked ERP physical person
+ */
+
+export function useGetCandidatePreviousDocumentOriginal<
+  TData = Awaited<ReturnType<typeof getCandidatePreviousDocumentOriginal>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  documentId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidatePreviousDocumentOriginal>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidatePreviousDocumentOriginalQueryOptions(
+    candidateId,
+    documentId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
 
 /**
  * @summary All accessible candidates, including candidates without documents

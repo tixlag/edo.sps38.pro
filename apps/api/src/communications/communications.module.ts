@@ -1,3 +1,6 @@
+import { CandidateWorkspaceService } from "./candidate-workspace.service";
+import { CandidateWorkspaceController } from "./candidate-workspace.controller";
+import { ErpWorkspaceClient } from "../documents/erp-workspace.client";
 import { Module } from "@nestjs/common";
 import { PrismaModule } from "../prisma/prisma.module";
 import { AuditModule } from "../audit/audit.module";
@@ -15,8 +18,14 @@ import { ErpCommunicationsClient } from "./erp-communications.client";
 import { LkChatClient } from "./lk-chat.client";
 @Module({
   imports: [PrismaModule, AuditModule, StorageModule, RedisModule],
-  controllers: [CommunicationsController, CommunicationEventsController],
+  controllers: [
+    CandidateWorkspaceController,
+    CommunicationsController,
+    CommunicationEventsController,
+  ],
   providers: [
+    CandidateWorkspaceService,
+    ErpWorkspaceClient,
     CommunicationsService,
     CandidateCatalogService,
     CommunicationEventsService,

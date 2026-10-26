@@ -2,8 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfigService } from "@nestjs/config";
 import { ErpCandidateClient } from "../src/documents/erp-candidate.client";
 import { CandidateContextService } from "../src/documents/candidate-context.service";
-import { CandidateDocumentsService } from "../src/documents/candidate-documents.service";
-import { LkCandidateIdentityService } from "../src/documents/lk-candidate-identity.service";
 
 // Production Candidate envelope, with synthetic personal data only.
 const productionCard = {
@@ -279,91 +277,18 @@ function setup() {
   return { identity, erp, cache, service };
 }
 describe("EDO candidate context", () => {
-  it("serves own forms after the real LK identity adapter returns 404, with no local employee projection", async () => {
-    const requests: URL[] = [];
-    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
-      const url = new URL(input instanceof Request ? input.url : String(input));
-      requests.push(url);
-      if (url.hostname === "lk.example") {
-        expect(url.pathname).toBe(
-          "/api/internal/edo/v1/employees/ER-0012211/candidate-chat",
-        );
-        return Response.json({ message: "Not found" }, { status: 404 });
-      }
-      expect(url.searchParams.get("code1c")).toBe("ER-0012211");
-      expect(url.searchParams.has("code_1c")).toBe(false);
-      return Response.json(productionCard);
-    });
-    const identity = new LkCandidateIdentityService(
-      new ConfigService({
-        LK_BASE_URL: "https://lk.example",
-        LK_EDO_INTERNAL_TOKEN: "test-token",
-      }),
-    );
-    const { cache } = setup();
-    // No Prisma dependency/projection is supplied: this path must use Candidate.
-    const contexts = new CandidateContextService(
-      identity,
-      new ErpCandidateClient(config),
-      cache as never,
-    );
-    const catalog = { list: vi.fn(async () => ({ items: [] })) };
-    const service = new CandidateDocumentsService(
-      contexts,
-      identity,
-      catalog as never,
-      null as never,
-      null as never,
-      null as never,
-    );
-    expect(await service.ownForms("ER-0012211")).toMatchObject({
-      context: {
-        chatUuid: null,
-        code1c: "ER-0012211",
-        positionCode1c: "000000173",
-        citizenship: "ru",
-        projectCode1c: "P1",
-        candidateSnapshot: { name: "Тестовый Кандидат" },
-      },
-      catalog: { items: [] },
-    });
-    expect(catalog.list).toHaveBeenCalledWith("000000173", "ru");
-    expect(requests.map((url) => url.hostname)).toEqual([
-      "lk.example",
-      "erp.example",
-    ]);
-  });
-  it("gets a chatless IG employee profile from Candidate, without querying the LK projection", async () => {
-    const { service, erp } = setup();
-    Object.assign(erp, {
-      findByEmployeeCode: vi.fn(async () => ({
-        ...card,
-        uuid: null,
-        code1C: "000123",
-        citizenship: "uz",
-      })),
-    });
-    expect(await service.forEmployee("000123")).toMatchObject({
-      chatUuid: null,
-      code1c: "000123",
-      citizenship: "uz",
-      positionCode1c: "000491",
-    });
-  });
-
-  it("does not let a returned chat uuid attach another employee's documents", async () => {
+  it("propagates an ambiguous current ERP identity without consulting LK", async () => {
     const { service, erp, identity } = setup();
     Object.assign(erp, {
-      findByEmployeeCode: vi.fn(async () => ({
-        ...card,
-        code1C: "000123",
-        citizenship: "uz",
-      })),
+      resolveCurrentIdentity: vi.fn(async () => {
+        throw new Error("CURRENT_CANDIDATE_CONFIRMATION_REQUIRED");
+      }),
     });
-    identity.byUuid.mockResolvedValue({ chatUuid, code1c: "other" });
-    await expect(service.forEmployee("000123")).rejects.toMatchObject({
-      code: "LK_CONTRACT_ERROR",
-    });
+    await expect(service.forEmployee("000123")).rejects.toThrow(
+      "CURRENT_CANDIDATE_CONFIRMATION_REQUIRED",
+    );
+    expect(identity.byEmployee).not.toHaveBeenCalled();
+    expect(identity.byUuid).not.toHaveBeenCalled();
   });
   it("combines ERP profile with the authoritative LK employee link and rechecks LK on cache hits", async () => {
     const { service, identity, erp } = setup();

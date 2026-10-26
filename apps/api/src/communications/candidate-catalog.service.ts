@@ -100,6 +100,7 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
             await candidateIdentityTransaction(this.prisma, async (tx) => {
               const existing = await resolveCandidateIdentity(tx, {
                 erpUid: row.erpUid,
+                reviewGroup: "RU",
                 chatUuid: row.chatUuid,
                 identityKey: row.chatUuid
                   ? `chat:${row.chatUuid}`
@@ -113,6 +114,19 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
               const data = {
                 erpUid: row.erpUid,
                 erpDeleted: row.deleted,
+                ...(row.statusId !== undefined
+                  ? { statusId: row.statusId }
+                  : {}),
+                ...(row.statusName !== undefined
+                  ? { statusName: row.statusName }
+                  : {}),
+                ...(row.managerId !== undefined
+                  ? { managerId: row.managerId }
+                  : {}),
+                ...(row.managerName !== undefined
+                  ? { managerName: row.managerName }
+                  : {}),
+                reviewGroup: "RU" as const,
                 chatUuid: row.chatUuid ?? existing?.chatUuid ?? null,
                 fullName: row.fullName || null,
                 projectCode: row.projectCode,
@@ -191,7 +205,10 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
       where: {
         AND: [
           this.access.candidateWhere(principal),
-          { erpDeleted: false },
+          { erpDeleted: false, reviewGroup: "RU" },
+          ...(query.statusId ? [{ statusId: query.statusId }] : []),
+          ...(query.managerId ? [{ managerId: query.managerId }] : []),
+          ...(query.projectCode ? [{ projectCode: query.projectCode }] : []),
           ...(query.q?.trim()
             ? [{ fullName: { contains: query.q.trim() } }]
             : []),
@@ -214,12 +231,20 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
         ],
       },
       orderBy: [{ fullName: "asc" }, { id: "asc" }],
+      include: { documents: { select: { status: true } } },
       take: limit + 1,
     });
     const page = items.slice(0, limit),
       last = page.at(-1);
     return {
-      items: page.map((row) => toCandidateProfile(row)!),
+      items: page.map(
+        (row) =>
+          toCandidateProfile(row, {
+            approvedDocuments: row.documents.filter(
+              (d) => d.status === "APPROVED",
+            ).length,
+          })!,
+      ),
       nextCursor:
         items.length > limit && last
           ? Buffer.from(

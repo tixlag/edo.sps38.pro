@@ -21,37 +21,23 @@ const principal = (rules: Record<string, string[]>): AuthPrincipal => ({
 
 describe("review group isolation", () => {
   it.each([{ "20009": [] }, { "20002": [], "20011": [] }])(
-    "does not add an empty relation filter when both groups are granted: %j",
+    "both reviewers can mutate confirmed groups but unclassified history stays blocked: %j",
     (rules) => {
       const access = new DocumentAccessService(null as never);
-      expect(access.documentReviewWhere(principal(rules))).toEqual({});
-      const scoped = principal({ ...rules, "20007": ["98"] });
-      delete scoped.accessRules["20008"];
-      // FULL_ACCESS still implies all locations; a RU+IG reviewer keeps 20007.
-      expect(access.documentReviewWhere(scoped)).toEqual(
-        access.documentWhere(scoped),
-      );
+      expect(access.documentReviewWhere(principal(rules))).toEqual({
+        reviewGroup: { in: ["RU", "IG"] },
+      });
     },
   );
-
   it.each([
-    [{ chatUuid: "chat", citizenship: "uz" }, "RU"],
-    [{ chatUuid: null, citizenship: "ru" }, "RU"],
-    [{ chatUuid: null, citizenship: "RU" }, "RU"],
-    [{ chatUuid: null, citizenship: "uz" }, "IG"],
-    [{ chatUuid: null, citizenship: null }, "IG"],
-  ] as const)("classifies %j as %s", (candidate, group) => {
-    expect(candidateReviewGroup(candidate)).toBe(group);
-  });
-
-  it("keeps NULL citizenship in IG and requires both no chat and no RU citizenship", () => {
-    expect(reviewGroupWhere("IG")).toEqual({
-      AND: [
-        { chatUuid: null },
-        { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
-      ],
-    });
-  });
+    [{ reviewGroup: "RU", chatUuid: null, citizenship: "uz" }, "RU"],
+    [{ reviewGroup: "IG", chatUuid: "chat", citizenship: "ru" }, "IG"],
+    [{ chatUuid: "chat", citizenship: "ru" }, null],
+  ] as const)("uses explicit process ownership %j", (candidate, group) =>
+    expect(candidateReviewGroup(candidate)).toBe(group),
+  );
+  it("filters explicit workflow ownership", () =>
+    expect(reviewGroupWhere("IG")).toEqual({ reviewGroup: "IG" }));
 
   it("blocks a RU reviewer from requesting the IG queue before any query", async () => {
     const prisma = { candidate: { findMany: vi.fn() } };
@@ -69,55 +55,24 @@ describe("review group isolation", () => {
     expect(prisma.candidate.findMany).not.toHaveBeenCalled();
   });
 
-  it("intersects the candidate group with location access instead of allowing an employee relation to bypass it", () => {
+  it("review access ignores location scope but retains direction", () => {
     const access = new DocumentAccessService(null as never);
     const ru = principal({ "20002": [], "20007": ["98"] });
     delete ru.accessRules["20008"];
-    expect(access.documentWhere(ru)).toEqual({
-      AND: [
-        {
-          OR: [
-            { candidate: { locationId: { in: [98] } } },
-            { employee: { locationId: { in: [98] } } },
-          ],
-        },
-        { OR: [{ candidate: reviewGroupWhere("RU") }, { candidateId: null }] },
-      ],
-    });
+    expect(access.documentWhere(ru)).toEqual({ reviewGroup: { in: ["RU"] } });
+    expect(access.candidateWhere(ru)).toEqual({ reviewGroup: { in: ["RU"] } });
   });
-
-  it("allows both groups for full access and audit, while an IG reviewer gets only IG candidates", () => {
+  it("full access can diagnose unknown history while audit alone has no mutation", () => {
     const access = new DocumentAccessService(null as never);
     expect(access.candidateWhere(principal({ "20009": [] }))).toEqual({});
-    expect(access.candidateWhere(principal({ "20005": [] }))).toEqual({});
-    expect(access.candidateWhere(principal({ "20011": [] }))).toEqual(
-      reviewGroupWhere("IG"),
-    );
-  });
-
-  it("does not let audit plus RU rights grant IG mutation access", () => {
-    const access = new DocumentAccessService(null as never);
-    const reviewer = principal({ "20002": [], "20005": [] });
-    expect(access.candidateWhere(reviewer)).toEqual({});
-    expect(access.documentReviewWhere(reviewer)).toEqual({
-      AND: [
-        {},
-        {
-          OR: [{ candidate: reviewGroupWhere("RU") }, { candidateId: null }],
-        },
-      ],
+    expect(access.documentReviewWhere(principal({ "20005": [] }))).toEqual({
+      reviewGroup: { in: [] },
     });
-  });
-
-  it("does not expose legacy employee-only documents to an IG reviewer", () => {
-    const access = new DocumentAccessService(null as never);
+    expect(
+      access.documentReviewWhere(principal({ "20002": [], "20005": [] })),
+    ).toEqual({ reviewGroup: { in: ["RU"] } });
     expect(access.documentWhere(principal({ "20011": [] }))).toEqual({
-      AND: [
-        {},
-        {
-          OR: [{ candidate: reviewGroupWhere("IG") }],
-        },
-      ],
+      reviewGroup: { in: ["IG"] },
     });
   });
 
@@ -126,8 +81,8 @@ describe("review group isolation", () => {
     const audit = new AuditLogsService({ $queryRaw: query } as never);
     await audit.list(principal({ "20011": [] }), { mine: true });
     const sql = query.mock.calls[0][0] as { sql: string };
-    expect(sql.sql).toContain("d.candidateId IS NOT NULL");
-    expect(sql.sql).toContain("c.chatUuid IS NULL");
+    expect(sql.sql).toContain("d.reviewGroup IN");
+    expect(sql.sql).not.toContain("c.chatUuid IS NULL");
   });
 
   it("applies the same requested-group guard to facets, selectors and the legacy queue", async () => {

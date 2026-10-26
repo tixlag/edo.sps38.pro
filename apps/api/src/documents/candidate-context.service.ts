@@ -1,8 +1,15 @@
-import { Injectable } from "@nestjs/common";
+import { snapshotUpdateInput } from "./candidate-profile";
+import { AuditService } from "../audit/audit.service";
+import {
+  candidateIdentityTransaction,
+  resolveCandidateIdentity,
+} from "./candidate-identity";
+import { ConflictException, Injectable } from "@nestjs/common";
 import {
   CandidateDocumentError,
   withinDocumentDeadline,
 } from "./candidate-document.error";
+import { CandidateProfileField as Field } from "./dto/candidate-error.dto";
 import { CandidateDocumentErrorCode as Code } from "./dto/candidate-error.dto";
 import type { EdoCandidateChat } from "@edo/lk-client";
 import { randomUUID } from "node:crypto";
@@ -25,6 +32,7 @@ export class CandidateContextService {
     private readonly erp: ErpCandidateClient,
     private readonly cache: CandidateCardCache,
     private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
   ) {}
 
   async context(chatUuid: string, signal?: AbortSignal) {
@@ -68,7 +76,7 @@ export class CandidateContextService {
       citizenship: snapshot.citizenship!,
       projectCode1c:
         (snapshot.project as { code?: string } | undefined)?.code ?? null,
-      candidateSnapshot: snapshot,
+      candidateSnapshot: { ...snapshot, reviewGroup: "RU" as const },
     };
   }
 
@@ -77,48 +85,125 @@ export class CandidateContextService {
     code1c: string,
     signal?: AbortSignal,
   ): Promise<CandidateDocumentContextDto> {
-    const key = `code_1c:${code1c}`;
-    let request = this.pending.get(key);
-    if (!request) {
-      request = this.card(key, AbortSignal.timeout(19_000)).finally(() =>
-        this.pending.delete(key),
-      );
-      this.pending.set(key, request);
-    }
-    let snapshot: CandidateSnapshotDto;
-    try {
-      snapshot = signal
-        ? await withinDocumentDeadline(request, signal)
-        : await request;
-    } catch (error) {
-      if (signal?.aborted) throw signal.reason;
-      if (
-        error instanceof Error &&
-        ["AbortError", "TimeoutError"].includes(error.name)
-      )
-        throw new CandidateDocumentError(Code.ERP_TIMEOUT);
-      if (error instanceof ErpCandidateError)
-        throw new CandidateDocumentError(error.code, error.fields);
-      throw error;
-    }
-    // A returned uuid is a chat identifier, but only LK can authorize its ownership.
-    let chatUuid: string | null = null;
-    if (snapshot.uuid) {
-      const identity = await this.identity.byUuid(snapshot.uuid, signal);
-      if (identity.code1c !== code1c)
-        throw new CandidateDocumentError(Code.LK_CONTRACT_ERROR);
-      chatUuid = identity.chatUuid;
-    }
+    // Always revalidate the current ERP cycle. Neither cached LK links nor a
+    // repeated employee code identify a historical admission cycle.
+    signal?.throwIfAborted();
+    const identity = await this.erp.resolveCurrentIdentity(code1c);
+    const snapshot = identity.erpUid
+      ? await this.erp.workspaceCard(identity.erpUid).then((card) => {
+          if (
+            card.erpUid !== identity.erpUid ||
+            (card.personUid && card.personUid !== identity.personUid) ||
+            (card.code1C && card.code1C !== code1c)
+          )
+            throw new ConflictException("ERP_CANDIDATE_IDENTITY_CHANGED");
+          if (!card.position?.code)
+            throw new CandidateDocumentError(
+              Code.CANDIDATE_PROFILE_INCOMPLETE,
+              [Field.POSITION_CODE],
+            );
+          return {
+            uuid: card.chatUuid,
+            erpUid: card.erpUid,
+            personUid: card.personUid ?? undefined,
+            fullName: card.fullName,
+            birthDate: card.birthDate,
+            citizenship: card.citizenship,
+            position: card.position,
+            project: card.project ?? undefined,
+            managerName: card.manager?.name,
+            reviewGroup: card.reviewGroup,
+          };
+        })
+      : await this.erp.findByEmployeeCode(code1c, signal);
+    const candidateSnapshot = {
+      ...snapshot,
+      reviewGroup: identity.reviewGroup,
+      ...(identity.erpUid ? { erpUid: identity.erpUid } : {}),
+      ...(identity.personUid ? { personUid: identity.personUid } : {}),
+    };
+    const candidate = await candidateIdentityTransaction(
+      this.prisma,
+      async (tx) => {
+        const identityKey = identity.erpUid
+          ? `erp:${identity.erpUid}`
+          : `person:${identity.personUid}`;
+        const before = await tx.candidate.findFirst({
+          where: {
+            OR: [
+              { identityKey },
+              ...(identity.erpUid ? [{ erpUid: identity.erpUid }] : []),
+              ...(identity.chatUuid ? [{ chatUuid: identity.chatUuid }] : []),
+            ],
+          },
+        });
+        const owner = await resolveCandidateIdentity(tx, {
+          identityKey,
+          code1c,
+          erpUid: identity.erpUid,
+          chatUuid: identity.chatUuid,
+          personUid: identity.personUid,
+          reviewGroup: identity.reviewGroup,
+        });
+        const profile = snapshotUpdateInput(candidateSnapshot);
+        const changed =
+          !before ||
+          before.code1c !== code1c ||
+          before.reviewGroup !== identity.reviewGroup ||
+          before.personUid !== identity.personUid ||
+          before.erpUid !== identity.erpUid ||
+          Object.entries(profile ?? {}).some(
+            ([key, value]) =>
+              key !== "profileSyncedAt" &&
+              JSON.stringify(before[key as keyof typeof before]) !==
+                JSON.stringify(value),
+          );
+        await tx.candidate.update({
+          where: { id: owner.id },
+          data: { code1c, ...profile },
+        });
+        const classified = identity.erpUid
+          ? await tx.document.updateMany({
+              where: { candidateId: owner.id, reviewGroup: null },
+              data: { reviewGroup: "RU" },
+            })
+          : { count: 0 };
+        if (changed || classified.count)
+          await this.audit.logInTransaction(tx, {
+            actorId: "verified-employee",
+            action: "CANDIDATE_LINKED",
+            entityType: "Candidate",
+            entityId: owner.id,
+            correlationId: "",
+            before: before
+              ? {
+                  code1c: before.code1c,
+                  reviewGroup: before.reviewGroup,
+                  personUid: before.personUid,
+                }
+              : null,
+            after: {
+              code1c,
+              reviewGroup: identity.reviewGroup,
+              personUid: identity.personUid,
+              classifiedDocuments: classified.count,
+            },
+          });
+        return owner;
+      },
+    );
     return {
-      chatUuid,
+      candidateId: candidate.id,
+      chatUuid: identity.chatUuid,
       code1c,
       positionCode1c: (snapshot.position as { code: string }).code,
       citizenship: snapshot.citizenship!,
       projectCode1c:
         (snapshot.project as { code?: string } | undefined)?.code ?? null,
-      candidateSnapshot: snapshot,
+      candidateSnapshot,
     };
   }
+
   private async card(
     uuid: string,
     signal?: AbortSignal,

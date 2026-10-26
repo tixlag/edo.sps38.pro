@@ -95,7 +95,7 @@ describe("reviewDocumentFacets scope", () => {
     expect(documentFind).toHaveBeenCalledWith({
       where: {
         ...access.documentWhere(scoped20007),
-        candidate: { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] },
+        reviewGroup: "RU",
         currentVersion: { gt: 0 },
         candidateId: { not: null },
       },
@@ -238,7 +238,7 @@ describe("reviewCandidates", () => {
     expect(documentFind).toHaveBeenCalledWith({
       where: {
         ...access.documentWhere(scoped20007),
-        candidate: { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] },
+        reviewGroup: "RU",
         currentVersion: { gt: 0 },
         candidateId: { not: null },
       },
@@ -338,6 +338,7 @@ describe("review queue exact filters", () => {
     });
     expect(findMany.mock.calls[0][0].where).toMatchObject({
       ...access.documentWhere(scoped20007),
+      reviewGroup: "RU",
       candidate: { AND: expect.arrayContaining([{ id: "c1" }]) },
     });
     const and = findMany.mock.calls[0][0].where.candidate.AND as unknown[];

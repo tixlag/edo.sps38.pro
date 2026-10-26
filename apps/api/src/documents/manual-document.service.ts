@@ -21,7 +21,10 @@ import {
   validateFields,
 } from "./document-contract";
 import { snapshotUpdateInput } from "./candidate-profile";
-import { resolveCandidateIdentity } from "./candidate-identity";
+import {
+  candidateIdentityTransaction,
+  resolveCandidateIdentity,
+} from "./candidate-identity";
 import { ErpCandidateClient } from "./erp-candidate.client";
 import type { StagedUpload } from "./document-upload.service";
 
@@ -53,7 +56,11 @@ export class ManualDocumentService {
     const fingerprintSnapshot = metadata.candidateSnapshot
       ? { ...metadata.candidateSnapshot }
       : undefined;
-    if (fingerprintSnapshot) delete fingerprintSnapshot.erpUid;
+    if (fingerprintSnapshot) {
+      delete fingerprintSnapshot.erpUid;
+      delete fingerprintSnapshot.personUid;
+      delete fingerprintSnapshot.reviewGroup;
+    }
     const fingerprint = createHash("sha256")
       .update(
         JSON.stringify({
@@ -83,37 +90,79 @@ export class ManualDocumentService {
       },
       include: { version: { include: { document: true } } },
     });
+    if (!this.erp)
+      throw new ServiceUnavailableException("CANDIDATE_IDENTITY_UNAVAILABLE");
+    let erpUid: string | undefined, personUid: string | undefined;
+    let reviewGroup: "RU" | "IG";
+    let canonicalChat = metadata.chat_uuid;
+    if (metadata.code_1c) {
+      const identity = await this.erp.resolveCurrentIdentity(metadata.code_1c);
+      erpUid = identity.erpUid ?? undefined;
+      personUid = identity.personUid ?? undefined;
+      reviewGroup = identity.reviewGroup;
+      if (metadata.chat_uuid && metadata.chat_uuid !== identity.chatUuid)
+        throw new ConflictException("CANDIDATE_IDENTITY_CONFLICT");
+      canonicalChat = identity.chatUuid ?? undefined;
+    } else {
+      erpUid = await this.erp.resolveIdentityByChat(metadata.chat_uuid!);
+      if (!erpUid)
+        throw new ServiceUnavailableException("CANDIDATE_IDENTITY_UNAVAILABLE");
+      reviewGroup = "RU"; // ERP candidate business object, not inferred from chat presence.
+    }
+    const canonicalKey = erpUid ? `erp:${erpUid}` : `person:${personUid}`;
     if (previous) {
       const result = this.reuse(previous, fingerprint);
-      const erpUid = metadata.candidateSnapshot?.erpUid;
-      if (erpUid) {
+      const expectedErpUid = erpUid;
+      if (expectedErpUid) {
         const owners = await this.prisma.candidate.findMany({
           where: {
-            OR: [{ id: result.candidateId }, { erpUid }],
+            OR: [{ id: result.candidateId }, { erpUid: expectedErpUid }],
           },
         });
         if (
           owners.length !== 1 ||
-          (owners[0].erpUid && owners[0].erpUid !== erpUid)
+          (owners[0].erpUid && owners[0].erpUid !== expectedErpUid)
         )
           throw new ConflictException("CANDIDATE_IDENTITY_CONFLICT");
       }
+      await candidateIdentityTransaction(this.prisma, async (tx) => {
+        const before = await tx.candidate.findUniqueOrThrow({
+          where: { id: result.candidateId },
+        });
+        const previousOwner = await resolveCandidateIdentity(tx, {
+          identityKey: canonicalKey,
+          expectedId: result.candidateId,
+          erpUid,
+          chatUuid: canonicalChat,
+          personUid,
+          reviewGroup,
+          code1c: metadata.code_1c,
+        });
+        if (
+          previousOwner.code1c &&
+          metadata.code_1c &&
+          previousOwner.code1c !== metadata.code_1c
+        )
+          throw new ConflictException("CANDIDATE_IDENTITY_CHANGED");
+        if (
+          before.erpUid !== previousOwner.erpUid ||
+          before.personUid !== previousOwner.personUid ||
+          before.reviewGroup !== previousOwner.reviewGroup
+        )
+          await this.audit.logInTransaction(tx, {
+            actorId: "lk-service",
+            action: "CANDIDATE_LINKED",
+            entityType: "Candidate",
+            entityId: previousOwner.id,
+            correlationId,
+            after: {
+              erpUid: previousOwner.erpUid,
+              personUid: previousOwner.personUid,
+              reviewGroup: previousOwner.reviewGroup,
+            },
+          });
+      });
       return result;
-    }
-    let erpUid = metadata.candidateSnapshot?.erpUid;
-    if (
-      !erpUid &&
-      metadata.chat_uuid &&
-      this.erp &&
-      !(await this.prisma.candidate.findUnique({
-        where: { chatUuid: metadata.chat_uuid },
-      }))
-    ) {
-      try {
-        erpUid = await this.erp.resolveIdentityByChat(metadata.chat_uuid);
-      } catch {
-        throw new ServiceUnavailableException("CANDIDATE_IDENTITY_UNAVAILABLE");
-      }
     }
     await this.catalog.ensure();
     const type = await this.prisma.documentType.findUnique({
@@ -159,6 +208,10 @@ export class ManualDocumentService {
       locationId,
       correlation,
       erpUid,
+      canonicalKey,
+      canonicalChat,
+      personUid,
+      reviewGroup,
     );
     if (reserved.reused) return this.reuse(reserved.submission, fingerprint);
     const signal = AbortSignal.timeout(120000);
@@ -266,6 +319,10 @@ export class ManualDocumentService {
     locationId: number | undefined,
     correlationId: string,
     erpUid?: string,
+    canonicalKey?: string,
+    canonicalChat?: string,
+    personUid?: string,
+    reviewGroup?: "RU" | "IG",
   ) {
     const metadata = upload.metadata!;
     for (let attempt = 0; ; attempt++) {
@@ -277,9 +334,12 @@ export class ManualDocumentService {
             // an empty one) never clear previously stored fields.
             const profile = snapshotUpdateInput(metadata.candidateSnapshot);
             const owner = await resolveCandidateIdentity(tx, {
-              identityKey,
-              chatUuid: metadata.chat_uuid,
+              identityKey: canonicalKey ?? identityKey,
+              chatUuid: canonicalChat,
               erpUid,
+              personUid,
+              reviewGroup,
+              code1c: metadata.code_1c,
             });
             if (profile)
               await tx.candidate.update({
@@ -341,9 +401,22 @@ export class ManualDocumentService {
               create: {
                 candidateId: owner.id,
                 documentTypeId: typeId,
+                reviewGroup,
                 currentVersion: 0,
               },
             });
+            if (doc.reviewGroup && doc.reviewGroup !== reviewGroup)
+              throw new ConflictException("DOCUMENT_PROCESS_CONFLICT");
+            if (!doc.reviewGroup) {
+              if (!erpUid || current.erpUid !== erpUid)
+                throw new ConflictException(
+                  "LEGACY_DOCUMENT_PROCESS_CONFIRMATION_REQUIRED",
+                );
+              await tx.document.update({
+                where: { id: doc.id },
+                data: { reviewGroup },
+              });
+            }
             await assertDocumentUploadAllowed(tx, doc);
             const last = await tx.documentVersion.aggregate({
               where: { documentId: doc.id },

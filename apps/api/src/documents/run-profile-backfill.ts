@@ -35,9 +35,13 @@ async function main() {
   const prisma = new PrismaService();
   const contexts = new CandidateContextService(
     new LkCandidateIdentityService(config),
-    new ErpCandidateClient(config),
+    new ErpCandidateClient(
+      config,
+      new (await import("./erp-workspace.client")).ErpWorkspaceClient(config),
+    ),
     new CandidateCardCache(redis),
     prisma,
+    new AuditService(prisma),
   );
   const loader = (uuid: string, signal: AbortSignal) =>
     contexts.context(uuid, signal);

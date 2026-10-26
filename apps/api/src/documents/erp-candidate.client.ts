@@ -1,3 +1,4 @@
+import { ErpWorkspaceClient } from "./erp-workspace.client";
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { z } from "zod";
@@ -107,7 +108,9 @@ export function normalizeErpCandidate(
     throw new ErpCandidateError(502, false);
   const result: Record<string, unknown> = {
     uuid: typeof returnedUuid === "string" ? returnedUuid.toLowerCase() : null,
-    ...(typeof row.erpUid === "string" ? { erpUid: row.erpUid.toLowerCase() } : {}),
+    ...(typeof row.erpUid === "string"
+      ? { erpUid: row.erpUid.toLowerCase() }
+      : {}),
     citizenship: citizenship.toLowerCase(),
   };
   for (const [key, max] of [
@@ -146,13 +149,26 @@ export function normalizeErpCandidate(
 
 @Injectable()
 export class ErpCandidateClient {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly workspace: ErpWorkspaceClient,
+  ) {}
+
+  resolveCurrentIdentity(code1c: string) {
+    return this.workspace.identity(code1c);
+  }
+  workspaceCard(erpUid: string) {
+    return this.workspace.card(erpUid);
+  }
 
   async findByChatUuid(
     chatUuid: string,
     signal?: AbortSignal,
   ): Promise<CandidateSnapshotDto> {
-    return normalizeErpCandidate(await this.requestRaw({ uuid: chatUuid }, signal), chatUuid);
+    return normalizeErpCandidate(
+      await this.requestRaw({ uuid: chatUuid }, signal),
+      chatUuid,
+    );
   }
 
   async resolveIdentityByChat(chatUuid: string): Promise<string | undefined> {
@@ -163,9 +179,13 @@ export class ErpCandidateClient {
     }
     const raw = await this.requestRaw({ uuid: chatUuid });
     const envelope = raw as { candidate?: unknown } | null;
-    const identity = z.object({ uuid: z.string().uuid(), erpUid: z.string().uuid() })
+    const identity = z
+      .object({ uuid: z.string().uuid(), erpUid: z.string().uuid() })
       .safeParse(envelope?.candidate ?? raw);
-    if (!identity.success || identity.data.uuid.toLowerCase() !== chatUuid.toLowerCase())
+    if (
+      !identity.success ||
+      identity.data.uuid.toLowerCase() !== chatUuid.toLowerCase()
+    )
       throw new ErpCandidateError(502, false);
     return identity.data.erpUid.toLowerCase();
   }
@@ -175,7 +195,11 @@ export class ErpCandidateClient {
     signal?: AbortSignal,
   ): Promise<CandidateSnapshotDto> {
     if (!/^\S{1,64}$/.test(code1c)) throw new ErpCandidateError(502, false);
-    return normalizeErpCandidate(await this.requestRaw({ code1c }, signal), undefined, code1c);
+    return normalizeErpCandidate(
+      await this.requestRaw({ code1c }, signal),
+      undefined,
+      code1c,
+    );
   }
 
   private async requestRaw(

@@ -370,3 +370,83 @@ describe("receipt identity", () => {
     expect(nextDeliveryAttempt(100, 0, () => 1).getTime()).toBe(3600000);
   });
 });
+
+describe("ERP v2 frozen business recipient receipts", () => {
+  it("matches RU candidate UID even when upload originally used chat", () => {
+    const recipient = {
+      candidateUid: receipt.candidateUid,
+      chatUid: metadata.chatUid,
+    };
+    expect(
+      validateErpReceipt(
+        receipt,
+        201,
+        deliveryId,
+        metadata.documentUid,
+        artifact,
+        recipient,
+      ),
+    ).toBe(true);
+    expect(
+      validateErpReceipt(
+        { ...receipt, candidateUid: randomUUID() },
+        201,
+        deliveryId,
+        metadata.documentUid,
+        artifact,
+        recipient,
+      ),
+    ).toBe(false);
+    expect(
+      validateErpReceipt(
+        { ...receipt, recipientType: "person", personUid: randomUUID() },
+        201,
+        deliveryId,
+        metadata.documentUid,
+        artifact,
+        recipient,
+      ),
+    ).toBe(false);
+  });
+  it("requires an exact IG person receipt without candidate or chat identifiers", () => {
+    const personUid = randomUUID();
+    const recipient = {
+      recipientType: "person" as const,
+      personUid,
+      code1c: "verified-code",
+    };
+    const personReceipt = {
+      ...receipt,
+      recipientType: "person",
+      personUid,
+      candidateUid: null,
+      chatUid: null,
+    };
+    expect(
+      validateErpReceipt(
+        personReceipt,
+        201,
+        deliveryId,
+        metadata.documentUid,
+        artifact,
+        recipient,
+      ),
+    ).toBe(true);
+    for (const invalid of [
+      { ...personReceipt, personUid: randomUUID() },
+      { ...personReceipt, candidateUid: randomUUID() },
+      { ...personReceipt, chatUid: randomUUID() },
+      { ...personReceipt, recipientType: "candidate" },
+    ])
+      expect(
+        validateErpReceipt(
+          invalid,
+          201,
+          deliveryId,
+          metadata.documentUid,
+          artifact,
+          recipient,
+        ),
+      ).toBe(false);
+  });
+});

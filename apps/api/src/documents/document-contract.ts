@@ -42,10 +42,7 @@ const emptyToNull = (value: unknown): unknown =>
   typeof value === "string" && value.trim() === "" ? null : value;
 
 const snapshotText = (max: number) =>
-  z.preprocess(
-    emptyToNull,
-    z.string().trim().min(1).max(max).nullish(),
-  );
+  z.preprocess(emptyToNull, z.string().trim().min(1).max(max).nullish());
 
 const snapshotName = (max: number) =>
   z.preprocess((value) => {
@@ -66,26 +63,32 @@ const snapshotCode = z.preprocess(
 
 const snapshotPosition = z.preprocess(
   (value) => (typeof value === "string" ? { name: value } : value),
-  z
-    .object({ name: snapshotText(512), code: snapshotCode })
-    .nullish(),
+  z.object({ name: snapshotText(512), code: snapshotCode }).nullish(),
 );
 
-const snapshotMentor = z.preprocess((value) => {
-  if (typeof value === "string") return { name: value };
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const input = value as Record<string, unknown>;
-    const code =
-      input.code1C ?? input.code1c ?? input.code_1c ?? input.code;
-    const { code1C: _a, code1c: _b, code_1c: _c, code: _d, ...rest } = input;
-    void _a;
-    void _b;
-    void _c;
-    void _d;
-    return { ...rest, code1C: code };
-  }
-  return value;
-}, z.object({ name: snapshotText(512), position: snapshotText(512), code1C: snapshotCode }).nullish());
+const snapshotMentor = z.preprocess(
+  (value) => {
+    if (typeof value === "string") return { name: value };
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const input = value as Record<string, unknown>;
+      const code = input.code1C ?? input.code1c ?? input.code_1c ?? input.code;
+      const { code1C: _a, code1c: _b, code_1c: _c, code: _d, ...rest } = input;
+      void _a;
+      void _b;
+      void _c;
+      void _d;
+      return { ...rest, code1C: code };
+    }
+    return value;
+  },
+  z
+    .object({
+      name: snapshotText(512),
+      position: snapshotText(512),
+      code1C: snapshotCode,
+    })
+    .nullish(),
+);
 
 const isCalendarDate = (value: string): boolean =>
   /^\d{4}-\d{2}-\d{2}$/.test(value) &&
@@ -104,7 +107,10 @@ const snapshotBirthDate = z.preprocess(
     .string()
     .trim()
     .max(10)
-    .refine(isCalendarDate, "Invalid birthDate (expected a real YYYY-MM-DD date)")
+    .refine(
+      isCalendarDate,
+      "Invalid birthDate (expected a real YYYY-MM-DD date)",
+    )
     .nullish(),
 );
 
@@ -126,8 +132,7 @@ const snapshotReemployment = z.preprocess((value) => {
 }, z.boolean().optional());
 
 function aliasSnapshotKeys(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const input = value as Record<string, unknown>;
   const pick = (...keys: string[]): unknown => {
     for (const key of keys) if (input[key] !== undefined) return input[key];
@@ -153,7 +158,13 @@ export const candidateSnapshotSchema = z.preprocess(
   aliasSnapshotKeys,
   z
     .object({
-      erpUid: z.string().uuid().transform((value) => value.toLowerCase()).optional(),
+      erpUid: z
+        .string()
+        .uuid()
+        .transform((value) => value.toLowerCase())
+        .optional(),
+      personUid: z.string().uuid().optional(),
+      reviewGroup: z.enum(["RU", "IG"]).optional(),
       fullName: snapshotName(512),
       birthDate: snapshotBirthDate,
       citizenship: snapshotCitizenship,
@@ -179,6 +190,8 @@ export const candidateSnapshotSchema = z.preprocess(
       // null = arrived-but-empty (clears the column); undefined = absent
       // (leaves the stored value untouched). Never collapse one into the other.
       erpUid: v.erpUid,
+      personUid: v.personUid,
+      reviewGroup: v.reviewGroup,
       fullName: v.fullName,
       birthDate: v.birthDate,
       citizenship: v.citizenship,
@@ -202,8 +215,7 @@ export const browserDocumentMetadataSchema = z
   })
   .strict();
 const metadataSnapshotAlias = (value: unknown): unknown => {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const input = { ...(value as Record<string, unknown>) };
   if (
     input.candidateSnapshot === undefined &&
@@ -269,7 +281,8 @@ export function shouldOmitPositionUid(
     value == null ||
     (typeof value === "string" &&
       (!value.trim() ||
-        (value === positionCode1c && !z.string().uuid().safeParse(value).success)))
+        (value === positionCode1c &&
+          !z.string().uuid().safeParse(value).success)))
   );
 }
 

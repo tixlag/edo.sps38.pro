@@ -24,7 +24,13 @@ const namespace = `identity-test-${randomUUID()}`;
 let prisma: PrismaService, audit: AuditService, manual: ManualDocumentService;
 const typeUid = randomUUID();
 const ids = new Set<string>();
+const trustedChats = new Map<string, string>();
 function stage(chatUuid?: string, erpUid?: string): StagedUpload {
+  if (chatUuid)
+    trustedChats.set(
+      chatUuid,
+      erpUid ?? trustedChats.get(chatUuid) ?? randomUUID(),
+    );
   return {
     directory: "unused",
     documentTypeCode: "unused",
@@ -122,6 +128,10 @@ suite("candidate ownership and legacy receipts on disposable MariaDB", () => {
       } as never,
       audit,
       { ensure: async () => undefined } as never,
+      new ConfigService({ OCR_MODE: "disabled" }),
+      {
+        resolveIdentityByChat: async (chat: string) => trustedChats.get(chat),
+      } as never,
     );
   });
   afterAll(async () => {
@@ -184,19 +194,19 @@ suite("candidate ownership and legacy receipts on disposable MariaDB", () => {
   it("attaches a later ERP import to the existing chat owner without moving documents or receipts", async () => {
     const chatUuid = randomUUID(),
       erpUid = randomUUID(),
-      staged = stage(chatUuid),
+      staged = stage(chatUuid, erpUid),
       key = randomUUID();
     const uploaded = await manual.upload(staged, key, namespace);
     ids.add(uploaded.candidateId);
     const imported = await catalog(erpUid, chatUuid);
     expect(imported.id).toBe(uploaded.candidateId);
     expect(await manual.upload(staged, key, namespace)).toEqual(uploaded);
-    expect(imported.identityKey).toBe(`chat:${chatUuid}`);
+    expect(imported.identityKey).toBe(`erp:${erpUid}`);
   });
   it("returns a legacy receipt after the same context gains resolver-only erpUid", async () => {
     const chatUuid = randomUUID(),
       erpUid = randomUUID(),
-      staged = stage(chatUuid),
+      staged = stage(chatUuid, erpUid),
       key = randomUUID();
     staged.metadata!.candidateSnapshot = { fullName: "Synthetic candidate" };
     const uploaded = await manual.upload(staged, key, namespace);
@@ -222,6 +232,10 @@ suite("candidate ownership and legacy receipts on disposable MariaDB", () => {
     expect(before.fingerprint).toBe(legacyFingerprint);
     staged.metadata!.candidateSnapshot.erpUid = erpUid;
     expect(await manual.upload(staged, key, namespace)).toEqual(uploaded);
+    await prisma.candidate.update({
+      where: { id: uploaded.candidateId },
+      data: { erpUid: null },
+    });
     const conflicting = await catalog(erpUid, null);
     expect(conflicting.id).not.toBe(uploaded.candidateId);
     await expect(manual.upload(staged, key, namespace)).rejects.toThrow(
@@ -314,7 +328,15 @@ suite("candidate ownership and legacy receipts on disposable MariaDB", () => {
       {} as never,
       audit,
       { candidateDto: (row: unknown) => row } as never,
-      { resolveIdentityByChat: async () => erpUid } as never,
+      {
+        resolveCurrentIdentity: async (code: string) => ({
+          reviewGroup: "RU",
+          erpUid,
+          chatUuid,
+          code1C: code,
+          personUid: null,
+        }),
+      } as never,
     );
     expect(await ingestion.link(chatUuid, code1c, namespace)).toMatchObject({
       id: imported.id,
@@ -336,7 +358,7 @@ suite("candidate ownership and legacy receipts on disposable MariaDB", () => {
       chatUuid = randomUUID();
     const first = await catalog(erpUid, null);
     const uploaded = await manual.upload(
-      stage(chatUuid),
+      stage(chatUuid, randomUUID()),
       randomUUID(),
       namespace,
     );

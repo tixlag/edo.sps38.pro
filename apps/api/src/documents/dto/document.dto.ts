@@ -235,7 +235,7 @@ export class DocumentReviewMetadataDto {
 }
 export class DocumentVersionDto extends DocumentReviewMetadataDto {
   @ApiPropertyOptional({ enum: ["RU", "IG"], enumName: "ReviewGroup" })
-  reviewGroup?: "RU" | "IG";
+  reviewGroup?: "RU" | "IG" | null;
   @ApiProperty({
     description:
       "Current supported submitted version has no OCR attempt and retained originals",
@@ -272,8 +272,17 @@ export class DocumentVersionDto extends DocumentReviewMetadataDto {
   delivery!: DocumentDeliveryDto | null;
 }
 export class CandidateProfileDto {
-  @ApiProperty({ enum: ["RU", "IG"], enumName: "ReviewGroup" })
-  reviewGroup!: "RU" | "IG";
+  @ApiPropertyOptional({ type: String, nullable: true }) statusId?:
+    | string
+    | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) statusName?:
+    | string
+    | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) managerId?:
+    | string
+    | null;
+  @ApiProperty({ enum: ["RU", "IG"], enumName: "ReviewGroup", nullable: true })
+  reviewGroup!: "RU" | "IG" | null;
   @ApiProperty() id!: string;
   @ApiProperty({ type: String, nullable: true, format: "uuid" }) chatUuid!:
     | string
@@ -583,6 +592,14 @@ export class CandidateSnapshotMentorDto {
   code_1c?: string;
 }
 export class CandidateSnapshotDto {
+  @ApiPropertyOptional({ enum: ["RU", "IG"] })
+  @IsOptional()
+  @IsIn(["RU", "IG"])
+  reviewGroup?: "RU" | "IG" | null;
+  @ApiPropertyOptional({ format: "uuid" })
+  @IsOptional()
+  @IsUUID()
+  personUid?: string;
   @ApiPropertyOptional({
     format: "uuid",
     description: "ERP candidate identifier supplied by the trusted ERP service",

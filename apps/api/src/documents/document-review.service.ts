@@ -159,7 +159,10 @@ export class DocumentReviewService {
           await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${initial.candidateId} FOR UPDATE`;
         await tx.$queryRaw`SELECT id FROM documents WHERE id = ${documentId} FOR UPDATE`;
         const doc = await tx.document.findFirst({
-          where: { id: documentId, ...this.access.documentReviewWhere(principal) },
+          where: {
+            id: documentId,
+            ...this.access.documentReviewWhere(principal),
+          },
         });
         if (!doc) {
           // Reuse the same 404 for inaccessible documents.
@@ -283,7 +286,23 @@ export class DocumentReviewService {
           });
           if (approvedKey) {
             const uid = version.document.documentType?.erpUid;
-            const chatUid = version.document.candidate?.chatUuid;
+            const candidate = version.document.candidate;
+            const chatUid = candidate?.chatUuid;
+            const recipient =
+              version.document.reviewGroup === "IG"
+                ? candidate?.personUid && candidate.code1c
+                  ? {
+                      recipientType: "person",
+                      personUid: candidate.personUid,
+                      code1c: candidate.code1c,
+                    }
+                  : null
+                : candidate?.erpUid
+                  ? {
+                      candidateUid: candidate.erpUid,
+                      ...(chatUid ? { chatUid } : {}),
+                    }
+                  : null;
             const documentFields = Object.fromEntries(
               version.fields.map((f) => {
                 const value = typedValue(f.value, f.kind);
@@ -312,8 +331,12 @@ export class DocumentReviewService {
               data: {
                 versionId: version.id,
                 transport: artifact!.transport,
-                status: uid && chatUid ? "PENDING" : "WAITING_CONTRACT",
-                payload: { documentUid: uid, chatUid, documentFields },
+                status: uid && recipient ? "PENDING" : "WAITING_CONTRACT",
+                payload: {
+                  documentUid: uid,
+                  ...(recipient ?? {}),
+                  documentFields,
+                },
               },
             });
           }

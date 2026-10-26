@@ -100,7 +100,13 @@ model DocumentType {
   @@map("document_types")
 }
 
+enum ReviewGroup {
+  RU
+  IG
+}
+
 model Document {
+  reviewGroup ReviewGroup?
   id             String         @id @default(cuid()) @db.VarChar(64)
   employeeId     String?        @db.VarChar(64)
   candidateId    String?        @db.VarChar(64)
@@ -355,6 +361,13 @@ model LkSyncState {
 }
 
 model Candidate {
+  reviewGroup ReviewGroup?
+  personUid String? @db.VarChar(36)
+  phone String? @db.VarChar(64)
+  managerId String? @db.VarChar(64)
+  statusId String? @db.VarChar(128)
+  statusName String? @db.VarChar(256)
+  previousDocuments CandidatePreviousDocument[]
   id         String     @id @default(cuid()) @db.VarChar(64)
   erpUid     String?    @unique @db.VarChar(36)
   erpDeleted Boolean    @default(false)
@@ -556,6 +569,7 @@ model ErpDocumentAttempt {
 }
 
 model DocumentStreamGrant {
+  candidateId String? @db.VarChar(64)
   id String @id @default(cuid()) @db.VarChar(64)
   tokenHash String @unique @db.VarChar(64)
   chatUuid String? @db.VarChar(36)
@@ -665,4 +679,31 @@ model OcrOutbox {
 
   @@index([availableAt, publishedAt])
   @@map("ocr_outbox")
+}
+
+
+enum CandidateRecheckStatus {
+  REQUIRES_REVIEW
+  CONFIRMED
+  REPLACE
+  MISSING
+  ORIGINAL_UNAVAILABLE
+}
+
+model CandidatePreviousDocument {
+  id String @id @default(cuid()) @db.VarChar(64)
+  candidateId String @db.VarChar(64)
+  candidate Candidate @relation(fields: [candidateId], references: [id], onUpdate: Restrict)
+  sourceId String @db.VarChar(256)
+  documentUid String? @db.VarChar(36)
+  title String @db.VarChar(512)
+  fields Json
+  expiresAt DateTime? @db.Date
+  originalAvailable Boolean
+  status CandidateRecheckStatus @default(REQUIRES_REVIEW)
+  reviewedBy String? @db.VarChar(64)
+  reviewedAt DateTime? @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  @@unique([candidateId, sourceId])
+  @@map("candidate_previous_documents")
 }

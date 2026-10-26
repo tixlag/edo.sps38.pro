@@ -1,3 +1,4 @@
+import { ErpWorkspaceClient } from "./erp-workspace.client";
 import { Module } from "@nestjs/common";
 import { RedisModule } from "../redis/redis.module";
 import { PrismaModule } from "../prisma/prisma.module";
@@ -59,6 +60,7 @@ import { CandidateCardCache } from "./candidate-card-cache";
   ],
   exports: [CandidateContextService],
   providers: [
+    ErpWorkspaceClient,
     CandidateDocumentsService,
     CandidateContextService,
     LkCandidateIdentityService,
