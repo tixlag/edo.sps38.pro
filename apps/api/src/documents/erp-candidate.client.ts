@@ -152,7 +152,7 @@ export class ErpCandidateClient {
     chatUuid: string,
     signal?: AbortSignal,
   ): Promise<CandidateSnapshotDto> {
-    return this.request({ uuid: chatUuid }, signal);
+    return normalizeErpCandidate(await this.requestRaw({ uuid: chatUuid }, signal), chatUuid);
   }
 
   async resolveIdentityByChat(chatUuid: string): Promise<string | undefined> {
@@ -161,7 +161,13 @@ export class ErpCandidateClient {
         throw new ErpCandidateError(503, false);
       return undefined;
     }
-    return (await this.findByChatUuid(chatUuid)).erpUid;
+    const raw = await this.requestRaw({ uuid: chatUuid });
+    const envelope = raw as { candidate?: unknown } | null;
+    const identity = z.object({ uuid: z.string().uuid(), erpUid: z.string().uuid() })
+      .safeParse(envelope?.candidate ?? raw);
+    if (!identity.success || identity.data.uuid.toLowerCase() !== chatUuid.toLowerCase())
+      throw new ErpCandidateError(502, false);
+    return identity.data.erpUid.toLowerCase();
   }
 
   async findByEmployeeCode(
@@ -169,13 +175,13 @@ export class ErpCandidateClient {
     signal?: AbortSignal,
   ): Promise<CandidateSnapshotDto> {
     if (!/^\S{1,64}$/.test(code1c)) throw new ErpCandidateError(502, false);
-    return this.request({ code1c }, signal);
+    return normalizeErpCandidate(await this.requestRaw({ code1c }, signal), undefined, code1c);
   }
 
-  private async request(
+  private async requestRaw(
     lookup: { uuid: string } | { code1c: string },
     signal?: AbortSignal,
-  ): Promise<CandidateSnapshotDto> {
+  ): Promise<unknown> {
     signal?.throwIfAborted();
     const endpoint = this.config.get<string>("ERP_CANDIDATE_URL");
     const token = this.config.get<string>("ERP_CANDIDATE_TOKEN");
@@ -235,9 +241,7 @@ export class ErpCandidateClient {
       } catch {
         throw new ErpCandidateError(502, false);
       }
-      return "uuid" in lookup
-        ? normalizeErpCandidate(raw, lookup.uuid)
-        : normalizeErpCandidate(raw, undefined, lookup.code1c);
+      return raw;
     } catch (error) {
       if (signal?.aborted) throw signal.reason;
       if (error instanceof ErpCandidateError) throw error;
