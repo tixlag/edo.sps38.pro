@@ -155,6 +155,23 @@ export class StorageService implements OnModuleDestroy {
     filename: string,
     expiresIn = 300,
   ): Promise<string> {
+    return this.signedFileUrl(key, filename, expiresIn, "attachment");
+  }
+
+  async previewUrl(
+    key: string,
+    filename: string,
+    expiresIn = 300,
+  ): Promise<string> {
+    return this.signedFileUrl(key, filename, expiresIn, "inline");
+  }
+
+  private async signedFileUrl(
+    key: string,
+    filename: string,
+    expiresIn: number,
+    disposition: "attachment" | "inline",
+  ): Promise<string> {
     // Do not interpolate untrusted names into response headers.
     const safe = filename.replace(/[^a-zA-Z0-9._-]+/g, "_") || "document";
     return getSignedUrl(
@@ -162,7 +179,7 @@ export class StorageService implements OnModuleDestroy {
       new GetObjectCommand({
         Bucket: this.bucket(),
         Key: key,
-        ResponseContentDisposition: `attachment; filename="${safe}"`,
+        ResponseContentDisposition: `${disposition}; filename="${safe}"`,
       }),
       { expiresIn },
     );
