@@ -362,6 +362,8 @@ export class CandidateDocumentSummaryDto extends DocumentReviewMetadataDto {
   @ApiProperty({ type: String, nullable: true }) deliveryStatus!: string | null;
 }
 export class DocumentDto extends CandidateDocumentSummaryDto {
+  @ApiProperty({ enum: ["RU", "IG"], nullable: true })
+  reviewGroup!: "RU" | "IG" | null;
   @ApiProperty({ type: String, nullable: true }) candidateId!: string | null;
   @ApiProperty({ type: String, nullable: true }) chatUuid!: string | null;
   @ApiProperty({ type: String, nullable: true }) code1c!: string | null;
@@ -540,11 +542,11 @@ export class CatalogQueryDto {
   @MaxLength(64)
   @Matches(/^\S+$/)
   position_code_1c!: string;
-  @ApiPropertyOptional({ default: "ru" })
+  @ApiPropertyOptional({ type: String, default: "ru" })
   @IsOptional()
   @IsString()
   @Matches(/^[a-zA-Z]{2}$/)
-  citizenship = "ru";
+  citizenship: string = "ru";
 }
 export class DocumentStreamGrantDto {
   @ApiProperty() token!: string;

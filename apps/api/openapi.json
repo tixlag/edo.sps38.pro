@@ -4130,7 +4130,8 @@
             "required": false,
             "in": "query",
             "schema": {
-              "$ref": "#/components/schemas/Object"
+              "default": "ru",
+              "type": "string"
             }
           }
         ],
@@ -7423,6 +7424,112 @@
         ]
       }
     },
+    "/api/v1/candidates/{candidateId}/requirements": {
+      "get": {
+        "operationId": "getCandidateRequirements",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDocumentTypesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Applicable ERP document requirements for the confirmed current candidate profile",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
     "/api/v1/candidates/{candidateId}/status": {
       "post": {
         "operationId": "changeCandidateStatus",
@@ -10571,6 +10678,14 @@
             "type": "string",
             "nullable": true
           },
+          "reviewGroup": {
+            "type": "string",
+            "enum": [
+              "RU",
+              "IG"
+            ],
+            "nullable": true
+          },
           "candidateId": {
             "type": "string",
             "nullable": true
@@ -10608,6 +10723,7 @@
           "title",
           "documentUid",
           "deliveryStatus",
+          "reviewGroup",
           "candidateId",
           "chatUuid",
           "code1c",
@@ -11610,10 +11726,6 @@
           "fields"
         ]
       },
-      "Object": {
-        "type": "object",
-        "properties": {}
-      },
       "DocumentScopeDto": {
         "type": "object",
         "properties": {
@@ -12094,7 +12206,12 @@
             ]
           },
           "status": {
-            "$ref": "#/components/schemas/CandidateNamedIdDto"
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateNamedIdDto"
+              }
+            ]
           },
           "linkedPerson": {
             "type": "boolean"

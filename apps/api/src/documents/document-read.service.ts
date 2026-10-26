@@ -198,6 +198,7 @@ export class DocumentReadService {
       items: rows.map(
         (d): DocumentDto => ({
           ...this.documentSummary(d),
+          reviewGroup: d.reviewGroup,
           candidateId: d.candidateId,
           chatUuid: d.candidate?.chatUuid ?? null,
           code1c: d.candidate?.code1c ?? null,

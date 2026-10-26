@@ -88,6 +88,7 @@ describe.skipIf(!db)(
       status: { id: "Подбор", name: "Подбор" },
       history: [],
     };
+    const catalogList = vi.fn(async () => ({ items: [] }));
     const calls: { action: string; body: Record<string, unknown> }[] = [];
     const replay = new Map<
       string,
@@ -184,6 +185,7 @@ describe.skipIf(!db)(
         new DocumentAccessService(prisma),
         new AuditService(prisma),
         config,
+        { list: catalogList } as never,
       );
     });
     afterEach(() => vi.unstubAllGlobals());
@@ -295,6 +297,20 @@ describe.skipIf(!db)(
           },
         }),
       ).toBe(1);
+    });
+    it("recalculates requirements from current ERP position/citizenship, not stale projection", async () => {
+      vi.stubGlobal("fetch", fetcher);
+      const previous = card;
+      try {
+        card = { ...card, position: { code: "NEW-POS", name: "New position" }, citizenship: "uz" };
+        await service.requirements(id, actor);
+        expect(catalogList).toHaveBeenLastCalledWith("NEW-POS", "uz");
+        card = { ...card, position: null as never };
+        await expect(service.requirements(id, actor)).rejects.toMatchObject({ code: "CANDIDATE_PROFILE_INCOMPLETE" });
+      } finally { card = previous; }
+    });
+    it("protects RU requirements with the same review permission", async () => {
+      await expect(service.requirements(id, { ...actor, accessRules: { "20011": [] } })).rejects.toThrow("review group");
     });
     it("opens sparse historical cards with missing position/status for correction", async () => {
       vi.stubGlobal("fetch", fetcher);

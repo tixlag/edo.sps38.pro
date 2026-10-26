@@ -12,7 +12,7 @@ RU/IG reviewers access all documents of their confirmed direction without locati
 
 ## ERP and browser API
 
-The existing candidate catalog includes empty-document candidates and supports name/status/manager/project filters. Workspace endpoints provide create, patch, full ERP statuses/history, reference choices, explicit person linking and cycle-specific previous-document review. Creation/status/link mutations forward stable request UUIDs and verified actor identity to ERP. No mutation retries are automatic. Mentor and integration identities are read-only; a person choice is a short-lived, actor-bound server-signed token, not an arbitrary browser ERP UID.
+The existing candidate catalog includes empty-document candidates and supports name/status/manager/project filters. Workspace endpoints provide create, patch, full ERP statuses/history, reference choices, explicit person linking and cycle-specific previous-document review. The authenticated `getCandidateRequirements` endpoint resolves the current ERP position/citizenship and reuses the existing document catalog; browser clients never call the internal S2S catalog with a service secret. Creation/status/link mutations forward stable request UUIDs and verified actor identity to ERP. No mutation retries are automatic. Mentor and integration identities are read-only; a person choice is a short-lived, actor-bound server-signed token, not an arbitrary browser ERP UID.
 
 Card responses show confirmed ERP values and preserve omitted fields on patch. Sparse historical cards permit null position/status so a manager can repair them. Upload context retains the actionable incomplete-position error. Position changes update the projection used by the existing requirements catalog. Prior ERP document sources/originals are retained; new-cycle review is stored separately in `candidate_previous_documents`, initially requiring review. No old decision is overwritten or automatically approved.
 
@@ -20,7 +20,7 @@ New v2 deliveries freeze their business recipient when approval creates the deli
 
 ## Migration and historical diagnosis
 
-Apply additive `20261026120000_candidate_business_identity` only after testing the complete feature migration chain on an isolated clone. It adds no bulk classification or merging. Existing feature migration `20261020160000_candidate_communications` has a previously identified audit enum compatibility issue with OCR actions; release is blocked until that migration-chain issue is resolved and replay-tested with existing OCR audit rows.
+Apply additive `20261026120000_candidate_business_identity` only after testing the complete feature migration chain on an isolated clone. It adds no bulk classification or merging. With explicit owner approval, unreleased `20261020160000_candidate_communications` now preserves both OCR audit enum values. Applied main migrations were not changed. Upgrade verification applied the exact 17 main migrations, inserted existing OCR retry/request audit rows, then applied both feature migrations (19 total): the rows survived and no schema drift was added relative to main. Disposable acceptance databases created from the previous feature checksum must be recreated; never edit checksums or reset a shared database.
 
 Read-only diagnosis (do not print private personal data into CI logs):
 

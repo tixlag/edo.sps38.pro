@@ -1,3 +1,4 @@
+import { DocumentsModule } from "../documents/documents.module";
 import { CandidateWorkspaceService } from "./candidate-workspace.service";
 import { CandidateWorkspaceController } from "./candidate-workspace.controller";
 import { ErpWorkspaceClient } from "../documents/erp-workspace.client";
@@ -17,7 +18,7 @@ import { CommunicationEventsService } from "./communication-events.service";
 import { ErpCommunicationsClient } from "./erp-communications.client";
 import { LkChatClient } from "./lk-chat.client";
 @Module({
-  imports: [PrismaModule, AuditModule, StorageModule, RedisModule],
+  imports: [PrismaModule, AuditModule, StorageModule, RedisModule, DocumentsModule],
   controllers: [
     CandidateWorkspaceController,
     CommunicationsController,

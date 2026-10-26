@@ -1,3 +1,6 @@
+import { DocumentCatalogService } from "../documents/document-catalog.service";
+import { CandidateDocumentError } from "../documents/candidate-document.error";
+import { CandidateDocumentErrorCode, CandidateProfileField } from "../documents/dto/candidate-error.dto";
 import {
   BadRequestException,
   ConflictException,
@@ -41,6 +44,7 @@ export class CandidateWorkspaceService {
     private readonly access: DocumentAccessService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
+    private readonly catalog: DocumentCatalogService,
   ) {}
   private actor(p: AuthPrincipal) {
     requireReviewGroup(p, "RU");
@@ -197,6 +201,15 @@ export class CandidateWorkspaceService {
     if (card.erpUid !== row.erpUid)
       throw new ConflictException("ERP_CANDIDATE_IDENTITY_CHANGED");
     return this.project(card, p, id);
+  }
+  async requirements(id: string, p: AuthPrincipal) {
+    const owner = await this.owner(id, p);
+    const card = await this.erp.card(owner.erpUid!);
+    if (card.erpUid !== owner.erpUid)
+      throw new ConflictException("ERP_CANDIDATE_IDENTITY_CHANGED");
+    if (!card.position?.code)
+      throw new CandidateDocumentError(CandidateDocumentErrorCode.CANDIDATE_PROFILE_INCOMPLETE, [CandidateProfileField.POSITION_CODE]);
+    return this.catalog.list(card.position.code, card.citizenship);
   }
   async create(p: AuthPrincipal, body: CreateCandidateDto) {
     const actor = this.actor(p);

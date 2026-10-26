@@ -533,6 +533,19 @@ export interface CandidateProfileDto {
 export type DocumentDtoOcrStatus = OcrJobStatus | null;
 
 /**
+ * @nullable
+ */
+export type DocumentDtoReviewGroup =
+  | (typeof DocumentDtoReviewGroup)[keyof typeof DocumentDtoReviewGroup]
+  | null;
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentDtoReviewGroup = {
+  RU: "RU",
+  IG: "IG",
+} as const;
+
+/**
  * LK candidate profile snapshot, if one was provided
  * @nullable
  */
@@ -573,6 +586,8 @@ export interface DocumentDto {
   documentUid: string | null;
   /** @nullable */
   deliveryStatus: string | null;
+  /** @nullable */
+  reviewGroup: DocumentDtoReviewGroup;
   /** @nullable */
   candidateId: string | null;
   /** @nullable */
@@ -1051,10 +1066,6 @@ export interface EditDocumentFieldsDto {
   fields: EditDocumentFieldsDtoFields;
 }
 
-export interface Object {
-  [key: string]: unknown;
-}
-
 export interface DocumentScopeDto {
   chat_uuid?: string;
   code_1c?: string;
@@ -1231,6 +1242,11 @@ export type CandidateWorkspaceDtoManager = CandidateNamedIdDto | null;
  */
 export type CandidateWorkspaceDtoMentor = CandidateMentorDto | null;
 
+/**
+ * @nullable
+ */
+export type CandidateWorkspaceDtoStatus = CandidateNamedIdDto | null;
+
 export interface CandidateWorkspaceDto {
   id: string;
   reviewGroup: CandidateWorkspaceDtoReviewGroup;
@@ -1246,7 +1262,8 @@ export interface CandidateWorkspaceDto {
   manager: CandidateWorkspaceDtoManager;
   /** @nullable */
   mentor: CandidateWorkspaceDtoMentor;
-  status: CandidateNamedIdDto;
+  /** @nullable */
+  status: CandidateWorkspaceDtoStatus;
   linkedPerson: boolean;
   hasChat: boolean;
   history: CandidateStatusHistoryDto[];
@@ -1482,7 +1499,7 @@ export type ListCandidatesParams = {
 
 export type GetCandidateDocumentCatalogParams = {
   position_code_1c: string;
-  citizenship?: Object;
+  citizenship?: string;
 };
 
 export type SubmitCandidateDocumentBody = {
@@ -6766,6 +6783,94 @@ export const useUpdateCandidateWorkspace = <
 
   return useMutation(mutationOptions);
 };
+
+/**
+ * @summary Applicable ERP document requirements for the confirmed current candidate profile
+ */
+export const getCandidateRequirements = (
+  candidateId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CatalogDocumentTypesDto>({
+    url: `/api/v1/candidates/${candidateId}/requirements`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCandidateRequirementsQueryKey = (candidateId: string) => {
+  return [`/api/v1/candidates/${candidateId}/requirements`] as const;
+};
+
+export const getGetCandidateRequirementsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateRequirements>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateRequirements>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidateRequirementsQueryKey(candidateId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateRequirements>>
+  > = ({ signal }) => getCandidateRequirements(candidateId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateRequirements>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateRequirementsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateRequirements>>
+>;
+export type GetCandidateRequirementsQueryError = ApiErrorDto;
+
+/**
+ * @summary Applicable ERP document requirements for the confirmed current candidate profile
+ */
+
+export function useGetCandidateRequirements<
+  TData = Awaited<ReturnType<typeof getCandidateRequirements>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateRequirements>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateRequirementsQueryOptions(
+    candidateId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
 
 /**
  * @summary ERP status transition and optional comment

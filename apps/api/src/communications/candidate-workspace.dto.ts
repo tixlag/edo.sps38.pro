@@ -146,7 +146,8 @@ export class CandidateWorkspaceDto {
   manager!: CandidateNamedIdDto | null;
   @ApiProperty({ type: CandidateMentorDto, nullable: true })
   mentor!: CandidateMentorDto | null;
-  @ApiProperty({ type: CandidateNamedIdDto }) status!: CandidateNamedIdDto;
+  @ApiProperty({ type: CandidateNamedIdDto, nullable: true })
+  status!: CandidateNamedIdDto | null;
   @ApiProperty() linkedPerson!: boolean;
   @ApiProperty() hasChat!: boolean;
   @ApiProperty({ type: [CandidateStatusHistoryDto] })
