@@ -36,6 +36,8 @@ export const AuditAction = {
   DATA_IMPORTED: "DATA_IMPORTED",
   LK_REFERENCE_SYNCED: "LK_REFERENCE_SYNCED",
   LK_EVENT_APPLIED: "LK_EVENT_APPLIED",
+  COMMUNICATION_REQUESTED: "COMMUNICATION_REQUESTED",
+  COMMUNICATION_COMPLETED: "COMMUNICATION_COMPLETED",
   DOCUMENT_OCR_RETRIED: "DOCUMENT_OCR_RETRIED",
   DOCUMENT_OCR_REQUESTED: "DOCUMENT_OCR_REQUESTED",
 } as const;
@@ -1006,6 +1008,7 @@ export interface DocumentOcrDetailsDto {
 
 export interface DownloadDto {
   url: string;
+  previewUrl: string;
   expiresAt: string;
 }
 
@@ -4043,7 +4046,7 @@ export function useGetDocumentOcrDetails<
 }
 
 /**
- * @summary Get a private file download URL (expires in 5 minutes)
+ * @summary Get private file preview and download URLs (expire in 5 minutes)
  */
 export const getDocumentFileDownload = (
   documentId: string,
@@ -4112,7 +4115,7 @@ export type GetDocumentFileDownloadQueryResult = NonNullable<
 export type GetDocumentFileDownloadQueryError = ApiErrorDto;
 
 /**
- * @summary Get a private file download URL (expires in 5 minutes)
+ * @summary Get private file preview and download URLs (expire in 5 minutes)
  */
 
 export function useGetDocumentFileDownload<

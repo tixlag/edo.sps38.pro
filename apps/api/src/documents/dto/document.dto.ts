@@ -504,6 +504,7 @@ export class EditDocumentFieldsDto extends ReviewRevisionDto {
 }
 export class DownloadDto {
   @ApiProperty({ format: "uri" }) url!: string;
+  @ApiProperty({ format: "uri" }) previewUrl!: string;
   @ApiProperty({ format: "date-time" }) expiresAt!: string;
 }
 export class RejectDocumentDto extends ReviewRevisionDto {

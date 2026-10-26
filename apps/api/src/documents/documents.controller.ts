@@ -346,7 +346,7 @@ export class DocumentsController {
   @Get("documents/:documentId/versions/:version/files/:fileId/download")
   @RequireAccessRule(EdoAccessRule.ACCESS)
   @ApiOperation({
-    summary: "Get a private file download URL (expires in 5 minutes)",
+    summary: "Get private file preview and download URLs (expire in 5 minutes)",
     operationId: "getDocumentFileDownload",
   })
   @ApiResponse({ status: 200, type: DownloadDto })

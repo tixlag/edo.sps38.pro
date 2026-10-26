@@ -3714,7 +3714,7 @@
             "access-jwt": []
           }
         ],
-        "summary": "Get a private file download URL (expires in 5 minutes)",
+        "summary": "Get private file preview and download URLs (expire in 5 minutes)",
         "tags": [
           "documents"
         ]
@@ -6626,6 +6626,8 @@
           "DATA_IMPORTED",
           "LK_REFERENCE_SYNCED",
           "LK_EVENT_APPLIED",
+          "COMMUNICATION_REQUESTED",
+          "COMMUNICATION_COMPLETED",
           "DOCUMENT_OCR_RETRIED",
           "DOCUMENT_OCR_REQUESTED"
         ]
@@ -8768,6 +8770,10 @@
             "type": "string",
             "format": "uri"
           },
+          "previewUrl": {
+            "type": "string",
+            "format": "uri"
+          },
           "expiresAt": {
             "type": "string",
             "format": "date-time"
@@ -8775,6 +8781,7 @@
         },
         "required": [
           "url",
+          "previewUrl",
           "expiresAt"
         ]
       },

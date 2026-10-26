@@ -584,8 +584,13 @@ export class DocumentReadService {
       },
     });
     if (!file) throw new NotFoundException("Document file not available");
+    const [url, previewUrl] = await Promise.all([
+      this.storage.downloadUrl(file.storageKey, file.filename),
+      this.storage.previewUrl(file.storageKey, file.filename),
+    ]);
     return {
-      url: await this.storage.downloadUrl(file.storageKey, file.filename),
+      url,
+      previewUrl,
       expiresAt: new Date(Date.now() + 300_000).toISOString(),
     };
   }

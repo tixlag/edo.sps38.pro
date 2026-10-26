@@ -434,7 +434,7 @@ export function DocumentPreview({
             >
               {file.mimeType === "application/pdf" ? (
                 <PdfPage
-                  url={download.data.url}
+                  url={download.data.previewUrl}
                   pageNumber={pageNumber}
                   onReady={onReady}
                   onError={onError}
@@ -442,7 +442,7 @@ export function DocumentPreview({
               ) : (
                 <img
                   className="block h-auto w-full"
-                  src={download.data.url}
+                  src={download.data.previewUrl}
                   alt={`Загруженная страница документа: ${file.filename}`}
                   onLoad={(event) =>
                     onReady({
