@@ -23,6 +23,13 @@ import {
 import { Badge, Button } from "@edo/ui";
 import { Check, Save, X } from "lucide-react";
 import { DocumentPreview } from "./DocumentPreview";
+import {
+  formatDateRu,
+  formatDateTimeRu,
+  maskDateRuInput,
+  normalizeDateForApi,
+  parseDateRu,
+} from "../lib/date-format";
 import { DocumentAnnotations } from "./annotations/DocumentAnnotations";
 import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
 import {
@@ -127,6 +134,8 @@ export function DocumentReviewWorkspace({
     );
   const [showAllRegions, setShowAllRegions] = useState(false);
   const [showOcrDetails, setShowOcrDetails] = useState(false);
+  const [dateInputDrafts, setDateInputDrafts] = useState<Record<string, string>>({});
+  useEffect(() => setDateInputDrafts({}), [data.documentId, data.version]);
   const ocrDetails = useGetDocumentOcrDetails(data.documentId, data.version, {
     query: {
       queryKey: getGetDocumentOcrDetailsQueryKey(data.documentId, data.version),
@@ -186,6 +195,9 @@ export function DocumentReviewWorkspace({
       ]),
   );
   const changedCount = Object.keys(changes).length;
+  const invalidDateDraft = Object.values(dateInputDrafts).some(
+    (value) => !!value && !parseDateRu(value),
+  );
   const hasManualChanges =
     !!draft && Object.keys(changes).some((name) => draft.touched[name]);
   const stale = !!draft && (draft.revision !== data.revision || !canEdit);
@@ -679,13 +691,17 @@ export function DocumentReviewWorkspace({
                     ? text === "true"
                       ? "Да"
                       : "Нет"
-                    : text || "—";
+                    : field.kind === "date"
+                      ? formatDateRu(text)
+                      : text || "—";
                 const ocrText = field.ocrText ?? field.originalValue;
                 const hasOcr = !!ocrText?.trim();
                 const canApplyOcr =
                   canEdit &&
                   hasOcr &&
                   field.originalValue !== null &&
+                  (field.kind !== "date" ||
+                    !!normalizeDateForApi(field.originalValue)) &&
                   (field.kind !== "boolean" ||
                     ["true", "false"].includes(field.originalValue));
                 const inputClass = `block min-h-8 w-full min-w-0 rounded-md border bg-[var(--card)] px-2 py-1 text-[13px] leading-5 caret-[var(--primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] ${field.mismatch ? "border-[var(--warning)]" : "border-[var(--border)]"}`;
@@ -744,16 +760,21 @@ export function DocumentReviewWorkspace({
                               inputs.current[field.name] = node;
                             }}
                             id={`field-${data.documentId}-${field.name}`}
-                            type={
-                              field.kind === "boolean" ? "checkbox" : "date"
-                            }
+                            type={field.kind === "boolean" ? "checkbox" : "text"}
+                            inputMode={field.kind === "date" ? "numeric" : undefined}
+                            placeholder={field.kind === "date" ? "dd.mm.yyyy" : undefined}
                             disabled={busy}
                             checked={
                               field.kind === "boolean"
                                 ? value === "true"
                                 : undefined
                             }
-                            value={field.kind === "date" ? value : undefined}
+                            value={
+                              field.kind === "date"
+                                ? dateInputDrafts[field.name] ??
+                                  (value ? formatDateRu(value) : "")
+                                : undefined
+                            }
                             className={
                               field.kind === "boolean"
                                 ? "mt-2 h-4 w-4 accent-[var(--primary)]"
@@ -764,14 +785,29 @@ export function DocumentReviewWorkspace({
                               if (selection?.fieldName !== field.name)
                                 selectField(field.name, false);
                             }}
-                            onChange={(event) =>
-                              setField(
-                                field.name,
-                                field.kind === "boolean"
-                                  ? String(event.target.checked)
-                                  : event.target.value,
-                              )
-                            }
+                            onBlur={() => {
+                              if (field.kind !== "date") return;
+                              const entered = dateInputDrafts[field.name] ?? "";
+                              if (entered && !parseDateRu(entered)) return;
+                              setDateInputDrafts((current) => {
+                                const next = { ...current };
+                                delete next[field.name];
+                                return next;
+                              });
+                            }}
+                            onChange={(event) => {
+                              if (field.kind === "boolean") {
+                                setField(field.name, String(event.target.checked));
+                                return;
+                              }
+                              const entered = maskDateRuInput(event.target.value);
+                              setDateInputDrafts((current) => ({ ...current, [field.name]: entered }));
+                              if (!entered) setField(field.name, "");
+                              else {
+                                const isoDate = parseDateRu(entered);
+                                if (isoDate) setField(field.name, isoDate);
+                              }
+                            }}
                           />
                         ) : (
                           <textarea
@@ -816,7 +852,12 @@ export function DocumentReviewWorkspace({
                                 title="Подставить в поле. Сохранение — кнопкой «Сохранить исправления»."
                                 className="max-w-full whitespace-pre-wrap break-words rounded-sm text-left text-[var(--foreground)] underline decoration-dotted underline-offset-2 hover:decoration-solid focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60"
                                 onClick={() =>
-                                  setField(field.name, field.originalValue!)
+                                  setField(
+                                    field.name,
+                                    field.kind === "date"
+                                      ? normalizeDateForApi(field.originalValue!)!
+                                      : field.originalValue!,
+                                  )
                                 }
                               >
                                 OCR: {displayValue(ocrText)}
@@ -947,7 +988,7 @@ export function DocumentReviewWorkspace({
                     <ul>
                       {data.delivery.attempts.map((attempt) => (
                         <li key={attempt.id} className="mt-2">
-                          {new Date(attempt.startedAt).toLocaleString("ru-RU")}{" "}
+                          {formatDateTimeRu(attempt.startedAt)}{" "}
                           ·{" "}
                           {attempt.errorCode ??
                             (attempt.finishedAt ? "Отправлено" : "Выполняется")}
@@ -973,7 +1014,7 @@ export function DocumentReviewWorkspace({
             )}
             {data.approvedAt && !data.reviewedAt && (
               <p className="py-2 text-xs text-[var(--muted-foreground)]">
-                Подтверждён {new Date(data.approvedAt).toLocaleString("ru-RU")}.
+                Подтверждён {formatDateTimeRu(data.approvedAt)}.
               </p>
             )}
           </div>
@@ -1041,7 +1082,7 @@ export function DocumentReviewWorkspace({
                       variant="outline"
                       className="text-[var(--primary)]"
                       aria-label="Отклонить документ"
-                      disabled={busy || hasManualChanges}
+                      disabled={busy || hasManualChanges || invalidDateDraft}
                       onClick={() => setShowReject(!showReject)}
                     >
                       <X size={14} />
@@ -1052,7 +1093,7 @@ export function DocumentReviewWorkspace({
                     size="sm"
                     variant="outline"
                     className="flex-1"
-                    disabled={busy || !changedCount || stale}
+                    disabled={busy || !changedCount || stale || invalidDateDraft}
                     onClick={() => {
                       edit.mutate({
                         documentId: data.documentId,
@@ -1071,7 +1112,7 @@ export function DocumentReviewWorkspace({
                     <Button
                       size="sm"
                       aria-label="Подтвердить документ"
-                      disabled={busy || changedCount > 0}
+                      disabled={busy || changedCount > 0 || invalidDateDraft}
                       onClick={() =>
                         approve.mutate({
                           documentId: data.documentId,
@@ -1085,6 +1126,11 @@ export function DocumentReviewWorkspace({
                     </Button>
                   )}
                 </div>
+              )}
+              {invalidDateDraft && (
+                <p role="alert" className="mt-1 text-xs text-[var(--primary)]">
+                  Введите дату полностью в формате dd.mm.yyyy.
+                </p>
               )}
               {draft && (
                 <div className="mt-1 flex flex-wrap items-center justify-between gap-1">
