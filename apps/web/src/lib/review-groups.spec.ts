@@ -14,7 +14,8 @@ describe("formatBirthDateRu", () => {
   it("formats YYYY-MM-DD as dd.MM.yyyy", () => {
     expect(formatBirthDateRu("1990-05-17")).toBe("17.05.1990");
     expect(formatBirthDateRu(null)).toBe("—");
-    expect(formatBirthDateRu("garbage")).toBe("garbage");
+    expect(formatBirthDateRu("garbage")).toBe("—");
+    expect(formatBirthDateRu("1990-02-31")).toBe("—");
   });
 });
 

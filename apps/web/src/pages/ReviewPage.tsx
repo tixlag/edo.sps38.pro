@@ -37,6 +37,7 @@ import {
 import { CandidateDrawer } from "../components/CandidateDrawer";
 import { LkLink } from "../components/LkLink";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
+import { formatDateTimeRu, formatDateRu, maskDateRuInput, parseDateRu } from "../lib/date-format";
 import {
   candidateInitials,
   documentProgressPercent,
@@ -279,6 +280,16 @@ export function ReviewPage({
     () => parseReviewSearchParams(rawSearch),
     [rawSearch],
   );
+  const [birthDateFromText, setBirthDateFromText] = useState(
+    filters.birthDateFrom ? formatDateRu(filters.birthDateFrom) : "",
+  );
+  const [birthDateToText, setBirthDateToText] = useState(
+    filters.birthDateTo ? formatDateRu(filters.birthDateTo) : "",
+  );
+  useEffect(() => {
+    setBirthDateFromText(filters.birthDateFrom ? formatDateRu(filters.birthDateFrom) : "");
+    setBirthDateToText(filters.birthDateTo ? formatDateRu(filters.birthDateTo) : "");
+  }, [filters.birthDateFrom, filters.birthDateTo]);
 
   // Functional search update: selector commits always apply on top of the
   // latest URL, so concurrent changes cannot drop each other (stale-closure
@@ -675,24 +686,42 @@ export function ReviewPage({
               Рожд. с
               <input
                 aria-label="Дата рождения с"
-                type="date"
+                type="text"
+                inputMode="numeric"
+                placeholder="dd.mm.yyyy"
                 className={FILTER_CONTROL}
-                value={filters.birthDateFrom ?? ""}
-                onChange={(event) =>
-                  commit("birthDateFrom")(event.target.value || undefined)
-                }
+                value={birthDateFromText}
+                onChange={(event) => {
+                  const value = maskDateRuInput(event.target.value);
+                  setBirthDateFromText(value);
+                  if (!value) commit("birthDateFrom")(undefined);
+                  else {
+                    const parsed = parseDateRu(value);
+                    if (parsed) commit("birthDateFrom")(parsed);
+                  }
+                }}
+                onBlur={() => setBirthDateFromText(filters.birthDateFrom ? formatDateRu(filters.birthDateFrom) : "")}
               />
             </label>
             <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
               по
               <input
                 aria-label="Дата рождения по"
-                type="date"
+                type="text"
+                inputMode="numeric"
+                placeholder="dd.mm.yyyy"
                 className={FILTER_CONTROL}
-                value={filters.birthDateTo ?? ""}
-                onChange={(event) =>
-                  commit("birthDateTo")(event.target.value || undefined)
-                }
+                value={birthDateToText}
+                onChange={(event) => {
+                  const value = maskDateRuInput(event.target.value);
+                  setBirthDateToText(value);
+                  if (!value) commit("birthDateTo")(undefined);
+                  else {
+                    const parsed = parseDateRu(value);
+                    if (parsed) commit("birthDateTo")(parsed);
+                  }
+                }}
+                onBlur={() => setBirthDateToText(filters.birthDateTo ? formatDateRu(filters.birthDateTo) : "")}
               />
             </label>
             {filtersActive && (
@@ -853,7 +882,7 @@ export function ReviewDocumentPage({
     ?.trim()
     .split(/\s+/u)[0];
   const decidedAt = version.data?.approvedAt
-    ? new Date(version.data.approvedAt).toLocaleString("ru-RU")
+    ? formatDateTimeRu(version.data.approvedAt)
     : null;
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto p-3 sm:p-4 lg:overflow-hidden">

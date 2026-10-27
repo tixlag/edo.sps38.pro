@@ -359,7 +359,7 @@ describe("DocumentReviewWorkspace hover vs select", () => {
     }
   });
 
-  it("keeps unformatted OCR dates visible while substituting a valid input date", () => {
+  it("formats OCR dates and accepted date inputs as dd.mm.yyyy", () => {
     const data = buildData();
     Object.assign(data.fields[1], {
       value: "2019-01-01",
@@ -370,7 +370,27 @@ describe("DocumentReviewWorkspace hover vs select", () => {
       const row = view.container.querySelector('[data-field-row="issued_at"]')!;
       expect(row.textContent).toContain("OCR: 01.01.2020");
       click(row.querySelector('[aria-label="Подставить OCR: Дата выдачи"]')!);
-      expect(row.querySelector("input")!.value).toBe("2020-01-01");
+      expect(row.querySelector("input")!.value).toBe("01.01.2020");
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("blocks approval while a date field contains an invalid edit", () => {
+    const view = renderWorkspace(buildData());
+    try {
+      const input = view.container.querySelector<HTMLInputElement>(
+        "#field-doc-1-issued_at",
+      )!;
+      typeValue(input, "31.02.2026");
+      expect(
+        view.container.querySelector<HTMLButtonElement>(
+          '[aria-label="Подтвердить документ"]',
+        )?.disabled,
+      ).toBe(true);
+      expect(view.container.textContent).toContain(
+        "Введите дату полностью в формате dd.mm.yyyy.",
+      );
     } finally {
       view.cleanup();
     }
@@ -446,6 +466,37 @@ describe("DocumentReviewWorkspace hover vs select", () => {
     }
   });
 
+  it("preserves an invalid date draft when live OCR advances the revision", () => {
+    const data = buildData();
+    const view = renderWorkspace(data);
+    try {
+      const dateInput = view.container.querySelector<HTMLInputElement>(
+        "#field-doc-1-issued_at",
+      )!;
+      typeValue(dateInput, "31.02.2026");
+      view.rerender({
+        ...data,
+        revision: data.revision + 1,
+        fields: data.fields.map((field) => ({ ...field })),
+      });
+      expect(
+        view.container.querySelector<HTMLInputElement>(
+          "#field-doc-1-issued_at",
+        )?.value,
+      ).toBe("31.02.2026");
+      expect(view.container.textContent).toContain(
+        "Введите дату полностью в формате dd.mm.yyyy.",
+      );
+      expect(
+        view.container.querySelector<HTMLButtonElement>(
+          '[aria-label="Подтвердить документ"]',
+        )?.disabled,
+      ).toBe(true);
+    } finally {
+      view.cleanup();
+    }
+  });
+
   it("retains a draft but blocks overwriting another reviewer's changes", () => {
     const data = buildData();
     const view = renderWorkspace(data);
@@ -484,7 +535,7 @@ describe("DocumentReviewWorkspace hover vs select", () => {
         view.container.querySelector('[aria-label="Подставить OCR: Фамилия"]'),
       ).toBeNull();
       expect(view.container.textContent).toContain("OCR: Не распознано");
-      expect(view.container.textContent).toContain("OCR: 31.02.2026");
+      expect(view.container.textContent).toContain("OCR: —");
       expect(
         view.container.querySelector(
           '[aria-label="Подставить OCR: Дата выдачи"]',
@@ -1028,7 +1079,7 @@ describe("DocumentReviewWorkspace hover vs select", () => {
     }
   });
 
-  it("клик слева по дате фокусит input type=date", () => {
+  it("клик слева по дате фокусит поле с форматом dd.mm.yyyy", () => {
     const { container, cleanup } = renderWorkspace(buildData());
     try {
       // Дата лежит на стр. 2: сначала явная навигация, затем клик слева.
@@ -1047,7 +1098,7 @@ describe("DocumentReviewWorkspace hover vs select", () => {
       const input = container.querySelector(
         "#field-doc-1-issued_at",
       ) as HTMLInputElement | null;
-      expect(input?.type).toBe("date");
+      expect(input?.type).toBe("text");
       expect(document.activeElement).toBe(input);
     } finally {
       cleanup();
