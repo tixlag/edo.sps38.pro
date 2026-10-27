@@ -27,7 +27,7 @@ describe("review group isolation", () => {
       expect(access.documentReviewWhere(principal(rules))).toEqual({});
       const scoped = principal({ ...rules, "20007": ["98"] });
       delete scoped.accessRules["20008"];
-      // FULL_ACCESS still implies all locations; a RU+IG reviewer keeps 20007.
+      // Review rights cover all locations, including RU+IG without 20009.
       expect(access.documentReviewWhere(scoped)).toEqual(
         access.documentWhere(scoped),
       );
@@ -69,18 +69,13 @@ describe("review group isolation", () => {
     expect(prisma.candidate.findMany).not.toHaveBeenCalled();
   });
 
-  it("intersects the candidate group with location access instead of allowing an employee relation to bypass it", () => {
+  it("removes geography for reviewers while retaining group access against an employee relation bypass", () => {
     const access = new DocumentAccessService(null as never);
     const ru = principal({ "20002": [], "20007": ["98"] });
     delete ru.accessRules["20008"];
     expect(access.documentWhere(ru)).toEqual({
       AND: [
-        {
-          OR: [
-            { candidate: { locationId: { in: [98] } } },
-            { employee: { locationId: { in: [98] } } },
-          ],
-        },
+        {},
         { OR: [{ candidate: reviewGroupWhere("RU") }, { candidateId: null }] },
       ],
     });

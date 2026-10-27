@@ -15,11 +15,17 @@ import {
   type DocumentFileDto,
   type OcrRegionDto,
   type DocumentOcrFieldDto,
+  type AnnotationPageDto,
 } from "@edo/api-client";
 import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import type { PDFDocumentLoadingTask, RenderTask } from "pdfjs-dist";
 import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
 import { OCR_FIELD_LABELS } from "./DocumentOcrDetails";
+
+import {
+  AnnotationOverlay,
+  type AnnotationOverlayProps,
+} from "./annotations/AnnotationOverlay";
 
 const ZOOM_LEVELS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 type PageSize = { width: number; height: number };
@@ -29,13 +35,18 @@ function PdfPage({
   pageNumber,
   onReady,
   onError,
+  canonicalSource,
 }: {
   url: string;
   pageNumber: number;
   onReady: (size: PageSize) => void;
   onError: () => void;
+  canonicalSource?: AnnotationPageDto;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const canonicalWidth = canonicalSource?.width,
+    canonicalHeight = canonicalSource?.height,
+    canonicalDpi = canonicalSource?.renderDpi;
   useEffect(() => {
     let active = true;
     let loading: PDFDocumentLoadingTask | undefined;
@@ -58,10 +69,12 @@ function PdfPage({
         throw new Error("Invalid PDF page");
       // Bound canvas memory even for PDFs with enormous page dimensions.
       const viewport = page.getViewport({
-        scale: Math.min(2, 1600 / base.width, 2200 / base.height),
+        scale: canonicalDpi
+          ? canonicalDpi / 72
+          : Math.min(2, 1600 / base.width, 2200 / base.height),
       });
-      canvas.current.width = Math.ceil(viewport.width);
-      canvas.current.height = Math.ceil(viewport.height);
+      canvas.current.width = canonicalWidth ?? Math.ceil(viewport.width);
+      canvas.current.height = canonicalHeight ?? Math.ceil(viewport.height);
       rendering = page.render({ canvas: canvas.current, viewport });
       await rendering.promise;
       if (active) onReady({ width: base.width, height: base.height });
@@ -73,7 +86,15 @@ function PdfPage({
       rendering?.cancel();
       void loading?.destroy().catch(() => undefined);
     };
-  }, [url, pageNumber, onReady, onError]);
+  }, [
+    url,
+    pageNumber,
+    onReady,
+    onError,
+    canonicalWidth,
+    canonicalHeight,
+    canonicalDpi,
+  ]);
   return (
     <canvas
       ref={canvas}
@@ -98,7 +119,11 @@ export function DocumentPreview({
   hoveredRegionId,
   onSelectRegion,
   onHoverRegion,
+  annotation,
 }: {
+  annotation?: Omit<AnnotationOverlayProps, "width" | "height" | "rotation"> & {
+    source: AnnotationPageDto;
+  };
   documentId: string;
   version: number;
   file: DocumentFileDto;
@@ -205,7 +230,8 @@ export function DocumentPreview({
     return () => observer.disconnect();
   }, [download.data, failed]);
   const pageWidth = viewportWidth * zoom;
-  const pageHeight = (pageWidth * pageSize.height) / pageSize.width;
+  const sourceSize = annotation?.source ?? pageSize;
+  const pageHeight = (pageWidth * sourceSize.height) / sourceSize.width;
   const sideways = rotation % 180 !== 0;
   const rotatedWidth = sideways ? pageHeight : pageWidth;
   const rotatedHeight = sideways ? pageWidth : pageHeight;
@@ -376,15 +402,17 @@ export function DocumentPreview({
             <RotateCw size={14} />
           </Button>
         </div>
-        <label className="flex h-8 cursor-pointer items-center gap-1.5 text-xs">
-          <input
-            type="checkbox"
-            className="h-3.5 w-3.5 accent-[var(--primary)]"
-            checked={showBoxes}
-            onChange={(event) => setShowBoxes(event.target.checked)}
-          />
-          Области OCR
-        </label>
+        {!annotation && (
+          <label className="flex h-8 cursor-pointer items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 accent-[var(--primary)]"
+              checked={showBoxes}
+              onChange={(event) => setShowBoxes(event.target.checked)}
+            />
+            Области OCR
+          </label>
+        )}
       </div>
       {(download.isLoading || (download.data && !ready && !failed)) && (
         <p role="status" className="text-sm">
@@ -434,15 +462,22 @@ export function DocumentPreview({
             >
               {file.mimeType === "application/pdf" ? (
                 <PdfPage
-                  url={download.data.previewUrl}
+                  url={
+                    annotation?.source.previewUrl ?? download.data.previewUrl
+                  }
                   pageNumber={pageNumber}
+                  canonicalSource={annotation?.source}
                   onReady={onReady}
                   onError={onError}
                 />
               ) : (
                 <img
-                  className="block h-auto w-full"
-                  src={download.data.previewUrl}
+                  className={
+                    annotation ? "block h-full w-full" : "block h-auto w-full"
+                  }
+                  src={
+                    annotation?.source.previewUrl ?? download.data.previewUrl
+                  }
                   alt={`Загруженная страница документа: ${file.filename}`}
                   onLoad={(event) =>
                     onReady({
@@ -453,7 +488,15 @@ export function DocumentPreview({
                   onError={onError}
                 />
               )}
-              {ready && showBoxes && (
+              {ready && annotation && (
+                <AnnotationOverlay
+                  {...annotation}
+                  width={annotation.source.width}
+                  height={annotation.source.height}
+                  rotation={rotation}
+                />
+              )}
+              {ready && !annotation && showBoxes && (
                 <svg
                   className="pointer-events-none absolute inset-0 h-full w-full"
                   viewBox="0 0 1000 1000"
@@ -542,7 +585,7 @@ export function DocumentPreview({
           </div>
         </div>
       )}
-      {inspected && (
+      {!annotation && inspected && (
         <p
           role={localHoveredRegion ? "tooltip" : undefined}
           className="max-h-24 shrink-0 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-[var(--muted)] px-2 py-1.5 text-xs"
@@ -560,9 +603,11 @@ export function DocumentPreview({
         </p>
       )}
       <p className="shrink-0 text-[11px] leading-4 text-[var(--muted-foreground)]">
-        {regions.length
-          ? "Нажмите на область, чтобы перейти к полю. Для мелкого текста увеличьте превью."
-          : "Для этой страницы OCR не передала координаты. Поля можно проверить по оригиналу."}
+        {annotation
+          ? "Добавляйте отдельную рамку для каждой видимой строки. Масштаб и поворот превью не меняют координаты разметки."
+          : regions.length
+            ? "Нажмите на область, чтобы перейти к полю. Для мелкого текста увеличьте превью."
+            : "Для этой страницы OCR не передала координаты. Поля можно проверить по оригиналу."}
       </p>
     </div>
   );

@@ -1,0 +1,27 @@
+.driver-popover {
+  background: var(--card);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  border-radius: 12px;
+}
+.driver-popover-title {
+  color: var(--foreground);
+}
+.driver-popover-description {
+  color: var(--foreground);
+}
+.driver-popover button {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+  text-shadow: none;
+}
+.driver-popover .driver-popover-next-btn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+.driver-popover button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

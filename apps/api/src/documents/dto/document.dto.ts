@@ -8,6 +8,7 @@ import {
   IsString,
   IsUUID,
   IsIn,
+  IsEnum,
   MinLength,
   Matches,
   Max,
@@ -734,6 +735,33 @@ export class DocumentUploadGrantDto {
   @ApiProperty({ format: "date-time" }) expiresAt!: string;
 }
 export class ReviewDocumentsQueryDto extends CandidateQueryDto {
+  @ApiPropertyOptional({
+    enum: DocumentStatus,
+    enumName: "DocumentStatus",
+    description:
+      "Exact current document status; unlike status=RETURNED this excludes historic returns",
+  })
+  @IsOptional()
+  @IsEnum(DocumentStatus)
+  currentStatus?: DocumentStatus;
+  @ApiPropertyOptional({
+    description:
+      "Exact legacy manager name, only candidates without a manager code",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  managerName?: string;
+  @ApiPropertyOptional({
+    description: "Candidates without manager code or name",
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === "true" ? true : value === "false" ? false : value,
+  )
+  @IsBoolean()
+  managerUnassigned?: boolean;
+
   @ApiPropertyOptional({
     enum: ["RU", "IG"],
     enumName: "ReviewGroup",

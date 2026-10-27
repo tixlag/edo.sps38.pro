@@ -239,7 +239,7 @@ export class DocumentReadService {
       reviewedAt: current?.reviewedAt?.toISOString() ?? null,
       reviewedBy: current?.reviewedBy ?? null,
       ocrStatus: current?.job?.status ?? null,
-      ocrErrorCode: current?.job?.errorCode ?? null,
+      ocrErrorCode: null,
       title: d.documentType?.title ?? "Документ",
       documentUid: d.documentType?.erpUid ?? null,
       deliveryStatus: current?.delivery?.status ?? null,
@@ -315,7 +315,12 @@ export class DocumentReadService {
   async version(
     documentId: string,
     version: number,
+    principal?: AuthPrincipal,
   ): Promise<DocumentVersionDto> {
+    const canDebug = hasAccessRule(
+      principal?.accessRules,
+      EdoAccessRule.FULL_ACCESS,
+    );
     const row = await this.prisma.documentVersion.findUnique({
       where: { documentId_version: { documentId, version } },
       include: versionInclude,
@@ -430,14 +435,15 @@ export class DocumentReadService {
         fileOrdinal: i.fileOrdinal,
         pageNumber: i.pageNumber,
       })),
-      job: row.job
-        ? {
-            id: row.job.id,
-            status: row.job.status,
-            errorCode: row.job.errorCode,
-            cleanupPending: row.job.cleanupPending,
-          }
-        : null,
+      job:
+        canDebug && row.job
+          ? {
+              id: row.job.id,
+              status: row.job.status,
+              errorCode: row.job.errorCode,
+              cleanupPending: row.job.cleanupPending,
+            }
+          : null,
       raw: null,
       approvedAt: row.approvedAt?.toISOString() ?? null,
       approvedBy: row.approvedBy,
@@ -445,8 +451,8 @@ export class DocumentReadService {
       delivery: row.delivery
         ? {
             status: row.delivery.status,
-            errorCode: row.delivery.errorCode,
-            attempts: row.delivery.attempts.map((a) => ({
+            errorCode: canDebug ? row.delivery.errorCode : null,
+            attempts: (canDebug ? row.delivery.attempts : []).map((a) => ({
               id: a.id,
               actorId: a.actorId,
               startedAt: a.startedAt.toISOString(),
@@ -519,7 +525,9 @@ export class DocumentReadService {
           ).values(),
         ),
       })),
-      raw: row.ocrRaw,
+      raw: hasAccessRule(principal.accessRules, EdoAccessRule.FULL_ACCESS)
+        ? row.ocrRaw
+        : null,
     };
   }
 
@@ -529,7 +537,7 @@ export class DocumentReadService {
     principal: AuthPrincipal,
   ): Promise<DocumentVersionDto> {
     await this.access.document(documentId, principal);
-    return this.version(documentId, version);
+    return this.version(documentId, version, principal);
   }
 
   async internalVersion(
@@ -819,32 +827,40 @@ export class DocumentReadService {
     principal: AuthPrincipal,
     query: {
       status?: string;
+      currentStatus?: ReviewDocumentsQueryDto["currentStatus"];
       documentTypeCode?: string;
       reviewGroup?: ReviewGroup;
     },
   ): Prisma.DocumentWhereInput {
-    const { status, documentTypeCode, reviewGroup = "RU" } = query;
+    const {
+      status,
+      currentStatus,
+      documentTypeCode,
+      reviewGroup = "RU",
+    } = query;
     requireReviewGroup(principal, reviewGroup);
     return {
       ...this.access.documentWhere(principal),
       candidate: reviewGroupWhere(reviewGroup),
       currentVersion: { gt: 0 },
       ...(documentTypeCode ? { documentType: { code: documentTypeCode } } : {}),
-      ...(status === "ALL"
-        ? {}
-        : status === "ERP_PENDING"
-          ? {
-              versions: {
-                some: {
-                  delivery: {
-                    status: { in: ["REQUIRES_MANUAL", "WAITING_CONTRACT"] },
+      ...(currentStatus
+        ? { status: currentStatus }
+        : status === "ALL"
+          ? {}
+          : status === "ERP_PENDING"
+            ? {
+                versions: {
+                  some: {
+                    delivery: {
+                      status: { in: ["REQUIRES_MANUAL", "WAITING_CONTRACT"] },
+                    },
                   },
                 },
-              },
-            }
-          : status === "RETURNED"
-            ? { versions: { some: { status: "RETURNED" } } }
-            : { status: "IN_REVIEW" }),
+              }
+            : status === "RETURNED"
+              ? { versions: { some: { status: "RETURNED" } } }
+              : { status: "IN_REVIEW" }),
     };
   }
 
@@ -856,12 +872,14 @@ export class DocumentReadService {
       limit = 50,
       cursor,
       status,
+      currentStatus,
       documentTypeCode,
       reviewGroup = "RU",
       ...profile
     } = query;
     const documentsWhere = this.reviewDocumentWhere(principal, {
       status,
+      currentStatus,
       documentTypeCode,
       reviewGroup,
     });
@@ -907,6 +925,7 @@ export class DocumentReadService {
       limit = 50,
       cursor,
       status,
+      currentStatus,
       documentTypeCode,
       reviewGroup = "RU",
       ...profile
@@ -915,6 +934,7 @@ export class DocumentReadService {
     const where: Prisma.DocumentWhereInput = {
       ...this.reviewDocumentWhere(principal, {
         status,
+        currentStatus,
         documentTypeCode,
         reviewGroup,
       }),

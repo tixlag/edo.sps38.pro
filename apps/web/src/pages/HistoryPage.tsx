@@ -1,7 +1,12 @@
-import * as React from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
-import { getListAuditLogsQueryKey, useGetMe, useListAuditLogs, type ListAuditLogsParams } from '@edo/api-client';
-import { Button, Card, CardContent, EmptyState, PageHeader } from '@edo/ui';
+import * as React from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import {
+  getListAuditLogsQueryKey,
+  useGetMe,
+  useListAuditLogs,
+  type ListAuditLogsParams,
+} from "@edo/api-client";
+import { Button, Card, CardContent, EmptyState, PageHeader } from "@edo/ui";
 import {
   auditActionLabel,
   auditEntityLabel,
@@ -12,26 +17,27 @@ import {
   resolveEffectiveMine,
   type AuditLink,
   type AuditLogItem,
-} from '../lib/audit-types';
+} from "../lib/audit-types";
 
 const PAGE_LIMIT = 50;
 
 const ACTION_FILTERS = [
-  { value: '', label: 'Все действия' },
-  { value: 'DOCUMENT_APPROVED', label: 'Подтверждено' },
-  { value: 'DOCUMENT_RETURNED', label: 'Возвращено' },
-  { value: 'DOCUMENT_FIELDS_UPDATED', label: 'Поля исправлены' },
+  { value: "", label: "Все действия" },
+  { value: "DOCUMENT_APPROVED", label: "Подтверждено" },
+  { value: "DOCUMENT_RETURNED", label: "Возвращено" },
+  { value: "DOCUMENT_FIELDS_UPDATED", label: "Поля исправлены" },
 ] as const;
 
 const REVIEW_TABS = [
-  { value: 'DOCUMENT_APPROVED', label: 'Подтвержденные' },
-  { value: 'DOCUMENT_RETURNED', label: 'Отклоненные' },
+  { value: "DOCUMENT_APPROVED", label: "Подтвержденные" },
+  { value: "DOCUMENT_RETURNED", label: "Отклоненные" },
 ] as const;
 
 const FILTER_CONTROL =
-  'rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]';
-const TH = 'px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]';
-const TD = 'px-4 py-3';
+  "rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]";
+const TH =
+  "px-4 py-3 text-[12px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]";
+const TD = "px-4 py-3";
 
 function goToItem(
   navigate: ReturnType<typeof useNavigate>,
@@ -39,14 +45,20 @@ function goToItem(
   canOpen: boolean,
 ) {
   if (!canOpen) return;
-  if (link.to === '/review/$documentId') {
+  if (link.to === "/history/documents/$documentId") {
     void navigate({ to: link.to, params: link.params, search: link.search });
   } else {
     void navigate({ to: link.to, params: link.params });
   }
 }
 
-function ObjectCell({ item, canOpen }: { item: AuditLogItem; canOpen: boolean }) {
+function ObjectCell({
+  item,
+  canOpen,
+}: {
+  item: AuditLogItem;
+  canOpen: boolean;
+}) {
   const label = `${auditEntityLabel(item.entityType)} · ${item.entityId.slice(0, 8)}…`;
   const title = `${auditEntityLabel(item.entityType)} ${item.entityId}`;
   const link = auditLogLink(item);
@@ -55,14 +67,18 @@ function ObjectCell({ item, canOpen }: { item: AuditLogItem; canOpen: boolean })
   if (!link || !canOpen) {
     return (
       <span
-        title={!link ? title : 'Нет доступа к содержимому'}
-        className={!link ? 'text-[var(--muted-foreground)]' : 'text-[var(--muted-foreground)]'}
+        title={!link ? title : "Нет доступа к содержимому"}
+        className={
+          !link
+            ? "text-[var(--muted-foreground)]"
+            : "text-[var(--muted-foreground)]"
+        }
       >
         {label}
       </span>
     );
   }
-  if (link.to === '/review/$documentId') {
+  if (link.to === "/history/documents/$documentId") {
     return (
       <Link
         to={link.to}
@@ -89,20 +105,33 @@ function ObjectCell({ item, canOpen }: { item: AuditLogItem; canOpen: boolean })
   );
 }
 
-function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: boolean }) {
+function AuditLogList({
+  lockMine,
+  withTabs,
+}: {
+  lockMine?: boolean;
+  withTabs?: boolean;
+}) {
   const profile = useGetMe();
   const navigate = useNavigate();
   const profileReady = profile.isSuccess;
   const canViewAll =
-    profileReady && (hasAccessRule(profile.data, 20005) || hasAccessRule(profile.data, 20009));
+    profileReady &&
+    (hasAccessRule(profile.data, 20005) || hasAccessRule(profile.data, 20009));
   const allowed =
     profileReady &&
-    (canViewAll || (hasAccessRule(profile.data, 20002) || hasAccessRule(profile.data, 20011)));
+    (canViewAll ||
+      hasAccessRule(profile.data, 20002) ||
+      hasAccessRule(profile.data, 20011));
 
-  const [scope, setScope] = React.useState<'mine' | 'all'>(lockMine ? 'mine' : 'all');
-  const [action, setAction] = React.useState<string>(withTabs ? REVIEW_TABS[0].value : '');
-  const [entityId, setEntityId] = React.useState('');
-  const [debouncedEntityId, setDebouncedEntityId] = React.useState('');
+  const [scope, setScope] = React.useState<"mine" | "all">(
+    lockMine ? "mine" : "all",
+  );
+  const [action, setAction] = React.useState<string>(
+    withTabs ? REVIEW_TABS[0].value : "",
+  );
+  const [entityId, setEntityId] = React.useState("");
+  const [debouncedEntityId, setDebouncedEntityId] = React.useState("");
   const [cursor, setCursor] = React.useState<string | undefined>();
   const [items, setItems] = React.useState<AuditLogItem[]>([]);
 
@@ -120,7 +149,9 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
   const trimmedEntityId = entityId.trim();
   React.useEffect(() => {
     const timer = window.setTimeout(() => {
-      setDebouncedEntityId((prev) => (prev === trimmedEntityId ? prev : trimmedEntityId));
+      setDebouncedEntityId((prev) =>
+        prev === trimmedEntityId ? prev : trimmedEntityId,
+      );
     }, 300);
     return () => window.clearTimeout(timer);
   }, [trimmedEntityId]);
@@ -142,7 +173,7 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
 
   const params: ListAuditLogsParams = {
     mine: effectiveMine ? true : undefined,
-    action: (action || undefined) as ListAuditLogsParams['action'],
+    action: (action || undefined) as ListAuditLogsParams["action"],
     entityId: debouncedEntityId || undefined,
     limit: PAGE_LIMIT,
     cursor,
@@ -170,7 +201,7 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
     return (
       <div className="flex h-full flex-col gap-5 overflow-y-auto p-[26px_28px_28px_28px]">
         <PageHeader
-          title={withTabs ? 'Мои проверки' : 'История'}
+          title={withTabs ? "Мои проверки" : "История"}
           subtitle="Журнал действий проверяющих"
         />
         <Card>
@@ -188,11 +219,11 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-[26px_28px_28px_28px]">
       <PageHeader
-        title={withTabs ? 'Мои проверки' : 'История'}
+        title={withTabs ? "Мои проверки" : "История"}
         subtitle={
           withTabs
-            ? 'Мои подтверждения и отклонения документов'
-            : 'Журнал действий в пределах ваших прав доступа'
+            ? "Мои подтверждения и отклонения документов"
+            : "Журнал действий в пределах ваших прав доступа"
         }
       />
 
@@ -200,20 +231,20 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
         {canViewAll && !lockMine && (
           <>
             <Button
-              variant={scope === 'mine' ? 'default' : 'outline'}
+              variant={scope === "mine" ? "default" : "outline"}
               size="sm"
               onClick={() => {
-                setScope('mine');
+                setScope("mine");
                 resetPage();
               }}
             >
               Мои
             </Button>
             <Button
-              variant={scope === 'all' ? 'default' : 'outline'}
+              variant={scope === "all" ? "default" : "outline"}
               size="sm"
               onClick={() => {
-                setScope('all');
+                setScope("all");
                 resetPage();
               }}
             >
@@ -225,7 +256,7 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
           REVIEW_TABS.map((tab) => (
             <Button
               key={tab.value}
-              variant={action === tab.value ? 'default' : 'outline'}
+              variant={action === tab.value ? "default" : "outline"}
               size="sm"
               onClick={() => {
                 setAction(tab.value);
@@ -273,9 +304,16 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
       {list.isError && (
         <Card>
           <CardContent>
-            <div role="alert" className="flex items-center justify-between gap-3 py-4 text-sm">
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-3 py-4 text-sm"
+            >
               Не удалось загрузить историю.
-              <Button variant="outline" size="sm" onClick={() => list.refetch()}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => list.refetch()}
+              >
                 Повторить
               </Button>
             </div>
@@ -312,28 +350,45 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
                   {items.map((item) => {
                     const link = auditLogLink(item);
                     const linkable =
-                      link !== null && canOpenAuditObject(profile.data, item.entityType) && canOpenObject;
+                      link !== null &&
+                      canOpenAuditObject(profile.data, item.entityType) &&
+                      canOpenObject;
                     return (
                       <tr
                         key={item.id}
-                        onClick={link && linkable ? () => goToItem(navigate, link, true) : undefined}
-                        title={link && !linkable ? 'Нет доступа к содержимому' : undefined}
+                        onClick={
+                          link && linkable
+                            ? () => goToItem(navigate, link, true)
+                            : undefined
+                        }
+                        title={
+                          link && !linkable
+                            ? "Нет доступа к содержимому"
+                            : undefined
+                        }
                         className={
                           linkable
-                            ? 'cursor-pointer border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/60'
-                            : 'border-b border-[var(--border)] last:border-0'
+                            ? "cursor-pointer border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/60"
+                            : "border-b border-[var(--border)] last:border-0"
                         }
                       >
-                        <td className={`${TD} whitespace-nowrap text-[var(--muted-foreground)]`}>
-                          {new Date(item.createdAt).toLocaleString('ru-RU')}
+                        <td
+                          className={`${TD} whitespace-nowrap text-[var(--muted-foreground)]`}
+                        >
+                          {new Date(item.createdAt).toLocaleString("ru-RU")}
                         </td>
-                        <td className={TD}>{item.actorName ?? item.actorId ?? '—'}</td>
+                        <td className={TD}>
+                          {item.actorName ?? item.actorId ?? "—"}
+                        </td>
                         <td className={TD}>{auditActionLabel(item.action)}</td>
                         <td className={TD}>
                           <ObjectCell item={item} canOpen={linkable} />
                         </td>
-                        <td className={`${TD} max-w-[280px] truncate`} title={item.rejectionReason ?? ''}>
-                          {item.rejectionReason ?? '—'}
+                        <td
+                          className={`${TD} max-w-[280px] truncate`}
+                          title={item.rejectionReason ?? ""}
+                        >
+                          {item.rejectionReason ?? "—"}
                         </td>
                       </tr>
                     );
@@ -348,7 +403,7 @@ function AuditLogList({ lockMine, withTabs }: { lockMine?: boolean; withTabs?: b
                   disabled={list.isLoading}
                   onClick={() => setCursor(list.data?.nextCursor ?? undefined)}
                 >
-                  {list.isLoading ? 'Загрузка…' : 'Показать ещё'}
+                  {list.isLoading ? "Загрузка…" : "Показать ещё"}
                 </Button>
               </div>
             )}

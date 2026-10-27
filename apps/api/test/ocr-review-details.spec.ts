@@ -121,9 +121,55 @@ describe("OCR review data boundaries", () => {
           text: "RAW SEGMENT",
         }),
       ]);
-      expect(result.raw).toEqual({ allFields: "PROTECTED" });
+      expect(result.raw).toEqual(
+        rule === "20009" ? { allFields: "PROTECTED" } : null,
+      );
     },
   );
+
+  it("redacts technical ERP and worker diagnostics but retains business status", async () => {
+    const { reads, row, principal } = fixture();
+    Object.assign(row, {
+      job: {
+        id: "private-job",
+        status: "FAILED",
+        errorCode: "PRIVATE",
+        cleanupPending: true,
+      },
+      delivery: {
+        status: "REQUIRES_MANUAL",
+        errorCode: "PRIVATE",
+        attempts: [
+          {
+            id: "private-attempt",
+            actorId: "private-actor",
+            startedAt: new Date(),
+            finishedAt: null,
+            responseBody: "PRIVATE",
+            httpStatus: 500,
+          },
+        ],
+      },
+    });
+    const reviewer = await reads.publicVersion(
+      "document",
+      4,
+      principal({ "20002": [] }),
+    );
+    expect(reviewer.job).toBeNull();
+    expect(reviewer.delivery).toEqual({
+      status: "REQUIRES_MANUAL",
+      errorCode: null,
+      attempts: [],
+    });
+    const admin = await reads.publicVersion(
+      "document",
+      4,
+      principal({ "20009": [] }),
+    );
+    expect(admin.job?.id).toBe("private-job");
+    expect(admin.delivery?.attempts[0].responseBody).toBe("PRIVATE");
+  });
 
   it("denies a regular reviewer and inherited permissions before loading details", async () => {
     const { reads, access, principal, prisma } = fixture();

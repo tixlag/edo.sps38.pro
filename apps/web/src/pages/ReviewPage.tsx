@@ -52,6 +52,12 @@ const VERSION_STATUS_LABEL: Record<string, string> = {
   IN_REVIEW: "на проверке",
   APPROVED: "подтверждена",
   RETURNED: "возвращена",
+  SIGNED: "подписана",
+  OCR_FAILED: "ошибка распознавания",
+  OCR_PENDING: "распознаётся",
+  UPLOADED: "загружена",
+  EXPIRED: "просрочена",
+  DRAFT: "черновик",
 };
 
 const PAGE_LIMIT = 50;
@@ -306,11 +312,15 @@ export function ReviewPage({
   );
 
   const pickTab = (next: ReviewTab) => {
-    if (next !== filters.status) setFilters({ status: next });
+    if (next !== filters.status)
+      setFilters({ status: next, currentStatus: undefined });
   };
 
   const resetFilters = () => {
     setFilters({
+      currentStatus: undefined,
+      managerName: undefined,
+      managerUnassigned: undefined,
       candidateId: undefined,
       documentTypeCode: undefined,
       citizenship: undefined,
@@ -391,6 +401,9 @@ export function ReviewPage({
     () => ({
       reviewGroup,
       status: filters.status,
+      currentStatus: filters.currentStatus,
+      managerName: filters.managerName,
+      managerUnassigned: filters.managerUnassigned,
       limit: PAGE_LIMIT,
       cursor: filters.cursor,
       candidateId: filters.candidateId,
@@ -515,6 +528,21 @@ export function ReviewPage({
 
   return (
     <div className="h-full overflow-auto p-3 sm:p-7">
+      {filters.currentStatus && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-3 text-sm"
+        >
+          Текущий статус: {VERSION_STATUS_LABEL[filters.currentStatus]}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setFilters({ currentStatus: undefined })}
+          >
+            Снять фильтр статуса
+          </Button>
+        </div>
+      )}
       <PageHeader
         title={`Проверка документов ${reviewGroup === "IG" ? "ИГ" : "РУ"}`}
         subtitle="Документы кандидатов и сотрудников"
@@ -768,12 +796,14 @@ export function ReviewPage({
 }
 export function ReviewDocumentPage({
   reviewGroup = "RU",
+  readOnly = false,
 }: {
   reviewGroup?: "RU" | "IG";
+  readOnly?: boolean;
 }) {
   const { documentId } = useParams({ strict: false }) as { documentId: string };
   const navigate = useNavigate();
-  // Versioned deep link from history: /review/$documentId?version=N.
+  // Versioned deep links use the history reader or a departmental review route.
   // useSearch (no route validateSearch change needed): invalid values fall
   // back to the current version with an explicit notice.
   const search = useSearch({ strict: false }) as Record<string, unknown>;
@@ -803,7 +833,11 @@ export function ReviewDocumentPage({
   const chooseVersion = (next: number) => {
     setSelectedVersion(next);
     void navigate({
-      to: group === "IG" ? "/review-ig/$documentId" : "/review/$documentId",
+      to: readOnly
+        ? "/history/documents/$documentId"
+        : group === "IG"
+          ? "/review-ig/$documentId"
+          : "/review/$documentId",
       params: { documentId },
       search: (prev: Record<string, unknown>) => ({ ...prev, version: next }),
     });
@@ -824,11 +858,11 @@ export function ReviewDocumentPage({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto p-3 sm:p-4 lg:overflow-hidden">
       <Link
-        to={base}
+        to={readOnly ? "/history" : base}
         search={{ ...parseReviewSearchParams(search) }}
         className="mb-2 inline-block text-[13px] text-[var(--muted-foreground)] underline underline-offset-4 hover:text-[var(--foreground)]"
       >
-        ← Очередь проверки
+        {readOnly ? "← История" : "← Очередь проверки"}
       </Link>
       <PageHeader
         title={candidateSurname || info.data?.title || "Проверка документа"}
@@ -861,7 +895,7 @@ export function ReviewDocumentPage({
           <p className="font-semibold">
             Историческая версия {version.data.version}
             {currentVersion ? ` (текущая — ${currentVersion})` : ""}. Изменение
-            запрещено.
+            реквизитов запрещено.
           </p>
           <p className="mt-1">
             Версия от {decidedAt ?? "дата неизвестна"} · статус: {viewedStatus}
@@ -951,7 +985,13 @@ export function ReviewDocumentPage({
             key={`${version.data.documentId}-${version.data.version}`}
             candidateId={info.data?.candidateId ?? undefined}
             data={version.data}
-            readOnly={historic}
+            readOnly={readOnly || historic}
+            allowAnnotation={
+              !readOnly &&
+              (!historic ||
+                ["APPROVED", "SIGNED"].includes(version.data.status))
+            }
+            allowAnnotationClaim={!readOnly && !historic}
             fitContainer
           />
         </div>

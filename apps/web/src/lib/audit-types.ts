@@ -1,4 +1,4 @@
-import type { AuditLogItemDto, MeResponseDto } from '@edo/api-client';
+import type { AuditLogItemDto, MeResponseDto } from "@edo/api-client";
 
 /**
  * Local alias kept so HistoryPage imports stay stable.
@@ -11,13 +11,13 @@ import type { AuditLogItemDto, MeResponseDto } from '@edo/api-client';
 export type AuditLogItem = AuditLogItemDto & { version?: number | null };
 
 const AUDIT_ACTION_LABELS: Record<string, string> = {
-  DOCUMENT_APPROVED: 'Подтверждён',
-  DOCUMENT_RETURNED: 'Возвращён',
-  DOCUMENT_FIELDS_UPDATED: 'Поля исправлены',
-  DOCUMENT_UPLOADED: 'Загружен',
-  DOCUMENT_SIGNED: 'Подписан',
-  EMPLOYEE_CREATED: 'Дело создано',
-  WORKFLOW_STAGE_CHANGED: 'Этап изменён',
+  DOCUMENT_APPROVED: "Подтверждён",
+  DOCUMENT_RETURNED: "Возвращён",
+  DOCUMENT_FIELDS_UPDATED: "Поля исправлены",
+  DOCUMENT_UPLOADED: "Загружен",
+  DOCUMENT_SIGNED: "Подписан",
+  EMPLOYEE_CREATED: "Дело создано",
+  WORKFLOW_STAGE_CHANGED: "Этап изменён",
 };
 
 export function auditActionLabel(action: string): string {
@@ -26,12 +26,12 @@ export function auditActionLabel(action: string): string {
 
 export function auditEntityLabel(entityType: string): string {
   switch (entityType) {
-    case 'Document':
-      return 'Документ';
-    case 'Employee':
-      return 'Дело работника';
-    case 'Candidate':
-      return 'Кандидат';
+    case "Document":
+      return "Документ";
+    case "Employee":
+      return "Дело работника";
+    case "Candidate":
+      return "Кандидат";
     default:
       return entityType;
   }
@@ -45,45 +45,50 @@ export interface AuditLinkSource {
 }
 
 export interface AuditDocumentLink {
-  to: '/review/$documentId';
+  to: "/history/documents/$documentId";
   params: { documentId: string };
   search: { version?: number };
 }
 
 export interface AuditEmployeeLink {
-  to: '/employees/$employeeId';
+  to: "/employees/$employeeId";
   params: { employeeId: string };
 }
 
 export type AuditLink = AuditDocumentLink | AuditEmployeeLink;
 
 /**
- * SPA target for a row: review card for documents (versioned deep link
+ * SPA target for a row: history reader for documents (versioned deep link
  * `?version=N` when the audit row carries a version), case card for employees.
  *
- * PRODUCT DECISION: the backend `linkHint` uses `/documents/<id>` while the SPA
- * route is `/review/$documentId`. This frontend mapping is the source of truth
+ * The department-independent history reader is always read-only. This
+ * frontend mapping is the source of truth
  * for routes; the raw `linkHint` string is NEVER used for navigation (it stays
  * informational only).
  */
 export function auditLogLink(item: AuditLinkSource): AuditLink | null {
-  if (item.entityType === 'Document') {
+  if (item.entityType === "Document") {
     const version = auditLogVersion(item);
     return {
-      to: '/review/$documentId',
+      to: "/history/documents/$documentId",
       params: { documentId: item.entityId },
       search: version === null ? {} : { version },
     };
   }
-  if (item.entityType === 'Employee') {
-    return { to: '/employees/$employeeId', params: { employeeId: item.entityId } };
+  if (item.entityType === "Employee") {
+    return {
+      to: "/employees/$employeeId",
+      params: { employeeId: item.entityId },
+    };
   }
   return null;
 }
 
 /** Audited document version, or null for legacy rows without one. */
-export function auditLogVersion(item: { version?: number | null }): number | null {
-  return typeof item.version === 'number' &&
+export function auditLogVersion(item: {
+  version?: number | null;
+}): number | null {
+  return typeof item.version === "number" &&
     Number.isInteger(item.version) &&
     item.version > 0
     ? item.version
@@ -94,14 +99,17 @@ export function auditLogVersion(item: { version?: number | null }): number | nul
  * EDO access rules: key presence grants the right (value may be `[]`),
  * NEVER truthiness. Frontend use is UI-only; the backend re-checks.
  */
-export function hasAccessRule(profile: MeResponseDto | undefined, rule: number): boolean {
+export function hasAccessRule(
+  profile: MeResponseDto | undefined,
+  rule: number,
+): boolean {
   const permissions = (profile?.permissions ?? {}) as Record<string, unknown>;
   return Object.prototype.hasOwnProperty.call(permissions, String(rule));
 }
 
 /**
  * Base read right (20000; FULL_ACCESS 20009 implies it, mirroring the backend
- * `hasAccessRule`). Both the review card (`GET documents/:id/versions/:v`)
+ * `hasAccessRule`). Both the history reader (`GET documents/:id/versions/:v`)
  * and the employee card (`GET employees/:id`) require ACCESS — the backend
  * re-checks per object via DocumentAccessService (location scope → 404).
  * UI use only: hides links, never bypasses the backend.
@@ -116,11 +124,11 @@ export function canOpenAuditObject(
   profile: MeResponseDto | undefined,
   entityType: string,
 ): boolean {
-  if (entityType !== 'Document' && entityType !== 'Employee') return false;
+  if (entityType !== "Document" && entityType !== "Employee") return false;
   return canReadDocuments(profile);
 }
 
-export type AuditScope = 'mine' | 'all';
+export type AuditScope = "mine" | "all";
 
 /**
  * Fail-closed scope resolution (pure, unit-tested): reviewers only see their
@@ -131,15 +139,15 @@ export function resolveEffectiveMine(
   canViewAll: boolean,
   scope: AuditScope,
 ): boolean {
-  return Boolean(lockMine) || !canViewAll || scope === 'mine';
+  return Boolean(lockMine) || !canViewAll || scope === "mine";
 }
 
 /** Parse `?version=N` (string or number) into a positive integer version. */
 export function parseVersionParam(raw: unknown): number | undefined {
   const n =
-    typeof raw === 'number'
+    typeof raw === "number"
       ? raw
-      : typeof raw === 'string' && raw.trim() !== ''
+      : typeof raw === "string" && raw.trim() !== ""
         ? Number(raw)
         : NaN;
   return Number.isInteger(n) && (n as number) > 0 ? (n as number) : undefined;
@@ -151,6 +159,8 @@ export function isHistoricVersion(
   current: number | null | undefined,
 ): boolean {
   return (
-    typeof viewed === 'number' && typeof current === 'number' && viewed < current
+    typeof viewed === "number" &&
+    typeof current === "number" &&
+    viewed < current
   );
 }

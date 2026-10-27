@@ -1,0 +1,20 @@
+{
+  "name": "edo-ocr-export",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "0.1.100",
+    "pdfjs-dist": "5.6.205",
+    "sharp": "0.35.5"
+  },
+  "devDependencies": {
+    "pdf-lib": "1.17.1"
+  }
+}

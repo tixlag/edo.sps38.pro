@@ -36,10 +36,16 @@ export const AuditAction = {
   DATA_IMPORTED: "DATA_IMPORTED",
   LK_REFERENCE_SYNCED: "LK_REFERENCE_SYNCED",
   LK_EVENT_APPLIED: "LK_EVENT_APPLIED",
-  COMMUNICATION_REQUESTED: "COMMUNICATION_REQUESTED",
-  COMMUNICATION_COMPLETED: "COMMUNICATION_COMPLETED",
   DOCUMENT_OCR_RETRIED: "DOCUMENT_OCR_RETRIED",
   DOCUMENT_OCR_REQUESTED: "DOCUMENT_OCR_REQUESTED",
+  ANNOTATION_CATALOG_CHANGED: "ANNOTATION_CATALOG_CHANGED",
+  ANNOTATION_PREFERENCE_CHANGED: "ANNOTATION_PREFERENCE_CHANGED",
+  ANNOTATION_CLAIMED: "ANNOTATION_CLAIMED",
+  ANNOTATION_SAVED: "ANNOTATION_SAVED",
+  ANNOTATION_SUBMITTED: "ANNOTATION_SUBMITTED",
+  ANNOTATION_ACCEPTED: "ANNOTATION_ACCEPTED",
+  ANNOTATION_CHANGES_REQUESTED: "ANNOTATION_CHANGES_REQUESTED",
+  ANNOTATION_REASSIGNED: "ANNOTATION_REASSIGNED",
 } as const;
 
 export interface AuditLogItemDto {
@@ -120,6 +126,21 @@ export interface IntegrationHealthDto {
   lastSyncFinishedAt?: string;
 }
 
+export interface DashboardManagerDto {
+  key: string;
+  name: string;
+  /** @nullable */
+  code1c: string | null;
+}
+
+export type ReviewGroup = (typeof ReviewGroup)[keyof typeof ReviewGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ReviewGroup = {
+  RU: "RU",
+  IG: "IG",
+} as const;
+
 export type KpiDtoGroup = (typeof KpiDtoGroup)[keyof typeof KpiDtoGroup];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
@@ -147,6 +168,39 @@ export interface StageSliceDto {
   value: number;
 }
 
+export interface DashboardSectionDto {
+  reviewGroup: ReviewGroup;
+  kpis: KpiDto[];
+  weekly: WeeklyBarDto[];
+  stages: StageSliceDto[];
+}
+
+export type DocumentStatus =
+  (typeof DocumentStatus)[keyof typeof DocumentStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentStatus = {
+  DRAFT: "DRAFT",
+  UPLOADED: "UPLOADED",
+  OCR_PENDING: "OCR_PENDING",
+  OCR_FAILED: "OCR_FAILED",
+  IN_REVIEW: "IN_REVIEW",
+  RETURNED: "RETURNED",
+  APPROVED: "APPROVED",
+  SIGNED: "SIGNED",
+  EXPIRED: "EXPIRED",
+} as const;
+
+export interface DashboardAttentionDto {
+  documentId: string;
+  candidateId: string;
+  /** @nullable */
+  fullName: string | null;
+  title: string;
+  status: DocumentStatus;
+  reviewGroup: ReviewGroup;
+}
+
 export interface ActivityItemDto {
   kind: string;
   title: string;
@@ -165,6 +219,9 @@ export interface TaskItemDto {
 }
 
 export interface DashboardResponseDto {
+  managers: DashboardManagerDto[];
+  sections: DashboardSectionDto[];
+  attention: DashboardAttentionDto[];
   kpis: KpiDto[];
   weekly: WeeklyBarDto[];
   stages: StageSliceDto[];
@@ -433,30 +490,6 @@ export interface ReturnedDocumentVersionDto {
    */
   supersededByVersion: number | null;
 }
-
-export type DocumentStatus =
-  (typeof DocumentStatus)[keyof typeof DocumentStatus];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const DocumentStatus = {
-  DRAFT: "DRAFT",
-  UPLOADED: "UPLOADED",
-  OCR_PENDING: "OCR_PENDING",
-  OCR_FAILED: "OCR_FAILED",
-  IN_REVIEW: "IN_REVIEW",
-  RETURNED: "RETURNED",
-  APPROVED: "APPROVED",
-  SIGNED: "SIGNED",
-  EXPIRED: "EXPIRED",
-} as const;
-
-export type ReviewGroup = (typeof ReviewGroup)[keyof typeof ReviewGroup];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const ReviewGroup = {
-  RU: "RU",
-  IG: "IG",
-} as const;
 
 export interface CandidateProfileDto {
   reviewGroup: ReviewGroup;
@@ -1122,6 +1155,269 @@ export interface RejectDocumentDto {
   reason: string;
 }
 
+export interface AnnotationPreferenceDto {
+  enabled: boolean;
+}
+
+export type AnnotationStatus =
+  (typeof AnnotationStatus)[keyof typeof AnnotationStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationStatus = {
+  DRAFT: "DRAFT",
+  SUBMITTED: "SUBMITTED",
+  ACCEPTED: "ACCEPTED",
+  CHANGES_REQUESTED: "CHANGES_REQUESTED",
+} as const;
+
+export type AnnotationSourceKind =
+  (typeof AnnotationSourceKind)[keyof typeof AnnotationSourceKind];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationSourceKind = {
+  ORIGINAL: "ORIGINAL",
+} as const;
+
+export type AnnotationProfile =
+  (typeof AnnotationProfile)[keyof typeof AnnotationProfile];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationProfile = {
+  RU: "RU",
+  UZ: "UZ",
+  OTHER: "OTHER",
+} as const;
+
+export interface AnnotationCatalogFieldDto {
+  key: string;
+  label: string;
+  /** @minimum 0 */
+  ordinal: number;
+  multiline: boolean;
+  /** @nullable */
+  businessFieldName?: string | null;
+}
+
+export type CatalogStatus = (typeof CatalogStatus)[keyof typeof CatalogStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CatalogStatus = {
+  DRAFT: "DRAFT",
+  PUBLISHED: "PUBLISHED",
+} as const;
+
+export interface AnnotationCatalogDto {
+  documentTypeCode: string;
+  profile: AnnotationProfile;
+  title: string;
+  fields: AnnotationCatalogFieldDto[];
+  id: string;
+  version: number;
+  revision: number;
+  status: CatalogStatus;
+}
+
+export type AnnotationPageDtoRotation =
+  (typeof AnnotationPageDtoRotation)[keyof typeof AnnotationPageDtoRotation];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationPageDtoRotation = {
+  NUMBER_0: 0,
+  NUMBER_90: 90,
+  NUMBER_180: 180,
+  NUMBER_270: 270,
+} as const;
+
+export type AnnotationPageDtoFrame =
+  (typeof AnnotationPageDtoFrame)[keyof typeof AnnotationPageDtoFrame];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationPageDtoFrame = {
+  UPRIGHT_PIXELS_V1: "UPRIGHT_PIXELS_V1",
+} as const;
+
+export interface AnnotationPageDto {
+  id: string;
+  fileId: string;
+  /** @minimum 1 */
+  pageNumber: number;
+  sha256: string;
+  sizeBytes: number;
+  width: number;
+  height: number;
+  rotation: AnnotationPageDtoRotation;
+  frame: AnnotationPageDtoFrame;
+  renderDpi: number;
+  mimeType: string;
+  previewUrl: string;
+}
+
+export interface AnnotationSourceDto {
+  available: boolean;
+  documentId: string;
+  documentTypeCode: string;
+  profile: AnnotationProfile;
+  versionId: string;
+  version: number;
+  sourceKind: AnnotationSourceKind;
+  pages: AnnotationPageDto[];
+}
+
+export type AnnotationDisposition =
+  (typeof AnnotationDisposition)[keyof typeof AnnotationDisposition];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationDisposition = {
+  PRESENT: "PRESENT",
+  NOT_PRESENT: "NOT_PRESENT",
+  UNREADABLE: "UNREADABLE",
+} as const;
+
+export interface AnnotationLineDto {
+  id: string;
+  pageId: string;
+  /** @minimum 0 */
+  order: number;
+  /** @maxLength 2000 */
+  text: string;
+  /**
+   * Clockwise oriented rectangle; x/y normalized to [0,1] in the upright page frame
+   * @minItems 8
+   * @maxItems 8
+   */
+  quad: number[];
+}
+
+export interface AnnotationFieldAnswerDto {
+  key: string;
+  disposition: AnnotationDisposition;
+  lines: AnnotationLineDto[];
+}
+
+export interface AnnotationDto {
+  id: string;
+  documentId: string;
+  versionId: string;
+  catalogId: string;
+  authorId: string;
+  revision: number;
+  status: AnnotationStatus;
+  sourceKind: AnnotationSourceKind;
+  schema: AnnotationCatalogDto;
+  sources: AnnotationSourceDto;
+  fields: AnnotationFieldAnswerDto[];
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  acceptedAt: string | null;
+  editable: boolean;
+}
+
+export interface AnnotationListDto {
+  items: AnnotationDto[];
+}
+
+export interface ClaimAnnotationDto {
+  documentId: string;
+  /** @minimum 1 */
+  version: number;
+  catalogId: string;
+  sourceKind?: AnnotationSourceKind;
+}
+
+export interface SaveAnnotationDto {
+  /** @minimum 0 */
+  revision: number;
+  fields: AnnotationFieldAnswerDto[];
+}
+
+export interface AnnotationRevisionDto {
+  /** @minimum 0 */
+  revision: number;
+}
+
+export interface AnnotationChangesDto {
+  /** @minimum 0 */
+  revision: number;
+  note: string;
+}
+
+export interface ReassignAnnotationDto {
+  /** @minimum 0 */
+  revision: number;
+  authorId: string;
+}
+
+export interface AnnotationCatalogListDto {
+  items: AnnotationCatalogDto[];
+}
+
+export interface AnnotationCatalogDefaultsDto {
+  fields: AnnotationCatalogFieldDto[];
+}
+
+export interface CreateAnnotationCatalogDto {
+  documentTypeCode: string;
+  profile: AnnotationProfile;
+  title: string;
+  fields: AnnotationCatalogFieldDto[];
+}
+
+export interface UpdateAnnotationCatalogDto {
+  /** @minimum 0 */
+  revision: number;
+  title: string;
+  fields: AnnotationCatalogFieldDto[];
+}
+
+export interface AnnotationDeletedDto {
+  deleted: boolean;
+}
+
+export type SuggestionStatus =
+  (typeof SuggestionStatus)[keyof typeof SuggestionStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const SuggestionStatus = {
+  PENDING: "PENDING",
+  APPLIED: "APPLIED",
+  DISMISSED: "DISMISSED",
+} as const;
+
+export interface AnnotationCatalogSuggestionDto {
+  key: string;
+  label: string;
+  id: string;
+  catalogId: string;
+  authorId: string;
+  status: SuggestionStatus;
+  createdAt: string;
+}
+
+export interface AnnotationCatalogSuggestionListDto {
+  items: AnnotationCatalogSuggestionDto[];
+}
+
+export interface SuggestAnnotationCatalogFieldDto {
+  key: string;
+  label: string;
+}
+
+export type ResolveAnnotationCatalogSuggestionDtoStatus =
+  (typeof ResolveAnnotationCatalogSuggestionDtoStatus)[keyof typeof ResolveAnnotationCatalogSuggestionDtoStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ResolveAnnotationCatalogSuggestionDtoStatus = {
+  APPLIED: "APPLIED",
+  DISMISSED: "DISMISSED",
+} as const;
+
+export interface ResolveAnnotationCatalogSuggestionDto {
+  status: ResolveAnnotationCatalogSuggestionDtoStatus;
+}
+
 export type ListAuditLogsParams = {
   /**
    * Filter by author uuid; the literal "me" means the caller
@@ -1140,6 +1436,35 @@ export type ListAuditLogsParams = {
    */
   cursor?: string;
 };
+
+export type GetDashboardParams = {
+  /**
+   * Default: all permitted review groups
+   */
+  reviewGroup?: GetDashboardReviewGroup;
+  /**
+   * Exact manager code
+   */
+  managerCode1c?: string;
+  /**
+   * Exact legacy manager name, only candidates without manager code
+   */
+  managerName?: string;
+  /**
+   * Candidates without manager code or name
+   */
+  managerUnassigned?: boolean;
+};
+
+export type GetDashboardReviewGroup =
+  (typeof GetDashboardReviewGroup)[keyof typeof GetDashboardReviewGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetDashboardReviewGroup = {
+  RU: "RU",
+  IG: "IG",
+  ALL: "ALL",
+} as const;
 
 /**
  * Provide metadata for manual review or documentTypeCode for legacy OCR; at least one is required.
@@ -1206,6 +1531,18 @@ export type ListCandidateReviewQueueParams = {
    * Candidate id from nextCursor
    */
   cursor?: string;
+  /**
+   * Exact current document status; unlike status=RETURNED this excludes historic returns
+   */
+  currentStatus?: DocumentStatus;
+  /**
+   * Exact legacy manager name, only candidates without a manager code
+   */
+  managerName?: string;
+  /**
+   * Candidates without manager code or name
+   */
+  managerUnassigned?: boolean;
   reviewGroup?: ReviewGroup;
   status?: ListCandidateReviewQueueStatus;
   /**
@@ -1255,6 +1592,18 @@ export const ListCandidateReviewQueueStatus = {
 export type ListReviewDocumentsParams = {
   limit?: number;
   cursor?: string;
+  /**
+   * Exact current document status; unlike status=RETURNED this excludes historic returns
+   */
+  currentStatus?: DocumentStatus;
+  /**
+   * Exact legacy manager name, only candidates without a manager code
+   */
+  managerName?: string;
+  /**
+   * Candidates without manager code or name
+   */
+  managerUnassigned?: boolean;
   reviewGroup?: ReviewGroup;
   status?: ListReviewDocumentsStatus;
   /**
@@ -1331,6 +1680,21 @@ export type SubmitCandidateDocumentDirectBody = {
    * @maxItems 10
    */
   "files[]": Blob[];
+};
+
+export type ListAnnotationsParams = {
+  documentId?: string;
+  version?: number;
+  status?: AnnotationStatus;
+};
+
+export type ListAnnotationCatalogsParams = {
+  documentTypeCode?: string;
+  profile?: AnnotationProfile;
+};
+
+export type DeleteAnnotationCatalogParams = {
+  revision: number;
 };
 
 /**
@@ -1686,37 +2050,44 @@ export function useGetHealthIntegration<
 }
 
 /**
- * @summary Current dashboard summary with grouped KPIs within user location scope
+ * @summary Candidate document acceptance summary within permitted review groups
  */
-export const getDashboard = (signal?: AbortSignal) => {
+export const getDashboard = (
+  params?: GetDashboardParams,
+  signal?: AbortSignal,
+) => {
   return customInstance<DashboardResponseDto>({
     url: `/api/v1/dashboard`,
     method: "GET",
+    params,
     signal,
   });
 };
 
-export const getGetDashboardQueryKey = () => {
-  return [`/api/v1/dashboard`] as const;
+export const getGetDashboardQueryKey = (params?: GetDashboardParams) => {
+  return [`/api/v1/dashboard`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetDashboardQueryOptions = <
   TData = Awaited<ReturnType<typeof getDashboard>>,
   TError = void,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getDashboard>>,
-    TError,
-    TData
-  >;
-}) => {
+>(
+  params?: GetDashboardParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDashboard>>,
+      TError,
+      TData
+    >;
+  },
+) => {
   const { query: queryOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetDashboardQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getGetDashboardQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboard>>> = ({
     signal,
-  }) => getDashboard(signal);
+  }) => getDashboard(params, signal);
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getDashboard>>,
@@ -1731,20 +2102,23 @@ export type GetDashboardQueryResult = NonNullable<
 export type GetDashboardQueryError = void;
 
 /**
- * @summary Current dashboard summary with grouped KPIs within user location scope
+ * @summary Candidate document acceptance summary within permitted review groups
  */
 
 export function useGetDashboard<
   TData = Awaited<ReturnType<typeof getDashboard>>,
   TError = void,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getDashboard>>,
-    TError,
-    TData
-  >;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetDashboardQueryOptions(options);
+>(
+  params?: GetDashboardParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDashboard>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDashboardQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -5749,6 +6123,1622 @@ export const useSubmitCandidateDocumentDirect = <
 > => {
   const mutationOptions =
     getSubmitCandidateDocumentDirectMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Read annotation participation preference
+ */
+export const getAnnotationPreference = (signal?: AbortSignal) => {
+  return customInstance<AnnotationPreferenceDto>({
+    url: `/api/v1/annotations/preference`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetAnnotationPreferenceQueryKey = () => {
+  return [`/api/v1/annotations/preference`] as const;
+};
+
+export const getGetAnnotationPreferenceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAnnotationPreference>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAnnotationPreference>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAnnotationPreferenceQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAnnotationPreference>>
+  > = ({ signal }) => getAnnotationPreference(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAnnotationPreference>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAnnotationPreferenceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAnnotationPreference>>
+>;
+export type GetAnnotationPreferenceQueryError = ApiErrorDto;
+
+/**
+ * @summary Read annotation participation preference
+ */
+
+export function useGetAnnotationPreference<
+  TData = Awaited<ReturnType<typeof getAnnotationPreference>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAnnotationPreference>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAnnotationPreferenceQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Choose annotation participation
+ */
+export const setAnnotationPreference = (
+  annotationPreferenceDto: AnnotationPreferenceDto,
+) => {
+  return customInstance<AnnotationPreferenceDto>({
+    url: `/api/v1/annotations/preference`,
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    data: annotationPreferenceDto,
+  });
+};
+
+export const getSetAnnotationPreferenceMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setAnnotationPreference>>,
+    TError,
+    { data: AnnotationPreferenceDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setAnnotationPreference>>,
+  TError,
+  { data: AnnotationPreferenceDto },
+  TContext
+> => {
+  const mutationKey = ["setAnnotationPreference"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setAnnotationPreference>>,
+    { data: AnnotationPreferenceDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setAnnotationPreference(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetAnnotationPreferenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setAnnotationPreference>>
+>;
+export type SetAnnotationPreferenceMutationBody = AnnotationPreferenceDto;
+export type SetAnnotationPreferenceMutationError = ApiErrorDto;
+
+/**
+ * @summary Choose annotation participation
+ */
+export const useSetAnnotationPreference = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setAnnotationPreference>>,
+    TError,
+    { data: AnnotationPreferenceDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof setAnnotationPreference>>,
+  TError,
+  { data: AnnotationPreferenceDto },
+  TContext
+> => {
+  const mutationOptions = getSetAnnotationPreferenceMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary List annotation work for permitted document groups
+ */
+export const listAnnotations = (
+  params?: ListAnnotationsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationListDto>({
+    url: `/api/v1/annotations`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListAnnotationsQueryKey = (params?: ListAnnotationsParams) => {
+  return [`/api/v1/annotations`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAnnotationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAnnotations>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListAnnotationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnotations>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAnnotationsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAnnotations>>> = ({
+    signal,
+  }) => listAnnotations(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAnnotations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAnnotationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAnnotations>>
+>;
+export type ListAnnotationsQueryError = ApiErrorDto;
+
+/**
+ * @summary List annotation work for permitted document groups
+ */
+
+export function useListAnnotations<
+  TData = Awaited<ReturnType<typeof listAnnotations>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListAnnotationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnotations>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAnnotationsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Atomically claim current document version annotation
+ */
+export const claimAnnotation = (
+  claimAnnotationDto: ClaimAnnotationDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationDto>({
+    url: `/api/v1/annotations/claim`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: claimAnnotationDto,
+    signal,
+  });
+};
+
+export const getClaimAnnotationMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof claimAnnotation>>,
+    TError,
+    { data: ClaimAnnotationDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof claimAnnotation>>,
+  TError,
+  { data: ClaimAnnotationDto },
+  TContext
+> => {
+  const mutationKey = ["claimAnnotation"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof claimAnnotation>>,
+    { data: ClaimAnnotationDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return claimAnnotation(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClaimAnnotationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof claimAnnotation>>
+>;
+export type ClaimAnnotationMutationBody = ClaimAnnotationDto;
+export type ClaimAnnotationMutationError = ApiErrorDto;
+
+/**
+ * @summary Atomically claim current document version annotation
+ */
+export const useClaimAnnotation = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof claimAnnotation>>,
+    TError,
+    { data: ClaimAnnotationDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof claimAnnotation>>,
+  TError,
+  { data: ClaimAnnotationDto },
+  TContext
+> => {
+  const mutationOptions = getClaimAnnotationMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Save revisioned literal line annotations
+ */
+export const saveAnnotation = (
+  id: string,
+  saveAnnotationDto: SaveAnnotationDto,
+) => {
+  return customInstance<AnnotationDto>({
+    url: `/api/v1/annotations/${id}`,
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    data: saveAnnotationDto,
+  });
+};
+
+export const getSaveAnnotationMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof saveAnnotation>>,
+    TError,
+    { id: string; data: SaveAnnotationDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof saveAnnotation>>,
+  TError,
+  { id: string; data: SaveAnnotationDto },
+  TContext
+> => {
+  const mutationKey = ["saveAnnotation"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof saveAnnotation>>,
+    { id: string; data: SaveAnnotationDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return saveAnnotation(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SaveAnnotationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof saveAnnotation>>
+>;
+export type SaveAnnotationMutationBody = SaveAnnotationDto;
+export type SaveAnnotationMutationError = ApiErrorDto;
+
+/**
+ * @summary Save revisioned literal line annotations
+ */
+export const useSaveAnnotation = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof saveAnnotation>>,
+    TError,
+    { id: string; data: SaveAnnotationDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof saveAnnotation>>,
+  TError,
+  { id: string; data: SaveAnnotationDto },
+  TContext
+> => {
+  const mutationOptions = getSaveAnnotationMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Submit a complete immutable annotation revision
+ */
+export const submitAnnotation = (
+  id: string,
+  annotationRevisionDto: AnnotationRevisionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationDto>({
+    url: `/api/v1/annotations/${id}/submit`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: annotationRevisionDto,
+    signal,
+  });
+};
+
+export const getSubmitAnnotationMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitAnnotation>>,
+    TError,
+    { id: string; data: AnnotationRevisionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitAnnotation>>,
+  TError,
+  { id: string; data: AnnotationRevisionDto },
+  TContext
+> => {
+  const mutationKey = ["submitAnnotation"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitAnnotation>>,
+    { id: string; data: AnnotationRevisionDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return submitAnnotation(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitAnnotationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitAnnotation>>
+>;
+export type SubmitAnnotationMutationBody = AnnotationRevisionDto;
+export type SubmitAnnotationMutationError = ApiErrorDto;
+
+/**
+ * @summary Submit a complete immutable annotation revision
+ */
+export const useSubmitAnnotation = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitAnnotation>>,
+    TError,
+    { id: string; data: AnnotationRevisionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitAnnotation>>,
+  TError,
+  { id: string; data: AnnotationRevisionDto },
+  TContext
+> => {
+  const mutationOptions = getSubmitAnnotationMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Accept immutable annotation snapshot
+ */
+export const acceptAnnotation = (
+  id: string,
+  annotationRevisionDto: AnnotationRevisionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationDto>({
+    url: `/api/v1/annotations/${id}/accept`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: annotationRevisionDto,
+    signal,
+  });
+};
+
+export const getAcceptAnnotationMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof acceptAnnotation>>,
+    TError,
+    { id: string; data: AnnotationRevisionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof acceptAnnotation>>,
+  TError,
+  { id: string; data: AnnotationRevisionDto },
+  TContext
+> => {
+  const mutationKey = ["acceptAnnotation"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof acceptAnnotation>>,
+    { id: string; data: AnnotationRevisionDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return acceptAnnotation(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AcceptAnnotationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof acceptAnnotation>>
+>;
+export type AcceptAnnotationMutationBody = AnnotationRevisionDto;
+export type AcceptAnnotationMutationError = ApiErrorDto;
+
+/**
+ * @summary Accept immutable annotation snapshot
+ */
+export const useAcceptAnnotation = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof acceptAnnotation>>,
+    TError,
+    { id: string; data: AnnotationRevisionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof acceptAnnotation>>,
+  TError,
+  { id: string; data: AnnotationRevisionDto },
+  TContext
+> => {
+  const mutationOptions = getAcceptAnnotationMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Return annotation to its author with a note
+ */
+export const requestAnnotationChanges = (
+  id: string,
+  annotationChangesDto: AnnotationChangesDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationDto>({
+    url: `/api/v1/annotations/${id}/changes`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: annotationChangesDto,
+    signal,
+  });
+};
+
+export const getRequestAnnotationChangesMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestAnnotationChanges>>,
+    TError,
+    { id: string; data: AnnotationChangesDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestAnnotationChanges>>,
+  TError,
+  { id: string; data: AnnotationChangesDto },
+  TContext
+> => {
+  const mutationKey = ["requestAnnotationChanges"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestAnnotationChanges>>,
+    { id: string; data: AnnotationChangesDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return requestAnnotationChanges(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestAnnotationChangesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestAnnotationChanges>>
+>;
+export type RequestAnnotationChangesMutationBody = AnnotationChangesDto;
+export type RequestAnnotationChangesMutationError = ApiErrorDto;
+
+/**
+ * @summary Return annotation to its author with a note
+ */
+export const useRequestAnnotationChanges = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestAnnotationChanges>>,
+    TError,
+    { id: string; data: AnnotationChangesDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestAnnotationChanges>>,
+  TError,
+  { id: string; data: AnnotationChangesDto },
+  TContext
+> => {
+  const mutationOptions = getRequestAnnotationChangesMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Reassign annotation author preserving submitted history
+ */
+export const reassignAnnotation = (
+  id: string,
+  reassignAnnotationDto: ReassignAnnotationDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationDto>({
+    url: `/api/v1/annotations/${id}/reassign`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: reassignAnnotationDto,
+    signal,
+  });
+};
+
+export const getReassignAnnotationMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reassignAnnotation>>,
+    TError,
+    { id: string; data: ReassignAnnotationDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof reassignAnnotation>>,
+  TError,
+  { id: string; data: ReassignAnnotationDto },
+  TContext
+> => {
+  const mutationKey = ["reassignAnnotation"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof reassignAnnotation>>,
+    { id: string; data: ReassignAnnotationDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return reassignAnnotation(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReassignAnnotationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof reassignAnnotation>>
+>;
+export type ReassignAnnotationMutationBody = ReassignAnnotationDto;
+export type ReassignAnnotationMutationError = ApiErrorDto;
+
+/**
+ * @summary Reassign annotation author preserving submitted history
+ */
+export const useReassignAnnotation = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reassignAnnotation>>,
+    TError,
+    { id: string; data: ReassignAnnotationDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof reassignAnnotation>>,
+  TError,
+  { id: string; data: ReassignAnnotationDto },
+  TContext
+> => {
+  const mutationOptions = getReassignAnnotationMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Read server-authoritative canonical original page frames
+ */
+export const getAnnotationSources = (
+  documentId: string,
+  version: number,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationSourceDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/annotation-sources`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetAnnotationSourcesQueryKey = (
+  documentId: string,
+  version: number,
+) => {
+  return [
+    `/api/v1/documents/${documentId}/versions/${version}/annotation-sources`,
+  ] as const;
+};
+
+export const getGetAnnotationSourcesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAnnotationSources>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  version: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAnnotationSources>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetAnnotationSourcesQueryKey(documentId, version);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAnnotationSources>>
+  > = ({ signal }) => getAnnotationSources(documentId, version, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(documentId && version),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAnnotationSources>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAnnotationSourcesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAnnotationSources>>
+>;
+export type GetAnnotationSourcesQueryError = ApiErrorDto;
+
+/**
+ * @summary Read server-authoritative canonical original page frames
+ */
+
+export function useGetAnnotationSources<
+  TData = Awaited<ReturnType<typeof getAnnotationSources>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  version: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAnnotationSources>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAnnotationSourcesQueryOptions(
+    documentId,
+    version,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Read published field schemas and administrator drafts
+ */
+export const listAnnotationCatalogs = (
+  params?: ListAnnotationCatalogsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogListDto>({
+    url: `/api/v1/annotation-catalogs`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListAnnotationCatalogsQueryKey = (
+  params?: ListAnnotationCatalogsParams,
+) => {
+  return [`/api/v1/annotation-catalogs`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAnnotationCatalogsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAnnotationCatalogs>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListAnnotationCatalogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnotationCatalogs>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAnnotationCatalogsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAnnotationCatalogs>>
+  > = ({ signal }) => listAnnotationCatalogs(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAnnotationCatalogs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAnnotationCatalogsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAnnotationCatalogs>>
+>;
+export type ListAnnotationCatalogsQueryError = ApiErrorDto;
+
+/**
+ * @summary Read published field schemas and administrator drafts
+ */
+
+export function useListAnnotationCatalogs<
+  TData = Awaited<ReturnType<typeof listAnnotationCatalogs>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListAnnotationCatalogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnotationCatalogs>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAnnotationCatalogsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Create independent versioned field schema draft
+ */
+export const createAnnotationCatalog = (
+  createAnnotationCatalogDto: CreateAnnotationCatalogDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogDto>({
+    url: `/api/v1/annotation-catalogs`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: createAnnotationCatalogDto,
+    signal,
+  });
+};
+
+export const getCreateAnnotationCatalogMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAnnotationCatalog>>,
+    TError,
+    { data: CreateAnnotationCatalogDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createAnnotationCatalog>>,
+  TError,
+  { data: CreateAnnotationCatalogDto },
+  TContext
+> => {
+  const mutationKey = ["createAnnotationCatalog"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createAnnotationCatalog>>,
+    { data: CreateAnnotationCatalogDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createAnnotationCatalog(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateAnnotationCatalogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createAnnotationCatalog>>
+>;
+export type CreateAnnotationCatalogMutationBody = CreateAnnotationCatalogDto;
+export type CreateAnnotationCatalogMutationError = ApiErrorDto;
+
+/**
+ * @summary Create independent versioned field schema draft
+ */
+export const useCreateAnnotationCatalog = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAnnotationCatalog>>,
+    TError,
+    { data: CreateAnnotationCatalogDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createAnnotationCatalog>>,
+  TError,
+  { data: CreateAnnotationCatalogDto },
+  TContext
+> => {
+  const mutationOptions = getCreateAnnotationCatalogMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Suggest physical field definitions without copying business values
+ */
+export const getAnnotationCatalogDefaults = (
+  documentTypeCode: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogDefaultsDto>({
+    url: `/api/v1/annotation-catalogs/defaults/${documentTypeCode}`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetAnnotationCatalogDefaultsQueryKey = (
+  documentTypeCode: string,
+) => {
+  return [`/api/v1/annotation-catalogs/defaults/${documentTypeCode}`] as const;
+};
+
+export const getGetAnnotationCatalogDefaultsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>,
+  TError = ApiErrorDto,
+>(
+  documentTypeCode: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetAnnotationCatalogDefaultsQueryKey(documentTypeCode);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>
+  > = ({ signal }) => getAnnotationCatalogDefaults(documentTypeCode, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!documentTypeCode,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAnnotationCatalogDefaultsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>
+>;
+export type GetAnnotationCatalogDefaultsQueryError = ApiErrorDto;
+
+/**
+ * @summary Suggest physical field definitions without copying business values
+ */
+
+export function useGetAnnotationCatalogDefaults<
+  TData = Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>,
+  TError = ApiErrorDto,
+>(
+  documentTypeCode: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAnnotationCatalogDefaultsQueryOptions(
+    documentTypeCode,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Replace unpublished catalog draft fields
+ */
+export const updateAnnotationCatalog = (
+  id: string,
+  updateAnnotationCatalogDto: UpdateAnnotationCatalogDto,
+) => {
+  return customInstance<AnnotationCatalogDto>({
+    url: `/api/v1/annotation-catalogs/${id}`,
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    data: updateAnnotationCatalogDto,
+  });
+};
+
+export const getUpdateAnnotationCatalogMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAnnotationCatalog>>,
+    TError,
+    { id: string; data: UpdateAnnotationCatalogDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAnnotationCatalog>>,
+  TError,
+  { id: string; data: UpdateAnnotationCatalogDto },
+  TContext
+> => {
+  const mutationKey = ["updateAnnotationCatalog"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAnnotationCatalog>>,
+    { id: string; data: UpdateAnnotationCatalogDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateAnnotationCatalog(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAnnotationCatalogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAnnotationCatalog>>
+>;
+export type UpdateAnnotationCatalogMutationBody = UpdateAnnotationCatalogDto;
+export type UpdateAnnotationCatalogMutationError = ApiErrorDto;
+
+/**
+ * @summary Replace unpublished catalog draft fields
+ */
+export const useUpdateAnnotationCatalog = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAnnotationCatalog>>,
+    TError,
+    { id: string; data: UpdateAnnotationCatalogDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAnnotationCatalog>>,
+  TError,
+  { id: string; data: UpdateAnnotationCatalogDto },
+  TContext
+> => {
+  const mutationOptions = getUpdateAnnotationCatalogMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Delete unpublished catalog draft
+ */
+export const deleteAnnotationCatalog = (
+  id: string,
+  params: DeleteAnnotationCatalogParams,
+) => {
+  return customInstance<AnnotationDeletedDto>({
+    url: `/api/v1/annotation-catalogs/${id}`,
+    method: "DELETE",
+    params,
+  });
+};
+
+export const getDeleteAnnotationCatalogMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAnnotationCatalog>>,
+    TError,
+    { id: string; params: DeleteAnnotationCatalogParams },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteAnnotationCatalog>>,
+  TError,
+  { id: string; params: DeleteAnnotationCatalogParams },
+  TContext
+> => {
+  const mutationKey = ["deleteAnnotationCatalog"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteAnnotationCatalog>>,
+    { id: string; params: DeleteAnnotationCatalogParams }
+  > = (props) => {
+    const { id, params } = props ?? {};
+
+    return deleteAnnotationCatalog(id, params);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteAnnotationCatalogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAnnotationCatalog>>
+>;
+
+export type DeleteAnnotationCatalogMutationError = ApiErrorDto;
+
+/**
+ * @summary Delete unpublished catalog draft
+ */
+export const useDeleteAnnotationCatalog = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAnnotationCatalog>>,
+    TError,
+    { id: string; params: DeleteAnnotationCatalogParams },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteAnnotationCatalog>>,
+  TError,
+  { id: string; params: DeleteAnnotationCatalogParams },
+  TContext
+> => {
+  const mutationOptions = getDeleteAnnotationCatalogMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Explicitly publish an immutable catalog schema
+ */
+export const publishAnnotationCatalog = (
+  id: string,
+  annotationRevisionDto: AnnotationRevisionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogDto>({
+    url: `/api/v1/annotation-catalogs/${id}/publish`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: annotationRevisionDto,
+    signal,
+  });
+};
+
+export const getPublishAnnotationCatalogMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishAnnotationCatalog>>,
+    TError,
+    { id: string; data: AnnotationRevisionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof publishAnnotationCatalog>>,
+  TError,
+  { id: string; data: AnnotationRevisionDto },
+  TContext
+> => {
+  const mutationKey = ["publishAnnotationCatalog"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof publishAnnotationCatalog>>,
+    { id: string; data: AnnotationRevisionDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return publishAnnotationCatalog(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PublishAnnotationCatalogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof publishAnnotationCatalog>>
+>;
+export type PublishAnnotationCatalogMutationBody = AnnotationRevisionDto;
+export type PublishAnnotationCatalogMutationError = ApiErrorDto;
+
+/**
+ * @summary Explicitly publish an immutable catalog schema
+ */
+export const usePublishAnnotationCatalog = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishAnnotationCatalog>>,
+    TError,
+    { id: string; data: AnnotationRevisionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof publishAnnotationCatalog>>,
+  TError,
+  { id: string; data: AnnotationRevisionDto },
+  TContext
+> => {
+  const mutationOptions = getPublishAnnotationCatalogMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Read field suggestions for a published catalog
+ */
+export const listAnnotationCatalogSuggestions = (
+  id: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogSuggestionListDto>({
+    url: `/api/v1/annotation-catalogs/${id}/suggestions`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListAnnotationCatalogSuggestionsQueryKey = (id: string) => {
+  return [`/api/v1/annotation-catalogs/${id}/suggestions`] as const;
+};
+
+export const getListAnnotationCatalogSuggestionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>,
+  TError = ApiErrorDto,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAnnotationCatalogSuggestionsQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>
+  > = ({ signal }) => listAnnotationCatalogSuggestions(id, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAnnotationCatalogSuggestionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>
+>;
+export type ListAnnotationCatalogSuggestionsQueryError = ApiErrorDto;
+
+/**
+ * @summary Read field suggestions for a published catalog
+ */
+
+export function useListAnnotationCatalogSuggestions<
+  TData = Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>,
+  TError = ApiErrorDto,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAnnotationCatalogSuggestionsQueryOptions(
+    id,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Suggest a literal field for a future catalog version
+ */
+export const suggestAnnotationCatalogField = (
+  id: string,
+  suggestAnnotationCatalogFieldDto: SuggestAnnotationCatalogFieldDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogSuggestionDto>({
+    url: `/api/v1/annotation-catalogs/${id}/suggestions`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: suggestAnnotationCatalogFieldDto,
+    signal,
+  });
+};
+
+export const getSuggestAnnotationCatalogFieldMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof suggestAnnotationCatalogField>>,
+    TError,
+    { id: string; data: SuggestAnnotationCatalogFieldDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof suggestAnnotationCatalogField>>,
+  TError,
+  { id: string; data: SuggestAnnotationCatalogFieldDto },
+  TContext
+> => {
+  const mutationKey = ["suggestAnnotationCatalogField"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof suggestAnnotationCatalogField>>,
+    { id: string; data: SuggestAnnotationCatalogFieldDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return suggestAnnotationCatalogField(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SuggestAnnotationCatalogFieldMutationResult = NonNullable<
+  Awaited<ReturnType<typeof suggestAnnotationCatalogField>>
+>;
+export type SuggestAnnotationCatalogFieldMutationBody =
+  SuggestAnnotationCatalogFieldDto;
+export type SuggestAnnotationCatalogFieldMutationError = ApiErrorDto;
+
+/**
+ * @summary Suggest a literal field for a future catalog version
+ */
+export const useSuggestAnnotationCatalogField = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof suggestAnnotationCatalogField>>,
+    TError,
+    { id: string; data: SuggestAnnotationCatalogFieldDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof suggestAnnotationCatalogField>>,
+  TError,
+  { id: string; data: SuggestAnnotationCatalogFieldDto },
+  TContext
+> => {
+  const mutationOptions =
+    getSuggestAnnotationCatalogFieldMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Resolve catalog field suggestion without changing published schemas
+ */
+export const resolveAnnotationCatalogSuggestion = (
+  id: string,
+  suggestionId: string,
+  resolveAnnotationCatalogSuggestionDto: ResolveAnnotationCatalogSuggestionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogSuggestionDto>({
+    url: `/api/v1/annotation-catalogs/${id}/suggestions/${suggestionId}/resolve`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: resolveAnnotationCatalogSuggestionDto,
+    signal,
+  });
+};
+
+export const getResolveAnnotationCatalogSuggestionMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resolveAnnotationCatalogSuggestion>>,
+    TError,
+    {
+      id: string;
+      suggestionId: string;
+      data: ResolveAnnotationCatalogSuggestionDto;
+    },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof resolveAnnotationCatalogSuggestion>>,
+  TError,
+  {
+    id: string;
+    suggestionId: string;
+    data: ResolveAnnotationCatalogSuggestionDto;
+  },
+  TContext
+> => {
+  const mutationKey = ["resolveAnnotationCatalogSuggestion"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof resolveAnnotationCatalogSuggestion>>,
+    {
+      id: string;
+      suggestionId: string;
+      data: ResolveAnnotationCatalogSuggestionDto;
+    }
+  > = (props) => {
+    const { id, suggestionId, data } = props ?? {};
+
+    return resolveAnnotationCatalogSuggestion(id, suggestionId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ResolveAnnotationCatalogSuggestionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof resolveAnnotationCatalogSuggestion>>
+>;
+export type ResolveAnnotationCatalogSuggestionMutationBody =
+  ResolveAnnotationCatalogSuggestionDto;
+export type ResolveAnnotationCatalogSuggestionMutationError = ApiErrorDto;
+
+/**
+ * @summary Resolve catalog field suggestion without changing published schemas
+ */
+export const useResolveAnnotationCatalogSuggestion = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resolveAnnotationCatalogSuggestion>>,
+    TError,
+    {
+      id: string;
+      suggestionId: string;
+      data: ResolveAnnotationCatalogSuggestionDto;
+    },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof resolveAnnotationCatalogSuggestion>>,
+  TError,
+  {
+    id: string;
+    suggestionId: string;
+    data: ResolveAnnotationCatalogSuggestionDto;
+  },
+  TContext
+> => {
+  const mutationOptions =
+    getResolveAnnotationCatalogSuggestionMutationOptions(options);
 
   return useMutation(mutationOptions);
 };

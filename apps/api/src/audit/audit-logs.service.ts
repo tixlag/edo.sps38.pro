@@ -1,19 +1,20 @@
-import { canReviewGroup, reviewGroupWhere, type ReviewGroup } from "../documents/review-group";
+import {
+  canReviewGroup,
+  reviewGroupWhere,
+  type ReviewGroup,
+} from "../documents/review-group";
 import {
   BadRequestException,
   ForbiddenException,
   Injectable,
   UnauthorizedException,
-} from '@nestjs/common';
-import { Prisma, type AuditAction } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
-import type { AuthPrincipal } from '../auth/auth-principal';
-import { EdoAccessRule } from '../auth/edo-access-rule';
-import { hasAccessRule, resolveLocationScope } from '../auth/access-rules';
-import type {
-  AuditLogListDto,
-  AuditLogQueryDto,
-} from './dto/audit-log.dto';
+} from "@nestjs/common";
+import { Prisma, type AuditAction } from "@prisma/client";
+import { PrismaService } from "../prisma/prisma.service";
+import type { AuthPrincipal } from "../auth/auth-principal";
+import { EdoAccessRule } from "../auth/edo-access-rule";
+import { hasAccessRule, resolveLocationScope } from "../auth/access-rules";
+import type { AuditLogListDto, AuditLogQueryDto } from "./dto/audit-log.dto";
 
 /**
  * Audit history reads for admins and reviewers.
@@ -30,8 +31,10 @@ import type {
  *     (candidate->employee bindings never widen Candidate visibility).
  *   - Any other/unknown entityType: never visible to scoped callers;
  *     only `scope.all` (20009, or 20008 widening) sees them.
- *   - `mine=true` for DOCUMENT_REVIEW holders still applies the same object
- *     check: own actions on out-of-scope objects stay hidden.
+ *   - `mine=true` for review holders applies the permitted review group to
+ *     Document/Candidate events across all locations, including NULL.
+ *     Independent audit permissions retain their original geography, including
+ *     Employee events; review permissions never widen those audit grants.
  *   - Rows whose scope cannot be proven (legacy rows with NULL
  *     documentId/employeeId and no matching scoped object) are hidden
  *     from scoped callers (fail-closed); FULL_ACCESS sees everything.
@@ -52,41 +55,62 @@ export class AuditLogsService {
     principal: AuthPrincipal | undefined | null,
     query: AuditLogQueryDto,
   ): Promise<AuditLogListDto> {
-    if (!principal) throw new UnauthorizedException('Missing principal');
+    if (!principal) throw new UnauthorizedException("Missing principal");
     const limit = query.limit ?? 20;
     const entityType = query.entityType || undefined;
     const entityId = query.entityId || undefined;
 
-    const isMine = query.mine === true || query.actorId === 'me';
+    const isMine = query.mine === true || query.actorId === "me";
     if (isMine) {
       // AccessRuleGuard already allows DOCUMENT_REVIEW or AUDIT_VIEW holders
       // (FULL_ACCESS implies both via hasAccessRule); re-check fail-closed.
       if (
-        !hasAccessRule(principal.accessRules, EdoAccessRule.DOCUMENT_REVIEW_RU) &&
-        !hasAccessRule(principal.accessRules, EdoAccessRule.DOCUMENT_REVIEW_IG) &&
+        !hasAccessRule(
+          principal.accessRules,
+          EdoAccessRule.DOCUMENT_REVIEW_RU,
+        ) &&
+        !hasAccessRule(
+          principal.accessRules,
+          EdoAccessRule.DOCUMENT_REVIEW_IG,
+        ) &&
         !hasAccessRule(principal.accessRules, EdoAccessRule.AUDIT_VIEW)
       ) {
-        throw new ForbiddenException('Missing required EDO access rule');
+        throw new ForbiddenException("Missing required EDO access rule");
       }
     } else if (
       !hasAccessRule(principal.accessRules, EdoAccessRule.AUDIT_VIEW)
     ) {
       // Full history is admin-only: a bare DOCUMENT_REVIEW reviewer must use mine=true.
-      throw new ForbiddenException('Missing required EDO access rule');
+      throw new ForbiddenException("Missing required EDO access rule");
     }
 
     const scope = resolveLocationScope(principal);
-    const group: ReviewGroup | undefined = hasAccessRule(principal.accessRules, EdoAccessRule.AUDIT_VIEW) ||
-      (canReviewGroup(principal, "RU") && canReviewGroup(principal, "IG"))
-      ? undefined : canReviewGroup(principal, "RU") ? "RU" : "IG";
-    if (!scope.all || group) {
+    const review =
+      isMine &&
+      (canReviewGroup(principal, "RU") || canReviewGroup(principal, "IG"));
+    const audit = hasAccessRule(
+      principal.accessRules,
+      EdoAccessRule.AUDIT_VIEW,
+    );
+    const bothGroups =
+      canReviewGroup(principal, "RU") && canReviewGroup(principal, "IG");
+    const group: ReviewGroup | undefined =
+      review && !bothGroups && !(audit && scope.all)
+        ? canReviewGroup(principal, "RU")
+          ? "RU"
+          : "IG"
+        : undefined;
+    if (!audit || !scope.all) {
       return this.listScoped(principal, query, {
         limit,
         entityType,
         entityId,
         isMine,
-        locationIds: scope.all ? null : scope.locationIds,
+        locationIds: review ? null : scope.all ? null : scope.locationIds,
         group,
+        reviewOnly: review,
+        additionalAuditLocations:
+          review && audit && !scope.all ? scope.locationIds : undefined,
       });
     }
 
@@ -114,7 +138,7 @@ export class AuditLogsService {
 
     const rows = await this.prisma.auditLog.findMany({
       where: { ...where, ...(and.length ? { AND: and } : {}) },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit + 1,
     });
     const page = rows.slice(0, limit);
@@ -127,10 +151,12 @@ export class AuditLogsService {
         : null;
 
     const names = await this.resolveActorNames(
-      page.map((r) => r.actorId).filter((v): v is string => typeof v === 'string' && v.length > 0),
+      page
+        .map((r) => r.actorId)
+        .filter((v): v is string => typeof v === "string" && v.length > 0),
     );
     return {
-      items: page.map((r) => mapRow(r, names.get(r.actorId ?? '') ?? null)),
+      items: page.map((r) => mapRow(r, names.get(r.actorId ?? "") ?? null)),
       nextCursor,
     };
   }
@@ -145,9 +171,21 @@ export class AuditLogsService {
       isMine: boolean;
       locationIds: number[] | null;
       group?: ReviewGroup;
+      reviewOnly: boolean;
+      additionalAuditLocations?: number[];
     },
   ): Promise<AuditLogListDto> {
-    const { limit, entityType, entityId, isMine, locationIds, group } = opts;
+    const {
+      limit,
+      entityType,
+      entityId,
+      isMine,
+      locationIds,
+      group,
+      reviewOnly,
+      additionalAuditLocations,
+    } = opts;
+    const mixedScope = !!additionalAuditLocations?.length;
     // No scope (missing 20007/20008/20009) sees no scoped history.
     // An empty location list never means "all" (fail-closed).
     if (locationIds?.length === 0) return { items: [], nextCursor: null };
@@ -156,33 +194,60 @@ export class AuditLogsService {
     if (entityType && !isScopedEntityType(entityType)) {
       return { items: [], nextCursor: null };
     }
-    if (entityType === 'Document' && entityId) {
+    // Employee events have no authoritative candidate-group relation. They
+    // require the independent audit branch, never an all-location review grant.
+    if (reviewOnly && !mixedScope && entityType === "Employee") {
+      return { items: [], nextCursor: null };
+    }
+    if (!mixedScope && entityType === "Document" && entityId) {
       // Deep-link history: single-row scope check, no id enumeration.
       const doc = await this.prisma.document.findFirst({
         where: {
           id: entityId,
           AND: [
-            ...(locationIds ? [{ OR: [
-              { employee: { locationId: { in: locationIds } } },
-              { candidate: { locationId: { in: locationIds } } },
-            ] }] : []),
-            ...(group ? [{ OR: [{ candidate: reviewGroupWhere(group) }, ...(group === "RU" ? [{ candidateId: null }] : [])] }] : []),
+            ...(locationIds
+              ? [
+                  {
+                    OR: [
+                      { employee: { locationId: { in: locationIds } } },
+                      { candidate: { locationId: { in: locationIds } } },
+                    ],
+                  },
+                ]
+              : []),
+            ...(group
+              ? [
+                  {
+                    OR: [
+                      { candidate: reviewGroupWhere(group) },
+                      ...(group === "RU" ? [{ candidateId: null }] : []),
+                    ],
+                  },
+                ]
+              : []),
           ],
         },
         select: { id: true },
       });
       if (!doc) return { items: [], nextCursor: null };
-    } else if (entityType === 'Employee' && entityId) {
+    } else if (!mixedScope && entityType === "Employee" && entityId) {
       const emp = await this.prisma.employee.findFirst({
-        where: { id: entityId, ...(locationIds ? { locationId: { in: locationIds } } : {}) },
+        where: {
+          id: entityId,
+          ...(locationIds ? { locationId: { in: locationIds } } : {}),
+        },
         select: { id: true },
       });
       if (!emp) return { items: [], nextCursor: null };
-    } else if (entityType === 'Candidate' && entityId) {
+    } else if (!mixedScope && entityType === "Candidate" && entityId) {
       // Candidate visibility uses ONLY the candidate's own locationId:
       // candidate->employee bindings never widen it.
       const cand = await this.prisma.candidate.findFirst({
-        where: { id: entityId, ...(locationIds ? { locationId: { in: locationIds } } : {}), ...(group ? reviewGroupWhere(group) : {}) },
+        where: {
+          id: entityId,
+          ...(locationIds ? { locationId: { in: locationIds } } : {}),
+          ...(group ? reviewGroupWhere(group) : {}),
+        },
         select: { id: true },
       });
       if (!cand) return { items: [], nextCursor: null };
@@ -211,11 +276,21 @@ export class AuditLogsService {
     }
     // DB-level object scope: EXISTS over entityType/entityId, no ID preload.
     // Legacy rows with no matching scoped object stay hidden (fail-closed).
-    conds.push(scopedPredicate(entityType, locationIds, group));
+    const reviewPredicate = scopedPredicate(
+      entityType,
+      locationIds,
+      group,
+      !reviewOnly,
+    );
+    conds.push(
+      mixedScope
+        ? Prisma.sql`(${reviewPredicate} OR ${scopedPredicate(entityType, additionalAuditLocations!, undefined)})`
+        : reviewPredicate,
+    );
 
     const take = limit + 1;
     const rows = await this.prisma.$queryRaw<ScopedAuditRow[]>(
-      Prisma.sql`SELECT \`a\`.\`id\` AS \`id\`, \`a\`.\`actorId\` AS \`actorId\`, \`a\`.\`action\` AS \`action\`, \`a\`.\`entityType\` AS \`entityType\`, \`a\`.\`entityId\` AS \`entityId\`, \`a\`.\`after\` AS \`after\`, \`a\`.\`createdAt\` AS \`createdAt\` FROM \`audit_logs\` AS \`a\` WHERE ${Prisma.join(conds, ' AND ')} ORDER BY \`a\`.\`createdAt\` DESC, \`a\`.\`id\` DESC LIMIT ${take}`,
+      Prisma.sql`SELECT \`a\`.\`id\` AS \`id\`, \`a\`.\`actorId\` AS \`actorId\`, \`a\`.\`action\` AS \`action\`, \`a\`.\`entityType\` AS \`entityType\`, \`a\`.\`entityId\` AS \`entityId\`, \`a\`.\`after\` AS \`after\`, \`a\`.\`createdAt\` AS \`createdAt\` FROM \`audit_logs\` AS \`a\` WHERE ${Prisma.join(conds, " AND ")} ORDER BY \`a\`.\`createdAt\` DESC, \`a\`.\`id\` DESC LIMIT ${take}`,
     );
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
@@ -225,7 +300,9 @@ export class AuditLogsService {
         : null;
 
     const names = await this.resolveActorNames(
-      page.map((r) => r.actorId).filter((v): v is string => typeof v === 'string' && v.length > 0),
+      page
+        .map((r) => r.actorId)
+        .filter((v): v is string => typeof v === "string" && v.length > 0),
     );
     return {
       items: page.map((r) =>
@@ -290,9 +367,9 @@ interface ScopedAuditRow {
 
 function isScopedEntityType(entityType: string): boolean {
   return (
-    entityType === 'Document' ||
-    entityType === 'Employee' ||
-    entityType === 'Candidate'
+    entityType === "Document" ||
+    entityType === "Employee" ||
+    entityType === "Candidate"
   );
 }
 
@@ -307,20 +384,30 @@ function scopedPredicate(
   entityType: string | undefined,
   locationIds: number[] | null,
   group?: ReviewGroup,
+  includeEmployees = true,
 ): Prisma.Sql {
   const loc = locationIds ? Prisma.join(locationIds) : Prisma.sql`NULL`;
-  const candidateGroup = group === "RU" ? Prisma.sql`(c.chatUuid IS NOT NULL OR c.citizenship = 'ru')`
-    : group === "IG" ? Prisma.sql`(c.chatUuid IS NULL AND (c.citizenship IS NULL OR c.citizenship <> 'ru'))` : Prisma.sql`1=1`;
-  const documentGroup = group === "RU" ? Prisma.sql`(d.candidateId IS NULL OR ${candidateGroup})`
-    : group === "IG" ? Prisma.sql`(d.candidateId IS NOT NULL AND ${candidateGroup})` : candidateGroup;
+  const candidateGroup =
+    group === "RU"
+      ? Prisma.sql`(c.chatUuid IS NOT NULL OR c.citizenship = 'ru')`
+      : group === "IG"
+        ? Prisma.sql`(c.chatUuid IS NULL AND (c.citizenship IS NULL OR c.citizenship <> 'ru'))`
+        : Prisma.sql`1=1`;
+  const documentGroup =
+    group === "RU"
+      ? Prisma.sql`(d.candidateId IS NULL OR ${candidateGroup})`
+      : group === "IG"
+        ? Prisma.sql`(d.candidateId IS NOT NULL AND ${candidateGroup})`
+        : candidateGroup;
   const docExists = Prisma.sql`EXISTS (SELECT 1 FROM \`documents\` AS \`d\` LEFT JOIN \`employees\` AS \`e\` ON \`e\`.\`id\` = \`d\`.\`employeeId\` LEFT JOIN \`candidates\` AS \`c\` ON \`c\`.\`id\` = \`d\`.\`candidateId\` WHERE \`d\`.\`id\` = \`a\`.\`entityId\` AND ${locationIds ? Prisma.sql`(\`e\`.\`locationId\` IN (${loc}) OR \`c\`.\`locationId\` IN (${loc}))` : Prisma.sql`1=1`} AND ${documentGroup})`;
   const empExists = Prisma.sql`EXISTS (SELECT 1 FROM \`employees\` AS \`e\` WHERE \`e\`.\`id\` = \`a\`.\`entityId\` AND ${locationIds ? Prisma.sql`\`e\`.\`locationId\` IN (${loc})` : Prisma.sql`1=1`})`;
   const candExists = Prisma.sql`EXISTS (SELECT 1 FROM \`candidates\` AS \`c\` WHERE \`c\`.\`id\` = \`a\`.\`entityId\` AND ${locationIds ? Prisma.sql`\`c\`.\`locationId\` IN (${loc})` : Prisma.sql`1=1`} AND ${candidateGroup})`;
-  if (entityType === 'Document') return docExists;
-  if (entityType === 'Employee') return empExists;
-  if (entityType === 'Candidate') return candExists;
+  if (entityType === "Document") return docExists;
+  if (entityType === "Employee")
+    return includeEmployees ? empExists : Prisma.sql`1=0`;
+  if (entityType === "Candidate") return candExists;
   // Unfiltered: only scoped Document/Employee/Candidate rows match.
-  return Prisma.sql`((\`a\`.\`entityType\` = 'Document' AND ${docExists}) OR (\`a\`.\`entityType\` = 'Employee' AND ${empExists}) OR (\`a\`.\`entityType\` = 'Candidate' AND ${candExists}))`;
+  return Prisma.sql`((\`a\`.\`entityType\` = 'Document' AND ${docExists}) OR (\`a\`.\`entityType\` = 'Employee' AND ${includeEmployees ? empExists : Prisma.sql`1=0`}) OR (\`a\`.\`entityType\` = 'Candidate' AND ${candExists}))`;
 }
 
 interface MappableAuditRow {
@@ -340,7 +427,7 @@ function mapRow(
   id: string;
   actorId: string | null;
   actorName: string | null;
-  action: MappableAuditRow['action'];
+  action: MappableAuditRow["action"];
   entityType: string;
   entityId: string;
   rejectionReason: string | null;
@@ -368,28 +455,28 @@ function decodeCursor(
   if (!raw) return undefined;
   try {
     const parsed = JSON.parse(
-      Buffer.from(raw, 'base64url').toString('utf8'),
+      Buffer.from(raw, "base64url").toString("utf8"),
     ) as { createdAt?: unknown; id?: unknown };
-    if (typeof parsed.createdAt !== 'string' || typeof parsed.id !== 'string')
-      throw new Error('bad cursor');
-    if (!parsed.id) throw new Error('bad cursor');
+    if (typeof parsed.createdAt !== "string" || typeof parsed.id !== "string")
+      throw new Error("bad cursor");
+    if (!parsed.id) throw new Error("bad cursor");
     const createdAt = new Date(parsed.createdAt);
-    if (Number.isNaN(createdAt.getTime())) throw new Error('bad cursor');
+    if (Number.isNaN(createdAt.getTime())) throw new Error("bad cursor");
     return { createdAt, id: parsed.id };
   } catch {
-    throw new BadRequestException('Invalid cursor');
+    throw new BadRequestException("Invalid cursor");
   }
 }
 
 function encodeCursor(createdAt: Date, id: string): string {
   return Buffer.from(
     JSON.stringify({ createdAt: createdAt.toISOString(), id }),
-    'utf8',
-  ).toString('base64url');
+    "utf8",
+  ).toString("base64url");
 }
 
 function parseJsonLenient(value: unknown): unknown {
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     try {
       return JSON.parse(value) as unknown;
     } catch {
@@ -400,20 +487,20 @@ function parseJsonLenient(value: unknown): unknown {
 }
 
 function rejectionReasonOf(action: string, after: unknown): string | null {
-  if (action !== 'DOCUMENT_RETURNED') return null;
+  if (action !== "DOCUMENT_RETURNED") return null;
   const parsed = parseJsonLenient(after);
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
     const value = (parsed as Record<string, unknown>).rejectionReason;
-    if (typeof value === 'string' && value.length > 0) return value;
+    if (typeof value === "string" && value.length > 0) return value;
   }
   return null;
 }
 
 function versionOf(after: unknown): number | null {
   const parsed = parseJsonLenient(after);
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
     const value = (parsed as Record<string, unknown>).version;
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
   }
   return null;
 }
@@ -422,9 +509,9 @@ function linkHintOf(entityType: string, entityId: string): string | null {
   switch (entityType) {
     // Real frontend routes only: /review/:documentId, /employees/:employeeId.
     // Candidate has no SPA route — return null rather than a false link.
-    case 'Document':
+    case "Document":
       return `/review/${entityId}`;
-    case 'Employee':
+    case "Employee":
       return `/employees/${entityId}`;
     default:
       return null;
