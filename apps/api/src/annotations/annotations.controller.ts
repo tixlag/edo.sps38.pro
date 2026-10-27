@@ -15,6 +15,7 @@ import {
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
@@ -107,6 +108,7 @@ export class AnnotationsController {
   ) {
     return this.service.mutate(id, "save", dto.revision, p, {
       fields: dto.fields,
+      sections: dto.sections,
       correlationId: req.correlationId,
     });
   }
@@ -221,6 +223,36 @@ export class AnnotationSourcesController {
 @Controller("v1/annotation-catalogs")
 export class AnnotationCatalogsController {
   constructor(private readonly service: AnnotationCatalogService) {}
+  @Get("document-types")
+  @RequireAccessRule(EdoAccessRule.FULL_ACCESS)
+  @ApiOperation({
+    operationId: "listAnnotationDocumentTypes",
+    summary: "Типы документов для настройки разметки",
+  })
+  @ApiResponse({ status: 200, type: D.AnnotationDocumentTypesDto })
+  types(@CurrentPrincipal() p: AuthPrincipal) {
+    return this.service.documentTypes(p);
+  }
+  @Post("document-types/refresh")
+  @RequireAccessRule(EdoAccessRule.FULL_ACCESS)
+  @ApiOperation({
+    operationId: "refreshAnnotationDocumentTypes",
+    summary: "Обновить типы из 1С и подготовить базовые списки полей",
+  })
+  @ApiResponse({ status: 201, type: D.AnnotationDocumentTypesDto })
+  refreshTypes(@CurrentPrincipal() p: AuthPrincipal) {
+    return this.service.documentTypes(p, true);
+  }
+  @Post("bootstrap")
+  @RequireAccessRule(EdoAccessRule.FULL_ACCESS)
+  @ApiOperation({
+    operationId: "bootstrapAnnotationCatalogs",
+    summary: "Подготовить опубликованные базовые списки полей",
+  })
+  @ApiResponse({ status: 201, type: D.AnnotationBootstrapDto })
+  bootstrap(@CurrentPrincipal() p: AuthPrincipal) {
+    return this.service.bootstrap(p);
+  }
   @Get()
   @ApiOperation({
     operationId: "listAnnotationCatalogs",
@@ -241,11 +273,18 @@ export class AnnotationCatalogsController {
       "Suggest physical field definitions without copying business values",
   })
   @ApiResponse({ status: 200, type: D.AnnotationCatalogDefaultsDto })
+  @ApiQuery({
+    name: "profile",
+    required: false,
+    type: String,
+    description: "Код варианта документа",
+  })
   defaults(
     @Param("documentTypeCode") code: string,
+    @Query("profile") profile: string | undefined,
     @CurrentPrincipal() p: AuthPrincipal,
   ) {
-    return this.service.defaults(code, p);
+    return this.service.defaults(code, p, profile);
   }
   @Post()
   @RequireAccessRule(EdoAccessRule.FULL_ACCESS)

@@ -58,7 +58,7 @@ const documentData = {
   status: "APPROVED",
   files: [],
 } as unknown as DocumentVersionDto;
-describe("annotation preference and profile", () => {
+describe("annotation availability and explicit variant", () => {
   beforeEach(() => {
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -67,7 +67,7 @@ describe("annotation preference and profile", () => {
     state.existing = true;
     vi.clearAllMocks();
   });
-  it("keeps an unsaved draft mounted but inactive across opt out and back in after approval", async () => {
+  it("keeps an unsaved draft mounted regardless of retired participation preference", async () => {
     const div = document.createElement("div"),
       root = createRoot(div);
     const render = () =>
@@ -83,7 +83,7 @@ describe("annotation preference and profile", () => {
       expect(div.querySelector('[aria-label="Черновик разметки"]')).toBe(input);
       expect(
         div.querySelector("[data-active]")?.getAttribute("data-active"),
-      ).toBe("false");
+      ).toBe("true");
       state.enabled = true;
       render();
       expect(
@@ -97,13 +97,19 @@ describe("annotation preference and profile", () => {
       act(() => root.unmount());
     }
   });
-  it("selects exact passport profile before a newer general catalog", async () => {
+  it("requires choosing the document variant independently of citizenship", async () => {
     state.existing = false;
     state.claim.mockResolvedValue({ id: "a", revision: 1 });
     const div = document.createElement("div"),
       root = createRoot(div);
     act(() => root.render(<DocumentAnnotations document={documentData} />));
     try {
+      expect(div.textContent).not.toContain("Взять разметку");
+      const selector = div.querySelector("select")!;
+      await act(async () => {
+        selector.value = "exact";
+        selector.dispatchEvent(new Event("change", { bubbles: true }));
+      });
       const take = [...div.querySelectorAll("button")].find(
         (button) => button.textContent === "Взять разметку",
       )!;

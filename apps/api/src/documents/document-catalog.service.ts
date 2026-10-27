@@ -79,7 +79,7 @@ export class DocumentCatalogService {
         new CandidateDocumentError(Code.DOCUMENT_CATALOG_UNAVAILABLE)
       );
   }
-  private async refresh(): Promise<RefreshResult> {
+  private async refresh(force = false): Promise<RefreshResult> {
     this.nextRefresh = Date.now() + RETRY_MS;
     const token = this.config.get<string>("ERP_DOCUMENTS_TOKEN");
     if (
@@ -122,7 +122,7 @@ export class DocumentCatalogService {
       if (!(await this.redis.setNxPxStrict(REFRESH_LOCK_KEY, owner, RETRY_MS)))
         return "busy";
       // A peer may have completed the snapshot since ensure() read it.
-      if (this.isFresh(await this.lastSyncedAt())) {
+      if (!force && this.isFresh(await this.lastSyncedAt())) {
         await this.redis.compareAndDelStrict(REFRESH_LOCK_KEY, owner);
         return "done";
       }
@@ -239,6 +239,14 @@ export class DocumentCatalogService {
       });
     }
     return "done";
+  }
+  async refreshForAnnotations() {
+    if (!this.refreshPromise)
+      this.refreshPromise = this.refresh(true).finally(() => {
+        this.refreshPromise = undefined;
+      });
+    const result = await this.refreshPromise;
+    return { stale: !!this.refreshFailure || result === "busy" };
   }
   async list(position: string, citizenship = "ru") {
     await this.ensure();

@@ -1,5 +1,9 @@
 import { BadRequestException } from "@nestjs/common";
+import type { AnnotationRegionDto } from "./annotation.dto";
+import { annotationKey } from "./annotation-dataset-validation";
 export interface CatalogField {
+  sectionKey?: string;
+  kind?: string;
   key: string;
   label: string;
   ordinal: number;
@@ -14,6 +18,8 @@ export interface AnnotationLine {
   quad: number[];
 }
 export interface FieldAnswer {
+  instanceId?: string;
+  regions?: AnnotationRegionDto[];
   key: string;
   disposition: string;
   lines: AnnotationLine[];
@@ -31,6 +37,7 @@ export function validateAnswers(
   schema: CatalogField[],
   pages: PageFrame[],
   complete: boolean,
+  dataset = false,
 ): FieldAnswer[] {
   if (!Array.isArray(input) || input.length > 200)
     bad("Invalid annotation fields");
@@ -42,15 +49,20 @@ export function validateAnswers(
     const field = schema.find((f) => f.key === answer?.key);
     if (
       !field ||
-      seen.has(answer.key) ||
+      seen.has(`${answer.key}:${answer.instanceId ?? "main"}`) ||
       !["PRESENT", "NOT_PRESENT", "UNREADABLE"].includes(answer.disposition) ||
       !Array.isArray(answer.lines)
     )
       bad("Invalid field answer");
-    seen.add(answer.key);
+    seen.add(`${answer.key}:${answer.instanceId ?? "main"}`);
     if (answer.disposition !== "PRESENT" && answer.lines.length)
       bad("Absent or unreadable field cannot have lines");
-    if (complete && answer.disposition === "PRESENT" && !answer.lines.length)
+    if (
+      complete &&
+      (!dataset || !field.kind || field.kind === "TEXT") &&
+      answer.disposition === "PRESENT" &&
+      !answer.lines.length
+    )
       bad("Present field requires a line");
     if (!field.multiline && answer.lines.length > 1)
       bad("Field allows one visual line");
@@ -126,7 +138,7 @@ export function validateAnswers(
         bad("Opposite rectangle edges must match");
     }
   }
-  if (complete && schema.some((f) => !seen.has(f.key)))
+  if (complete && !dataset && schema.some((f) => !seen.has(`${f.key}:main`)))
     bad("Every catalog field must be resolved");
   return answers;
 }
@@ -135,7 +147,17 @@ export function validateCatalogFields(input: CatalogField[]): CatalogField[] {
     bad("Catalog requires 1 to 200 fields");
   const keys = new Set<string>(),
     orders = new Set<number>();
-  return input.map((f) => {
+  const occupied = new Set(input.filter((f) => !!f?.key).map((f) => f.key));
+  return input.map((original) => {
+    const f = original && {
+      ...original,
+      key:
+        original.key ||
+        annotationKey(
+          typeof original.label === "string" ? original.label : "",
+          occupied,
+        ),
+    };
     if (
       !f ||
       !/^[-a-zA-Z0-9_]{1,64}$/.test(f.key) ||
@@ -147,6 +169,9 @@ export function validateCatalogFields(input: CatalogField[]): CatalogField[] {
       f.ordinal < 0 ||
       orders.has(f.ordinal) ||
       typeof f.multiline !== "boolean" ||
+      (f.kind != null &&
+        !["TEXT", "PHOTO", "SIGNATURE", "STAMP", "CODE"].includes(f.kind)) ||
+      (f.sectionKey != null && !/^[-a-zA-Z0-9_]{1,64}$/.test(f.sectionKey)) ||
       (f.businessFieldName != null &&
         (typeof f.businessFieldName !== "string" ||
           f.businessFieldName.length > 128))
@@ -160,6 +185,8 @@ export function validateCatalogFields(input: CatalogField[]): CatalogField[] {
       ordinal: f.ordinal,
       multiline: f.multiline,
       businessFieldName: f.businessFieldName ?? null,
+      ...(f.sectionKey != null ? { sectionKey: f.sectionKey } : {}),
+      ...(f.kind != null ? { kind: f.kind } : {}),
     };
   });
 }

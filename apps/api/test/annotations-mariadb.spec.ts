@@ -7,9 +7,13 @@ import { AuditService } from "../src/audit/audit.service";
 import { DocumentAccessService } from "../src/documents/document-access.service";
 import { StorageService } from "../src/storage/storage.service";
 import { AnnotationSourceService } from "../src/annotations/annotation-source.service";
+import { ANNOTATION_PRESETS } from "../src/annotations/annotation-presets";
 import { AnnotationService } from "../src/annotations/annotation.service";
 import { AnnotationCatalogService } from "../src/annotations/annotation-catalog.service";
-import { AnnotationProfile } from "../src/annotations/annotation.dto";
+import {
+  AnnotationProfile,
+  AnnotationFieldKind,
+} from "../src/annotations/annotation.dto";
 import type { AuthPrincipal } from "../src/auth/auth-principal";
 const url = process.env.EDO_ANNOTATION_TEST_DATABASE_URL ?? "";
 if (url) {
@@ -171,6 +175,175 @@ suite("annotation real MariaDB transactions", () => {
       where: { actorId: { in: [author.uuid, other.uuid, admin.uuid] } },
     });
     await prisma.$disconnect();
+  });
+  it("persists repeated sections, oriented nontext regions, and starts without opting in", async () => {
+    const type = await prisma.documentType.findUniqueOrThrow({
+      where: { id: typeId },
+    });
+    const draft = await catalogs.create(
+      {
+        documentTypeCode: type.code,
+        profile: "CUSTOM_PASSPORT",
+        title: "Паспорт: проверка контуров",
+        sections: [
+          { key: "stamps", label: "Штамп", ordinal: 0, repeatable: true },
+        ],
+        fields: [
+          {
+            key: "",
+            label: "Печать",
+            ordinal: 0,
+            multiline: false,
+            sectionKey: "stamps",
+            kind: AnnotationFieldKind.STAMP,
+          },
+        ],
+      },
+      admin,
+    );
+    families.push(
+      (
+        await prisma.annotationCatalog.findUniqueOrThrow({
+          where: { id: draft.id },
+        })
+      ).familyId,
+    );
+    const published = (await catalogs.mutate(
+      draft.id,
+      0,
+      undefined,
+      true,
+      false,
+      admin,
+    )) as typeof draft;
+    await service.setPreference(false, author);
+    const doc = await fixture();
+    const work = await service.claim(
+      { documentId: doc.id, version: 1, catalogId: published.id },
+      author,
+    );
+    expect(work.schema.profile).toBe("CUSTOM_PASSPORT");
+    const pageId = work.sources.pages[0].id;
+    const sections = ["one", "two"].map((id) => ({
+      id,
+      sectionKey: "stamps",
+      availability: "PRESENT" as const,
+      pageIds: [pageId],
+    }));
+    const fields = sections.map((s, i) => ({
+      key: published.fields[0].key,
+      instanceId: s.id,
+      disposition: "PRESENT",
+      lines: [],
+      regions: [
+        {
+          id: `stamp_${i}`,
+          pageId,
+          shape: "POLYGON" as const,
+          orientationDeg: i ? 270 : 180,
+          polygon: [0.1, 0.1, 0.8, 0.1, 0.8, 0.8, 0.1, 0.8],
+        },
+      ],
+    }));
+    const saved = await service.mutate(work.id, "save", work.revision, author, {
+      fields,
+      sections,
+    });
+    expect(
+      saved.fields.map((f) => f.regions?.[0].orientationDeg).sort(),
+    ).toEqual([180, 270]);
+    expect(saved.sections).toHaveLength(2);
+    const submitted = await service.mutate(
+      work.id,
+      "submit",
+      saved.revision,
+      author,
+    );
+    await service.mutate(work.id, "accept", submitted.revision, admin);
+    const snapshot = await prisma.annotationSnapshot.findFirstOrThrow({
+      where: { annotationId: work.id, status: "ACCEPTED" },
+    });
+    const payload = snapshot.payload as unknown as {
+      sections: unknown[];
+      fields: { regions: { orientationDeg: number }[] }[];
+    };
+    expect(payload.sections).toHaveLength(2);
+    expect(payload.fields[0].regions[0].orientationDeg).toBe(180);
+  });
+  it("initializes all 29 ERP types once, publishes 31 variants, and preserves admin edits", async () => {
+    const unique = [
+      ...new Map(
+        ANNOTATION_PRESETS.map((p) => [p.documentTypeCode, p.title]),
+      ).entries(),
+    ];
+    const ids: string[] = [];
+    try {
+      for (const [code, title] of unique) {
+        const type = await prisma.documentType.create({
+          data: { code, title, catalogSyncedAt: new Date() },
+        });
+        ids.push(type.id);
+      }
+      expect(await catalogs.bootstrap(admin)).toEqual({
+        created: 31,
+        skipped: 0,
+      });
+      expect(await catalogs.bootstrap(admin)).toEqual({
+        created: 0,
+        skipped: 31,
+      });
+      const published = await prisma.annotationCatalog.findMany({
+        where: {
+          family: { documentTypeCode: { in: unique.map(([code]) => code) } },
+        },
+        include: { fields: true, sections: true },
+      });
+      expect(published).toHaveLength(31);
+      expect(
+        published.every(
+          (p) =>
+            p.status === "PUBLISHED" &&
+            p.draftSlot === null &&
+            p.fields.length &&
+            p.sections.length,
+        ),
+      ).toBe(true);
+      const passport = published.find((p) => p.title === "Паспорт России")!;
+      const adminDraft = await catalogs.create(
+        {
+          ...ANNOTATION_PRESETS[0],
+          title: "Мой вариант полей",
+          fields: [
+            { ...ANNOTATION_PRESETS[0].fields[0], label: "Изменённое поле" },
+          ],
+        },
+        admin,
+      );
+      await catalogs.mutate(adminDraft.id, 0, undefined, true, false, admin);
+      expect(await catalogs.bootstrap(admin)).toEqual({
+        created: 0,
+        skipped: 31,
+      });
+      expect(
+        (
+          await prisma.annotationCatalog.findUniqueOrThrow({
+            where: { id: adminDraft.id },
+          })
+        ).title,
+      ).toBe("Мой вариант полей");
+      expect(
+        (
+          await prisma.annotationCatalog.findUniqueOrThrow({
+            where: { id: passport.id },
+          })
+        ).title,
+      ).toBe("Паспорт России");
+    } finally {
+      const scope = { documentTypeCode: { in: unique.map(([code]) => code) } };
+      await prisma.annotationCatalog.deleteMany({ where: { family: scope } });
+      await prisma.annotationCatalogFamily.deleteMany({ where: scope });
+      await prisma.documentType.deleteMany({ where: { id: { in: ids } } });
+    }
   });
   it("serializes two competing claims and same-author retries without location grants", async () => {
     const doc = await fixture();
@@ -443,7 +616,7 @@ suite("annotation real MariaDB transactions", () => {
       }),
     ).toEqual(snapshot);
   });
-  it("uses explicitly published OTHER fallback only while no exact profile is published", async () => {
+  it("allows explicit variants independently of citizenship and other published variants", async () => {
     const type = await prisma.documentType.findUniqueOrThrow({
       where: { id: typeId },
     });
@@ -513,16 +686,16 @@ suite("annotation real MariaDB transactions", () => {
       where: { id: next.candidateId! },
       data: { chatUuid: randomUUID() },
     });
-    await expect(
-      service.claim(
-        { documentId: next.id, version: 1, catalogId: generic.id },
-        author,
-      ),
-    ).rejects.toMatchObject({ status: 409 });
+    const chosen = await service.claim(
+      { documentId: next.id, version: 1, catalogId: generic.id },
+      author,
+    );
+    expect(chosen.schema.profile).toBe("OTHER");
+    const specificDoc = await fixture("ru");
     expect(
       (
         await service.claim(
-          { documentId: next.id, version: 1, catalogId: specific.id },
+          { documentId: specificDoc.id, version: 1, catalogId: specific.id },
           author,
         )
       ).schema.profile,

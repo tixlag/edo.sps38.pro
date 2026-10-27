@@ -626,7 +626,7 @@ model OcrOutbox {
 model AnnotationCatalogFamily {
   id               String              @id @default(cuid()) @db.VarChar(64)
   documentTypeCode String              @db.VarChar(64)
-  profile          String              @db.VarChar(8)
+  profile          String              @db.VarChar(64)
   catalogs         AnnotationCatalog[]
 
   @@unique([documentTypeCode, profile])
@@ -644,6 +644,7 @@ model AnnotationCatalog {
   createdAt   DateTime                      @default(now()) @db.DateTime(3)
   publishedAt DateTime?                     @db.DateTime(3)
   family      AnnotationCatalogFamily       @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  sections    AnnotationCatalogSection[]
   fields      AnnotationCatalogField[]
   annotations DocumentAnnotation[]
   suggestions AnnotationCatalogSuggestion[]
@@ -660,6 +661,8 @@ model AnnotationCatalogField {
   label             String            @db.VarChar(255)
   ordinal           Int
   multiline         Boolean           @default(false)
+  sectionKey        String            @default("main") @db.VarChar(64)
+  kind              String            @default("TEXT") @db.VarChar(16)
   businessFieldName String?           @db.VarChar(128)
   catalog           AnnotationCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
 
@@ -705,6 +708,7 @@ model DocumentAnnotation {
   version        DocumentVersion         @relation(fields: [versionId], references: [id], onDelete: Cascade)
   catalog        AnnotationCatalog       @relation(fields: [catalogId], references: [id], onDelete: Restrict)
   fields         AnnotationFieldAnswer[]
+  sections       AnnotationSectionInstance[]
   snapshots      AnnotationSnapshot[]
 
   @@index([status, updatedAt])
@@ -715,11 +719,13 @@ model AnnotationFieldAnswer {
   id           String             @id @default(cuid()) @db.VarChar(64)
   annotationId String             @db.VarChar(64)
   key          String             @db.VarChar(64)
+  instanceId   String             @default("main") @db.VarChar(64)
   disposition  String             @db.VarChar(16)
   annotation   DocumentAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
   lines        AnnotationLine[]
+  regions      AnnotationRegion[]
 
-  @@unique([annotationId, key])
+  @@unique([annotationId, key, instanceId])
   @@map("annotation_field_answers")
 }
 
@@ -756,4 +762,59 @@ model AnnotationSnapshot {
   @@unique([annotationId, revision])
   @@index([status])
   @@map("annotation_snapshots")
+}
+
+model AnnotationCatalogSection {
+  id String @id @default(cuid()) @db.VarChar(64)
+  catalogId String @db.VarChar(64)
+  key String @db.VarChar(64)
+  label String @db.VarChar(255)
+  ordinal Int
+  repeatable Boolean @default(false)
+  catalog AnnotationCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  @@unique([catalogId, key])
+  @@map("annotation_catalog_sections")
+}
+
+model AnnotationSectionInstance {
+  id String @id @default(cuid()) @db.VarChar(64)
+  annotationId String @db.VarChar(64)
+  clientId String @db.VarChar(64)
+  sectionKey String @db.VarChar(64)
+  availability String @db.VarChar(24)
+  annotation DocumentAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  pages AnnotationSectionPage[]
+  @@unique([annotationId, clientId])
+  @@map("annotation_section_instances")
+}
+
+model AnnotationSectionPage {
+  instanceId String @db.VarChar(64)
+  pageId String @db.VarChar(96)
+  instance AnnotationSectionInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  @@id([instanceId, pageId])
+  @@map("annotation_section_pages")
+}
+
+model AnnotationRegion {
+  id String @id @default(cuid()) @db.VarChar(64)
+  answerId String @db.VarChar(64)
+  clientId String @db.VarChar(64)
+  pageId String @db.VarChar(96)
+  shape String @db.VarChar(16)
+  orientationDeg Float
+  answer AnnotationFieldAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  vertices AnnotationRegionVertex[]
+  @@unique([answerId, clientId])
+  @@map("annotation_regions")
+}
+
+model AnnotationRegionVertex {
+  regionId String @db.VarChar(64)
+  ordinal Int
+  x Float
+  y Float
+  region AnnotationRegion @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  @@id([regionId, ordinal])
+  @@map("annotation_region_vertices")
 }

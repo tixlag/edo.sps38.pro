@@ -57,7 +57,7 @@ import { CandidateCardCache } from "./candidate-card-cache";
     CandidateDocumentEventsController,
     CandidateDocumentUploadController,
   ],
-  exports: [CandidateContextService],
+  exports: [CandidateContextService, DocumentCatalogService],
   providers: [
     CandidateDocumentsService,
     CandidateContextService,

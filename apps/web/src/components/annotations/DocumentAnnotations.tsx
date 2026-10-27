@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@edo/ui";
 import {
   getGetAnnotationSourcesQueryKey,
@@ -21,7 +21,6 @@ export function DocumentAnnotations({
   active?: boolean;
   allowClaim?: boolean;
 }) {
-  const [message, setMessage] = useState("");
   return (
     <section
       aria-label="Разметка документа"
@@ -35,16 +34,10 @@ export function DocumentAnnotations({
             и его отправка остаются в отдельной проверке.
           </p>
         </div>
-
       </div>
-      {message && (
-        <p role="alert" className="text-sm">
-          {message}
-        </p>
-      )}
       <AnnotationContext
         document={document}
-        active={active && true}
+        active={active}
         allowClaim={allowClaim}
       />
     </section>
@@ -96,13 +89,17 @@ function AnnotationContext({
     local && (!server || local.revision >= server.revision) ? local : server;
   const published =
     catalogs.data?.items.filter((item) => item.status === "PUBLISHED") ?? [];
+  const [catalogId, setCatalogId] = useState("");
+  const latest = published.filter(
+    (item) =>
+      !published.some(
+        (other) =>
+          other.profile === item.profile && other.version > item.version,
+      ),
+  );
   const catalog =
-    published
-      .filter((item) => item.profile === source.data?.profile)
-      .sort((a, b) => b.version - a.version)[0] ??
-    published
-      .filter((item) => item.profile === "OTHER")
-      .sort((a, b) => b.version - a.version)[0];
+    latest.find((c) => c.id === catalogId) ??
+    (latest.length === 1 ? latest[0] : undefined);
   if (annotation)
     return (
       <div className="flex min-h-0 flex-col gap-3">
@@ -162,10 +159,27 @@ function AnnotationContext({
           взять на актуальной версии документа.
         </p>
       )}
-      {allowClaim && source.data && !catalog && !catalogs.isLoading && (
+      {allowClaim && source.data && !latest.length && !catalogs.isLoading && (
         <p>
           Администратор ещё не опубликовал список полей для этого документа.
         </p>
+      )}
+      {allowClaim && latest.length > 1 && (
+        <label className="flex w-full flex-col gap-2 text-sm">
+          Вариант документа
+          <select
+            className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
+            value={catalog?.id ?? ""}
+            onChange={(e) => setCatalogId(e.target.value)}
+          >
+            <option value="">Выберите вариант по оригиналу</option>
+            {latest.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
       {allowClaim && catalog && (
         <>
