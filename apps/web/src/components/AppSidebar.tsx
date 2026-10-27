@@ -1,4 +1,5 @@
-import * as React from 'react';
+import * as React from "react";
+import { canAccessPath } from "../lib/navigation-access";
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -7,13 +8,20 @@ import {
   PenLine,
   Users,
   Settings,
+  History as HistoryIcon,
+  UserCheck,
   PanelLeftOpen,
   PanelLeftClose,
   type LucideIcon,
-} from 'lucide-react';
-import { cn } from '@edo/ui';
-import type { MeResponseDto } from '@edo/api-client';
-import { profileLabel, profileInitials } from '../lib/profile';
+} from "lucide-react";
+import { cn } from "@edo/ui";
+import type { MeResponseDto } from "@edo/api-client";
+import {
+  profileAvatar,
+  profileLabel,
+  profileInitials,
+  profileShortName,
+} from "../lib/profile";
 
 export interface NavItem {
   key: string;
@@ -24,23 +32,76 @@ export interface NavItem {
 }
 
 export const WORK_NAV: NavItem[] = [
-  { key: 'dashboard', label: 'Дашборд', icon: LayoutDashboard, to: '/' },
-  { key: 'tasks', label: 'Мои задачи', icon: ClipboardCheck, to: '/tasks' },
-  { key: 'review', label: 'Проверка документов', icon: FileCheck2, to: '/review' },
-  { key: 'onboarding', label: 'Оформление', icon: Route, to: '/onboarding' },
-  { key: 'signing', label: 'Подписание', icon: PenLine, to: '/signing' },
-  { key: 'employees', label: 'Работники', icon: Users, to: '/employees' },
+  { key: "dashboard", label: "Дашборд", icon: LayoutDashboard, to: "/" },
+  { key: "tasks", label: "Мои задачи", icon: ClipboardCheck, to: "/tasks" },
+  {
+    key: "review",
+    label: "Проверка документов РУ",
+    icon: FileCheck2,
+    to: "/review",
+  },
+  {
+    key: "review-ig",
+    label: "Проверка документов ИГ",
+    icon: FileCheck2,
+    to: "/review-ig",
+  },
+  { key: "onboarding", label: "Оформление", icon: Route, to: "/onboarding" },
+  { key: "signing", label: "Подписание", icon: PenLine, to: "/signing" },
+  { key: "employees", label: "Работники", icon: Users, to: "/employees" },
 ];
 
 export const CONFIG_NAV: NavItem[] = [
-  { key: 'participants', label: 'Участники', icon: Users, to: '/participants' },
-  { key: 'settings', label: 'Настройки', icon: Settings, to: '/settings' },
+  { key: "participants", label: "Участники", icon: Users, to: "/participants" },
+  { key: "settings", label: "Настройки", icon: Settings, to: "/settings" },
+  {
+    key: "annotation-settings",
+    label: "Разметка документов",
+    icon: FileCheck2,
+    to: "/annotation-settings",
+  },
 ];
 
-const CONTROL_SECTIONS = [
-  { title: 'Работа', items: WORK_NAV },
-  { title: 'Конфигурация', items: CONFIG_NAV },
-];
+/**
+ * Avatar with onError fallback to initials: a broken image URL hides the
+ * <img> and shows the initials instead (never a leftover empty img).
+ * Same behavior is used in AppHeader and in both AppSidebar spots.
+ */
+function SidebarAvatar({
+  avatarUrl,
+  label,
+  initials,
+}: {
+  avatarUrl: string | null;
+  label: string;
+  initials: string;
+}) {
+  const [broken, setBroken] = React.useState(false);
+  React.useEffect(() => {
+    setBroken(false);
+  }, [avatarUrl]);
+  if (avatarUrl && !broken) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={label}
+        title={label}
+        aria-label={label}
+        onError={() => setBroken(true)}
+        className="h-[42px] w-[42px] shrink-0 rounded-full object-cover"
+      />
+    );
+  }
+  return (
+    <div
+      title={label}
+      aria-label={label}
+      className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold"
+    >
+      {initials}
+    </div>
+  );
+}
 
 export function AppSidebar({
   collapsed,
@@ -55,31 +116,76 @@ export function AppSidebar({
   onNavigate: (to: string) => void;
   profile?: MeResponseDto;
 }) {
-  const name = profileLabel(profile);
+  const fullName = profileLabel(profile);
+  const shortName = profileShortName(profile);
+  const avatarUrl = profileAvatar(profile);
+  const avatarTitle = fullName;
+  // EDO access rules: key presence grants (value may be `[]`), never truthiness.
+  // UI-only visibility; the backend re-checks every action.
+  const permissions = (profile?.permissions ?? {}) as Record<string, unknown>;
+  const hasRule = (rule: number) =>
+    Object.prototype.hasOwnProperty.call(permissions, String(rule));
+  const canAudit = hasRule(20005) || hasRule(20009);
+  const canReviewRu = hasRule(20002) || hasRule(20009);
+  const canReviewIg = hasRule(20011) || hasRule(20009);
+  const canReview = canReviewRu || canReviewIg;
+  const extraWorkNav: NavItem[] = [];
+  if (canAudit || canReview) {
+    extraWorkNav.push({
+      key: "history",
+      label: "История",
+      icon: HistoryIcon,
+      to: "/history",
+    });
+  }
+  if (canReview || canAudit) {
+    extraWorkNav.push({
+      key: "my-reviews",
+      label: "Мои проверки",
+      icon: UserCheck,
+      to: "/my-reviews",
+    });
+  }
+  const workNav = [...WORK_NAV, ...extraWorkNav].filter((item) =>
+    canAccessPath(permissions, item.to),
+  );
+  const configNav = CONFIG_NAV.filter((item) =>
+    canAccessPath(permissions, item.to),
+  );
+  const sections = [
+    { title: "Работа", items: workNav },
+    { title: "Конфигурация", items: configNav },
+  ];
   if (collapsed) {
-    const all = [...WORK_NAV, ...CONFIG_NAV];
+    const all = [...workNav, ...configNav];
     return (
       <aside className="relative flex h-full w-[84px] flex-col items-center justify-between border-r border-[var(--border)] bg-[var(--sidebar)] px-[14px] py-[22px]">
-        <div className="flex w-full flex-col items-center gap-[22px]">
+        <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-[22px] overflow-y-auto">
           <div className="flex h-12 w-12 items-center justify-center rounded-[12px] bg-[var(--primary)] text-[13px] font-bold text-white">
             ЕЗД
           </div>
           <nav className="flex w-full flex-col items-center gap-2">
-            {all.slice(0, 8).map((item) => {
+            {all.map((item) => {
               const Icon = item.icon;
-              const isActive = active === item.to || (item.to === '/' && active === '/');
+              const isActive =
+                active === item.to || (item.to === "/" && active === "/");
               return (
                 <button
                   key={item.key}
                   title={item.label}
                   onClick={() => onNavigate(item.to)}
                   className={cn(
-                    'relative flex h-[52px] w-[52px] items-center justify-center rounded-[12px] transition-colors',
-                    isActive ? 'bg-[var(--primary-soft)]' : 'hover:bg-[var(--muted)]',
+                    "relative flex h-[52px] w-[52px] items-center justify-center rounded-[12px] transition-colors",
+                    isActive
+                      ? "bg-[var(--primary-soft)]"
+                      : "hover:bg-[var(--muted)]",
                   )}
                 >
-                  <Icon size={22} color={isActive ? 'var(--primary)' : 'var(--foreground)'} />
-                  {typeof item.badge === 'number' && (
+                  <Icon
+                    size={22}
+                    color={isActive ? "var(--primary)" : "var(--foreground)"}
+                  />
+                  {typeof item.badge === "number" && (
                     <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-[10px] font-bold text-white">
                       {item.badge}
                     </span>
@@ -89,10 +195,12 @@ export function AppSidebar({
             })}
           </nav>
         </div>
-        <div className="flex flex-col items-center gap-3">
-          <div title={name} aria-label={name} className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
-            {profileInitials(profile)}
-          </div>
+        <div className="flex shrink-0 flex-col items-center gap-3">
+          <SidebarAvatar
+            avatarUrl={avatarUrl}
+            label={avatarTitle}
+            initials={profileInitials(profile)}
+          />
         </div>
         <button
           aria-label="Развернуть меню"
@@ -115,7 +223,9 @@ export function AppSidebar({
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-bold">ЕЗД</span>
-              <span className="text-xs text-[var(--muted-foreground)]">Оформление сотрудников</span>
+              <span className="text-xs text-[var(--muted-foreground)]">
+                Оформление сотрудников
+              </span>
             </div>
           </div>
           <button
@@ -126,48 +236,59 @@ export function AppSidebar({
             <PanelLeftClose size={18} />
           </button>
         </div>
-        {CONTROL_SECTIONS.map((section) => (
-          <div key={section.title} className="flex flex-col gap-1">
-            <div className="px-[14px] pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-              {section.title}
-            </div>
-            {section.items.map((item) => {
-              const Icon = item.icon;
-              const isActive = active === item.to;
-              return (
-                <button
-                  key={item.key}
-                  onClick={() => onNavigate(item.to)}
-                  className={cn(
-                    'flex h-[46px] w-full items-center justify-between rounded-[12px] px-[14px] text-sm font-semibold',
-                    isActive
-                      ? 'bg-[var(--primary-soft)] text-[var(--foreground)]'
-                      : 'text-[var(--foreground)] hover:bg-[var(--muted)]',
-                  )}
-                >
-                  <span className="flex items-center gap-3">
-                    <Icon size={20} color={isActive ? 'var(--primary)' : 'currentColor'} />
-                    {item.label}
-                  </span>
-                  {typeof item.badge === 'number' && (
-                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1.5 text-[10px] font-bold text-white">
-                      {item.badge}
+        {sections
+          .filter((section) => section.items.length > 0)
+          .map((section) => (
+            <div key={section.title} className="flex flex-col gap-1">
+              <div className="px-[14px] pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                {section.title}
+              </div>
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = active === item.to;
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => onNavigate(item.to)}
+                    className={cn(
+                      "flex h-[46px] w-full items-center justify-between rounded-[12px] px-[14px] text-sm font-semibold",
+                      isActive
+                        ? "bg-[var(--primary-soft)] text-[var(--foreground)]"
+                        : "text-[var(--foreground)] hover:bg-[var(--muted)]",
+                    )}
+                  >
+                    <span className="flex items-center gap-3">
+                      <Icon
+                        size={20}
+                        color={isActive ? "var(--primary)" : "currentColor"}
+                      />
+                      {item.label}
                     </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ))}
+                    {typeof item.badge === "number" && (
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1.5 text-[10px] font-bold text-white">
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
       </div>
       <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
         <div className="flex items-center gap-3 px-2">
-          <div title={name} className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-bold">
-            {profileInitials(profile)}
-          </div>
+          <SidebarAvatar
+            avatarUrl={avatarUrl}
+            label={avatarTitle}
+            initials={profileInitials(profile)}
+          />
           <div className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-semibold" title={name}>{name}</span>
-            <span className="truncate text-xs text-[var(--muted-foreground)]">{profile?.positionName ?? 'Учётная запись ЛК'}</span>
+            <span className="truncate text-sm font-semibold" title={fullName}>
+              {shortName}
+            </span>
+            <span className="truncate text-xs text-[var(--muted-foreground)]">
+              {profile?.positionName ?? "Учётная запись ЛК"}
+            </span>
           </div>
         </div>
       </div>

@@ -148,6 +148,7 @@ async function main() {
           const candidate = await tx.candidate.create({
             data: {
               chatUuid: "00000000-0000-4000-8000-000000000098",
+              identityKey: "chat:00000000-0000-4000-8000-000000000098",
               locationId,
               code1c: exampleCode1c,
             },

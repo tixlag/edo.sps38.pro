@@ -38,16 +38,29 @@ enum AuditAction {
   EMPLOYEE_CREATED
   DOCUMENT_UPLOADED
   DOCUMENT_UPLOAD_STARTED
+  DOCUMENT_UPLOAD_FAILED
   DOCUMENT_OCR_COMPLETED
   DOCUMENT_FIELDS_UPDATED
   CANDIDATE_LINKED
   DOCUMENT_RETURNED
   DOCUMENT_APPROVED
+  DOCUMENT_ERP_SEND_REQUESTED
+  DOCUMENT_ERP_SEND_COMPLETED
   DOCUMENT_SIGNED
   WORKFLOW_STAGE_CHANGED
   DATA_IMPORTED
   LK_REFERENCE_SYNCED
   LK_EVENT_APPLIED
+  DOCUMENT_OCR_RETRIED
+  DOCUMENT_OCR_REQUESTED
+  ANNOTATION_CATALOG_CHANGED
+  ANNOTATION_PREFERENCE_CHANGED
+  ANNOTATION_CLAIMED
+  ANNOTATION_SAVED
+  ANNOTATION_SUBMITTED
+  ANNOTATION_ACCEPTED
+  ANNOTATION_CHANGES_REQUESTED
+  ANNOTATION_REASSIGNED
 }
 
 model Employee {
@@ -81,6 +94,12 @@ model DocumentType {
   code      String   @unique @db.VarChar(64)
   title     String   @db.VarChar(255)
   createdAt DateTime @default(now()) @db.DateTime(3)
+  erpUid String? @unique @db.VarChar(36)
+  allRu Boolean @default(false)
+  allForeign Boolean @default(false)
+  catalogSyncedAt DateTime? @db.DateTime(3)
+  definitions DocumentTypeField[]
+  positions DocumentTypePosition[]
 
   documents Document[]
 
@@ -122,6 +141,27 @@ model DocumentVersion {
   ocrSource  String?                @db.VarChar(16)
   approvedAt DateTime?              @db.DateTime(3)
   approvedBy String?                @db.VarChar(64)
+  submittedAt DateTime?             @db.DateTime(3)
+  reviewedAt DateTime?              @db.DateTime(3)
+  reviewedBy String?                @db.VarChar(64)
+  annotation DocumentAnnotation?
+  ocrFields DocumentVersionOcrField[]
+  positionCode1c String? @db.VarChar(64)
+  citizenship String? @db.VarChar(2)
+  approvedStorageKey String? @db.VarChar(1024)
+  approvedMimeType String? @db.VarChar(128)
+  approvedFilename String? @db.VarChar(255)
+  approvedExtension String? @db.VarChar(8)
+  approvedSizeBytes Int?
+  approvedSha256 String? @db.VarChar(64)
+  approvedPageCount Int?
+  approvedPreparation String? @db.VarChar(32)
+  pendingApprovalStorageKey String? @db.VarChar(1024)
+  approvalLeaseUntil DateTime? @db.DateTime(3)
+  rejectionReason String? @db.VarChar(1024)
+  cleanupPending Boolean @default(false)
+  submission DocumentSubmission?
+  delivery ErpDocumentDelivery?
   files      DocumentVersionFile[]
   fields     DocumentVersionField[]
   issues     OcrIssue[]
@@ -168,6 +208,7 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([actorId, action, createdAt], map: "audit_logs_actor_action_created_idx")
   @@map("audit_logs")
 }
 
@@ -322,9 +363,26 @@ model LkSyncState {
 
 model Candidate {
   id         String     @id @default(cuid()) @db.VarChar(64)
-  chatUuid   String     @unique @db.VarChar(36)
+  chatUuid   String?    @unique @db.VarChar(36)
+  identityKey String @unique @db.VarChar(80)
   locationId Int?
   code1c     String?    @db.VarChar(64)
+  // LK candidate profile snapshot (review queue filters). Only set from the
+  // LK-provided candidateSnapshot; uploads without a snapshot never clear it.
+  fullName        String?   @db.VarChar(512)
+  birthDate       DateTime? @db.Date
+  citizenship     String?   @db.VarChar(2)
+  positionCode    String?   @db.VarChar(64)
+  positionName    String?   @db.VarChar(512)
+  projectCode     String?   @db.VarChar(64)
+  projectName     String?   @db.VarChar(512)
+  managerName     String?   @db.VarChar(512)
+  managerCode1c   String?   @db.VarChar(64)
+  mentorName      String?   @db.VarChar(512)
+  mentorPosition  String?   @db.VarChar(512)
+  mentorCode1c    String?   @db.VarChar(64)
+  isReemployment  Boolean   @default(false)
+  profileSyncedAt DateTime? @db.DateTime(3)
   createdAt  DateTime   @default(now()) @db.DateTime(3)
   updatedAt  DateTime   @updatedAt @db.DateTime(3)
   documents  Document[]
@@ -336,18 +394,23 @@ model Candidate {
 }
 
 model DocumentVersionFile {
-  id         String          @id @default(cuid()) @db.VarChar(64)
-  versionId  String          @db.VarChar(64)
-  ordinal    Int
-  storageKey String          @db.VarChar(1024)
-  filename   String          @db.VarChar(255)
-  mimeType   String          @db.VarChar(128)
-  sizeBytes  Int
-  sha256     String?         @db.VarChar(64)
-  pageCount  Int             @default(1)
-  deletedAt  DateTime?       @db.DateTime(3)
-  version    DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
-  ocrRegions OcrRegion[]
+  sourceFilename  String?         @db.VarChar(255)
+  sourceMimeType  String?         @db.VarChar(128)
+  sourceSizeBytes Int?
+  sourceSha256    String?         @db.VarChar(64)
+  normalization   String?         @db.VarChar(32)
+  id              String          @id @default(cuid()) @db.VarChar(64)
+  versionId       String          @db.VarChar(64)
+  ordinal         Int
+  storageKey      String          @db.VarChar(1024)
+  filename        String          @db.VarChar(255)
+  mimeType        String          @db.VarChar(128)
+  sizeBytes       Int
+  sha256          String?         @db.VarChar(64)
+  pageCount       Int             @default(1)
+  deletedAt       DateTime?       @db.DateTime(3)
+  version         DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  ocrRegions      OcrRegion[]
 
   @@unique([versionId, ordinal])
   @@map("document_version_files")
@@ -358,6 +421,11 @@ model DocumentVersionField {
   versionId     String          @db.VarChar(64)
   name          String          @db.VarChar(128)
   originalValue String?         @db.Text
+  ocrText       String?         @db.Text
+  submittedValue String?        @db.Text
+  kind String @default("text") @db.VarChar(16)
+  required Boolean @default(false)
+  ordinal Int @default(0)
   value         String?         @db.Text
   editedBy      String?         @db.VarChar(64)
   updatedAt     DateTime        @updatedAt @db.DateTime(3)
@@ -368,11 +436,96 @@ model DocumentVersionField {
   @@map("document_version_fields")
 }
 
+model DocumentTypeField {
+  id String @id @default(cuid()) @db.VarChar(64)
+  documentTypeId String @db.VarChar(64)
+  name String @db.VarChar(64)
+  kind String @db.VarChar(16)
+  required Boolean
+  ordinal Int
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
+  @@unique([documentTypeId, name])
+  @@map("document_type_fields")
+}
+
+model DocumentTypePosition {
+  id String @id @default(cuid()) @db.VarChar(64)
+  documentTypeId String @db.VarChar(64)
+  code1c String @db.VarChar(64)
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
+  @@unique([documentTypeId, code1c])
+  @@map("document_type_positions")
+}
+
+model DocumentSubmission {
+  id String @id @default(cuid()) @db.VarChar(64)
+  identityKey String @db.VarChar(80)
+  idempotencyKey String @db.VarChar(128)
+  fingerprint String @db.VarChar(64)
+  versionId String @unique @db.VarChar(64)
+  status String @default("UPLOADING") @db.VarChar(16)
+  leaseToken String? @db.VarChar(36)
+  leaseUntil DateTime? @db.DateTime(3)
+  errorCode String? @db.VarChar(64)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  version DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  @@unique([identityKey, idempotencyKey])
+  @@index([status, leaseUntil])
+  @@map("document_submissions")
+}
+
+model ErpDocumentDelivery {
+  transport String @default("base64-v1") @db.VarChar(16)
+  attemptCount Int @default(0)
+  nextAttemptAt DateTime? @db.DateTime(3)
+  id String @id @default(cuid()) @db.VarChar(64)
+  versionId String @unique @db.VarChar(64)
+  status String @default("PENDING") @db.VarChar(32)
+  payload Json
+  errorCode String? @db.VarChar(64)
+  leaseToken String? @db.VarChar(36)
+  leaseUntil DateTime? @db.DateTime(3)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  version DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  attempts ErpDocumentAttempt[]
+  @@index([status, leaseUntil])
+  @@index([status, nextAttemptAt])
+  @@map("erp_document_deliveries")
+}
+
+model ErpDocumentAttempt {
+  id String @id @default(cuid()) @db.VarChar(64)
+  deliveryId String @db.VarChar(64)
+  actorId String @db.VarChar(64)
+  startedAt DateTime @default(now()) @db.DateTime(3)
+  finishedAt DateTime? @db.DateTime(3)
+  errorCode String? @db.VarChar(64)
+  httpStatus Int?
+  responseBody String? @db.Text
+  responseTruncated Boolean @default(false)
+  responseReadError String? @db.VarChar(64)
+  delivery ErpDocumentDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  @@index([deliveryId])
+  @@map("erp_document_attempts")
+}
+
+model DocumentStreamGrant {
+  id String @id @default(cuid()) @db.VarChar(64)
+  tokenHash String @unique @db.VarChar(64)
+  chatUuid String? @db.VarChar(36)
+  code1c String? @db.VarChar(64)
+  expiresAt DateTime @db.DateTime(3)
+  @@index([expiresAt])
+  @@map("document_stream_grants")
+}
+
 // Immutable OCR geometry in normalized coordinates of the displayed page,
 // after EXIF/PDF rotation. Manual edits change value, never this source evidence.
 model OcrRegion {
   id         String @id @default(cuid()) @db.VarChar(64)
-  fieldId    String @db.VarChar(64)
+  fieldId    String? @db.VarChar(64)
+  ocrFieldId String? @db.VarChar(64)
   fileId     String @db.VarChar(64)
   pageNumber Int
   x          Float
@@ -381,10 +534,12 @@ model OcrRegion {
   height     Float
   text       String? @db.Text
 
-  field DocumentVersionField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  field DocumentVersionField? @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  ocrField DocumentVersionOcrField? @relation(fields: [ocrFieldId], references: [id], onDelete: Cascade)
   file  DocumentVersionFile  @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@index([fieldId])
+  @@index([ocrFieldId])
   @@index([fileId, pageNumber])
   @@map("ocr_regions")
 }
@@ -396,6 +551,24 @@ enum OcrJobStatus {
   SUCCEEDED
   REJECTED
   FAILED
+  CANCELLED
+}
+
+/// OCR observations are separate from user/ERP requisites, including unmapped fields.
+model DocumentVersionOcrField {
+  id String @id @default(cuid()) @db.VarChar(64)
+  versionId String @db.VarChar(64)
+  ordinal Int
+  name String @db.VarChar(128)
+  documentFieldName String? @db.VarChar(128)
+  value String? @db.Text
+  source String @db.VarChar(16)
+  paddleText String? @db.Text
+  paddleConfidence Float?
+  version DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  regions OcrRegion[]
+  @@unique([versionId, ordinal])
+  @@map("document_version_ocr_fields")
 }
 
 model OcrJob {
@@ -447,4 +620,140 @@ model OcrOutbox {
 
   @@index([availableAt, publishedAt])
   @@map("ocr_outbox")
+}
+
+// Annotation catalog identity is independent of ERP-owned document type rows.
+model AnnotationCatalogFamily {
+  id               String              @id @default(cuid()) @db.VarChar(64)
+  documentTypeCode String              @db.VarChar(64)
+  profile          String              @db.VarChar(8)
+  catalogs         AnnotationCatalog[]
+
+  @@unique([documentTypeCode, profile])
+  @@map("annotation_catalog_families")
+}
+
+model AnnotationCatalog {
+  id          String                        @id @default(cuid()) @db.VarChar(64)
+  familyId    String                        @db.VarChar(64)
+  version     Int
+  status      String                        @default("DRAFT") @db.VarChar(16)
+  draftSlot   Int?                          @default(1)
+  revision    Int                           @default(0)
+  title       String                        @db.VarChar(255)
+  createdAt   DateTime                      @default(now()) @db.DateTime(3)
+  publishedAt DateTime?                     @db.DateTime(3)
+  family      AnnotationCatalogFamily       @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  fields      AnnotationCatalogField[]
+  annotations DocumentAnnotation[]
+  suggestions AnnotationCatalogSuggestion[]
+
+  @@unique([familyId, version])
+  @@unique([familyId, draftSlot])
+  @@map("annotation_catalogs")
+}
+
+model AnnotationCatalogField {
+  id                String            @id @default(cuid()) @db.VarChar(64)
+  catalogId         String            @db.VarChar(64)
+  key               String            @db.VarChar(64)
+  label             String            @db.VarChar(255)
+  ordinal           Int
+  multiline         Boolean           @default(false)
+  businessFieldName String?           @db.VarChar(128)
+  catalog           AnnotationCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+
+  @@unique([catalogId, key])
+  @@map("annotation_catalog_fields")
+}
+
+model AnnotationCatalogSuggestion {
+  id        String            @id @default(cuid()) @db.VarChar(64)
+  catalogId String            @db.VarChar(64)
+  authorId  String            @db.VarChar(64)
+  key       String            @db.VarChar(64)
+  label     String            @db.VarChar(255)
+  status    String            @default("PENDING") @db.VarChar(16)
+  createdAt DateTime          @default(now()) @db.DateTime(3)
+  catalog   AnnotationCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+
+  @@map("annotation_catalog_suggestions")
+}
+
+model AnnotationPreference {
+  actorId   String   @id @db.VarChar(64)
+  enabled   Boolean  @default(false)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+
+  @@map("annotation_preferences")
+}
+
+model DocumentAnnotation {
+  id             String                  @id @default(cuid()) @db.VarChar(64)
+  versionId      String                  @unique @db.VarChar(64)
+  catalogId      String                  @db.VarChar(64)
+  authorId       String                  @db.VarChar(64)
+  status         String                  @default("DRAFT") @db.VarChar(24)
+  revision       Int                     @default(0)
+  schemaSnapshot Json
+  sourceSnapshot Json
+  note           String?                 @db.VarChar(2000)
+  submittedAt    DateTime?               @db.DateTime(3)
+  acceptedAt     DateTime?               @db.DateTime(3)
+  createdAt      DateTime                @default(now()) @db.DateTime(3)
+  updatedAt      DateTime                @updatedAt @db.DateTime(3)
+  version        DocumentVersion         @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  catalog        AnnotationCatalog       @relation(fields: [catalogId], references: [id], onDelete: Restrict)
+  fields         AnnotationFieldAnswer[]
+  snapshots      AnnotationSnapshot[]
+
+  @@index([status, updatedAt])
+  @@map("document_annotations")
+}
+
+model AnnotationFieldAnswer {
+  id           String             @id @default(cuid()) @db.VarChar(64)
+  annotationId String             @db.VarChar(64)
+  key          String             @db.VarChar(64)
+  disposition  String             @db.VarChar(16)
+  annotation   DocumentAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  lines        AnnotationLine[]
+
+  @@unique([annotationId, key])
+  @@map("annotation_field_answers")
+}
+
+model AnnotationLine {
+  id       String                @id @default(cuid()) @db.VarChar(64)
+  answerId String                @db.VarChar(64)
+  clientId String                @db.VarChar(64)
+  pageId   String                @db.VarChar(96)
+  order    Int
+  text     String                @db.VarChar(2000)
+  x0       Float
+  y0       Float
+  x1       Float
+  y1       Float
+  x2       Float
+  y2       Float
+  x3       Float
+  y3       Float
+  answer   AnnotationFieldAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@unique([answerId, order])
+  @@map("annotation_lines")
+}
+
+model AnnotationSnapshot {
+  id           String             @id @default(cuid()) @db.VarChar(64)
+  annotationId String             @db.VarChar(64)
+  revision     Int
+  status       String             @db.VarChar(24)
+  payload      Json
+  createdAt    DateTime           @default(now()) @db.DateTime(3)
+  annotation   DocumentAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+
+  @@unique([annotationId, revision])
+  @@index([status])
+  @@map("annotation_snapshots")
 }

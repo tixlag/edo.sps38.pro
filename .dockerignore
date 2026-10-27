@@ -1,0 +1,22 @@
+.git
+.github
+.gitlab-ci.yml
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/playwright-report
+**/test-results
+.cache
+tmp
+*.log
+.env
+.env.*
+!.env.example
+docs
+
+# OCR is deployed separately; exclude its sources and private runtime assets.
+ocr/
+
+# Offline CPU dataset tooling is installed separately by operators.
+tools/ocr-export/

@@ -18,6 +18,12 @@ export class MeResponseDto {
   @ApiProperty({ type: String, nullable: true, description: 'Name from the LK projection, matched only by JWT code1c/uuid' })
   fullName!: string | null;
 
+  @ApiProperty({ type: String, nullable: true, description: 'Compact display name ("Фамилия И.О.") derived from fullName' })
+  shortName!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'User avatar URL enriched server-side from LK, null when unavailable' })
+  avatarUrl!: string | null;
+
   @ApiProperty({ type: String, nullable: true })
   positionName!: string | null;
 

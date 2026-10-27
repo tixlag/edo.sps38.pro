@@ -90,3 +90,13 @@ EDO `docker-compose.yml` contains only EDO-specific storage (S3 mock on `:5000`)
   queues).
 
 See `docs/architecture/overview.md` and `docs/decisions/ADR-002-lk-master-data-sync.md`.
+
+## Document recognition sources
+
+The existing Russian passport, Uzbekistan passport and migration-card recognizers
+are maintained in [`ocr/`](ocr/README.md). They retain their own Python environments,
+HTTP APIs and private model archive. Start with [`ocr/AGENTS.md`](ocr/AGENTS.md).
+
+Source co-location does not connect or enable the EDO OCR worker. The existing
+`OcrService` adapter remains the integration boundary; implementation and schema
+mapping are a separate task. See the [handoff](docs/integrations/document-ocr-sources.md).

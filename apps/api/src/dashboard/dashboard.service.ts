@@ -1,70 +1,242 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { AuditAction, EmployeeStatus, Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
-import type { AuthPrincipal } from '../auth/auth-principal';
-import { resolveLocationScope } from '../auth/access-rules';
-import type { DashboardResponseDto } from './dto/dashboard-response.dto';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { Prisma, type DocumentStatus } from "@prisma/client";
+import { PrismaService } from "../prisma/prisma.service";
+import type { AuthPrincipal } from "../auth/auth-principal";
+import { canReviewGroup, type ReviewGroup } from "../documents/review-group";
+import type {
+  DashboardQueryDto,
+  DashboardResponseDto,
+  KpiDto,
+} from "./dto/dashboard-response.dto";
 
-const STAGES: Array<[EmployeeStatus, string]> = [
-  ['INVITED', 'Приглашены / вход'], ['ONBOARDING', 'Проходят путь'],
-  ['BLOCKED', 'Заблокированы'], ['IN_REVIEW', 'Проверка и комплект'],
-  ['SIGNING', 'Подписание'], ['HIRED', 'Оформлены'],
-];
-const ACTIONS: Partial<Record<AuditAction, string>> = {
-  EMPLOYEE_CREATED: 'Создано дело работника', DOCUMENT_UPLOADED: 'Загружен документ',
-  DOCUMENT_FIELDS_UPDATED: 'Исправлены поля документа', DOCUMENT_RETURNED: 'Возвращён документ',
-  DOCUMENT_APPROVED: 'Подтверждён документ', DOCUMENT_SIGNED: 'Подписан документ',
-  WORKFLOW_STAGE_CHANGED: 'Изменён этап оформления',
+const GROUP = Prisma.sql`CASE WHEN c.chatUuid IS NOT NULL OR c.citizenship = 'ru' THEN 'RU' ELSE 'IG' END`;
+const FROM = Prisma.sql`FROM documents d JOIN candidates c ON c.id = d.candidateId JOIN document_versions v ON v.documentId = d.id AND v.version = d.currentVersion LEFT JOIN document_submissions s ON s.versionId = v.id`;
+const WEEK_FROM = Prisma.sql`FROM documents d JOIN candidates c ON c.id = d.candidateId JOIN document_versions v ON v.documentId = d.id LEFT JOIN document_submissions s ON s.versionId = v.id`;
+const LABELS: Record<DocumentStatus, string> = {
+  DRAFT: "Черновики",
+  UPLOADED: "Загружены",
+  OCR_PENDING: "Распознаются",
+  OCR_FAILED: "Ошибка распознавания",
+  IN_REVIEW: "На проверке",
+  RETURNED: "Возвращены",
+  APPROVED: "Подтверждены",
+  SIGNED: "Подписаны",
+  EXPIRED: "Просрочены",
+};
+const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+type CountRow = {
+  reviewGroup: ReviewGroup;
+  status: DocumentStatus;
+  documents: bigint | number;
+  candidates: bigint | number;
+};
+type WeekRow = {
+  reviewGroup: ReviewGroup;
+  day: string;
+  value: bigint | number;
 };
 
-/** EDO cases filtered in the DB by the same location scope as employee/document reads. */
 @Injectable()
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async get(principal?: AuthPrincipal): Promise<DashboardResponseDto> {
-    if (!principal) throw new UnauthorizedException('Missing principal');
-    const scope = resolveLocationScope(principal);
-    const employeeWhere: Prisma.EmployeeWhereInput = scope.all ? {} : { locationId: { in: scope.locationIds } };
-    const documentWhere: Prisma.DocumentWhereInput = scope.all ? {} : {
-      OR: [{ employee: { locationId: { in: scope.locationIds } } }, { candidate: { locationId: { in: scope.locationIds } } }],
+  async get(
+    principal?: AuthPrincipal,
+    query: DashboardQueryDto = {},
+  ): Promise<DashboardResponseDto> {
+    if (!principal) throw new UnauthorizedException("Missing principal");
+    const groups = (["RU", "IG"] as const).filter((group) =>
+      canReviewGroup(principal, group),
+    );
+    if (
+      query.reviewGroup &&
+      query.reviewGroup !== "ALL" &&
+      !groups.includes(query.reviewGroup)
+    )
+      throw new ForbiddenException(
+        "Missing required EDO review group access rule",
+      );
+    const selectors = [
+      query.managerCode1c,
+      query.managerName,
+      query.managerUnassigned === true,
+    ].filter(Boolean);
+    if (selectors.length > 1)
+      throw new BadRequestException("Choose one manager selector");
+    const selected =
+      query.reviewGroup && query.reviewGroup !== "ALL"
+        ? [query.reviewGroup]
+        : groups;
+    const empty = {
+      source: "database",
+      kpis: [],
+      weekly: [],
+      stages: [],
+      activity: [],
+      blocked: [],
+      tasks: [],
+      sections: [],
+      managers: [],
+      attention: [],
     };
-    // UTC reporting week; new cases are not treated as hires or signatures.
+    if (!selected.length) return empty;
+    const manager = query.managerCode1c
+      ? Prisma.sql`c.managerCode1c = ${query.managerCode1c}`
+      : query.managerName
+        ? Prisma.sql`(c.managerCode1c IS NULL OR c.managerCode1c = '') AND c.managerName = ${query.managerName}`
+        : query.managerUnassigned
+          ? Prisma.sql`(c.managerCode1c IS NULL OR c.managerCode1c = '') AND (c.managerName IS NULL OR TRIM(c.managerName) = '')`
+          : Prisma.sql`1=1`;
+    const group =
+      selected.length === 2
+        ? Prisma.sql`1=1`
+        : selected[0] === "RU"
+          ? Prisma.sql`(c.chatUuid IS NOT NULL OR c.citizenship = 'ru')`
+          : Prisma.sql`(c.chatUuid IS NULL AND (c.citizenship IS NULL OR c.citizenship <> 'ru'))`;
+    // Reused by every collection, including facets and own activity. Joining
+    // the exact current version excludes staged uploads and historical returns.
+    const departmentScope = Prisma.sql`d.currentVersion > 0 AND d.status <> 'DRAFT' AND (s.id IS NULL OR s.status = 'SUCCEEDED') AND ${group}`;
+    const scope = Prisma.sql`${departmentScope} AND (${manager})`;
     const monday = new Date();
     monday.setUTCHours(0, 0, 0, 0);
-    monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
-    const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-    const [employees, documents, weekly, blocked, tasks, activity] = await Promise.all([
-      this.prisma.employee.groupBy({ by: ['status'], where: employeeWhere, _count: { _all: true } }),
-      this.prisma.document.groupBy({ by: ['status'], where: documentWhere, _count: { _all: true } }),
-      Promise.all(days.map(async (day, index) => ({ day, value: await this.prisma.employee.count({ where: {
-        ...employeeWhere, createdAt: { gte: new Date(monday.getTime() + index * 86400_000), lt: new Date(monday.getTime() + (index + 1) * 86400_000) },
-      } }) }))),
-      this.prisma.employee.findMany({ where: { ...employeeWhere, status: 'BLOCKED' }, orderBy: { updatedAt: 'desc' }, take: 5, select: { id: true, fullName: true, stage: true } }),
-      this.prisma.task.findMany({ where: {
-        assignee: principal.uuid, status: { in: ['TODO', 'IN_PROGRESS'] },
-        OR: [{ employee: employeeWhere }, { employeeId: null }],
-      }, orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }], take: 5, select: { title: true, dueDate: true } }),
-      // Own actions only; never expose another user's audit payload or names.
-      this.prisma.auditLog.findMany({ where: { actorId: principal.uuid, action: { in: Object.keys(ACTIONS) as AuditAction[] } }, orderBy: { createdAt: 'desc' }, take: 5, select: { action: true, createdAt: true } }),
+    monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+    const end = new Date(monday.getTime() + 7 * 86400_000);
+    const [counts, week, managers, attention, activity] = await Promise.all([
+      this.prisma.$queryRaw<CountRow[]>(
+        Prisma.sql`SELECT ${GROUP} AS reviewGroup, d.status, COUNT(*) AS documents, COUNT(DISTINCT c.id) AS candidates ${FROM} WHERE ${scope} GROUP BY reviewGroup, d.status`,
+      ),
+      this.prisma.$queryRaw<WeekRow[]>(
+        Prisma.sql`SELECT ${GROUP} AS reviewGroup, DATE_FORMAT(v.submittedAt, '%Y-%m-%d') AS day, COUNT(*) AS value ${WEEK_FROM} WHERE ${scope} AND v.submittedAt >= ${monday} AND v.submittedAt < ${end} GROUP BY reviewGroup, day`,
+      ),
+      this.prisma.$queryRaw<
+        Array<{ name: string | null; code1c: string | null }>
+      >(
+        Prisma.sql`SELECT c.managerName AS name, c.managerCode1c AS code1c ${FROM} WHERE ${departmentScope} GROUP BY c.managerCode1c, c.managerName ORDER BY c.managerName, c.managerCode1c LIMIT 500`,
+      ),
+      this.prisma.$queryRaw<DashboardResponseDto["attention"]>(
+        Prisma.sql`SELECT d.id AS documentId, c.id AS candidateId, c.fullName, COALESCE(t.title, 'Документ') AS title, d.status, ${GROUP} AS reviewGroup ${FROM} LEFT JOIN document_types t ON t.id = d.documentTypeId WHERE ${scope} AND d.status IN ('IN_REVIEW', 'RETURNED', 'OCR_FAILED') ORDER BY v.submittedAt ASC, d.id ASC LIMIT 10`,
+      ),
+      this.prisma.$queryRaw<Array<{ action: string; time: Date }>>(
+        Prisma.sql`SELECT a.action, a.createdAt AS time FROM audit_logs a WHERE a.actorId = ${principal.uuid} AND a.action IN ('DOCUMENT_UPLOADED', 'DOCUMENT_FIELDS_UPDATED', 'DOCUMENT_RETURNED', 'DOCUMENT_APPROVED', 'DOCUMENT_SIGNED', 'DOCUMENT_OCR_RETRIED') AND EXISTS (SELECT 1 ${FROM} WHERE ${scope} AND ((a.entityType = 'Document' AND a.entityId = d.id) OR (a.entityType = 'Candidate' AND a.entityId = c.id))) ORDER BY a.createdAt DESC, a.id DESC LIMIT 5`,
+      ),
     ]);
-    const employeeCount = (status: EmployeeStatus) => employees.find(row => row.status === status)?._count._all ?? 0;
-    const documentCount = (status: typeof documents[number]['status']) => documents.find(row => row.status === status)?._count._all ?? 0;
+    const metrics = (rows: CountRow[]): KpiDto[] => {
+      const docs = (...statuses: DocumentStatus[]) =>
+        rows
+          .filter((row) => statuses.includes(row.status))
+          .reduce((sum, row) => sum + Number(row.documents), 0);
+      const candidates = rows
+        .filter((row) => row.status === "IN_REVIEW")
+        .reduce((sum, row) => sum + Number(row.candidates), 0);
+      return [
+        {
+          key: "queue",
+          label: "Очередь проверки",
+          value: String(docs("IN_REVIEW")),
+          hint: "документов ждут проверки",
+          group: "review",
+        },
+        {
+          key: "in_review",
+          label: "Кандидаты на проверке",
+          value: String(candidates),
+          hint: "кандидатов с документами на проверке",
+          group: "review",
+        },
+        {
+          key: "rework",
+          label: "Возвращены",
+          value: String(docs("RETURNED")),
+          hint: "документов сейчас возвращено",
+          group: "review",
+        },
+        {
+          key: "approved",
+          label: "Подтверждены",
+          value: String(docs("APPROVED", "SIGNED")),
+          hint: "подтверждённых и подписанных документов",
+          group: "review",
+        },
+        {
+          key: "ocr_failed",
+          label: "Ошибка распознавания",
+          value: String(docs("OCR_FAILED")),
+          hint: "документов требуют внимания",
+          group: "review",
+        },
+      ];
+    };
+    const weekly = (rows: WeekRow[]) =>
+      DAYS.map((day, index) => ({
+        day,
+        value: rows
+          .filter(
+            (row) =>
+              row.day ===
+              new Date(monday.getTime() + index * 86400_000)
+                .toISOString()
+                .slice(0, 10),
+          )
+          .reduce((sum, row) => sum + Number(row.value), 0),
+      }));
+    const stages = (rows: CountRow[]) =>
+      Object.entries(LABELS)
+        .filter(([status]) => status !== "DRAFT")
+        .map(([status, label]) => ({
+          label,
+          value: rows
+            .filter((row) => row.status === status)
+            .reduce((sum, row) => sum + Number(row.documents), 0),
+        }));
+    const managerOptions = new Map<
+      string,
+      { key: string; name: string; code1c: string | null }
+    >();
+    for (const row of managers) {
+      const code = row.code1c?.trim() || null,
+        name = row.name?.trim() || null;
+      const key = code
+        ? `code:${code}`
+        : name
+          ? `name:${row.name}`
+          : "unassigned";
+      managerOptions.set(key, {
+        key,
+        name: name ?? code ?? "Без менеджера",
+        code1c: code,
+      });
+    }
+    const actions: Record<string, string> = {
+      DOCUMENT_UPLOADED: "Загружен документ",
+      DOCUMENT_FIELDS_UPDATED: "Исправлены поля документа",
+      DOCUMENT_RETURNED: "Возвращён документ",
+      DOCUMENT_APPROVED: "Подтверждён документ",
+      DOCUMENT_SIGNED: "Подписан документ",
+      DOCUMENT_OCR_RETRIED: "Повторное распознавание документа",
+    };
     return {
-      source: 'database',
-      kpis: [
-        { key: 'queue', label: 'Очередь проверки', value: String(documentCount('IN_REVIEW')), hint: 'документов ждут проверки' },
-        { key: 'stuck', label: 'Застряли в оформлении', value: String(employeeCount('BLOCKED')), hint: 'дела требуют внимания' },
-        { key: 'signing', label: 'Ждут подписи', value: String(employeeCount('SIGNING')), hint: 'дела на этапе подписания' },
-        { key: 'hired', label: 'Оформлены', value: String(employeeCount('HIRED')), hint: 'дела в статусе «Оформлен»' },
-        { key: 'expired', label: 'Просрочены', value: String(documentCount('EXPIRED')), hint: 'документы в статусе «Просрочен»' },
-        { key: 'rework', label: 'Возвращены', value: String(documentCount('RETURNED')), hint: 'документов возвращено на исправление' },
-      ],
-      weekly,
-      stages: STAGES.map(([status, label]) => ({ label, value: employeeCount(status) })),
-      blocked: blocked.map(row => ({ employeeId: row.id, fullName: row.fullName, step: row.stage ?? 'Этап не указан' })),
-      tasks: tasks.map(row => ({ title: row.title, due: row.dueDate?.toISOString() ?? '' })),
-      activity: activity.map(row => ({ kind: 'check', title: ACTIONS[row.action] ?? 'Действие в EDO', time: row.createdAt.toISOString() })),
+      ...empty,
+      kpis: metrics(counts),
+      weekly: weekly(week),
+      stages: stages(counts),
+      sections: selected.map((reviewGroup) => ({
+        reviewGroup,
+        kpis: metrics(counts.filter((row) => row.reviewGroup === reviewGroup)),
+        weekly: weekly(week.filter((row) => row.reviewGroup === reviewGroup)),
+        stages: stages(counts.filter((row) => row.reviewGroup === reviewGroup)),
+      })),
+      managers: [...managerOptions.values()],
+      attention,
+      activity: activity.map((row) => ({
+        kind: "check",
+        title: actions[row.action] ?? "Действие с документом",
+        time: new Date(row.time).toISOString(),
+      })),
     };
   }
 }

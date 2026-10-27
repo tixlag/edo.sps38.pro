@@ -24,6 +24,8 @@ import { sign } from "jsonwebtoken";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { AuthModule } from "../src/auth/auth.module";
 import { DocumentsModule } from "../src/documents/documents.module";
+import { RedisService } from "../src/redis/redis.module";
+import { createCatalogRedisDouble } from "./helpers/catalog-redis";
 import { HttpErrorFilter } from "../src/common/http-error.filter";
 import {
   OcrService,
@@ -216,6 +218,7 @@ beforeAll(async () => {
     EDO_LK_INTERNAL_TOKEN: "lk-documents-test-token",
     OCR_MODE: "stub",
     OCR_WORKER_ENABLED: "false",
+    DOCUMENT_WORKER_ENABLED: "false",
     RABBITMQ_URL: rabbitUrl,
     EDO_OCR_QUEUE: `edo.ocr.${prefix}`,
     LK_EVENTS_EXCHANGE: "lk.events",
@@ -232,6 +235,8 @@ beforeAll(async () => {
       AuthModule,
     ],
   })
+    .overrideProvider(RedisService)
+    .useValue(createCatalogRedisDouble())
     .overrideProvider(PrismaService)
     .useValue(prisma)
     .overrideProvider(ConfigService)
@@ -410,10 +415,19 @@ describe.skipIf(!enabled)(
       expect(
         edit.json().fields.find((f: { name: string }) => f.name === "number"),
       ).toMatchObject({
-        originalValue: "000123",
+        // Non-required OCR values are protected by the shared serializer.
+        originalValue: null,
         value: "000999",
         editedBy: "reviewer",
       });
+      expect(
+        await prisma.documentVersionField.findFirstOrThrow({
+          where: {
+            version: { documentId: a.documentId, version: 1 },
+            name: "number",
+          },
+        }),
+      ).toMatchObject({ originalValue: "000123", value: "000999" });
       expect(edit.json().raw).toEqual(r.raw);
       const stale = await app.inject({
         method: "PATCH",

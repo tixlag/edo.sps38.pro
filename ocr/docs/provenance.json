@@ -1,0 +1,22 @@
+{
+  "RecognizeUZ": {
+    "commit": "8dbdbaecbdce41a7ff1282b26a35336bde5145bd",
+    "working_tree": "local modified files included; history not imported",
+    "entrypoint_sha256": "dbdfbfc82ff9db1414e67abbbe202f641098c6b5d062ff116aff3a69b956904b"
+  },
+  "DocRecognizer": {
+    "commit": "87c737839722a44cb76565f7d70118ab8a835a72",
+    "working_tree": "local modified files included; history not imported",
+    "entrypoint_sha256": "8f42dbbabe7cce36e87a63dbf1085d6f7945562513cfea4f45bbf8241431ee40"
+  },
+  "PaddleOCR": {
+    "url": "https://github.com/PaddlePaddle/PaddleOCR.git",
+    "commit": "0141f249fd0ea7609c16f1f4f851f0fa18125f06",
+    "patch": "patches/paddleocr-use-gcu.patch"
+  },
+  "monorepo_export": {
+    "commit": "2532b339bc0df9970b7272a020bec7d937c727dd",
+    "destination": "edo.sps38.pro/ocr",
+    "history": "tracked sources imported without nested .git, private models or environments"
+  }
+}

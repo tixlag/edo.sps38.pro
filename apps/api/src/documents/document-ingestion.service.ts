@@ -2,11 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
+import { assertDocumentUploadAllowed } from "./document-upload-policy";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { StorageService } from "../storage/storage.service";
@@ -58,14 +58,12 @@ export class DocumentIngestionService {
         JSON.stringify({
           type: type.code,
           locationId: upload.locationId ?? null,
-          files: upload.files.map(
-            ({ filename, mimeType, sha256, pageCount }) => ({
-              filename,
-              mimeType,
-              sha256,
-              pageCount,
-            }),
-          ),
+          files: upload.files.map((file) => ({
+            filename: file.source?.filename ?? file.filename,
+            mimeType: file.source?.mimeType ?? file.mimeType,
+            sha256: file.source?.sha256 ?? file.sha256,
+            pageCount: file.pageCount,
+          })),
         }),
       )
       .digest("hex");
@@ -116,7 +114,7 @@ export class DocumentIngestionService {
           throw new ConflictException("Upload lease expired");
         await tx.documentVersion.update({
           where: { id: reserved.job.versionId },
-          data: { status: "OCR_PENDING" },
+          data: { status: "OCR_PENDING", submittedAt: new Date() },
         });
         await tx.document.updateMany({
           where: {
@@ -139,6 +137,14 @@ export class DocumentIngestionService {
             version: reserved.accepted.version,
             jobId: reserved.job.id,
             fileCount: reserved.files.length,
+            ...(reserved.files.some((f) => f.normalization)
+              ? {
+                  normalization: "heic-webp-v1",
+                  normalizedFileCount: reserved.files.filter(
+                    (f) => f.normalization,
+                  ).length,
+                }
+              : {}),
           },
         });
       });
@@ -165,7 +171,11 @@ export class DocumentIngestionService {
           const candidate = await tx.candidate.upsert({
             where: { chatUuid },
             update: {},
-            create: { chatUuid, locationId: upload.locationId ?? null },
+            create: {
+              chatUuid,
+              identityKey: `chat:${chatUuid}`,
+              locationId: upload.locationId ?? null,
+            },
           });
           await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${candidate.id} FOR UPDATE`;
           const existing = await tx.ocrJob.findUnique({
@@ -217,6 +227,7 @@ export class DocumentIngestionService {
               currentVersion: 0,
             },
           });
+          await assertDocumentUploadAllowed(tx, doc);
           const last = await tx.documentVersion.aggregate({
             where: { documentId: doc.id },
             _max: { version: true },
@@ -231,6 +242,15 @@ export class DocumentIngestionService {
             sizeBytes: f.sizeBytes,
             sha256: f.sha256,
             pageCount: f.pageCount,
+            ...(f.source
+              ? {
+                  sourceFilename: f.source.filename,
+                  sourceMimeType: f.source.mimeType,
+                  sourceSizeBytes: f.source.sizeBytes,
+                  sourceSha256: f.source.sha256,
+                  normalization: f.normalization,
+                }
+              : {}),
           }));
           const version = await tx.documentVersion.create({
             data: {
@@ -325,30 +345,49 @@ export class DocumentIngestionService {
   }
 
   async link(chatUuid: string, code1c: string, correlationId: string) {
-    const candidate = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM candidates WHERE chatUuid = ${chatUuid} FOR UPDATE`;
-      const row = await tx.candidate.findUnique({ where: { chatUuid } });
-      if (!row) throw new NotFoundException("Candidate not found");
-      if (row.code1c && row.code1c !== code1c)
-        throw new ConflictException(
-          "Candidate already linked to another code1c",
-        );
-      if (row.code1c === code1c) return row;
-      const updated = await tx.candidate.update({
-        where: { id: row.id },
-        data: { code1c },
-      });
-      await this.audit.logInTransaction(tx, {
-        actorId: "lk-service",
-        action: "CANDIDATE_LINKED",
-        entityType: "Candidate",
-        entityId: row.id,
-        correlationId: correlationId.slice(0, 64),
-        before: { code1c: row.code1c },
-        after: { code1c },
-      });
-      return updated;
-    });
-    return this.reads.candidateDto(candidate);
+    chatUuid = chatUuid.toLowerCase();
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const candidate = await this.prisma.$transaction(async (tx) => {
+          const reserved = await tx.candidate.upsert({
+            where: { chatUuid },
+            update: {},
+            create: { chatUuid, identityKey: `chat:${chatUuid}` },
+          });
+          await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${reserved.id} FOR UPDATE`;
+          const row = await tx.candidate.findUniqueOrThrow({
+            where: { id: reserved.id },
+          });
+          if (row.code1c && row.code1c !== code1c)
+            throw new ConflictException(
+              "Candidate already linked to another code1c",
+            );
+          if (row.code1c === code1c) return row;
+          const updated = await tx.candidate.update({
+            where: { id: row.id },
+            data: { code1c },
+          });
+          await this.audit.logInTransaction(tx, {
+            actorId: "lk-service",
+            action: "CANDIDATE_LINKED",
+            entityType: "Candidate",
+            entityId: row.id,
+            correlationId: correlationId.slice(0, 64),
+            before: { code1c: row.code1c },
+            after: { code1c },
+          });
+          return updated;
+        });
+        return this.reads.candidateDto(candidate);
+      } catch (error) {
+        if (
+          attempt < 2 &&
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          ["P2002", "P2034"].includes(error.code)
+        )
+          continue;
+        throw error;
+      }
+    }
   }
 }

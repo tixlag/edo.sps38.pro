@@ -5,6 +5,104 @@
         "version": "1.0.0"
     },
     "paths": {
+        "\/api\/internal\/edo\/v1\/candidate-chats\/{chatUuid}": {
+            "get": {
+                "tags": [
+                    "EDO candidate identity"
+                ],
+                "operationId": "edoGetCandidateChat",
+                "parameters": [
+                    {
+                        "name": "chatUuid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Canonical candidate identity",
+                        "content": {
+                            "application\/json": {
+                                "schema": {
+                                    "$ref": "#\/components\/schemas\/EdoCandidateChat"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid UUID"
+                    },
+                    "401": {
+                        "description": "Invalid service credential"
+                    },
+                    "404": {
+                        "description": "Chat not found"
+                    },
+                    "500": {
+                        "description": "Service unavailable"
+                    }
+                },
+                "security": [
+                    {
+                        "edoBearer": []
+                    }
+                ]
+            }
+        },
+        "\/api\/internal\/edo\/v1\/employees\/{code1c}\/candidate-chat": {
+            "get": {
+                "tags": [
+                    "EDO candidate identity"
+                ],
+                "operationId": "edoGetEmployeeCandidateChat",
+                "parameters": [
+                    {
+                        "name": "code1c",
+                        "in": "path",
+                        "description": "Opaque employee code: Unicode letters, decimal digits, underscore, dot or hyphen; dot segments are forbidden. Case and leading zeros are preserved.",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 64,
+                            "minLength": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Preferred candidate chat of this employee",
+                        "content": {
+                            "application\/json": {
+                                "schema": {
+                                    "$ref": "#\/components\/schemas\/EdoCandidateChat"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid code"
+                    },
+                    "401": {
+                        "description": "Invalid service credential"
+                    },
+                    "404": {
+                        "description": "Chat not found"
+                    },
+                    "500": {
+                        "description": "Service unavailable"
+                    }
+                },
+                "security": [
+                    {
+                        "edoBearer": []
+                    }
+                ]
+            }
+        },
         "\/api\/internal\/edo\/v1\/employees": {
             "get": {
                 "tags": [
@@ -241,6 +339,25 @@
                 },
                 "type": "object"
             },
+            "EdoCandidateChat": {
+                "required": [
+                    "chatUuid",
+                    "code1c"
+                ],
+                "properties": {
+                    "chatUuid": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "code1c": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "type": "object"
+            },
             "EdoEmployee": {
                 "required": [
                     "code1c",
@@ -385,6 +502,9 @@
         }
     },
     "tags": [
+        {
+            "name": "EDO candidate identity"
+        },
         {
             "name": "EDO master data"
         }

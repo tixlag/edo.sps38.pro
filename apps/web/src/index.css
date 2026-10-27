@@ -13,7 +13,7 @@
   --border: #e5e7eb;
   --primary: #b31b1b;
   --primary-foreground: #ffffff;
-  --primary-soft: #fbeAEA;
+  --primary-soft: #fbeaea;
   --info: #3b82f6;
   --info-soft: #eaf2ff;
   --success: #22a35a;
@@ -30,8 +30,8 @@
   --success-tint: #22a35a33;
   --success-bright: #51d88a;
   --sidebar: #ffffffe8;
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
 }
 
 html,
@@ -45,4 +45,27 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+.candidate-drawer::backdrop {
+  background: color-mix(in srgb, var(--foreground) 40%, transparent);
+}
+
+.candidate-drawer[open] .candidate-drawer-panel {
+  animation: candidate-drawer-enter 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes candidate-drawer-enter {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .candidate-drawer[open] .candidate-drawer-panel {
+    animation: none;
+  }
 }

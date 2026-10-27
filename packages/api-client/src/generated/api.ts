@@ -16,6 +16,83 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 import { customInstance } from "../mutator/custom-instance";
+export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AuditAction = {
+  EMPLOYEE_CREATED: "EMPLOYEE_CREATED",
+  DOCUMENT_UPLOADED: "DOCUMENT_UPLOADED",
+  DOCUMENT_UPLOAD_STARTED: "DOCUMENT_UPLOAD_STARTED",
+  DOCUMENT_UPLOAD_FAILED: "DOCUMENT_UPLOAD_FAILED",
+  DOCUMENT_OCR_COMPLETED: "DOCUMENT_OCR_COMPLETED",
+  DOCUMENT_FIELDS_UPDATED: "DOCUMENT_FIELDS_UPDATED",
+  CANDIDATE_LINKED: "CANDIDATE_LINKED",
+  DOCUMENT_RETURNED: "DOCUMENT_RETURNED",
+  DOCUMENT_APPROVED: "DOCUMENT_APPROVED",
+  DOCUMENT_ERP_SEND_REQUESTED: "DOCUMENT_ERP_SEND_REQUESTED",
+  DOCUMENT_ERP_SEND_COMPLETED: "DOCUMENT_ERP_SEND_COMPLETED",
+  DOCUMENT_SIGNED: "DOCUMENT_SIGNED",
+  WORKFLOW_STAGE_CHANGED: "WORKFLOW_STAGE_CHANGED",
+  DATA_IMPORTED: "DATA_IMPORTED",
+  LK_REFERENCE_SYNCED: "LK_REFERENCE_SYNCED",
+  LK_EVENT_APPLIED: "LK_EVENT_APPLIED",
+  DOCUMENT_OCR_RETRIED: "DOCUMENT_OCR_RETRIED",
+  DOCUMENT_OCR_REQUESTED: "DOCUMENT_OCR_REQUESTED",
+  ANNOTATION_CATALOG_CHANGED: "ANNOTATION_CATALOG_CHANGED",
+  ANNOTATION_PREFERENCE_CHANGED: "ANNOTATION_PREFERENCE_CHANGED",
+  ANNOTATION_CLAIMED: "ANNOTATION_CLAIMED",
+  ANNOTATION_SAVED: "ANNOTATION_SAVED",
+  ANNOTATION_SUBMITTED: "ANNOTATION_SUBMITTED",
+  ANNOTATION_ACCEPTED: "ANNOTATION_ACCEPTED",
+  ANNOTATION_CHANGES_REQUESTED: "ANNOTATION_CHANGES_REQUESTED",
+  ANNOTATION_REASSIGNED: "ANNOTATION_REASSIGNED",
+} as const;
+
+export interface AuditLogItemDto {
+  /** Audit row id */
+  id: string;
+  /**
+   * Author uuid (JWT sub); null for system rows without actor
+   * @nullable
+   */
+  actorId: string | null;
+  /**
+   * Author display name from the local LK projection (by uuid, fallback by code1c); never matched by full name
+   * @nullable
+   */
+  actorName: string | null;
+  action: AuditAction;
+  /** Audited entity type, e.g. Document or Employee */
+  entityType: string;
+  /** Audited entity id */
+  entityId: string;
+  /**
+   * Return reason for DOCUMENT_RETURNED rows (taken from after.rejectionReason)
+   * @nullable
+   */
+  rejectionReason: string | null;
+  /**
+   * Document version the action applied to (from after.version); null for non-document rows and legacy rows without a version
+   * @nullable
+   */
+  version: number | null;
+  createdAt: string;
+  /**
+   * Frontend deep-link hint, e.g. /review/<id>; null when no route is known. The web client appends ?version=N for versioned rows.
+   * @nullable
+   */
+  linkHint: string | null;
+}
+
+export interface AuditLogListDto {
+  items: AuditLogItemDto[];
+  /**
+   * Opaque cursor for the next page; null when exhausted
+   * @nullable
+   */
+  nextCursor: string | null;
+}
+
 export interface HealthResponseDto {
   status: string;
   version: string;
@@ -49,11 +126,36 @@ export interface IntegrationHealthDto {
   lastSyncFinishedAt?: string;
 }
 
+export interface DashboardManagerDto {
+  key: string;
+  name: string;
+  /** @nullable */
+  code1c: string | null;
+}
+
+export type ReviewGroup = (typeof ReviewGroup)[keyof typeof ReviewGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ReviewGroup = {
+  RU: "RU",
+  IG: "IG",
+} as const;
+
+export type KpiDtoGroup = (typeof KpiDtoGroup)[keyof typeof KpiDtoGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const KpiDtoGroup = {
+  review: "review",
+  signing: "signing",
+  general: "general",
+} as const;
+
 export interface KpiDto {
   key: string;
   label: string;
   value: string;
   hint: string;
+  group: KpiDtoGroup;
 }
 
 export interface WeeklyBarDto {
@@ -64,6 +166,39 @@ export interface WeeklyBarDto {
 export interface StageSliceDto {
   label: string;
   value: number;
+}
+
+export interface DashboardSectionDto {
+  reviewGroup: ReviewGroup;
+  kpis: KpiDto[];
+  weekly: WeeklyBarDto[];
+  stages: StageSliceDto[];
+}
+
+export type DocumentStatus =
+  (typeof DocumentStatus)[keyof typeof DocumentStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentStatus = {
+  DRAFT: "DRAFT",
+  UPLOADED: "UPLOADED",
+  OCR_PENDING: "OCR_PENDING",
+  OCR_FAILED: "OCR_FAILED",
+  IN_REVIEW: "IN_REVIEW",
+  RETURNED: "RETURNED",
+  APPROVED: "APPROVED",
+  SIGNED: "SIGNED",
+  EXPIRED: "EXPIRED",
+} as const;
+
+export interface DashboardAttentionDto {
+  documentId: string;
+  candidateId: string;
+  /** @nullable */
+  fullName: string | null;
+  title: string;
+  status: DocumentStatus;
+  reviewGroup: ReviewGroup;
 }
 
 export interface ActivityItemDto {
@@ -84,6 +219,9 @@ export interface TaskItemDto {
 }
 
 export interface DashboardResponseDto {
+  managers: DashboardManagerDto[];
+  sections: DashboardSectionDto[];
+  attention: DashboardAttentionDto[];
   kpis: KpiDto[];
   weekly: WeeklyBarDto[];
   stages: StageSliceDto[];
@@ -141,6 +279,16 @@ export interface MeResponseDto {
    * @nullable
    */
   fullName: string | null;
+  /**
+   * Compact display name ("Фамилия И.О.") derived from fullName
+   * @nullable
+   */
+  shortName: string | null;
+  /**
+   * User avatar URL enriched server-side from LK, null when unavailable
+   * @nullable
+   */
+  avatarUrl: string | null;
   /** @nullable */
   positionName: string | null;
   /** @nullable */
@@ -149,6 +297,341 @@ export interface MeResponseDto {
   organizationName: string | null;
   permissions: MeResponseDtoPermissions;
   locationScope: LocationScopeDto;
+}
+
+export type CandidateDocumentErrorCode =
+  (typeof CandidateDocumentErrorCode)[keyof typeof CandidateDocumentErrorCode];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateDocumentErrorCode = {
+  AUTH_REQUIRED: "AUTH_REQUIRED",
+  EMPLOYEE_IDENTITY_REQUIRED: "EMPLOYEE_IDENTITY_REQUIRED",
+  EMPLOYEE_IDENTITY_INVALID: "EMPLOYEE_IDENTITY_INVALID",
+  CANDIDATE_LINK_MISSING: "CANDIDATE_LINK_MISSING",
+  CANDIDATE_CHAT_NOT_FOUND: "CANDIDATE_CHAT_NOT_FOUND",
+  ERP_CANDIDATE_NOT_FOUND: "ERP_CANDIDATE_NOT_FOUND",
+  CANDIDATE_PROFILE_INCOMPLETE: "CANDIDATE_PROFILE_INCOMPLETE",
+  LK_CONTRACT_ERROR: "LK_CONTRACT_ERROR",
+  ERP_CONTRACT_ERROR: "ERP_CONTRACT_ERROR",
+  LK_UNAVAILABLE: "LK_UNAVAILABLE",
+  ERP_UNAVAILABLE: "ERP_UNAVAILABLE",
+  LK_TIMEOUT: "LK_TIMEOUT",
+  ERP_TIMEOUT: "ERP_TIMEOUT",
+  DOCUMENTS_TIMEOUT: "DOCUMENTS_TIMEOUT",
+  DOCUMENT_CATALOG_UNAVAILABLE: "DOCUMENT_CATALOG_UNAVAILABLE",
+  DOCUMENTS_INTEGRATION_MISCONFIGURED: "DOCUMENTS_INTEGRATION_MISCONFIGURED",
+  DOCUMENT_REQUEST_INVALID: "DOCUMENT_REQUEST_INVALID",
+  DOCUMENT_ACCESS_DENIED: "DOCUMENT_ACCESS_DENIED",
+  DOCUMENT_NOT_FOUND: "DOCUMENT_NOT_FOUND",
+  DOCUMENT_CONFLICT: "DOCUMENT_CONFLICT",
+  DOCUMENTS_UNAVAILABLE: "DOCUMENTS_UNAVAILABLE",
+} as const;
+
+export type CandidateProfileField =
+  (typeof CandidateProfileField)[keyof typeof CandidateProfileField];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateProfileField = {
+  citizenship: "citizenship",
+  positionCode: "positionCode",
+} as const;
+
+export type CandidateDocumentErrorDtoMessage = string | string[];
+
+export interface CandidateDocumentErrorDto {
+  statusCode: number;
+  message: CandidateDocumentErrorDtoMessage;
+  /** @nullable */
+  correlationId: string | null;
+  /** @nullable */
+  path: string | null;
+  code: CandidateDocumentErrorCode;
+  retryable: boolean;
+  fields?: CandidateProfileField[];
+}
+
+export interface CandidateSnapshotPositionDto {
+  /** @maxLength 512 */
+  name?: string;
+  /** @maxLength 64 */
+  code?: string;
+}
+
+export interface CandidateSnapshotMentorDto {
+  /** @maxLength 512 */
+  name?: string;
+  /** @maxLength 512 */
+  position?: string;
+  /** @maxLength 64 */
+  code1C?: string;
+  /** @maxLength 64 */
+  code1c?: string;
+  /** @maxLength 64 */
+  code_1c?: string;
+}
+
+export interface CandidateSnapshotDto {
+  /**
+   * Chat UUID, named uuid by 1C
+   * @nullable
+   */
+  uuid?: string | null;
+  /** @maxLength 512 */
+  fullName?: string;
+  /** @maxLength 512 */
+  name?: string;
+  birthDate?: string;
+  /** @maxLength 2 */
+  citizenship?: string;
+  position?: CandidateSnapshotPositionDto;
+  project?: CandidateSnapshotPositionDto;
+  /** @maxLength 64 */
+  positionCode?: string;
+  /** @maxLength 512 */
+  positionName?: string;
+  /** @maxLength 64 */
+  projectCode?: string;
+  /** @maxLength 512 */
+  projectName?: string;
+  /** @maxLength 512 */
+  managerName?: string;
+  /** @maxLength 512 */
+  manager?: string;
+  /** @maxLength 64 */
+  managerCode1C?: string;
+  /** @maxLength 64 */
+  managerCode1c?: string;
+  mentor?: CandidateSnapshotMentorDto;
+  /** @maxLength 512 */
+  mentorName?: string;
+  /** @maxLength 512 */
+  mentorPosition?: string;
+  /** @maxLength 64 */
+  mentorCode1c?: string;
+  isReemployment?: boolean;
+}
+
+export interface CandidateDocumentContextDto {
+  /** @nullable */
+  chatUuid: string | null;
+  /** @nullable */
+  code1c: string | null;
+  positionCode1c: string;
+  citizenship: string;
+  /** @nullable */
+  projectCode1c: string | null;
+  candidateSnapshot?: CandidateSnapshotDto;
+}
+
+export type DocumentDefinitionDtoKind =
+  (typeof DocumentDefinitionDtoKind)[keyof typeof DocumentDefinitionDtoKind];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentDefinitionDtoKind = {
+  text: "text",
+  date: "date",
+  boolean: "boolean",
+} as const;
+
+export interface DocumentDefinitionDto {
+  name: string;
+  label: string;
+  kind: DocumentDefinitionDtoKind;
+  required: boolean;
+  ordinal: number;
+}
+
+export interface CatalogDocumentTypeDto {
+  code: string;
+  title: string;
+  documentUid: string;
+  fields: DocumentDefinitionDto[];
+}
+
+export interface CatalogDocumentTypesDto {
+  items: CatalogDocumentTypeDto[];
+}
+
+export type OcrJobStatus = (typeof OcrJobStatus)[keyof typeof OcrJobStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const OcrJobStatus = {
+  UPLOADING: "UPLOADING",
+  QUEUED: "QUEUED",
+  RUNNING: "RUNNING",
+  SUCCEEDED: "SUCCEEDED",
+  REJECTED: "REJECTED",
+  FAILED: "FAILED",
+  CANCELLED: "CANCELLED",
+} as const;
+
+export interface ReturnedDocumentVersionDto {
+  /**
+   * Successful submission time, UTC ISO 8601; null when historically unknown
+   * @nullable
+   */
+  submittedAt: string | null;
+  /**
+   * Approval or return decision time, UTC ISO 8601
+   * @nullable
+   */
+  reviewedAt: string | null;
+  /**
+   * Verified JWT UUID of the reviewer
+   * @nullable
+   */
+  reviewedBy: string | null;
+  version: number;
+  /** @nullable */
+  rejectionReason: string | null;
+  /**
+   * Newer current version, or null while this returned version is still current
+   * @nullable
+   */
+  supersededByVersion: number | null;
+}
+
+export interface CandidateProfileDto {
+  reviewGroup: ReviewGroup;
+  id: string;
+  /** @nullable */
+  chatUuid: string | null;
+  /** @nullable */
+  code1c: string | null;
+  /** @nullable */
+  fullName: string | null;
+  /** @nullable */
+  birthDate: string | null;
+  /** @nullable */
+  citizenship: string | null;
+  /** @nullable */
+  positionCode: string | null;
+  /** @nullable */
+  positionName: string | null;
+  /** @nullable */
+  projectCode: string | null;
+  /** @nullable */
+  projectName: string | null;
+  /** @nullable */
+  managerName: string | null;
+  /** @nullable */
+  managerCode1c: string | null;
+  /** @nullable */
+  mentorName: string | null;
+  /** @nullable */
+  mentorPosition: string | null;
+  /** @nullable */
+  mentorCode1c: string | null;
+  isReemployment: boolean;
+  /** @nullable */
+  profileSyncedAt: string | null;
+  /** Candidate APPROVED documents under the queue access scope (all tabs) */
+  approvedDocuments: number;
+  /**
+   * Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown
+   * @nullable
+   */
+  requiredDocuments: number | null;
+}
+
+/**
+ * @nullable
+ */
+export type DocumentDtoOcrStatus = OcrJobStatus | null;
+
+/**
+ * LK candidate profile snapshot, if one was provided
+ * @nullable
+ */
+export type DocumentDtoCandidate = CandidateProfileDto | null;
+
+export interface DocumentDto {
+  /**
+   * Successful submission time, UTC ISO 8601; null when historically unknown
+   * @nullable
+   */
+  submittedAt: string | null;
+  /**
+   * Approval or return decision time, UTC ISO 8601
+   * @nullable
+   */
+  reviewedAt: string | null;
+  /**
+   * Verified JWT UUID of the reviewer
+   * @nullable
+   */
+  reviewedBy: string | null;
+  /** @nullable */
+  ocrStatus: DocumentDtoOcrStatus;
+  /** @nullable */
+  ocrErrorCode: string | null;
+  /** Returned versions, newest first, including versions superseded by a new upload */
+  returnedVersions?: ReturnedDocumentVersionDto[];
+  /** Approved versions awaiting manual ERP delivery */
+  pendingDeliveryVersions: number[];
+  id: string;
+  /** @nullable */
+  documentTypeCode: string | null;
+  status: DocumentStatus;
+  currentVersion: number;
+  revision: number;
+  title: string;
+  /** @nullable */
+  documentUid: string | null;
+  /** @nullable */
+  deliveryStatus: string | null;
+  /** @nullable */
+  candidateId: string | null;
+  /** @nullable */
+  chatUuid: string | null;
+  /** @nullable */
+  code1c: string | null;
+  /**
+   * LK candidate profile snapshot, if one was provided
+   * @nullable
+   */
+  candidate: DocumentDtoCandidate;
+}
+
+export interface DocumentListDto {
+  items: DocumentDto[];
+}
+
+export type CandidateDocumentDraftFieldDtoValue = string | null | boolean;
+
+export interface CandidateDocumentDraftFieldDto {
+  name: string;
+  value: CandidateDocumentDraftFieldDtoValue;
+}
+
+export interface CandidateDocumentDraftDto {
+  documentUid: string;
+  version: number;
+  fields: CandidateDocumentDraftFieldDto[];
+}
+
+export interface DocumentStreamGrantDto {
+  token: string;
+  url: string;
+  expiresAt: string;
+}
+
+export interface CandidateDocumentUploadRequestDto {
+  documentUid: string;
+  /** @maxLength 128 */
+  idempotencyKey: string;
+}
+
+export interface DocumentUploadGrantDto {
+  /** Five-minute upload capability; keep in memory only */
+  token: string;
+  url: string;
+  expiresAt: string;
+}
+
+export interface CandidateDocumentFormsDto {
+  context: CandidateDocumentContextDto;
+  catalog: CatalogDocumentTypesDto;
 }
 
 export type ApiErrorDtoMessage = string | string[];
@@ -162,18 +645,11 @@ export interface ApiErrorDto {
   path: string | null;
 }
 
-export interface UploadAcceptedDto {
-  candidateId: string;
-  documentId: string;
-  version: number;
-  jobId: string;
-}
-
-export type DocumentStatus =
-  (typeof DocumentStatus)[keyof typeof DocumentStatus];
+export type UploadAcceptedDtoStatus =
+  (typeof UploadAcceptedDtoStatus)[keyof typeof UploadAcceptedDtoStatus];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
-export const DocumentStatus = {
+export const UploadAcceptedDtoStatus = {
   DRAFT: "DRAFT",
   UPLOADED: "UPLOADED",
   OCR_PENDING: "OCR_PENDING",
@@ -184,6 +660,16 @@ export const DocumentStatus = {
   SIGNED: "SIGNED",
   EXPIRED: "EXPIRED",
 } as const;
+
+export interface UploadAcceptedDto {
+  candidateId: string;
+  documentId: string;
+  version: number;
+  /** @nullable */
+  jobId: string | null;
+  submissionId?: string;
+  status?: UploadAcceptedDtoStatus;
+}
 
 export type DocumentFileDtoMimeType =
   (typeof DocumentFileDtoMimeType)[keyof typeof DocumentFileDtoMimeType];
@@ -245,15 +731,64 @@ export interface OcrRegionDto {
   text: string | null;
 }
 
+export type DocumentFieldDtoKind =
+  (typeof DocumentFieldDtoKind)[keyof typeof DocumentFieldDtoKind];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentFieldDtoKind = {
+  text: "text",
+  date: "date",
+  boolean: "boolean",
+} as const;
+
 export interface DocumentFieldDto {
   name: string;
   /** @nullable */
   originalValue: string | null;
+  /**
+   * Unformatted OCR field text for exact comparison; originalValue is the typed suggestion
+   * @nullable
+   */
+  ocrText?: string | null;
   /** @nullable */
   value: string | null;
   /** @nullable */
   editedBy: string | null;
+  /** @nullable */
+  submittedValue: string | null;
+  label: string;
+  kind: DocumentFieldDtoKind;
+  required: boolean;
+  mismatch: boolean;
   regions: OcrRegionDto[];
+}
+
+export type DocumentOcrFieldDtoSource =
+  (typeof DocumentOcrFieldDtoSource)[keyof typeof DocumentOcrFieldDtoSource];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentOcrFieldDtoSource = {
+  PADDLE: "PADDLE",
+  GLM: "GLM",
+  MIXED: "MIXED",
+} as const;
+
+export interface DocumentOcrFieldDto {
+  name: string;
+  /** @nullable */
+  documentFieldName: string | null;
+  /** @nullable */
+  value: string | null;
+  source: DocumentOcrFieldDtoSource;
+  /** @nullable */
+  paddleText: string | null;
+  /**
+   * @minimum 0
+   * @maximum 1
+   * @nullable
+   */
+  paddleConfidence: number | null;
+  regions?: OcrRegionDto[];
 }
 
 export type OcrIssueDtoCode =
@@ -280,24 +815,58 @@ export interface OcrIssueDto {
   pageNumber: number | null;
 }
 
-export type OcrJobStatus = (typeof OcrJobStatus)[keyof typeof OcrJobStatus];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const OcrJobStatus = {
-  UPLOADING: "UPLOADING",
-  QUEUED: "QUEUED",
-  RUNNING: "RUNNING",
-  SUCCEEDED: "SUCCEEDED",
-  REJECTED: "REJECTED",
-  FAILED: "FAILED",
-} as const;
-
 export interface OcrJobDto {
   id: string;
   status: OcrJobStatus;
   /** @nullable */
   errorCode: string | null;
   cleanupPending: boolean;
+}
+
+export interface DocumentDeliveryAttemptDto {
+  id: string;
+  actorId: string;
+  startedAt: string;
+  /** @nullable */
+  finishedAt: string | null;
+  /** @nullable */
+  errorCode: string | null;
+  /**
+   * ERP HTTP response status; null when no response was received or for historical attempts
+   * @nullable
+   */
+  httpStatus: number | null;
+  /**
+   * Bounded ERP response text with credentials and file contents redacted; historical responses are unavailable
+   * @nullable
+   */
+  responseBody: string | null;
+  /** ERP response exceeded the capture limit */
+  responseTruncated: boolean;
+  /**
+   * ERP_RESPONSE_READ_TIMEOUT or ERP_RESPONSE_READ_FAILED; does not override the received HTTP status
+   * @nullable
+   */
+  responseReadError: string | null;
+}
+
+export type DocumentDeliveryDtoStatus =
+  (typeof DocumentDeliveryDtoStatus)[keyof typeof DocumentDeliveryDtoStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentDeliveryDtoStatus = {
+  PENDING: "PENDING",
+  SENDING: "SENDING",
+  SENT: "SENT",
+  REQUIRES_MANUAL: "REQUIRES_MANUAL",
+  WAITING_CONTRACT: "WAITING_CONTRACT",
+} as const;
+
+export interface DocumentDeliveryDto {
+  status: DocumentDeliveryDtoStatus;
+  /** @nullable */
+  errorCode: string | null;
+  attempts: DocumentDeliveryAttemptDto[];
 }
 
 /**
@@ -323,7 +892,32 @@ export type DocumentVersionDtoJob = OcrJobDto | null;
  */
 export type DocumentVersionDtoRaw = { [key: string]: unknown } | null;
 
+/**
+ * @nullable
+ */
+export type DocumentVersionDtoDelivery = DocumentDeliveryDto | null;
+
 export interface DocumentVersionDto {
+  /**
+   * Successful submission time, UTC ISO 8601; null when historically unknown
+   * @nullable
+   */
+  submittedAt: string | null;
+  /**
+   * Approval or return decision time, UTC ISO 8601
+   * @nullable
+   */
+  reviewedAt: string | null;
+  /**
+   * Verified JWT UUID of the reviewer
+   * @nullable
+   */
+  reviewedBy: string | null;
+  reviewGroup?: ReviewGroup;
+  /** Current supported submitted version has no OCR attempt and retained originals */
+  canStartOcr: boolean;
+  /** Current supported version has a failed OCR attempt, retained originals, and enabled OCR */
+  canRetryOcr: boolean;
   documentId: string;
   version: number;
   status: DocumentStatus;
@@ -332,6 +926,9 @@ export interface DocumentVersionDto {
   ocrSource: DocumentVersionDtoOcrSource;
   files: DocumentFileDto[];
   fields: DocumentFieldDto[];
+  ocrFields: DocumentOcrFieldDto[];
+  /** @nullable */
+  reviewedByName: string | null;
   issues: OcrIssueDto[];
   /** @nullable */
   job: DocumentVersionDtoJob;
@@ -341,6 +938,10 @@ export interface DocumentVersionDto {
   approvedAt: string | null;
   /** @nullable */
   approvedBy: string | null;
+  /** @nullable */
+  rejectionReason: string | null;
+  /** @nullable */
+  delivery: DocumentVersionDtoDelivery;
 }
 
 export interface EmployeeLinkDto {
@@ -350,12 +951,18 @@ export interface EmployeeLinkDto {
 
 export interface CandidateDto {
   id: string;
-  chatUuid: string;
+  /** @nullable */
+  chatUuid: string | null;
   /** @nullable */
   locationId: number | null;
   /** @nullable */
   code1c: string | null;
   createdAt: string;
+}
+
+export interface ReviewRevisionDto {
+  /** @minimum 0 */
+  revision: number;
 }
 
 export interface DocumentTypeDto {
@@ -373,27 +980,77 @@ export interface CandidateListDto {
   nextCursor: string | null;
 }
 
-export interface DocumentDto {
+/**
+ * @nullable
+ */
+export type CandidateDocumentSummaryDtoOcrStatus = OcrJobStatus | null;
+
+export interface CandidateDocumentSummaryDto {
+  /**
+   * Successful submission time, UTC ISO 8601; null when historically unknown
+   * @nullable
+   */
+  submittedAt: string | null;
+  /**
+   * Approval or return decision time, UTC ISO 8601
+   * @nullable
+   */
+  reviewedAt: string | null;
+  /**
+   * Verified JWT UUID of the reviewer
+   * @nullable
+   */
+  reviewedBy: string | null;
+  /** @nullable */
+  ocrStatus: CandidateDocumentSummaryDtoOcrStatus;
+  /** @nullable */
+  ocrErrorCode: string | null;
+  /** Returned versions, newest first, including versions superseded by a new upload */
+  returnedVersions?: ReturnedDocumentVersionDto[];
+  /** Approved versions awaiting manual ERP delivery */
+  pendingDeliveryVersions: number[];
   id: string;
   /** @nullable */
   documentTypeCode: string | null;
   status: DocumentStatus;
   currentVersion: number;
+  revision: number;
+  title: string;
+  /** @nullable */
+  documentUid: string | null;
+  /** @nullable */
+  deliveryStatus: string | null;
 }
 
-export interface DocumentListDto {
-  items: DocumentDto[];
+export interface CandidateDetailsDto {
+  candidate: CandidateProfileDto;
+  documents: CandidateDocumentSummaryDto[];
+}
+
+/**
+ * @nullable
+ */
+export type DocumentOcrDetailsDtoRaw = { [key: string]: unknown } | null;
+
+export interface DocumentOcrDetailsDto {
+  revision: number;
+  fields: DocumentOcrFieldDto[];
+  /** @nullable */
+  raw: DocumentOcrDetailsDtoRaw;
 }
 
 export interface DownloadDto {
   url: string;
+  previewUrl: string;
   expiresAt: string;
 }
 
 /**
  * Field names mapped to new values; null clears a value. Maximum 200 fields, 16384 characters per value.
  */
-export type EditDocumentFieldsDtoFields = { [key: string]: string | null };
+export type EditDocumentFieldsDtoFields = {
+  [key: string]: string | null | boolean;
+};
 
 export interface EditDocumentFieldsDto {
   /** @minimum 0 */
@@ -402,28 +1059,723 @@ export interface EditDocumentFieldsDto {
   fields: EditDocumentFieldsDtoFields;
 }
 
-export interface ReviewRevisionDto {
+export interface Object {
+  [key: string]: unknown;
+}
+
+export interface DocumentScopeDto {
+  chat_uuid?: string;
+  code_1c?: string;
+}
+
+export type DocumentUploadGrantRequestDtoCitizenship = {
+  [key: string]: unknown;
+};
+
+export interface DocumentUploadGrantRequestDto {
+  chat_uuid?: string;
+  code_1c?: string;
+  documentUid: string;
+  /** @maxLength 128 */
+  idempotencyKey: string;
+  /** @maxLength 64 */
+  position_code_1c: string;
+  citizenship?: DocumentUploadGrantRequestDtoCitizenship;
+  /** @maxLength 64 */
+  project_code_1c?: string;
+  /** Optional LK candidate profile stored on the candidate and shown in the review queue */
+  candidateSnapshot?: CandidateSnapshotDto;
+  /**
+   * Legacy alias of candidateSnapshot
+   * @deprecated
+   */
+  candidate_profile?: CandidateSnapshotDto;
+}
+
+export interface CandidateReviewQueueDto {
+  items: CandidateDetailsDto[];
+  /**
+   * Last candidate id on this page; null when there is no next page
+   * @nullable
+   */
+  nextCursor: string | null;
+}
+
+export interface ReviewDocumentsDto {
+  items: DocumentDto[];
+  /** @nullable */
+  nextCursor: string | null;
+}
+
+export interface FacetPersonDto {
+  name: string;
+  /** @nullable */
+  code1c: string | null;
+}
+
+export interface FacetProjectDto {
+  name: string;
+  /** @nullable */
+  code: string | null;
+}
+
+export interface ReviewDocumentFacetsDto {
+  managers: FacetPersonDto[];
+  mentors: FacetPersonDto[];
+  projects: FacetProjectDto[];
+  citizenships: string[];
+}
+
+export interface ReviewCandidateDto {
+  id: string;
+  /** @nullable */
+  fullName: string | null;
+}
+
+export interface ReviewCandidateListDto {
+  items: ReviewCandidateDto[];
+}
+
+export interface PositionDto {
+  code: string;
+  name: string;
+}
+
+export interface PositionListDto {
+  items: PositionDto[];
+}
+
+export interface RejectDocumentDto {
+  /** @minimum 0 */
+  revision: number;
+  /**
+   * @minLength 1
+   * @maxLength 1024
+   */
+  reason: string;
+}
+
+export interface AnnotationPreferenceDto {
+  enabled: boolean;
+}
+
+export type AnnotationStatus =
+  (typeof AnnotationStatus)[keyof typeof AnnotationStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationStatus = {
+  DRAFT: "DRAFT",
+  SUBMITTED: "SUBMITTED",
+  ACCEPTED: "ACCEPTED",
+  CHANGES_REQUESTED: "CHANGES_REQUESTED",
+} as const;
+
+export type AnnotationSourceKind =
+  (typeof AnnotationSourceKind)[keyof typeof AnnotationSourceKind];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationSourceKind = {
+  ORIGINAL: "ORIGINAL",
+} as const;
+
+export type AnnotationProfile =
+  (typeof AnnotationProfile)[keyof typeof AnnotationProfile];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationProfile = {
+  RU: "RU",
+  UZ: "UZ",
+  OTHER: "OTHER",
+} as const;
+
+export interface AnnotationCatalogFieldDto {
+  key: string;
+  label: string;
+  /** @minimum 0 */
+  ordinal: number;
+  multiline: boolean;
+  /** @nullable */
+  businessFieldName?: string | null;
+}
+
+export type CatalogStatus = (typeof CatalogStatus)[keyof typeof CatalogStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CatalogStatus = {
+  DRAFT: "DRAFT",
+  PUBLISHED: "PUBLISHED",
+} as const;
+
+export interface AnnotationCatalogDto {
+  documentTypeCode: string;
+  profile: AnnotationProfile;
+  title: string;
+  fields: AnnotationCatalogFieldDto[];
+  id: string;
+  version: number;
+  revision: number;
+  status: CatalogStatus;
+}
+
+export type AnnotationPageDtoRotation =
+  (typeof AnnotationPageDtoRotation)[keyof typeof AnnotationPageDtoRotation];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationPageDtoRotation = {
+  NUMBER_0: 0,
+  NUMBER_90: 90,
+  NUMBER_180: 180,
+  NUMBER_270: 270,
+} as const;
+
+export type AnnotationPageDtoFrame =
+  (typeof AnnotationPageDtoFrame)[keyof typeof AnnotationPageDtoFrame];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationPageDtoFrame = {
+  UPRIGHT_PIXELS_V1: "UPRIGHT_PIXELS_V1",
+} as const;
+
+export interface AnnotationPageDto {
+  id: string;
+  fileId: string;
+  /** @minimum 1 */
+  pageNumber: number;
+  sha256: string;
+  sizeBytes: number;
+  width: number;
+  height: number;
+  rotation: AnnotationPageDtoRotation;
+  frame: AnnotationPageDtoFrame;
+  renderDpi: number;
+  mimeType: string;
+  previewUrl: string;
+}
+
+export interface AnnotationSourceDto {
+  available: boolean;
+  documentId: string;
+  documentTypeCode: string;
+  profile: AnnotationProfile;
+  versionId: string;
+  version: number;
+  sourceKind: AnnotationSourceKind;
+  pages: AnnotationPageDto[];
+}
+
+export type AnnotationDisposition =
+  (typeof AnnotationDisposition)[keyof typeof AnnotationDisposition];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationDisposition = {
+  PRESENT: "PRESENT",
+  NOT_PRESENT: "NOT_PRESENT",
+  UNREADABLE: "UNREADABLE",
+} as const;
+
+export interface AnnotationLineDto {
+  id: string;
+  pageId: string;
+  /** @minimum 0 */
+  order: number;
+  /** @maxLength 2000 */
+  text: string;
+  /**
+   * Clockwise oriented rectangle; x/y normalized to [0,1] in the upright page frame
+   * @minItems 8
+   * @maxItems 8
+   */
+  quad: number[];
+}
+
+export interface AnnotationFieldAnswerDto {
+  key: string;
+  disposition: AnnotationDisposition;
+  lines: AnnotationLineDto[];
+}
+
+export interface AnnotationDto {
+  id: string;
+  documentId: string;
+  versionId: string;
+  catalogId: string;
+  authorId: string;
+  revision: number;
+  status: AnnotationStatus;
+  sourceKind: AnnotationSourceKind;
+  schema: AnnotationCatalogDto;
+  sources: AnnotationSourceDto;
+  fields: AnnotationFieldAnswerDto[];
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  acceptedAt: string | null;
+  editable: boolean;
+}
+
+export interface AnnotationListDto {
+  items: AnnotationDto[];
+}
+
+export interface ClaimAnnotationDto {
+  documentId: string;
+  /** @minimum 1 */
+  version: number;
+  catalogId: string;
+  sourceKind?: AnnotationSourceKind;
+}
+
+export interface SaveAnnotationDto {
+  /** @minimum 0 */
+  revision: number;
+  fields: AnnotationFieldAnswerDto[];
+}
+
+export interface AnnotationRevisionDto {
   /** @minimum 0 */
   revision: number;
 }
 
+export interface AnnotationChangesDto {
+  /** @minimum 0 */
+  revision: number;
+  note: string;
+}
+
+export interface ReassignAnnotationDto {
+  /** @minimum 0 */
+  revision: number;
+  authorId: string;
+}
+
+export interface AnnotationCatalogListDto {
+  items: AnnotationCatalogDto[];
+}
+
+export interface AnnotationCatalogDefaultsDto {
+  fields: AnnotationCatalogFieldDto[];
+}
+
+export interface CreateAnnotationCatalogDto {
+  documentTypeCode: string;
+  profile: AnnotationProfile;
+  title: string;
+  fields: AnnotationCatalogFieldDto[];
+}
+
+export interface UpdateAnnotationCatalogDto {
+  /** @minimum 0 */
+  revision: number;
+  title: string;
+  fields: AnnotationCatalogFieldDto[];
+}
+
+export interface AnnotationDeletedDto {
+  deleted: boolean;
+}
+
+export type SuggestionStatus =
+  (typeof SuggestionStatus)[keyof typeof SuggestionStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const SuggestionStatus = {
+  PENDING: "PENDING",
+  APPLIED: "APPLIED",
+  DISMISSED: "DISMISSED",
+} as const;
+
+export interface AnnotationCatalogSuggestionDto {
+  key: string;
+  label: string;
+  id: string;
+  catalogId: string;
+  authorId: string;
+  status: SuggestionStatus;
+  createdAt: string;
+}
+
+export interface AnnotationCatalogSuggestionListDto {
+  items: AnnotationCatalogSuggestionDto[];
+}
+
+export interface SuggestAnnotationCatalogFieldDto {
+  key: string;
+  label: string;
+}
+
+export type ResolveAnnotationCatalogSuggestionDtoStatus =
+  (typeof ResolveAnnotationCatalogSuggestionDtoStatus)[keyof typeof ResolveAnnotationCatalogSuggestionDtoStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ResolveAnnotationCatalogSuggestionDtoStatus = {
+  APPLIED: "APPLIED",
+  DISMISSED: "DISMISSED",
+} as const;
+
+export interface ResolveAnnotationCatalogSuggestionDto {
+  status: ResolveAnnotationCatalogSuggestionDtoStatus;
+}
+
+export type ListAuditLogsParams = {
+  /**
+   * Filter by author uuid; the literal "me" means the caller
+   */
+  actorId?: string;
+  /**
+   * When true, show only the caller actions
+   */
+  mine?: boolean;
+  action?: AuditAction;
+  entityType?: string;
+  entityId?: string;
+  limit?: number;
+  /**
+   * Opaque cursor from a previous AuditLogListDto.nextCursor
+   */
+  cursor?: string;
+};
+
+export type GetDashboardParams = {
+  /**
+   * Default: all permitted review groups
+   */
+  reviewGroup?: GetDashboardReviewGroup;
+  /**
+   * Exact manager code
+   */
+  managerCode1c?: string;
+  /**
+   * Exact legacy manager name, only candidates without manager code
+   */
+  managerName?: string;
+  /**
+   * Candidates without manager code or name
+   */
+  managerUnassigned?: boolean;
+};
+
+export type GetDashboardReviewGroup =
+  (typeof GetDashboardReviewGroup)[keyof typeof GetDashboardReviewGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetDashboardReviewGroup = {
+  RU: "RU",
+  IG: "IG",
+  ALL: "ALL",
+} as const;
+
+/**
+ * Provide metadata for manual review or documentTypeCode for legacy OCR; at least one is required.
+ */
 export type UploadCandidateDocumentBody = {
   /** @maxLength 64 */
-  documentTypeCode: string;
+  documentTypeCode?: string;
+  /** JSON metadata for manual review, with matching chat_uuid */
+  metadata?: string;
   /** @minimum 1 */
   locationId?: number;
   /**
-   * JPEG, PNG, WebP or PDF; mixed bundle allowed. File order is preserved.
+   * JPEG, PNG, WebP, HEIC/HEIF or PDF. HEIC is normalized once to WebP without resizing; stored/downloaded MIME is image/webp. File order is preserved.
    * @minItems 1
    * @maxItems 10
    */
   "files[]": Blob[];
 };
 
+export type ListDocumentTypesParams = {
+  /**
+   * Only ERP-catalog types (catalogSyncedAt != null), sorted by title
+   */
+  catalogOnly?: boolean;
+};
+
 export type ListCandidatesParams = {
   limit?: number;
   cursor?: string;
 };
+
+export type GetCandidateDocumentCatalogParams = {
+  position_code_1c: string;
+  citizenship?: Object;
+};
+
+export type SubmitCandidateDocumentBody = {
+  /** JSON: documentUid, chat_uuid and/or code_1c, position_code_1c, citizenship (default ru), documentFields, optional project_code_1c/locationId */
+  metadata: string;
+  /**
+   * JPEG, PNG, WebP, HEIC/HEIF or PDF; HEIC is normalized once to WebP without resizing. Stored/downloaded MIME is image/webp.
+   * @minItems 1
+   * @maxItems 10
+   */
+  "files[]": Blob[];
+};
+
+export type GetCandidateDocumentStatusesParams = {
+  chat_uuid?: string;
+  code_1c?: string;
+};
+
+export type GetCandidateDocumentDraftParams = {
+  chat_uuid?: string;
+  code_1c?: string;
+};
+
+export type ListCandidateReviewQueueParams = {
+  /**
+   * Number of candidates, regardless of their document counts
+   */
+  limit?: number;
+  /**
+   * Candidate id from nextCursor
+   */
+  cursor?: string;
+  /**
+   * Exact current document status; unlike status=RETURNED this excludes historic returns
+   */
+  currentStatus?: DocumentStatus;
+  /**
+   * Exact legacy manager name, only candidates without a manager code
+   */
+  managerName?: string;
+  /**
+   * Candidates without manager code or name
+   */
+  managerUnassigned?: boolean;
+  reviewGroup?: ReviewGroup;
+  status?: ListCandidateReviewQueueStatus;
+  /**
+   * Case-insensitive fullName search
+   */
+  q?: string;
+  documentTypeCode?: string;
+  citizenship?: string;
+  /**
+   * Manager name or code contains
+   */
+  manager?: string;
+  /**
+   * Mentor name or code contains
+   */
+  mentor?: string;
+  hasMentor?: boolean;
+  birthDateFrom?: string;
+  birthDateTo?: string;
+  positionCode?: string;
+  projectCode?: string;
+  /**
+   * Exact candidate id
+   */
+  candidateId?: string;
+  /**
+   * Exact manager code_1c
+   */
+  managerCode1c?: string;
+  /**
+   * Exact mentor code_1c
+   */
+  mentorCode1c?: string;
+};
+
+export type ListCandidateReviewQueueStatus =
+  (typeof ListCandidateReviewQueueStatus)[keyof typeof ListCandidateReviewQueueStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListCandidateReviewQueueStatus = {
+  IN_REVIEW: "IN_REVIEW",
+  ERP_PENDING: "ERP_PENDING",
+  RETURNED: "RETURNED",
+  ALL: "ALL",
+} as const;
+
+export type ListReviewDocumentsParams = {
+  limit?: number;
+  cursor?: string;
+  /**
+   * Exact current document status; unlike status=RETURNED this excludes historic returns
+   */
+  currentStatus?: DocumentStatus;
+  /**
+   * Exact legacy manager name, only candidates without a manager code
+   */
+  managerName?: string;
+  /**
+   * Candidates without manager code or name
+   */
+  managerUnassigned?: boolean;
+  reviewGroup?: ReviewGroup;
+  status?: ListReviewDocumentsStatus;
+  /**
+   * Case-insensitive fullName search
+   */
+  q?: string;
+  documentTypeCode?: string;
+  citizenship?: string;
+  /**
+   * Manager name or code contains
+   */
+  manager?: string;
+  /**
+   * Mentor name or code contains
+   */
+  mentor?: string;
+  hasMentor?: boolean;
+  birthDateFrom?: string;
+  birthDateTo?: string;
+  positionCode?: string;
+  projectCode?: string;
+  /**
+   * Exact candidate id
+   */
+  candidateId?: string;
+  /**
+   * Exact manager code_1c
+   */
+  managerCode1c?: string;
+  /**
+   * Exact mentor code_1c
+   */
+  mentorCode1c?: string;
+};
+
+export type ListReviewDocumentsStatus =
+  (typeof ListReviewDocumentsStatus)[keyof typeof ListReviewDocumentsStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListReviewDocumentsStatus = {
+  IN_REVIEW: "IN_REVIEW",
+  ERP_PENDING: "ERP_PENDING",
+  RETURNED: "RETURNED",
+  ALL: "ALL",
+} as const;
+
+export type GetReviewDocumentFacetsParams = {
+  reviewGroup?: ReviewGroup;
+};
+
+export type ListReviewCandidatesParams = {
+  reviewGroup?: ReviewGroup;
+  /**
+   * Case-insensitive fullName search
+   */
+  q?: string;
+  limit?: number;
+};
+
+export type ListPositionsParams = {
+  /**
+   * Case-insensitive name search
+   */
+  q?: string;
+  limit?: number;
+};
+
+export type SubmitCandidateDocumentDirectBody = {
+  /** JSON with documentUid and documentFields only; owner and candidate context come from the upload grant */
+  metadata: string;
+  /**
+   * JPEG, PNG, WebP, HEIC/HEIF or PDF; HEIC is normalized once to WebP without resizing. Stored/downloaded MIME is image/webp.
+   * @minItems 1
+   * @maxItems 10
+   */
+  "files[]": Blob[];
+};
+
+export type ListAnnotationsParams = {
+  documentId?: string;
+  version?: number;
+  status?: AnnotationStatus;
+};
+
+export type ListAnnotationCatalogsParams = {
+  documentTypeCode?: string;
+  profile?: AnnotationProfile;
+};
+
+export type DeleteAnnotationCatalogParams = {
+  revision: number;
+};
+
+/**
+ * @summary List audit history within user location scope
+ */
+export const listAuditLogs = (
+  params?: ListAuditLogsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AuditLogListDto>({
+    url: `/api/v1/audit-logs`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListAuditLogsQueryKey = (params?: ListAuditLogsParams) => {
+  return [`/api/v1/audit-logs`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAuditLogsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAuditLogs>>,
+  TError = void,
+>(
+  params?: ListAuditLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAuditLogs>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAuditLogsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAuditLogs>>> = ({
+    signal,
+  }) => listAuditLogs(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAuditLogs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAuditLogsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAuditLogs>>
+>;
+export type ListAuditLogsQueryError = void;
+
+/**
+ * @summary List audit history within user location scope
+ */
+
+export function useListAuditLogs<
+  TData = Awaited<ReturnType<typeof listAuditLogs>>,
+  TError = void,
+>(
+  params?: ListAuditLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAuditLogs>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAuditLogsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
 
 /**
  * @summary Service health check (legacy, same as live)
@@ -698,37 +2050,44 @@ export function useGetHealthIntegration<
 }
 
 /**
- * @summary Current dashboard summary within user location scope
+ * @summary Candidate document acceptance summary within permitted review groups
  */
-export const getDashboard = (signal?: AbortSignal) => {
+export const getDashboard = (
+  params?: GetDashboardParams,
+  signal?: AbortSignal,
+) => {
   return customInstance<DashboardResponseDto>({
     url: `/api/v1/dashboard`,
     method: "GET",
+    params,
     signal,
   });
 };
 
-export const getGetDashboardQueryKey = () => {
-  return [`/api/v1/dashboard`] as const;
+export const getGetDashboardQueryKey = (params?: GetDashboardParams) => {
+  return [`/api/v1/dashboard`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetDashboardQueryOptions = <
   TData = Awaited<ReturnType<typeof getDashboard>>,
   TError = void,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getDashboard>>,
-    TError,
-    TData
-  >;
-}) => {
+>(
+  params?: GetDashboardParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDashboard>>,
+      TError,
+      TData
+    >;
+  },
+) => {
   const { query: queryOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetDashboardQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getGetDashboardQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboard>>> = ({
     signal,
-  }) => getDashboard(signal);
+  }) => getDashboard(params, signal);
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getDashboard>>,
@@ -743,20 +2102,23 @@ export type GetDashboardQueryResult = NonNullable<
 export type GetDashboardQueryError = void;
 
 /**
- * @summary Current dashboard summary within user location scope
+ * @summary Candidate document acceptance summary within permitted review groups
  */
 
 export function useGetDashboard<
   TData = Awaited<ReturnType<typeof getDashboard>>,
   TError = void,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getDashboard>>,
-    TError,
-    TData
-  >;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetDashboardQueryOptions(options);
+>(
+  params?: GetDashboardParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDashboard>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDashboardQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -979,7 +2341,1008 @@ export function useGetMe<
 }
 
 /**
- * @summary Upload images/PDF of one candidate document for asynchronous OCR
+ * @summary Candidate document context from LK identity and ERP
+ */
+export const getCandidateDocumentContext = (
+  chatUuid: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateDocumentContextDto>({
+    url: `/api/candidate-documents/by-chat/${chatUuid}/context`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentContextQueryKey = (chatUuid: string) => {
+  return [`/api/candidate-documents/by-chat/${chatUuid}/context`] as const;
+};
+
+export const getGetCandidateDocumentContextQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateDocumentContext>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  chatUuid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentContext>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidateDocumentContextQueryKey(chatUuid);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateDocumentContext>>
+  > = ({ signal }) => getCandidateDocumentContext(chatUuid, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!chatUuid,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentContext>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateDocumentContextQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocumentContext>>
+>;
+export type GetCandidateDocumentContextQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @summary Candidate document context from LK identity and ERP
+ */
+
+export function useGetCandidateDocumentContext<
+  TData = Awaited<ReturnType<typeof getCandidateDocumentContext>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  chatUuid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentContext>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateDocumentContextQueryOptions(
+    chatUuid,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Applicable document forms for a verified candidate
+ */
+export const getCandidateDocumentTypes = (
+  chatUuid: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CatalogDocumentTypesDto>({
+    url: `/api/candidate-documents/by-chat/${chatUuid}/catalog`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentTypesQueryKey = (chatUuid: string) => {
+  return [`/api/candidate-documents/by-chat/${chatUuid}/catalog`] as const;
+};
+
+export const getGetCandidateDocumentTypesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateDocumentTypes>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  chatUuid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentTypes>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidateDocumentTypesQueryKey(chatUuid);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateDocumentTypes>>
+  > = ({ signal }) => getCandidateDocumentTypes(chatUuid, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!chatUuid,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentTypes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateDocumentTypesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocumentTypes>>
+>;
+export type GetCandidateDocumentTypesQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @summary Applicable document forms for a verified candidate
+ */
+
+export function useGetCandidateDocumentTypes<
+  TData = Awaited<ReturnType<typeof getCandidateDocumentTypes>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  chatUuid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentTypes>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateDocumentTypesQueryOptions(
+    chatUuid,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Document statuses for a verified candidate chat
+ */
+export const getCandidateDocuments = (
+  chatUuid: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentListDto>({
+    url: `/api/candidate-documents/by-chat/${chatUuid}/statuses`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentsQueryKey = (chatUuid: string) => {
+  return [`/api/candidate-documents/by-chat/${chatUuid}/statuses`] as const;
+};
+
+export const getGetCandidateDocumentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateDocuments>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  chatUuid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocuments>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidateDocumentsQueryKey(chatUuid);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateDocuments>>
+  > = ({ signal }) => getCandidateDocuments(chatUuid, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!chatUuid,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateDocuments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateDocumentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocuments>>
+>;
+export type GetCandidateDocumentsQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @summary Document statuses for a verified candidate chat
+ */
+
+export function useGetCandidateDocuments<
+  TData = Awaited<ReturnType<typeof getCandidateDocuments>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  chatUuid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocuments>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateDocumentsQueryOptions(chatUuid, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Own current returned document fields
+ */
+export const getBrowserCandidateDocumentDraft = (
+  chatUuid: string,
+  documentUid: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateDocumentDraftDto>({
+    url: `/api/candidate-documents/by-chat/${chatUuid}/documents/${documentUid}/draft`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetBrowserCandidateDocumentDraftQueryKey = (
+  chatUuid: string,
+  documentUid: string,
+) => {
+  return [
+    `/api/candidate-documents/by-chat/${chatUuid}/documents/${documentUid}/draft`,
+  ] as const;
+};
+
+export const getGetBrowserCandidateDocumentDraftQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  chatUuid: string,
+  documentUid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetBrowserCandidateDocumentDraftQueryKey(chatUuid, documentUid);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>
+  > = ({ signal }) =>
+    getBrowserCandidateDocumentDraft(chatUuid, documentUid, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(chatUuid && documentUid),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBrowserCandidateDocumentDraftQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>
+>;
+export type GetBrowserCandidateDocumentDraftQueryError =
+  CandidateDocumentErrorDto;
+
+/**
+ * @summary Own current returned document fields
+ */
+
+export function useGetBrowserCandidateDocumentDraft<
+  TData = Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  chatUuid: string,
+  documentUid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBrowserCandidateDocumentDraftQueryOptions(
+    chatUuid,
+    documentUid,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Create a scoped document status stream grant
+ */
+export const getCandidateDocumentsStreamGrant = (
+  chatUuid: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentStreamGrantDto>({
+    url: `/api/candidate-documents/by-chat/${chatUuid}/stream-grant`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentsStreamGrantMutationOptions = <
+  TError = CandidateDocumentErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>,
+    TError,
+    { chatUuid: string },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>,
+  TError,
+  { chatUuid: string },
+  TContext
+> => {
+  const mutationKey = ["getCandidateDocumentsStreamGrant"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>,
+    { chatUuid: string }
+  > = (props) => {
+    const { chatUuid } = props ?? {};
+
+    return getCandidateDocumentsStreamGrant(chatUuid);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GetCandidateDocumentsStreamGrantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>
+>;
+
+export type GetCandidateDocumentsStreamGrantMutationError =
+  CandidateDocumentErrorDto;
+
+/**
+ * @summary Create a scoped document status stream grant
+ */
+export const useGetCandidateDocumentsStreamGrant = <
+  TError = CandidateDocumentErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>,
+    TError,
+    { chatUuid: string },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof getCandidateDocumentsStreamGrant>>,
+  TError,
+  { chatUuid: string },
+  TContext
+> => {
+  const mutationOptions =
+    getGetCandidateDocumentsStreamGrantMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Create a scoped document upload grant using server context
+ */
+export const getCandidateDocumentUploadGrant = (
+  chatUuid: string,
+  candidateDocumentUploadRequestDto: CandidateDocumentUploadRequestDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentUploadGrantDto>({
+    url: `/api/candidate-documents/by-chat/${chatUuid}/upload-grant`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: candidateDocumentUploadRequestDto,
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentUploadGrantMutationOptions = <
+  TError = CandidateDocumentErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentUploadGrant>>,
+    TError,
+    { chatUuid: string; data: CandidateDocumentUploadRequestDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof getCandidateDocumentUploadGrant>>,
+  TError,
+  { chatUuid: string; data: CandidateDocumentUploadRequestDto },
+  TContext
+> => {
+  const mutationKey = ["getCandidateDocumentUploadGrant"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof getCandidateDocumentUploadGrant>>,
+    { chatUuid: string; data: CandidateDocumentUploadRequestDto }
+  > = (props) => {
+    const { chatUuid, data } = props ?? {};
+
+    return getCandidateDocumentUploadGrant(chatUuid, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GetCandidateDocumentUploadGrantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocumentUploadGrant>>
+>;
+export type GetCandidateDocumentUploadGrantMutationBody =
+  CandidateDocumentUploadRequestDto;
+export type GetCandidateDocumentUploadGrantMutationError =
+  CandidateDocumentErrorDto;
+
+/**
+ * @summary Create a scoped document upload grant using server context
+ */
+export const useGetCandidateDocumentUploadGrant = <
+  TError = CandidateDocumentErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentUploadGrant>>,
+    TError,
+    { chatUuid: string; data: CandidateDocumentUploadRequestDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof getCandidateDocumentUploadGrant>>,
+  TError,
+  { chatUuid: string; data: CandidateDocumentUploadRequestDto },
+  TContext
+> => {
+  const mutationOptions =
+    getGetCandidateDocumentUploadGrantMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @deprecated
+ * @summary Own candidate document context from the unified auth-service JWT
+ */
+export const getMyCandidateDocumentContext = (signal?: AbortSignal) => {
+  return customInstance<CandidateDocumentContextDto>({
+    url: `/api/candidate-documents/my/chat`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetMyCandidateDocumentContextQueryKey = () => {
+  return [`/api/candidate-documents/my/chat`] as const;
+};
+
+export const getGetMyCandidateDocumentContextQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
+  TError = CandidateDocumentErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMyCandidateDocumentContextQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyCandidateDocumentContext>>
+  > = ({ signal }) => getMyCandidateDocumentContext(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyCandidateDocumentContextQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyCandidateDocumentContext>>
+>;
+export type GetMyCandidateDocumentContextQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @deprecated
+ * @summary Own candidate document context from the unified auth-service JWT
+ */
+
+export function useGetMyCandidateDocumentContext<
+  TData = Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
+  TError = CandidateDocumentErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentContext>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyCandidateDocumentContextQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Own document forms and verified candidate context
+ */
+export const getMyCandidateDocumentForms = (signal?: AbortSignal) => {
+  return customInstance<CandidateDocumentFormsDto>({
+    url: `/api/candidate-documents/my/forms`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetMyCandidateDocumentFormsQueryKey = () => {
+  return [`/api/candidate-documents/my/forms`] as const;
+};
+
+export const getGetMyCandidateDocumentFormsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyCandidateDocumentForms>>,
+  TError = CandidateDocumentErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentForms>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMyCandidateDocumentFormsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyCandidateDocumentForms>>
+  > = ({ signal }) => getMyCandidateDocumentForms(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentForms>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyCandidateDocumentFormsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyCandidateDocumentForms>>
+>;
+export type GetMyCandidateDocumentFormsQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @summary Own document forms and verified candidate context
+ */
+
+export function useGetMyCandidateDocumentForms<
+  TData = Awaited<ReturnType<typeof getMyCandidateDocumentForms>>,
+  TError = CandidateDocumentErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentForms>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyCandidateDocumentFormsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Own document statuses, independently of ERP
+ */
+export const getMyCandidateDocuments = (signal?: AbortSignal) => {
+  return customInstance<DocumentListDto>({
+    url: `/api/candidate-documents/my/statuses`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetMyCandidateDocumentsQueryKey = () => {
+  return [`/api/candidate-documents/my/statuses`] as const;
+};
+
+export const getGetMyCandidateDocumentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyCandidateDocuments>>,
+  TError = CandidateDocumentErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocuments>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMyCandidateDocumentsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyCandidateDocuments>>
+  > = ({ signal }) => getMyCandidateDocuments(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocuments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyCandidateDocumentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyCandidateDocuments>>
+>;
+export type GetMyCandidateDocumentsQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @summary Own document statuses, independently of ERP
+ */
+
+export function useGetMyCandidateDocuments<
+  TData = Awaited<ReturnType<typeof getMyCandidateDocuments>>,
+  TError = CandidateDocumentErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocuments>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyCandidateDocumentsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Own returned document fields
+ */
+export const getMyCandidateDocumentDraft = (
+  documentUid: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateDocumentDraftDto>({
+    url: `/api/candidate-documents/my/documents/${documentUid}/draft`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetMyCandidateDocumentDraftQueryKey = (documentUid: string) => {
+  return [
+    `/api/candidate-documents/my/documents/${documentUid}/draft`,
+  ] as const;
+};
+
+export const getGetMyCandidateDocumentDraftQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  documentUid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetMyCandidateDocumentDraftQueryKey(documentUid);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>
+  > = ({ signal }) => getMyCandidateDocumentDraft(documentUid, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!documentUid,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyCandidateDocumentDraftQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>
+>;
+export type GetMyCandidateDocumentDraftQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @summary Own returned document fields
+ */
+
+export function useGetMyCandidateDocumentDraft<
+  TData = Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  documentUid: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyCandidateDocumentDraftQueryOptions(
+    documentUid,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Own document status stream grant
+ */
+export const getMyCandidateDocumentsStreamGrant = (signal?: AbortSignal) => {
+  return customInstance<DocumentStreamGrantDto>({
+    url: `/api/candidate-documents/my/stream-grant`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getGetMyCandidateDocumentsStreamGrantMutationOptions = <
+  TError = CandidateDocumentErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentsStreamGrant>>,
+    TError,
+    void,
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof getMyCandidateDocumentsStreamGrant>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["getMyCandidateDocumentsStreamGrant"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof getMyCandidateDocumentsStreamGrant>>,
+    void
+  > = () => {
+    return getMyCandidateDocumentsStreamGrant();
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GetMyCandidateDocumentsStreamGrantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof getMyCandidateDocumentsStreamGrant>>
+>;
+
+export type GetMyCandidateDocumentsStreamGrantMutationError =
+  CandidateDocumentErrorDto;
+
+/**
+ * @summary Own document status stream grant
+ */
+export const useGetMyCandidateDocumentsStreamGrant = <
+  TError = CandidateDocumentErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentsStreamGrant>>,
+    TError,
+    void,
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof getMyCandidateDocumentsStreamGrant>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationOptions =
+    getGetMyCandidateDocumentsStreamGrantMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Own document upload grant using server context
+ */
+export const getMyCandidateDocumentUploadGrant = (
+  candidateDocumentUploadRequestDto: CandidateDocumentUploadRequestDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentUploadGrantDto>({
+    url: `/api/candidate-documents/my/upload-grant`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: candidateDocumentUploadRequestDto,
+    signal,
+  });
+};
+
+export const getGetMyCandidateDocumentUploadGrantMutationOptions = <
+  TError = CandidateDocumentErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentUploadGrant>>,
+    TError,
+    { data: CandidateDocumentUploadRequestDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof getMyCandidateDocumentUploadGrant>>,
+  TError,
+  { data: CandidateDocumentUploadRequestDto },
+  TContext
+> => {
+  const mutationKey = ["getMyCandidateDocumentUploadGrant"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof getMyCandidateDocumentUploadGrant>>,
+    { data: CandidateDocumentUploadRequestDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return getMyCandidateDocumentUploadGrant(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GetMyCandidateDocumentUploadGrantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof getMyCandidateDocumentUploadGrant>>
+>;
+export type GetMyCandidateDocumentUploadGrantMutationBody =
+  CandidateDocumentUploadRequestDto;
+export type GetMyCandidateDocumentUploadGrantMutationError =
+  CandidateDocumentErrorDto;
+
+/**
+ * @summary Own document upload grant using server context
+ */
+export const useGetMyCandidateDocumentUploadGrant = <
+  TError = CandidateDocumentErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof getMyCandidateDocumentUploadGrant>>,
+    TError,
+    { data: CandidateDocumentUploadRequestDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof getMyCandidateDocumentUploadGrant>>,
+  TError,
+  { data: CandidateDocumentUploadRequestDto },
+  TContext
+> => {
+  const mutationOptions =
+    getGetMyCandidateDocumentUploadGrantMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Upload candidate document metadata for manual review, or use the legacy OCR contract
  */
 export const uploadCandidateDocument = (
   chatUuid: string,
@@ -987,10 +3350,15 @@ export const uploadCandidateDocument = (
   signal?: AbortSignal,
 ) => {
   const formData = new FormData();
-  formData.append(
-    "documentTypeCode",
-    uploadCandidateDocumentBody.documentTypeCode,
-  );
+  if (uploadCandidateDocumentBody.documentTypeCode !== undefined) {
+    formData.append(
+      "documentTypeCode",
+      uploadCandidateDocumentBody.documentTypeCode,
+    );
+  }
+  if (uploadCandidateDocumentBody.metadata !== undefined) {
+    formData.append("metadata", uploadCandidateDocumentBody.metadata);
+  }
   if (uploadCandidateDocumentBody.locationId !== undefined) {
     formData.append(
       "locationId",
@@ -1054,7 +3422,7 @@ export type UploadCandidateDocumentMutationBody = UploadCandidateDocumentBody;
 export type UploadCandidateDocumentMutationError = ApiErrorDto;
 
 /**
- * @summary Upload images/PDF of one candidate document for asynchronous OCR
+ * @summary Upload candidate document metadata for manual review, or use the legacy OCR contract
  */
 export const useUploadCandidateDocument = <
   TError = ApiErrorDto,
@@ -1264,37 +3632,217 @@ export const useLinkCandidateEmployee = <
 };
 
 /**
- * @summary List supported document type codes
+ * @summary Retry failed OCR for a supported current document with retained originals
  */
-export const listDocumentTypes = (signal?: AbortSignal) => {
-  return customInstance<DocumentTypeListDto>({
-    url: `/api/v1/document-types`,
-    method: "GET",
+export const retryDocumentOcr = (
+  documentId: string,
+  version: number,
+  reviewRevisionDto: ReviewRevisionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentVersionDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/ocr/retry`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: reviewRevisionDto,
     signal,
   });
 };
 
-export const getListDocumentTypesQueryKey = () => {
-  return [`/api/v1/document-types`] as const;
+export const getRetryDocumentOcrMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryDocumentOcr>>,
+    TError,
+    { documentId: string; version: number; data: ReviewRevisionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof retryDocumentOcr>>,
+  TError,
+  { documentId: string; version: number; data: ReviewRevisionDto },
+  TContext
+> => {
+  const mutationKey = ["retryDocumentOcr"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof retryDocumentOcr>>,
+    { documentId: string; version: number; data: ReviewRevisionDto }
+  > = (props) => {
+    const { documentId, version, data } = props ?? {};
+
+    return retryDocumentOcr(documentId, version, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RetryDocumentOcrMutationResult = NonNullable<
+  Awaited<ReturnType<typeof retryDocumentOcr>>
+>;
+export type RetryDocumentOcrMutationBody = ReviewRevisionDto;
+export type RetryDocumentOcrMutationError = ApiErrorDto;
+
+/**
+ * @summary Retry failed OCR for a supported current document with retained originals
+ */
+export const useRetryDocumentOcr = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryDocumentOcr>>,
+    TError,
+    { documentId: string; version: number; data: ReviewRevisionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof retryDocumentOcr>>,
+  TError,
+  { documentId: string; version: number; data: ReviewRevisionDto },
+  TContext
+> => {
+  const mutationOptions = getRetryDocumentOcrMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Start OCR for a supported current document without a previous OCR job
+ */
+export const startDocumentOcr = (
+  documentId: string,
+  version: number,
+  reviewRevisionDto: ReviewRevisionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentVersionDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/ocr/start`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: reviewRevisionDto,
+    signal,
+  });
+};
+
+export const getStartDocumentOcrMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startDocumentOcr>>,
+    TError,
+    { documentId: string; version: number; data: ReviewRevisionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof startDocumentOcr>>,
+  TError,
+  { documentId: string; version: number; data: ReviewRevisionDto },
+  TContext
+> => {
+  const mutationKey = ["startDocumentOcr"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof startDocumentOcr>>,
+    { documentId: string; version: number; data: ReviewRevisionDto }
+  > = (props) => {
+    const { documentId, version, data } = props ?? {};
+
+    return startDocumentOcr(documentId, version, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StartDocumentOcrMutationResult = NonNullable<
+  Awaited<ReturnType<typeof startDocumentOcr>>
+>;
+export type StartDocumentOcrMutationBody = ReviewRevisionDto;
+export type StartDocumentOcrMutationError = ApiErrorDto;
+
+/**
+ * @summary Start OCR for a supported current document without a previous OCR job
+ */
+export const useStartDocumentOcr = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startDocumentOcr>>,
+    TError,
+    { documentId: string; version: number; data: ReviewRevisionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof startDocumentOcr>>,
+  TError,
+  { documentId: string; version: number; data: ReviewRevisionDto },
+  TContext
+> => {
+  const mutationOptions = getStartDocumentOcrMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary List supported document type codes
+ */
+export const listDocumentTypes = (
+  params?: ListDocumentTypesParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentTypeListDto>({
+    url: `/api/v1/document-types`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListDocumentTypesQueryKey = (
+  params?: ListDocumentTypesParams,
+) => {
+  return [`/api/v1/document-types`, ...(params ? [params] : [])] as const;
 };
 
 export const getListDocumentTypesQueryOptions = <
   TData = Awaited<ReturnType<typeof listDocumentTypes>>,
   TError = ApiErrorDto,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listDocumentTypes>>,
-    TError,
-    TData
-  >;
-}) => {
+>(
+  params?: ListDocumentTypesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listDocumentTypes>>,
+      TError,
+      TData
+    >;
+  },
+) => {
   const { query: queryOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListDocumentTypesQueryKey();
+  const queryKey =
+    queryOptions?.queryKey ?? getListDocumentTypesQueryKey(params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof listDocumentTypes>>
-  > = ({ signal }) => listDocumentTypes(signal);
+  > = ({ signal }) => listDocumentTypes(params, signal);
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listDocumentTypes>>,
@@ -1315,14 +3863,17 @@ export type ListDocumentTypesQueryError = ApiErrorDto;
 export function useListDocumentTypes<
   TData = Awaited<ReturnType<typeof listDocumentTypes>>,
   TError = ApiErrorDto,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listDocumentTypes>>,
-    TError,
-    TData
-  >;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListDocumentTypesQueryOptions(options);
+>(
+  params?: ListDocumentTypesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listDocumentTypes>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListDocumentTypesQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -1403,6 +3954,91 @@ export function useListCandidates<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListCandidatesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Candidate profile with all accessible live documents
+ */
+export const getCandidateDetails = (
+  candidateId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateDetailsDto>({
+    url: `/api/v1/candidates/${candidateId}`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCandidateDetailsQueryKey = (candidateId: string) => {
+  return [`/api/v1/candidates/${candidateId}`] as const;
+};
+
+export const getGetCandidateDetailsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateDetails>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDetails>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidateDetailsQueryKey(candidateId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateDetails>>
+  > = ({ signal }) => getCandidateDetails(candidateId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateDetails>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateDetailsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDetails>>
+>;
+export type GetCandidateDetailsQueryError = ApiErrorDto;
+
+/**
+ * @summary Candidate profile with all accessible live documents
+ */
+
+export function useGetCandidateDetails<
+  TData = Awaited<ReturnType<typeof getCandidateDetails>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDetails>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateDetailsQueryOptions(candidateId, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -1686,7 +4322,105 @@ export function useGetDocumentVersion<
 }
 
 /**
- * @summary Get a private file download URL (expires in 5 minutes)
+ * @summary Get all OCR observations and source regions
+ */
+export const getDocumentOcrDetails = (
+  documentId: string,
+  version: number,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentOcrDetailsDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/ocr-details`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetDocumentOcrDetailsQueryKey = (
+  documentId: string,
+  version: number,
+) => {
+  return [
+    `/api/v1/documents/${documentId}/versions/${version}/ocr-details`,
+  ] as const;
+};
+
+export const getGetDocumentOcrDetailsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  version: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetDocumentOcrDetailsQueryKey(documentId, version);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getDocumentOcrDetails>>
+  > = ({ signal }) => getDocumentOcrDetails(documentId, version, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(documentId && version),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDocumentOcrDetailsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDocumentOcrDetails>>
+>;
+export type GetDocumentOcrDetailsQueryError = ApiErrorDto;
+
+/**
+ * @summary Get all OCR observations and source regions
+ */
+
+export function useGetDocumentOcrDetails<
+  TData = Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  version: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDocumentOcrDetails>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDocumentOcrDetailsQueryOptions(
+    documentId,
+    version,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Get private file preview and download URLs (expire in 5 minutes)
  */
 export const getDocumentFileDownload = (
   documentId: string,
@@ -1755,7 +4489,7 @@ export type GetDocumentFileDownloadQueryResult = NonNullable<
 export type GetDocumentFileDownloadQueryError = ApiErrorDto;
 
 /**
- * @summary Get a private file download URL (expires in 5 minutes)
+ * @summary Get private file preview and download URLs (expire in 5 minutes)
  */
 
 export function useGetDocumentFileDownload<
@@ -1953,6 +4687,3058 @@ export const useApproveDocument = <
   TContext
 > => {
   const mutationOptions = getApproveDocumentMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Applicable document forms from ERP
+ */
+export const getCandidateDocumentCatalog = (
+  params: GetCandidateDocumentCatalogParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CatalogDocumentTypesDto>({
+    url: `/api/internal/edo/v1/document-catalog`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentCatalogQueryKey = (
+  params: GetCandidateDocumentCatalogParams,
+) => {
+  return [
+    `/api/internal/edo/v1/document-catalog`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetCandidateDocumentCatalogQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateDocumentCatalog>>,
+  TError = ApiErrorDto,
+>(
+  params: GetCandidateDocumentCatalogParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentCatalog>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidateDocumentCatalogQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateDocumentCatalog>>
+  > = ({ signal }) => getCandidateDocumentCatalog(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentCatalog>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateDocumentCatalogQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocumentCatalog>>
+>;
+export type GetCandidateDocumentCatalogQueryError = ApiErrorDto;
+
+/**
+ * @summary Applicable document forms from ERP
+ */
+
+export function useGetCandidateDocumentCatalog<
+  TData = Awaited<ReturnType<typeof getCandidateDocumentCatalog>>,
+  TError = ApiErrorDto,
+>(
+  params: GetCandidateDocumentCatalogParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentCatalog>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateDocumentCatalogQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Submit a document for manual review with optional asynchronous OCR enrichment
+ */
+export const submitCandidateDocument = (
+  submitCandidateDocumentBody: SubmitCandidateDocumentBody,
+  signal?: AbortSignal,
+) => {
+  const formData = new FormData();
+  formData.append("metadata", submitCandidateDocumentBody.metadata);
+  submitCandidateDocumentBody["files[]"].forEach((value) =>
+    formData.append("files[]", value),
+  );
+
+  return customInstance<UploadAcceptedDto>({
+    url: `/api/internal/edo/v1/documents`,
+    method: "POST",
+    headers: { "Content-Type": "multipart/form-data" },
+    data: formData,
+    signal,
+  });
+};
+
+export const getSubmitCandidateDocumentMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitCandidateDocument>>,
+    TError,
+    { data: SubmitCandidateDocumentBody },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitCandidateDocument>>,
+  TError,
+  { data: SubmitCandidateDocumentBody },
+  TContext
+> => {
+  const mutationKey = ["submitCandidateDocument"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitCandidateDocument>>,
+    { data: SubmitCandidateDocumentBody }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return submitCandidateDocument(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitCandidateDocumentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitCandidateDocument>>
+>;
+export type SubmitCandidateDocumentMutationBody = SubmitCandidateDocumentBody;
+export type SubmitCandidateDocumentMutationError = ApiErrorDto;
+
+/**
+ * @summary Submit a document for manual review with optional asynchronous OCR enrichment
+ */
+export const useSubmitCandidateDocument = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitCandidateDocument>>,
+    TError,
+    { data: SubmitCandidateDocumentBody },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitCandidateDocument>>,
+  TError,
+  { data: SubmitCandidateDocumentBody },
+  TContext
+> => {
+  const mutationOptions = getSubmitCandidateDocumentMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Current document statuses of one owner
+ */
+export const getCandidateDocumentStatuses = (
+  params?: GetCandidateDocumentStatusesParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentListDto>({
+    url: `/api/internal/edo/v1/documents`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentStatusesQueryKey = (
+  params?: GetCandidateDocumentStatusesParams,
+) => {
+  return [
+    `/api/internal/edo/v1/documents`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetCandidateDocumentStatusesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateDocumentStatuses>>,
+  TError = ApiErrorDto,
+>(
+  params?: GetCandidateDocumentStatusesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentStatuses>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidateDocumentStatusesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateDocumentStatuses>>
+  > = ({ signal }) => getCandidateDocumentStatuses(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentStatuses>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateDocumentStatusesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocumentStatuses>>
+>;
+export type GetCandidateDocumentStatusesQueryError = ApiErrorDto;
+
+/**
+ * @summary Current document statuses of one owner
+ */
+
+export function useGetCandidateDocumentStatuses<
+  TData = Awaited<ReturnType<typeof getCandidateDocumentStatuses>>,
+  TError = ApiErrorDto,
+>(
+  params?: GetCandidateDocumentStatusesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentStatuses>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateDocumentStatusesQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Previously submitted values of the current returned document of one owner
+ */
+export const getCandidateDocumentDraft = (
+  documentUid: string,
+  params?: GetCandidateDocumentDraftParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateDocumentDraftDto>({
+    url: `/api/internal/edo/v1/document-drafts/${documentUid}`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetCandidateDocumentDraftQueryKey = (
+  documentUid: string,
+  params?: GetCandidateDocumentDraftParams,
+) => {
+  return [
+    `/api/internal/edo/v1/document-drafts/${documentUid}`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetCandidateDocumentDraftQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateDocumentDraft>>,
+  TError = ApiErrorDto,
+>(
+  documentUid: string,
+  params?: GetCandidateDocumentDraftParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentDraft>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetCandidateDocumentDraftQueryKey(documentUid, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateDocumentDraft>>
+  > = ({ signal }) => getCandidateDocumentDraft(documentUid, params, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!documentUid,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateDocumentDraft>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateDocumentDraftQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateDocumentDraft>>
+>;
+export type GetCandidateDocumentDraftQueryError = ApiErrorDto;
+
+/**
+ * @summary Previously submitted values of the current returned document of one owner
+ */
+
+export function useGetCandidateDocumentDraft<
+  TData = Awaited<ReturnType<typeof getCandidateDocumentDraft>>,
+  TError = ApiErrorDto,
+>(
+  documentUid: string,
+  params?: GetCandidateDocumentDraftParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateDocumentDraft>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateDocumentDraftQueryOptions(
+    documentUid,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Mint a five-minute owner-scoped status stream grant
+ */
+export const createDocumentStreamGrant = (
+  documentScopeDto: DocumentScopeDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentStreamGrantDto>({
+    url: `/api/internal/edo/v1/document-stream-grants`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: documentScopeDto,
+    signal,
+  });
+};
+
+export const getCreateDocumentStreamGrantMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createDocumentStreamGrant>>,
+    TError,
+    { data: DocumentScopeDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createDocumentStreamGrant>>,
+  TError,
+  { data: DocumentScopeDto },
+  TContext
+> => {
+  const mutationKey = ["createDocumentStreamGrant"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createDocumentStreamGrant>>,
+    { data: DocumentScopeDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createDocumentStreamGrant(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateDocumentStreamGrantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createDocumentStreamGrant>>
+>;
+export type CreateDocumentStreamGrantMutationBody = DocumentScopeDto;
+export type CreateDocumentStreamGrantMutationError = ApiErrorDto;
+
+/**
+ * @summary Mint a five-minute owner-scoped status stream grant
+ */
+export const useCreateDocumentStreamGrant = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createDocumentStreamGrant>>,
+    TError,
+    { data: DocumentScopeDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createDocumentStreamGrant>>,
+  TError,
+  { data: DocumentScopeDto },
+  TContext
+> => {
+  const mutationOptions = getCreateDocumentStreamGrantMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Mint a five-minute upload grant bound to owner, document and bundle key
+ */
+export const createCandidateDocumentUploadGrant = (
+  documentUploadGrantRequestDto: DocumentUploadGrantRequestDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentUploadGrantDto>({
+    url: `/api/internal/edo/v1/document-upload-grants`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: documentUploadGrantRequestDto,
+    signal,
+  });
+};
+
+export const getCreateCandidateDocumentUploadGrantMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCandidateDocumentUploadGrant>>,
+    TError,
+    { data: DocumentUploadGrantRequestDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCandidateDocumentUploadGrant>>,
+  TError,
+  { data: DocumentUploadGrantRequestDto },
+  TContext
+> => {
+  const mutationKey = ["createCandidateDocumentUploadGrant"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCandidateDocumentUploadGrant>>,
+    { data: DocumentUploadGrantRequestDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createCandidateDocumentUploadGrant(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCandidateDocumentUploadGrantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCandidateDocumentUploadGrant>>
+>;
+export type CreateCandidateDocumentUploadGrantMutationBody =
+  DocumentUploadGrantRequestDto;
+export type CreateCandidateDocumentUploadGrantMutationError = ApiErrorDto;
+
+/**
+ * @summary Mint a five-minute upload grant bound to owner, document and bundle key
+ */
+export const useCreateCandidateDocumentUploadGrant = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCandidateDocumentUploadGrant>>,
+    TError,
+    { data: DocumentUploadGrantRequestDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCandidateDocumentUploadGrant>>,
+  TError,
+  { data: DocumentUploadGrantRequestDto },
+  TContext
+> => {
+  const mutationOptions =
+    getCreateCandidateDocumentUploadGrantMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * Profile filters select candidates; status and documentTypeCode select their nested documents. RETURNED includes documents with any returned version, even after a newer upload; returnedVersions contains the history. Progress counts all accessible approved documents across tabs. Candidates and documents must both be in the caller's location scope.
+ * @summary Candidates with matching documents, paginated by candidate id
+ */
+export const listCandidateReviewQueue = (
+  params?: ListCandidateReviewQueueParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateReviewQueueDto>({
+    url: `/api/v1/candidate-review-queue`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListCandidateReviewQueueQueryKey = (
+  params?: ListCandidateReviewQueueParams,
+) => {
+  return [
+    `/api/v1/candidate-review-queue`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListCandidateReviewQueueQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCandidateReviewQueue>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCandidateReviewQueueParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateReviewQueue>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListCandidateReviewQueueQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCandidateReviewQueue>>
+  > = ({ signal }) => listCandidateReviewQueue(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCandidateReviewQueue>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCandidateReviewQueueQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCandidateReviewQueue>>
+>;
+export type ListCandidateReviewQueueQueryError = ApiErrorDto;
+
+/**
+ * @summary Candidates with matching documents, paginated by candidate id
+ */
+
+export function useListCandidateReviewQueue<
+  TData = Awaited<ReturnType<typeof listCandidateReviewQueue>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCandidateReviewQueueParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateReviewQueue>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCandidateReviewQueueQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Review queue with candidate profile: q, documentTypeCode, citizenship, manager, mentor, hasMentor, birthDateFrom/To, positionCode, projectCode
+ */
+export const listReviewDocuments = (
+  params?: ListReviewDocumentsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ReviewDocumentsDto>({
+    url: `/api/v1/review-documents`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListReviewDocumentsQueryKey = (
+  params?: ListReviewDocumentsParams,
+) => {
+  return [`/api/v1/review-documents`, ...(params ? [params] : [])] as const;
+};
+
+export const getListReviewDocumentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listReviewDocuments>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListReviewDocumentsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listReviewDocuments>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListReviewDocumentsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listReviewDocuments>>
+  > = ({ signal }) => listReviewDocuments(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listReviewDocuments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListReviewDocumentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listReviewDocuments>>
+>;
+export type ListReviewDocumentsQueryError = ApiErrorDto;
+
+/**
+ * @summary Review queue with candidate profile: q, documentTypeCode, citizenship, manager, mentor, hasMentor, birthDateFrom/To, positionCode, projectCode
+ */
+
+export function useListReviewDocuments<
+  TData = Awaited<ReturnType<typeof listReviewDocuments>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListReviewDocumentsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listReviewDocuments>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListReviewDocumentsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Distinct manager/mentor/project/citizenship values inside the queue access scope
+ */
+export const getReviewDocumentFacets = (
+  params?: GetReviewDocumentFacetsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ReviewDocumentFacetsDto>({
+    url: `/api/v1/review-documents/facets`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetReviewDocumentFacetsQueryKey = (
+  params?: GetReviewDocumentFacetsParams,
+) => {
+  return [
+    `/api/v1/review-documents/facets`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetReviewDocumentFacetsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+  TError = ApiErrorDto,
+>(
+  params?: GetReviewDocumentFacetsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetReviewDocumentFacetsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getReviewDocumentFacets>>
+  > = ({ signal }) => getReviewDocumentFacets(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetReviewDocumentFacetsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getReviewDocumentFacets>>
+>;
+export type GetReviewDocumentFacetsQueryError = ApiErrorDto;
+
+/**
+ * @summary Distinct manager/mentor/project/citizenship values inside the queue access scope
+ */
+
+export function useGetReviewDocumentFacets<
+  TData = Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+  TError = ApiErrorDto,
+>(
+  params?: GetReviewDocumentFacetsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReviewDocumentFacets>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetReviewDocumentFacetsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Candidates owning scoped review documents (fullName selector)
+ */
+export const listReviewCandidates = (
+  params?: ListReviewCandidatesParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ReviewCandidateListDto>({
+    url: `/api/v1/review-candidates`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListReviewCandidatesQueryKey = (
+  params?: ListReviewCandidatesParams,
+) => {
+  return [`/api/v1/review-candidates`, ...(params ? [params] : [])] as const;
+};
+
+export const getListReviewCandidatesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listReviewCandidates>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListReviewCandidatesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listReviewCandidates>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListReviewCandidatesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listReviewCandidates>>
+  > = ({ signal }) => listReviewCandidates(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listReviewCandidates>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListReviewCandidatesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listReviewCandidates>>
+>;
+export type ListReviewCandidatesQueryError = ApiErrorDto;
+
+/**
+ * @summary Candidates owning scoped review documents (fullName selector)
+ */
+
+export function useListReviewCandidates<
+  TData = Awaited<ReturnType<typeof listReviewCandidates>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListReviewCandidatesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listReviewCandidates>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListReviewCandidatesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary LK position directory for the queue position filter
+ */
+export const listPositions = (
+  params?: ListPositionsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<PositionListDto>({
+    url: `/api/v1/positions`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListPositionsQueryKey = (params?: ListPositionsParams) => {
+  return [`/api/v1/positions`, ...(params ? [params] : [])] as const;
+};
+
+export const getListPositionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPositions>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListPositionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPositions>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPositionsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPositions>>> = ({
+    signal,
+  }) => listPositions(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPositions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPositionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPositions>>
+>;
+export type ListPositionsQueryError = ApiErrorDto;
+
+/**
+ * @summary LK position directory for the queue position filter
+ */
+
+export function useListPositions<
+  TData = Awaited<ReturnType<typeof listPositions>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListPositionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPositions>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPositionsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Document identity and current version
+ */
+export const getDocumentInfo = (documentId: string, signal?: AbortSignal) => {
+  return customInstance<DocumentDto>({
+    url: `/api/v1/documents/${documentId}`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetDocumentInfoQueryKey = (documentId: string) => {
+  return [`/api/v1/documents/${documentId}`] as const;
+};
+
+export const getGetDocumentInfoQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDocumentInfo>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDocumentInfo>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetDocumentInfoQueryKey(documentId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getDocumentInfo>>> = ({
+    signal,
+  }) => getDocumentInfo(documentId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!documentId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDocumentInfo>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDocumentInfoQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDocumentInfo>>
+>;
+export type GetDocumentInfoQueryError = ApiErrorDto;
+
+/**
+ * @summary Document identity and current version
+ */
+
+export function useGetDocumentInfo<
+  TData = Awaited<ReturnType<typeof getDocumentInfo>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDocumentInfo>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDocumentInfoQueryOptions(documentId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Return current document for a better photo
+ */
+export const rejectDocument = (
+  documentId: string,
+  version: number,
+  rejectDocumentDto: RejectDocumentDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentVersionDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/reject`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: rejectDocumentDto,
+    signal,
+  });
+};
+
+export const getRejectDocumentMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rejectDocument>>,
+    TError,
+    { documentId: string; version: number; data: RejectDocumentDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof rejectDocument>>,
+  TError,
+  { documentId: string; version: number; data: RejectDocumentDto },
+  TContext
+> => {
+  const mutationKey = ["rejectDocument"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof rejectDocument>>,
+    { documentId: string; version: number; data: RejectDocumentDto }
+  > = (props) => {
+    const { documentId, version, data } = props ?? {};
+
+    return rejectDocument(documentId, version, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RejectDocumentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof rejectDocument>>
+>;
+export type RejectDocumentMutationBody = RejectDocumentDto;
+export type RejectDocumentMutationError = ApiErrorDto;
+
+/**
+ * @summary Return current document for a better photo
+ */
+export const useRejectDocument = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rejectDocument>>,
+    TError,
+    { documentId: string; version: number; data: RejectDocumentDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof rejectDocument>>,
+  TError,
+  { documentId: string; version: number; data: RejectDocumentDto },
+  TContext
+> => {
+  const mutationOptions = getRejectDocumentMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Manually send an approved document to ERP; no automatic retry
+ */
+export const sendDocumentToErp = (
+  documentId: string,
+  version: number,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentVersionDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/send-to-erp`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getSendDocumentToErpMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof sendDocumentToErp>>,
+    TError,
+    { documentId: string; version: number },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof sendDocumentToErp>>,
+  TError,
+  { documentId: string; version: number },
+  TContext
+> => {
+  const mutationKey = ["sendDocumentToErp"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof sendDocumentToErp>>,
+    { documentId: string; version: number }
+  > = (props) => {
+    const { documentId, version } = props ?? {};
+
+    return sendDocumentToErp(documentId, version);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SendDocumentToErpMutationResult = NonNullable<
+  Awaited<ReturnType<typeof sendDocumentToErp>>
+>;
+
+export type SendDocumentToErpMutationError = ApiErrorDto;
+
+/**
+ * @summary Manually send an approved document to ERP; no automatic retry
+ */
+export const useSendDocumentToErp = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof sendDocumentToErp>>,
+    TError,
+    { documentId: string; version: number },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof sendDocumentToErp>>,
+  TError,
+  { documentId: string; version: number },
+  TContext
+> => {
+  const mutationOptions = getSendDocumentToErpMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Scoped document status snapshots over SSE
+ */
+export const streamReviewDocumentStatuses = (signal?: AbortSignal) => {
+  return customInstance<DocumentListDto>({
+    url: `/api/v1/document-status-events`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getStreamReviewDocumentStatusesQueryKey = () => {
+  return [`/api/v1/document-status-events`] as const;
+};
+
+export const getStreamReviewDocumentStatusesQueryOptions = <
+  TData = Awaited<ReturnType<typeof streamReviewDocumentStatuses>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof streamReviewDocumentStatuses>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getStreamReviewDocumentStatusesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof streamReviewDocumentStatuses>>
+  > = ({ signal }) => streamReviewDocumentStatuses(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof streamReviewDocumentStatuses>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type StreamReviewDocumentStatusesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof streamReviewDocumentStatuses>>
+>;
+export type StreamReviewDocumentStatusesQueryError = ApiErrorDto;
+
+/**
+ * @summary Scoped document status snapshots over SSE
+ */
+
+export function useStreamReviewDocumentStatuses<
+  TData = Awaited<ReturnType<typeof streamReviewDocumentStatuses>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof streamReviewDocumentStatuses>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getStreamReviewDocumentStatusesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Read-only owner status stream using a short-lived grant
+ */
+export const streamCandidateDocumentStatuses = (signal?: AbortSignal) => {
+  return customInstance<DocumentListDto>({
+    url: `/api/document-status-events`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getStreamCandidateDocumentStatusesQueryKey = () => {
+  return [`/api/document-status-events`] as const;
+};
+
+export const getStreamCandidateDocumentStatusesQueryOptions = <
+  TData = Awaited<ReturnType<typeof streamCandidateDocumentStatuses>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof streamCandidateDocumentStatuses>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getStreamCandidateDocumentStatusesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof streamCandidateDocumentStatuses>>
+  > = ({ signal }) => streamCandidateDocumentStatuses(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof streamCandidateDocumentStatuses>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type StreamCandidateDocumentStatusesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof streamCandidateDocumentStatuses>>
+>;
+export type StreamCandidateDocumentStatusesQueryError = ApiErrorDto;
+
+/**
+ * @summary Read-only owner status stream using a short-lived grant
+ */
+
+export function useStreamCandidateDocumentStatuses<
+  TData = Awaited<ReturnType<typeof streamCandidateDocumentStatuses>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof streamCandidateDocumentStatuses>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getStreamCandidateDocumentStatusesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Upload files directly using a scoped upload grant
+ */
+export const submitCandidateDocumentDirect = (
+  submitCandidateDocumentDirectBody: SubmitCandidateDocumentDirectBody,
+  signal?: AbortSignal,
+) => {
+  const formData = new FormData();
+  formData.append("metadata", submitCandidateDocumentDirectBody.metadata);
+  submitCandidateDocumentDirectBody["files[]"].forEach((value) =>
+    formData.append("files[]", value),
+  );
+
+  return customInstance<UploadAcceptedDto>({
+    url: `/api/candidate-documents`,
+    method: "POST",
+    headers: { "Content-Type": "multipart/form-data" },
+    data: formData,
+    signal,
+  });
+};
+
+export const getSubmitCandidateDocumentDirectMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitCandidateDocumentDirect>>,
+    TError,
+    { data: SubmitCandidateDocumentDirectBody },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitCandidateDocumentDirect>>,
+  TError,
+  { data: SubmitCandidateDocumentDirectBody },
+  TContext
+> => {
+  const mutationKey = ["submitCandidateDocumentDirect"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitCandidateDocumentDirect>>,
+    { data: SubmitCandidateDocumentDirectBody }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return submitCandidateDocumentDirect(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitCandidateDocumentDirectMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitCandidateDocumentDirect>>
+>;
+export type SubmitCandidateDocumentDirectMutationBody =
+  SubmitCandidateDocumentDirectBody;
+export type SubmitCandidateDocumentDirectMutationError = ApiErrorDto;
+
+/**
+ * @summary Upload files directly using a scoped upload grant
+ */
+export const useSubmitCandidateDocumentDirect = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitCandidateDocumentDirect>>,
+    TError,
+    { data: SubmitCandidateDocumentDirectBody },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitCandidateDocumentDirect>>,
+  TError,
+  { data: SubmitCandidateDocumentDirectBody },
+  TContext
+> => {
+  const mutationOptions =
+    getSubmitCandidateDocumentDirectMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Read annotation participation preference
+ */
+export const getAnnotationPreference = (signal?: AbortSignal) => {
+  return customInstance<AnnotationPreferenceDto>({
+    url: `/api/v1/annotations/preference`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetAnnotationPreferenceQueryKey = () => {
+  return [`/api/v1/annotations/preference`] as const;
+};
+
+export const getGetAnnotationPreferenceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAnnotationPreference>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAnnotationPreference>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAnnotationPreferenceQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAnnotationPreference>>
+  > = ({ signal }) => getAnnotationPreference(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAnnotationPreference>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAnnotationPreferenceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAnnotationPreference>>
+>;
+export type GetAnnotationPreferenceQueryError = ApiErrorDto;
+
+/**
+ * @summary Read annotation participation preference
+ */
+
+export function useGetAnnotationPreference<
+  TData = Awaited<ReturnType<typeof getAnnotationPreference>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAnnotationPreference>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAnnotationPreferenceQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Choose annotation participation
+ */
+export const setAnnotationPreference = (
+  annotationPreferenceDto: AnnotationPreferenceDto,
+) => {
+  return customInstance<AnnotationPreferenceDto>({
+    url: `/api/v1/annotations/preference`,
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    data: annotationPreferenceDto,
+  });
+};
+
+export const getSetAnnotationPreferenceMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setAnnotationPreference>>,
+    TError,
+    { data: AnnotationPreferenceDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setAnnotationPreference>>,
+  TError,
+  { data: AnnotationPreferenceDto },
+  TContext
+> => {
+  const mutationKey = ["setAnnotationPreference"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setAnnotationPreference>>,
+    { data: AnnotationPreferenceDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setAnnotationPreference(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetAnnotationPreferenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setAnnotationPreference>>
+>;
+export type SetAnnotationPreferenceMutationBody = AnnotationPreferenceDto;
+export type SetAnnotationPreferenceMutationError = ApiErrorDto;
+
+/**
+ * @summary Choose annotation participation
+ */
+export const useSetAnnotationPreference = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setAnnotationPreference>>,
+    TError,
+    { data: AnnotationPreferenceDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof setAnnotationPreference>>,
+  TError,
+  { data: AnnotationPreferenceDto },
+  TContext
+> => {
+  const mutationOptions = getSetAnnotationPreferenceMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary List annotation work for permitted document groups
+ */
+export const listAnnotations = (
+  params?: ListAnnotationsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationListDto>({
+    url: `/api/v1/annotations`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListAnnotationsQueryKey = (params?: ListAnnotationsParams) => {
+  return [`/api/v1/annotations`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAnnotationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAnnotations>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListAnnotationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnotations>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAnnotationsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAnnotations>>> = ({
+    signal,
+  }) => listAnnotations(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAnnotations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAnnotationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAnnotations>>
+>;
+export type ListAnnotationsQueryError = ApiErrorDto;
+
+/**
+ * @summary List annotation work for permitted document groups
+ */
+
+export function useListAnnotations<
+  TData = Awaited<ReturnType<typeof listAnnotations>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListAnnotationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnotations>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAnnotationsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Atomically claim current document version annotation
+ */
+export const claimAnnotation = (
+  claimAnnotationDto: ClaimAnnotationDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationDto>({
+    url: `/api/v1/annotations/claim`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: claimAnnotationDto,
+    signal,
+  });
+};
+
+export const getClaimAnnotationMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof claimAnnotation>>,
+    TError,
+    { data: ClaimAnnotationDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof claimAnnotation>>,
+  TError,
+  { data: ClaimAnnotationDto },
+  TContext
+> => {
+  const mutationKey = ["claimAnnotation"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof claimAnnotation>>,
+    { data: ClaimAnnotationDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return claimAnnotation(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClaimAnnotationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof claimAnnotation>>
+>;
+export type ClaimAnnotationMutationBody = ClaimAnnotationDto;
+export type ClaimAnnotationMutationError = ApiErrorDto;
+
+/**
+ * @summary Atomically claim current document version annotation
+ */
+export const useClaimAnnotation = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof claimAnnotation>>,
+    TError,
+    { data: ClaimAnnotationDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof claimAnnotation>>,
+  TError,
+  { data: ClaimAnnotationDto },
+  TContext
+> => {
+  const mutationOptions = getClaimAnnotationMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Save revisioned literal line annotations
+ */
+export const saveAnnotation = (
+  id: string,
+  saveAnnotationDto: SaveAnnotationDto,
+) => {
+  return customInstance<AnnotationDto>({
+    url: `/api/v1/annotations/${id}`,
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    data: saveAnnotationDto,
+  });
+};
+
+export const getSaveAnnotationMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof saveAnnotation>>,
+    TError,
+    { id: string; data: SaveAnnotationDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof saveAnnotation>>,
+  TError,
+  { id: string; data: SaveAnnotationDto },
+  TContext
+> => {
+  const mutationKey = ["saveAnnotation"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof saveAnnotation>>,
+    { id: string; data: SaveAnnotationDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return saveAnnotation(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SaveAnnotationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof saveAnnotation>>
+>;
+export type SaveAnnotationMutationBody = SaveAnnotationDto;
+export type SaveAnnotationMutationError = ApiErrorDto;
+
+/**
+ * @summary Save revisioned literal line annotations
+ */
+export const useSaveAnnotation = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof saveAnnotation>>,
+    TError,
+    { id: string; data: SaveAnnotationDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof saveAnnotation>>,
+  TError,
+  { id: string; data: SaveAnnotationDto },
+  TContext
+> => {
+  const mutationOptions = getSaveAnnotationMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Submit a complete immutable annotation revision
+ */
+export const submitAnnotation = (
+  id: string,
+  annotationRevisionDto: AnnotationRevisionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationDto>({
+    url: `/api/v1/annotations/${id}/submit`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: annotationRevisionDto,
+    signal,
+  });
+};
+
+export const getSubmitAnnotationMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitAnnotation>>,
+    TError,
+    { id: string; data: AnnotationRevisionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitAnnotation>>,
+  TError,
+  { id: string; data: AnnotationRevisionDto },
+  TContext
+> => {
+  const mutationKey = ["submitAnnotation"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitAnnotation>>,
+    { id: string; data: AnnotationRevisionDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return submitAnnotation(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitAnnotationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitAnnotation>>
+>;
+export type SubmitAnnotationMutationBody = AnnotationRevisionDto;
+export type SubmitAnnotationMutationError = ApiErrorDto;
+
+/**
+ * @summary Submit a complete immutable annotation revision
+ */
+export const useSubmitAnnotation = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitAnnotation>>,
+    TError,
+    { id: string; data: AnnotationRevisionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitAnnotation>>,
+  TError,
+  { id: string; data: AnnotationRevisionDto },
+  TContext
+> => {
+  const mutationOptions = getSubmitAnnotationMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Accept immutable annotation snapshot
+ */
+export const acceptAnnotation = (
+  id: string,
+  annotationRevisionDto: AnnotationRevisionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationDto>({
+    url: `/api/v1/annotations/${id}/accept`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: annotationRevisionDto,
+    signal,
+  });
+};
+
+export const getAcceptAnnotationMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof acceptAnnotation>>,
+    TError,
+    { id: string; data: AnnotationRevisionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof acceptAnnotation>>,
+  TError,
+  { id: string; data: AnnotationRevisionDto },
+  TContext
+> => {
+  const mutationKey = ["acceptAnnotation"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof acceptAnnotation>>,
+    { id: string; data: AnnotationRevisionDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return acceptAnnotation(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AcceptAnnotationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof acceptAnnotation>>
+>;
+export type AcceptAnnotationMutationBody = AnnotationRevisionDto;
+export type AcceptAnnotationMutationError = ApiErrorDto;
+
+/**
+ * @summary Accept immutable annotation snapshot
+ */
+export const useAcceptAnnotation = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof acceptAnnotation>>,
+    TError,
+    { id: string; data: AnnotationRevisionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof acceptAnnotation>>,
+  TError,
+  { id: string; data: AnnotationRevisionDto },
+  TContext
+> => {
+  const mutationOptions = getAcceptAnnotationMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Return annotation to its author with a note
+ */
+export const requestAnnotationChanges = (
+  id: string,
+  annotationChangesDto: AnnotationChangesDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationDto>({
+    url: `/api/v1/annotations/${id}/changes`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: annotationChangesDto,
+    signal,
+  });
+};
+
+export const getRequestAnnotationChangesMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestAnnotationChanges>>,
+    TError,
+    { id: string; data: AnnotationChangesDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestAnnotationChanges>>,
+  TError,
+  { id: string; data: AnnotationChangesDto },
+  TContext
+> => {
+  const mutationKey = ["requestAnnotationChanges"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestAnnotationChanges>>,
+    { id: string; data: AnnotationChangesDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return requestAnnotationChanges(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestAnnotationChangesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestAnnotationChanges>>
+>;
+export type RequestAnnotationChangesMutationBody = AnnotationChangesDto;
+export type RequestAnnotationChangesMutationError = ApiErrorDto;
+
+/**
+ * @summary Return annotation to its author with a note
+ */
+export const useRequestAnnotationChanges = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestAnnotationChanges>>,
+    TError,
+    { id: string; data: AnnotationChangesDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestAnnotationChanges>>,
+  TError,
+  { id: string; data: AnnotationChangesDto },
+  TContext
+> => {
+  const mutationOptions = getRequestAnnotationChangesMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Reassign annotation author preserving submitted history
+ */
+export const reassignAnnotation = (
+  id: string,
+  reassignAnnotationDto: ReassignAnnotationDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationDto>({
+    url: `/api/v1/annotations/${id}/reassign`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: reassignAnnotationDto,
+    signal,
+  });
+};
+
+export const getReassignAnnotationMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reassignAnnotation>>,
+    TError,
+    { id: string; data: ReassignAnnotationDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof reassignAnnotation>>,
+  TError,
+  { id: string; data: ReassignAnnotationDto },
+  TContext
+> => {
+  const mutationKey = ["reassignAnnotation"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof reassignAnnotation>>,
+    { id: string; data: ReassignAnnotationDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return reassignAnnotation(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReassignAnnotationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof reassignAnnotation>>
+>;
+export type ReassignAnnotationMutationBody = ReassignAnnotationDto;
+export type ReassignAnnotationMutationError = ApiErrorDto;
+
+/**
+ * @summary Reassign annotation author preserving submitted history
+ */
+export const useReassignAnnotation = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reassignAnnotation>>,
+    TError,
+    { id: string; data: ReassignAnnotationDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof reassignAnnotation>>,
+  TError,
+  { id: string; data: ReassignAnnotationDto },
+  TContext
+> => {
+  const mutationOptions = getReassignAnnotationMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Read server-authoritative canonical original page frames
+ */
+export const getAnnotationSources = (
+  documentId: string,
+  version: number,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationSourceDto>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/annotation-sources`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetAnnotationSourcesQueryKey = (
+  documentId: string,
+  version: number,
+) => {
+  return [
+    `/api/v1/documents/${documentId}/versions/${version}/annotation-sources`,
+  ] as const;
+};
+
+export const getGetAnnotationSourcesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAnnotationSources>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  version: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAnnotationSources>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetAnnotationSourcesQueryKey(documentId, version);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAnnotationSources>>
+  > = ({ signal }) => getAnnotationSources(documentId, version, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(documentId && version),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAnnotationSources>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAnnotationSourcesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAnnotationSources>>
+>;
+export type GetAnnotationSourcesQueryError = ApiErrorDto;
+
+/**
+ * @summary Read server-authoritative canonical original page frames
+ */
+
+export function useGetAnnotationSources<
+  TData = Awaited<ReturnType<typeof getAnnotationSources>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  version: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAnnotationSources>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAnnotationSourcesQueryOptions(
+    documentId,
+    version,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Read published field schemas and administrator drafts
+ */
+export const listAnnotationCatalogs = (
+  params?: ListAnnotationCatalogsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogListDto>({
+    url: `/api/v1/annotation-catalogs`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListAnnotationCatalogsQueryKey = (
+  params?: ListAnnotationCatalogsParams,
+) => {
+  return [`/api/v1/annotation-catalogs`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAnnotationCatalogsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAnnotationCatalogs>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListAnnotationCatalogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnotationCatalogs>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAnnotationCatalogsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAnnotationCatalogs>>
+  > = ({ signal }) => listAnnotationCatalogs(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAnnotationCatalogs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAnnotationCatalogsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAnnotationCatalogs>>
+>;
+export type ListAnnotationCatalogsQueryError = ApiErrorDto;
+
+/**
+ * @summary Read published field schemas and administrator drafts
+ */
+
+export function useListAnnotationCatalogs<
+  TData = Awaited<ReturnType<typeof listAnnotationCatalogs>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListAnnotationCatalogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnotationCatalogs>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAnnotationCatalogsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Create independent versioned field schema draft
+ */
+export const createAnnotationCatalog = (
+  createAnnotationCatalogDto: CreateAnnotationCatalogDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogDto>({
+    url: `/api/v1/annotation-catalogs`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: createAnnotationCatalogDto,
+    signal,
+  });
+};
+
+export const getCreateAnnotationCatalogMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAnnotationCatalog>>,
+    TError,
+    { data: CreateAnnotationCatalogDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createAnnotationCatalog>>,
+  TError,
+  { data: CreateAnnotationCatalogDto },
+  TContext
+> => {
+  const mutationKey = ["createAnnotationCatalog"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createAnnotationCatalog>>,
+    { data: CreateAnnotationCatalogDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createAnnotationCatalog(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateAnnotationCatalogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createAnnotationCatalog>>
+>;
+export type CreateAnnotationCatalogMutationBody = CreateAnnotationCatalogDto;
+export type CreateAnnotationCatalogMutationError = ApiErrorDto;
+
+/**
+ * @summary Create independent versioned field schema draft
+ */
+export const useCreateAnnotationCatalog = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAnnotationCatalog>>,
+    TError,
+    { data: CreateAnnotationCatalogDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createAnnotationCatalog>>,
+  TError,
+  { data: CreateAnnotationCatalogDto },
+  TContext
+> => {
+  const mutationOptions = getCreateAnnotationCatalogMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Suggest physical field definitions without copying business values
+ */
+export const getAnnotationCatalogDefaults = (
+  documentTypeCode: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogDefaultsDto>({
+    url: `/api/v1/annotation-catalogs/defaults/${documentTypeCode}`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetAnnotationCatalogDefaultsQueryKey = (
+  documentTypeCode: string,
+) => {
+  return [`/api/v1/annotation-catalogs/defaults/${documentTypeCode}`] as const;
+};
+
+export const getGetAnnotationCatalogDefaultsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>,
+  TError = ApiErrorDto,
+>(
+  documentTypeCode: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetAnnotationCatalogDefaultsQueryKey(documentTypeCode);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>
+  > = ({ signal }) => getAnnotationCatalogDefaults(documentTypeCode, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!documentTypeCode,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAnnotationCatalogDefaultsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>
+>;
+export type GetAnnotationCatalogDefaultsQueryError = ApiErrorDto;
+
+/**
+ * @summary Suggest physical field definitions without copying business values
+ */
+
+export function useGetAnnotationCatalogDefaults<
+  TData = Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>,
+  TError = ApiErrorDto,
+>(
+  documentTypeCode: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAnnotationCatalogDefaultsQueryOptions(
+    documentTypeCode,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Replace unpublished catalog draft fields
+ */
+export const updateAnnotationCatalog = (
+  id: string,
+  updateAnnotationCatalogDto: UpdateAnnotationCatalogDto,
+) => {
+  return customInstance<AnnotationCatalogDto>({
+    url: `/api/v1/annotation-catalogs/${id}`,
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    data: updateAnnotationCatalogDto,
+  });
+};
+
+export const getUpdateAnnotationCatalogMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAnnotationCatalog>>,
+    TError,
+    { id: string; data: UpdateAnnotationCatalogDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAnnotationCatalog>>,
+  TError,
+  { id: string; data: UpdateAnnotationCatalogDto },
+  TContext
+> => {
+  const mutationKey = ["updateAnnotationCatalog"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAnnotationCatalog>>,
+    { id: string; data: UpdateAnnotationCatalogDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateAnnotationCatalog(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAnnotationCatalogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAnnotationCatalog>>
+>;
+export type UpdateAnnotationCatalogMutationBody = UpdateAnnotationCatalogDto;
+export type UpdateAnnotationCatalogMutationError = ApiErrorDto;
+
+/**
+ * @summary Replace unpublished catalog draft fields
+ */
+export const useUpdateAnnotationCatalog = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAnnotationCatalog>>,
+    TError,
+    { id: string; data: UpdateAnnotationCatalogDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAnnotationCatalog>>,
+  TError,
+  { id: string; data: UpdateAnnotationCatalogDto },
+  TContext
+> => {
+  const mutationOptions = getUpdateAnnotationCatalogMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Delete unpublished catalog draft
+ */
+export const deleteAnnotationCatalog = (
+  id: string,
+  params: DeleteAnnotationCatalogParams,
+) => {
+  return customInstance<AnnotationDeletedDto>({
+    url: `/api/v1/annotation-catalogs/${id}`,
+    method: "DELETE",
+    params,
+  });
+};
+
+export const getDeleteAnnotationCatalogMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAnnotationCatalog>>,
+    TError,
+    { id: string; params: DeleteAnnotationCatalogParams },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteAnnotationCatalog>>,
+  TError,
+  { id: string; params: DeleteAnnotationCatalogParams },
+  TContext
+> => {
+  const mutationKey = ["deleteAnnotationCatalog"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteAnnotationCatalog>>,
+    { id: string; params: DeleteAnnotationCatalogParams }
+  > = (props) => {
+    const { id, params } = props ?? {};
+
+    return deleteAnnotationCatalog(id, params);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteAnnotationCatalogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAnnotationCatalog>>
+>;
+
+export type DeleteAnnotationCatalogMutationError = ApiErrorDto;
+
+/**
+ * @summary Delete unpublished catalog draft
+ */
+export const useDeleteAnnotationCatalog = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAnnotationCatalog>>,
+    TError,
+    { id: string; params: DeleteAnnotationCatalogParams },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteAnnotationCatalog>>,
+  TError,
+  { id: string; params: DeleteAnnotationCatalogParams },
+  TContext
+> => {
+  const mutationOptions = getDeleteAnnotationCatalogMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Explicitly publish an immutable catalog schema
+ */
+export const publishAnnotationCatalog = (
+  id: string,
+  annotationRevisionDto: AnnotationRevisionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogDto>({
+    url: `/api/v1/annotation-catalogs/${id}/publish`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: annotationRevisionDto,
+    signal,
+  });
+};
+
+export const getPublishAnnotationCatalogMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishAnnotationCatalog>>,
+    TError,
+    { id: string; data: AnnotationRevisionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof publishAnnotationCatalog>>,
+  TError,
+  { id: string; data: AnnotationRevisionDto },
+  TContext
+> => {
+  const mutationKey = ["publishAnnotationCatalog"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof publishAnnotationCatalog>>,
+    { id: string; data: AnnotationRevisionDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return publishAnnotationCatalog(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PublishAnnotationCatalogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof publishAnnotationCatalog>>
+>;
+export type PublishAnnotationCatalogMutationBody = AnnotationRevisionDto;
+export type PublishAnnotationCatalogMutationError = ApiErrorDto;
+
+/**
+ * @summary Explicitly publish an immutable catalog schema
+ */
+export const usePublishAnnotationCatalog = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishAnnotationCatalog>>,
+    TError,
+    { id: string; data: AnnotationRevisionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof publishAnnotationCatalog>>,
+  TError,
+  { id: string; data: AnnotationRevisionDto },
+  TContext
+> => {
+  const mutationOptions = getPublishAnnotationCatalogMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Read field suggestions for a published catalog
+ */
+export const listAnnotationCatalogSuggestions = (
+  id: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogSuggestionListDto>({
+    url: `/api/v1/annotation-catalogs/${id}/suggestions`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListAnnotationCatalogSuggestionsQueryKey = (id: string) => {
+  return [`/api/v1/annotation-catalogs/${id}/suggestions`] as const;
+};
+
+export const getListAnnotationCatalogSuggestionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>,
+  TError = ApiErrorDto,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAnnotationCatalogSuggestionsQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>
+  > = ({ signal }) => listAnnotationCatalogSuggestions(id, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAnnotationCatalogSuggestionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>
+>;
+export type ListAnnotationCatalogSuggestionsQueryError = ApiErrorDto;
+
+/**
+ * @summary Read field suggestions for a published catalog
+ */
+
+export function useListAnnotationCatalogSuggestions<
+  TData = Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>,
+  TError = ApiErrorDto,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnotationCatalogSuggestions>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAnnotationCatalogSuggestionsQueryOptions(
+    id,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Suggest a literal field for a future catalog version
+ */
+export const suggestAnnotationCatalogField = (
+  id: string,
+  suggestAnnotationCatalogFieldDto: SuggestAnnotationCatalogFieldDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogSuggestionDto>({
+    url: `/api/v1/annotation-catalogs/${id}/suggestions`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: suggestAnnotationCatalogFieldDto,
+    signal,
+  });
+};
+
+export const getSuggestAnnotationCatalogFieldMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof suggestAnnotationCatalogField>>,
+    TError,
+    { id: string; data: SuggestAnnotationCatalogFieldDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof suggestAnnotationCatalogField>>,
+  TError,
+  { id: string; data: SuggestAnnotationCatalogFieldDto },
+  TContext
+> => {
+  const mutationKey = ["suggestAnnotationCatalogField"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof suggestAnnotationCatalogField>>,
+    { id: string; data: SuggestAnnotationCatalogFieldDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return suggestAnnotationCatalogField(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SuggestAnnotationCatalogFieldMutationResult = NonNullable<
+  Awaited<ReturnType<typeof suggestAnnotationCatalogField>>
+>;
+export type SuggestAnnotationCatalogFieldMutationBody =
+  SuggestAnnotationCatalogFieldDto;
+export type SuggestAnnotationCatalogFieldMutationError = ApiErrorDto;
+
+/**
+ * @summary Suggest a literal field for a future catalog version
+ */
+export const useSuggestAnnotationCatalogField = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof suggestAnnotationCatalogField>>,
+    TError,
+    { id: string; data: SuggestAnnotationCatalogFieldDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof suggestAnnotationCatalogField>>,
+  TError,
+  { id: string; data: SuggestAnnotationCatalogFieldDto },
+  TContext
+> => {
+  const mutationOptions =
+    getSuggestAnnotationCatalogFieldMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Resolve catalog field suggestion without changing published schemas
+ */
+export const resolveAnnotationCatalogSuggestion = (
+  id: string,
+  suggestionId: string,
+  resolveAnnotationCatalogSuggestionDto: ResolveAnnotationCatalogSuggestionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AnnotationCatalogSuggestionDto>({
+    url: `/api/v1/annotation-catalogs/${id}/suggestions/${suggestionId}/resolve`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: resolveAnnotationCatalogSuggestionDto,
+    signal,
+  });
+};
+
+export const getResolveAnnotationCatalogSuggestionMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resolveAnnotationCatalogSuggestion>>,
+    TError,
+    {
+      id: string;
+      suggestionId: string;
+      data: ResolveAnnotationCatalogSuggestionDto;
+    },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof resolveAnnotationCatalogSuggestion>>,
+  TError,
+  {
+    id: string;
+    suggestionId: string;
+    data: ResolveAnnotationCatalogSuggestionDto;
+  },
+  TContext
+> => {
+  const mutationKey = ["resolveAnnotationCatalogSuggestion"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof resolveAnnotationCatalogSuggestion>>,
+    {
+      id: string;
+      suggestionId: string;
+      data: ResolveAnnotationCatalogSuggestionDto;
+    }
+  > = (props) => {
+    const { id, suggestionId, data } = props ?? {};
+
+    return resolveAnnotationCatalogSuggestion(id, suggestionId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ResolveAnnotationCatalogSuggestionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof resolveAnnotationCatalogSuggestion>>
+>;
+export type ResolveAnnotationCatalogSuggestionMutationBody =
+  ResolveAnnotationCatalogSuggestionDto;
+export type ResolveAnnotationCatalogSuggestionMutationError = ApiErrorDto;
+
+/**
+ * @summary Resolve catalog field suggestion without changing published schemas
+ */
+export const useResolveAnnotationCatalogSuggestion = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resolveAnnotationCatalogSuggestion>>,
+    TError,
+    {
+      id: string;
+      suggestionId: string;
+      data: ResolveAnnotationCatalogSuggestionDto;
+    },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof resolveAnnotationCatalogSuggestion>>,
+  TError,
+  {
+    id: string;
+    suggestionId: string;
+    data: ResolveAnnotationCatalogSuggestionDto;
+  },
+  TContext
+> => {
+  const mutationOptions =
+    getResolveAnnotationCatalogSuggestionMutationOptions(options);
 
   return useMutation(mutationOptions);
 };

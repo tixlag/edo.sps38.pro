@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Local inference smoke test. Inputs/results are private and stay outside Git."""
+import argparse
+import base64
+import json
+import math
+from pathlib import Path
+import time
+import urllib.request
+import uuid
+
+
+def valid_ocr_fields(data, document_type=None):
+    documents = data if isinstance(data, list) else [data]
+    if document_type:
+        documents = [doc for doc in documents if isinstance(doc, dict) and doc.get('type') == document_type]
+    if any(not isinstance(doc, dict) or not isinstance(doc.get('ocr_fields'), list) for doc in documents):
+        return False
+    fields = [field for doc in documents for field in doc['ocr_fields']]
+    if not fields or any(not isinstance(field, dict) for field in fields):
+        return False
+    if not any(field.get('value') for field in fields):
+        return False
+    for field in fields:
+        if not isinstance(field, dict) or not field.get('name') or field.get('source') not in {'PADDLE', 'GLM', 'MIXED'}:
+            return False
+        if 'paddle_text' not in field or 'paddle_confidence' not in field:
+            return False
+        score = field['paddle_confidence']
+        if score is not None and (isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score) or not 0 <= score <= 1):
+            return False
+        if field['paddle_text'] is not None and not isinstance(field['paddle_text'], str):
+            return False
+    return True
+
+
+def request(url, path, as_base64, timeout=240):
+    if as_base64:
+        body = json.dumps({'files':[{'filename':path.name, 'content_base64':base64.b64encode(path.read_bytes()).decode()}]}).encode()
+        content_type = 'application/json'
+    else:
+        boundary = uuid.uuid4().hex
+        mime = 'application/pdf' if path.suffix.lower() == '.pdf' else 'image/jpeg'
+        body = (f'--{boundary}\r\nContent-Disposition: form-data; name="files"; filename="input{path.suffix}"\r\nContent-Type: {mime}\r\n\r\n'.encode() + path.read_bytes() + f'\r\n--{boundary}--\r\n'.encode())
+        content_type = f'multipart/form-data; boundary={boundary}'
+    req = urllib.request.Request(url, data=body, headers={'Content-Type':content_type})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(req, timeout=timeout) as response:
+        return response.status, json.load(response)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--url',required=True)
+    parser.add_argument('--input',required=True,type=Path)
+    parser.add_argument('--expect-type',choices=['passport','migration_card'])
+    parser.add_argument('--base64',action='store_true')
+    parser.add_argument('--output',type=Path)
+    args = parser.parse_args()
+    if args.output and args.output.resolve().is_relative_to(Path(__file__).resolve().parents[1]):
+        allowed = Path(__file__).resolve().parents[1] / 'var'
+        if not args.output.resolve().is_relative_to(allowed):
+            parser.error('Private results inside the repository must be stored under var/')
+    start = time.monotonic()
+    status,data = request(args.url,args.input,args.base64)
+    if args.expect_type:
+        assert isinstance(data,list) and data, 'Empty recognition result'
+        assert any(d.get('type') == args.expect_type and d.get('fields') for d in data), 'Expected document/fields missing'
+    else:
+        assert data, 'Empty recognition result'
+    if args.output:
+        args.output.parent.mkdir(parents=True,exist_ok=True)
+        args.output.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+    print(f'HTTP {status}; result present; {time.monotonic()-start:.2f}s. Inspect private fields separately.')
+
+
+if __name__ == '__main__':
+    main()

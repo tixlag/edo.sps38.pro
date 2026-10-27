@@ -1,0 +1,46 @@
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiErrorDto } from "./document.dto";
+
+export enum CandidateDocumentErrorCode {
+  AUTH_REQUIRED = "AUTH_REQUIRED",
+  EMPLOYEE_IDENTITY_REQUIRED = "EMPLOYEE_IDENTITY_REQUIRED",
+  EMPLOYEE_IDENTITY_INVALID = "EMPLOYEE_IDENTITY_INVALID",
+  CANDIDATE_LINK_MISSING = "CANDIDATE_LINK_MISSING",
+  CANDIDATE_CHAT_NOT_FOUND = "CANDIDATE_CHAT_NOT_FOUND",
+  ERP_CANDIDATE_NOT_FOUND = "ERP_CANDIDATE_NOT_FOUND",
+  CANDIDATE_PROFILE_INCOMPLETE = "CANDIDATE_PROFILE_INCOMPLETE",
+  LK_CONTRACT_ERROR = "LK_CONTRACT_ERROR",
+  ERP_CONTRACT_ERROR = "ERP_CONTRACT_ERROR",
+  LK_UNAVAILABLE = "LK_UNAVAILABLE",
+  ERP_UNAVAILABLE = "ERP_UNAVAILABLE",
+  LK_TIMEOUT = "LK_TIMEOUT",
+  ERP_TIMEOUT = "ERP_TIMEOUT",
+  DOCUMENTS_TIMEOUT = "DOCUMENTS_TIMEOUT",
+  DOCUMENT_CATALOG_UNAVAILABLE = "DOCUMENT_CATALOG_UNAVAILABLE",
+  DOCUMENTS_INTEGRATION_MISCONFIGURED = "DOCUMENTS_INTEGRATION_MISCONFIGURED",
+  DOCUMENT_REQUEST_INVALID = "DOCUMENT_REQUEST_INVALID",
+  DOCUMENT_ACCESS_DENIED = "DOCUMENT_ACCESS_DENIED",
+  DOCUMENT_NOT_FOUND = "DOCUMENT_NOT_FOUND",
+  DOCUMENT_CONFLICT = "DOCUMENT_CONFLICT",
+  DOCUMENTS_UNAVAILABLE = "DOCUMENTS_UNAVAILABLE",
+}
+
+export enum CandidateProfileField {
+  CITIZENSHIP = "citizenship",
+  POSITION_CODE = "positionCode",
+}
+
+export class CandidateDocumentErrorDto extends ApiErrorDto {
+  @ApiProperty({
+    enum: CandidateDocumentErrorCode,
+    enumName: "CandidateDocumentErrorCode",
+  })
+  code!: CandidateDocumentErrorCode;
+  @ApiProperty() retryable!: boolean;
+  @ApiPropertyOptional({
+    enum: CandidateProfileField,
+    enumName: "CandidateProfileField",
+    isArray: true,
+  })
+  fields?: CandidateProfileField[];
+}

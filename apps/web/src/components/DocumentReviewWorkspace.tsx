@@ -3,27 +3,70 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetDashboardQueryKey,
   getGetDocumentVersionQueryKey,
+  getGetDocumentOcrDetailsQueryKey,
+  useGetDocumentOcrDetails,
   getListEmployeeDocumentsQueryKey,
   useApproveDocument,
   useEditDocumentFields,
   useGetMe,
+  useRejectDocument,
+  useSendDocumentToErp,
+  useRetryDocumentOcr,
+  useStartDocumentOcr,
+  getListReviewDocumentsQueryKey,
+  getListCandidateReviewQueueQueryKey,
+  getGetCandidateDetailsQueryKey,
   type DocumentVersionDto,
+  type DocumentDeliveryAttemptDto,
   type OcrRegionDto,
 } from "@edo/api-client";
 import { Badge, Button } from "@edo/ui";
+import { Check, Save, X } from "lucide-react";
 import { DocumentPreview } from "./DocumentPreview";
+import {
+  formatDateRu,
+  formatDateTimeRu,
+  maskDateRuInput,
+  normalizeDateForApi,
+  parseDateRu,
+} from "../lib/date-format";
+import { DocumentAnnotations } from "./annotations/DocumentAnnotations";
 import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
+import {
+  getRequiredReviewFields,
+  getReviewFieldValue,
+} from "./document-review-fields";
+import {
+  DocumentOcrFields,
+  DocumentReviewMetadata,
+} from "./DocumentOcrDetails";
 
 export function DocumentReviewWorkspace({
   data,
   employeeId,
+  candidateId,
+  readOnly = false,
+  allowAnnotation = !readOnly,
+  allowAnnotationClaim = !readOnly,
+  fitContainer = false,
 }: {
   data: DocumentVersionDto;
-  employeeId: string;
+  employeeId?: string;
+  candidateId?: string;
+  readOnly?: boolean;
+  allowAnnotation?: boolean;
+  allowAnnotationClaim?: boolean;
+  fitContainer?: boolean;
 }) {
+  const [annotationMode, setAnnotationMode] = useState(false);
+  const [annotationVisited, setAnnotationVisited] = useState(false);
   const client = useQueryClient();
   const profile = useGetMe();
-  const files = data.files.filter((file) => !file.deleted);
+  // The API denies downloads for returned versions, including the interval before cleanup.
+  const files =
+    data.status === "RETURNED"
+      ? []
+      : data.files.filter((file) => !file.deleted);
   const [fileId, setFileId] = useState<string | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [selection, setSelection] = useState<{
@@ -33,39 +76,130 @@ export function DocumentReviewWorkspace({
     revealPreview: boolean;
     request: number;
   } | null>(null);
+  // Hover-preview: временная подсветка без смены файла/страницы, без
+  // фокуса и без скролла. Отличается от selection (явный выбор кликом,
+  // фокусом или кнопкой «На превью»).
+  const [hoveredField, setHoveredField] = useState<string | null>(null);
   const [draft, setDraft] = useState<{
     revision: number;
+    snapshot: string;
     values: Record<string, string>;
     original: Record<string, string>;
+    touched: Record<string, boolean>;
   } | null>(null);
   const [message, setMessage] = useState("");
-  const inputs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const [rejectionReason, setRejectionReason] = useState(
+    "Необходимо более качественное фото документа",
+  );
+  const [showReject, setShowReject] = useState(false);
+  const [mismatchOnly, setMismatchOnly] = useState(false);
+  const inputs = useRef<
+    Record<string, HTMLTextAreaElement | HTMLInputElement | null>
+  >({});
   const rows = useRef<Record<string, HTMLDivElement | null>>({});
   const previewSection = useRef<HTMLElement>(null);
   const fieldsContainer = useRef<HTMLDivElement>(null);
   const permissions = profile.data?.permissions;
-  const canReview =
+  const canDebug =
+    !!permissions && Object.prototype.hasOwnProperty.call(permissions, "20009");
+  const hasReviewPermission =
     !!permissions &&
-    ["20002", "20009"].some((rule) =>
+    [data.reviewGroup === "IG" ? "20011" : "20002", "20009"].some((rule) =>
       Object.prototype.hasOwnProperty.call(permissions, rule),
     );
+  const canReview = !readOnly && hasReviewPermission;
+  const canAnnotate =
+    allowAnnotation &&
+    hasReviewPermission &&
+    ["IN_REVIEW", "APPROVED", "SIGNED"].includes(data.status);
   const canEdit = canReview && data.status === "IN_REVIEW";
   const file = files.find((item) => item.id === fileId) ?? files[0];
   const visiblePage = Math.max(1, Math.min(pageNumber, file?.pageCount ?? 1));
-  const order = Object.keys(DOCUMENT_FIELD_LABELS);
-  const fields = [...data.fields].sort((a, b) => {
-    const rank = (name: string) =>
-      order.includes(name) ? order.indexOf(name) : order.length;
-    return rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, "ru");
+  const fields = getRequiredReviewFields(data);
+  const reviewSnapshot = JSON.stringify(
+    data.fields
+      .map((field) => [
+        field.name,
+        field.kind,
+        field.required,
+        field.value,
+        field.editedBy,
+      ])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+  );
+  const canViewDetails =
+    !!permissions &&
+    ["20010", "20009"].some((rule) =>
+      Object.prototype.hasOwnProperty.call(permissions, rule),
+    );
+  const [showAllRegions, setShowAllRegions] = useState(false);
+  const [showOcrDetails, setShowOcrDetails] = useState(false);
+  const [dateInputDrafts, setDateInputDrafts] = useState<Record<string, string>>({});
+  useEffect(() => setDateInputDrafts({}), [data.documentId, data.version]);
+  const ocrDetails = useGetDocumentOcrDetails(data.documentId, data.version, {
+    query: {
+      queryKey: getGetDocumentOcrDetailsQueryKey(data.documentId, data.version),
+      enabled: canViewDetails && (showAllRegions || showOcrDetails),
+      refetchOnWindowFocus: "always",
+    },
   });
-  const changes = draft
-    ? Object.fromEntries(
-        Object.entries(draft.values)
-          .filter(([name, value]) => value !== draft.original[name])
-          .map(([name, value]) => [name, value || null]),
+  useEffect(() => {
+    if (canViewDetails && (showAllRegions || showOcrDetails))
+      void client.invalidateQueries({
+        queryKey: getGetDocumentOcrDetailsQueryKey(
+          data.documentId,
+          data.version,
+        ),
+      });
+  }, [
+    client,
+    data.documentId,
+    data.version,
+    data.revision,
+    canViewDetails,
+    showAllRegions,
+    showOcrDetails,
+  ]);
+  const mismatchCount = fields.filter((field) => field.mismatch).length;
+  const visibleFields = mismatchOnly
+    ? fields.filter((field) => field.mismatch)
+    : fields;
+  const savedValues = Object.fromEntries(
+    fields.map((field) => [field.name, field.value ?? ""]),
+  );
+  const currentValues = Object.fromEntries(
+    fields.map((field) => [
+      field.name,
+      draft?.touched[field.name]
+        ? draft.values[field.name]
+        : canEdit
+          ? getReviewFieldValue(field)
+          : (field.value ?? ""),
+    ]),
+  );
+  const changes = Object.fromEntries(
+    Object.entries(currentValues)
+      .filter(
+        ([name, value]) =>
+          value !== (draft?.original ?? savedValues)[name] ||
+          (draft?.touched[name] &&
+            getReviewFieldValue(
+              fields.find((field) => field.name === name)!,
+            ) !== savedValues[name]),
       )
-    : {};
+      .map(([name, value]) => [
+        name,
+        fields.find((f) => f.name === name)?.kind === "boolean"
+          ? value === "true"
+          : value || null,
+      ]),
+  );
   const changedCount = Object.keys(changes).length;
+  const invalidDateDraft = Object.values(dateInputDrafts).some(
+    (value) => !!value && !parseDateRu(value),
+  );
+  const hasManualChanges =
+    !!draft && Object.keys(changes).some((name) => draft.touched[name]);
   const stale = !!draft && (draft.revision !== data.revision || !canEdit);
   const update = async (result: DocumentVersionDto) => {
     client.setQueryData(
@@ -74,9 +208,24 @@ export function DocumentReviewWorkspace({
     );
     setDraft(null);
     await Promise.all([
+      ...(employeeId
+        ? [
+            client.invalidateQueries({
+              queryKey: getListEmployeeDocumentsQueryKey(employeeId),
+            }),
+          ]
+        : []),
+      client.invalidateQueries({ queryKey: getListReviewDocumentsQueryKey() }),
       client.invalidateQueries({
-        queryKey: getListEmployeeDocumentsQueryKey(employeeId),
+        queryKey: getListCandidateReviewQueueQueryKey(),
       }),
+      ...(candidateId
+        ? [
+            client.invalidateQueries({
+              queryKey: getGetCandidateDetailsQueryKey(candidateId),
+            }),
+          ]
+        : []),
       client.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
     ]);
   };
@@ -104,14 +253,87 @@ export function DocumentReviewWorkspace({
       onError: failure,
     },
   });
-  const busy = edit.isPending || approve.isPending;
+  const reject = useRejectDocument({
+    mutation: {
+      onSuccess: async (result) => {
+        await update(result);
+        setShowReject(false);
+        setMessage("Документ возвращён кандидату.");
+      },
+      onError: failure,
+    },
+  });
+  const send = useSendDocumentToErp({
+    mutation: {
+      onSuccess: async (result) => {
+        await update(result);
+        setMessage(
+          result.delivery?.status === "SENT"
+            ? "Документ отправлен в ERP."
+            : "ERP не приняла документ. Повторная отправка выполняется вручную.",
+        );
+      },
+      onError: failure,
+    },
+  });
+  const retryOcr = useRetryDocumentOcr({
+    mutation: {
+      onSuccess: async (result) => {
+        await update(result);
+        setMessage("Документ повторно отправлен на распознавание.");
+      },
+      onError: () =>
+        setMessage(
+          "Не удалось повторить распознавание. Обновите данные: состояние документа могло измениться.",
+        ),
+    },
+  });
+  const startOcr = useStartDocumentOcr({
+    mutation: {
+      onSuccess: async (result) => {
+        await update(result);
+        setMessage("Документ отправлен на распознавание.");
+      },
+      onError: () =>
+        setMessage(
+          "Не удалось запустить распознавание. Обновите данные: состояние документа могло измениться.",
+        ),
+    },
+  });
+  const canSend =
+    canReview &&
+    !!permissions &&
+    ["20006", "20009"].some((rule) =>
+      Object.prototype.hasOwnProperty.call(permissions, rule),
+    );
+  const busy =
+    edit.isPending ||
+    approve.isPending ||
+    reject.isPending ||
+    send.isPending ||
+    retryOcr.isPending ||
+    startOcr.isPending;
+  const setField = (name: string, value: string) => {
+    const values = draft?.values ?? currentValues;
+    setDraft({
+      revision: draft?.revision ?? data.revision,
+      snapshot: draft?.snapshot ?? reviewSnapshot,
+      original: draft?.original ?? savedValues,
+      values: { ...values, [name]: value },
+      touched: { ...draft?.touched, [name]: true },
+    });
+    setMessage("");
+  };
+  // Явный выбор: клик по области, фокус поля, кнопка «На превью».
+  // Единственное место, где разрешено менять файл/страницу.
   const selectField = (
     name: string,
     focus: boolean,
     explicitRegion?: OcrRegionDto,
     revealPreview = false,
   ) => {
-    const field = data.fields.find((item) => item.name === name);
+    const field = fields.find((item) => item.name === name);
+    if (mismatchOnly && field && !field.mismatch) setMismatchOnly(false);
     const region =
       explicitRegion ??
       field?.regions.find(
@@ -130,6 +352,18 @@ export function DocumentReviewWorkspace({
       request: (current?.request ?? 0) + 1,
     }));
   };
+  // Hover-preview справа (поле → область) и слева (область → поле):
+  // только подсветка в пределах текущей страницы, без смены fileId/page,
+  // без scrollIntoView и без focus. Явный переход — клик/«На превью».
+  const hoverField = (name: string) => {
+    setHoveredField((current) => (current === name ? current : name));
+  };
+  const unhoverField = () => {
+    setHoveredField(null);
+  };
+  const hoverRegion = (name: string | null) => {
+    setHoveredField(name);
+  };
   useEffect(() => {
     if (selection?.revealPreview)
       previewSection.current?.scrollIntoView({
@@ -143,17 +377,36 @@ export function DocumentReviewWorkspace({
       });
     if (selection?.focus && canEdit) {
       const input = inputs.current[selection.fieldName];
-      input?.focus({ preventScroll: true });
-      input?.select();
+      if (input) {
+        input.focus({ preventScroll: true });
+        try {
+          if (
+            input instanceof HTMLInputElement &&
+            input.type === "date" &&
+            typeof (input as HTMLInputElement & { showPicker?: () => void })
+              .showPicker === "function"
+          ) {
+            (
+              input as HTMLInputElement & { showPicker: () => void }
+            ).showPicker();
+          } else if (
+            !(input instanceof HTMLInputElement && input.type === "checkbox")
+          ) {
+            input.select?.();
+          }
+        } catch {
+          // showPicker требует жеста пользователя — игнорируем.
+        }
+      }
     }
   }, [selection, canEdit]);
   useEffect(() => {
     if (!canEdit || !fieldsContainer.current) return;
     const resize = () => {
       for (const input of Object.values(inputs.current)) {
-        if (!input) continue;
+        if (!(input instanceof HTMLTextAreaElement)) continue;
         input.style.height = "auto";
-        input.style.height = `${Math.min(160, input.scrollHeight + 2)}px`;
+        input.style.height = `${Math.min(96, Math.max(32, input.scrollHeight + 2))}px`;
       }
     };
     resize();
@@ -164,281 +417,779 @@ export function DocumentReviewWorkspace({
   useEffect(() => {
     if (
       draft &&
+      canEdit &&
+      draft.revision !== data.revision &&
+      draft.snapshot === reviewSnapshot
+    )
+      setDraft({ ...draft, revision: data.revision });
+    else if (
+      draft &&
       !changedCount &&
-      (draft.revision !== data.revision || !canEdit)
+      ((draft.revision !== data.revision &&
+        !Object.keys(draft.touched).length) ||
+        !canEdit)
     )
       setDraft(null);
-  }, [draft, changedCount, data.revision, canEdit]);
+  }, [draft, changedCount, data.revision, canEdit, reviewSnapshot]);
   const beginDraft = () => {
     if (!draft) {
-      const values = Object.fromEntries(
-        data.fields.map((field) => [field.name, field.value ?? ""]),
-      );
-      setDraft({ revision: data.revision, values, original: values });
+      setDraft({
+        revision: data.revision,
+        snapshot: reviewSnapshot,
+        values: currentValues,
+        original: savedValues,
+        touched: {},
+      });
     }
   };
   return (
-    <div className="grid min-w-0 items-start gap-7 xl:grid-cols-2">
-      <section
-        ref={previewSection}
-        className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-0"
-        aria-label="Превью документа"
-      >
-        <h3 className="text-base font-semibold">Оригинал и области OCR</h3>
-        {files.length > 1 && (
-          <div className="flex flex-wrap gap-2">
-            {files.map((item, index) => (
-              <Button
-                key={item.id}
-                size="sm"
-                variant={item.id === file?.id ? "secondary" : "outline"}
-                aria-pressed={item.id === file?.id}
-                onClick={() => {
-                  setFileId(item.id);
-                  setPageNumber(1);
-                  setSelection(null);
-                }}
-              >
-                Файл {index + 1}
-              </Button>
-            ))}
-          </div>
-        )}
-        {file && file.pageCount > 1 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={visiblePage <= 1}
-              onClick={() => {
-                setPageNumber(visiblePage - 1);
-                setSelection(null);
-              }}
-            >
-              Назад
-            </Button>
-            <span className="text-sm">
-              Страница {visiblePage} из {file.pageCount}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={visiblePage >= file.pageCount}
-              onClick={() => {
-                setPageNumber(visiblePage + 1);
-                setSelection(null);
-              }}
-            >
-              Далее
-            </Button>
-          </div>
-        )}
-        {file ? (
-          <DocumentPreview
-            key={`${file.id}-${visiblePage}`}
-            documentId={data.documentId}
-            version={data.version}
-            file={file}
-            pageNumber={visiblePage}
-            fields={data.fields}
-            selectedField={selection?.fieldName ?? null}
-            selectedRegionId={selection?.regionId ?? null}
-            onSelectRegion={(name, region) => selectField(name, true, region)}
-          />
-        ) : (
-          <p className="text-sm text-[var(--muted-foreground)]">
-            Оригиналы недоступны.
-          </p>
-        )}
-      </section>
-      <section
-        className="flex min-w-0 flex-col gap-4"
-        aria-label="Распознанные поля"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-base font-semibold">Распознанные поля</h3>
-          {changedCount > 0 && (
-            <Badge tone="warning">Не сохранено: {changedCount}</Badge>
-          )}
-        </div>
-        {canEdit && (
-          <p className="text-sm text-[var(--muted-foreground)]">
-            Выберите поле или область на превью, исправьте значение и сохраните.
-          </p>
-        )}
+    <>
+      {canAnnotate && (
         <div
-          ref={fieldsContainer}
-          className="min-w-0 overflow-x-hidden xl:max-h-[620px] xl:overflow-y-auto xl:pr-2"
+          className="mb-3 flex flex-wrap gap-2"
+          role="group"
+          aria-label="Режим работы с документом"
         >
-          <dl className="divide-y divide-[var(--border)]">
-            {fields.map((field) => (
-              <div
-                key={field.name}
-                ref={(node) => {
-                  rows.current[field.name] = node;
-                }}
-                className={`min-w-0 rounded-[8px] px-2 py-3 ${field.name === selection?.fieldName ? "bg-[var(--primary-soft)]" : ""}`}
+          <Button
+            size="sm"
+            variant={annotationMode ? "outline" : "secondary"}
+            aria-pressed={!annotationMode}
+            onClick={() => setAnnotationMode(false)}
+          >
+            Проверка реквизитов
+          </Button>
+          <Button
+            size="sm"
+            variant={annotationMode ? "secondary" : "outline"}
+            aria-pressed={annotationMode}
+            onClick={() => {
+              setAnnotationVisited(true);
+              setAnnotationMode(true);
+            }}
+          >
+            Разметка строк
+          </Button>
+        </div>
+      )}
+      {annotationVisited && canAnnotate && (
+        <div
+          hidden={!annotationMode}
+          className={annotationMode ? "" : "!hidden"}
+        >
+          <DocumentAnnotations
+            key={`${data.documentId}-${data.version}`}
+            document={data}
+            allowClaim={allowAnnotationClaim}
+            active={annotationMode}
+          />
+        </div>
+      )}
+      <div
+        hidden={annotationMode && canAnnotate}
+        className={`${annotationMode && canAnnotate ? "!hidden" : ""} grid min-w-0 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:items-stretch ${fitContainer ? "lg:h-full" : "lg:h-[calc(100dvh-12rem)] lg:min-h-[360px]"}`}
+      >
+        <section
+          ref={previewSection}
+          className="flex min-h-0 min-w-0 flex-col gap-2 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] p-3"
+          aria-label="Превью документа"
+        >
+          {canViewDetails && (
+            <label className="flex shrink-0 items-center gap-1.5 text-xs">
+              <input
+                type="checkbox"
+                className="accent-[var(--primary)]"
+                checked={showAllRegions}
+                onChange={(event) => setShowAllRegions(event.target.checked)}
+              />
+              Все области OCR
+            </label>
+          )}
+          {canViewDetails && showAllRegions && ocrDetails.isLoading && (
+            <p role="status" className="text-xs">
+              Загрузка областей OCR…
+            </p>
+          )}
+          {canViewDetails && showAllRegions && ocrDetails.isError && (
+            <p role="alert" className="text-xs">
+              Не удалось загрузить области.{" "}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void ocrDetails.refetch()}
               >
-                <dt className="mb-1 flex flex-wrap items-center justify-between gap-2 break-words text-sm font-semibold">
-                  {canEdit ? (
-                    <label
-                      className="min-w-0 break-all"
-                      htmlFor={`field-${data.documentId}-${field.name}`}
+                Повторить
+              </Button>
+            </p>
+          )}
+          {(files.length > 1 || (file && file.pageCount > 1)) && (
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+              {files.length > 1 && (
+                <div className="flex min-w-0 flex-wrap gap-1">
+                  {files.map((item, index) => (
+                    <Button
+                      key={item.id}
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      variant={item.id === file?.id ? "secondary" : "outline"}
+                      title={item.filename}
+                      aria-pressed={item.id === file?.id}
+                      onClick={() => {
+                        setFileId(item.id);
+                        setPageNumber(1);
+                        setSelection(null);
+                      }}
                     >
-                      {DOCUMENT_FIELD_LABELS[field.name] ?? field.name}
-                    </label>
+                      Файл {index + 1}
+                    </Button>
+                  ))}
+                </div>
+              )}
+              {file && file.pageCount > 1 && (
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    variant="outline"
+                    disabled={visiblePage <= 1}
+                    onClick={() => {
+                      setPageNumber(visiblePage - 1);
+                      setSelection(null);
+                    }}
+                  >
+                    Назад
+                  </Button>
+                  <span className="text-xs tabular-nums">
+                    Страница {visiblePage} из {file.pageCount}
+                  </span>
+                  <Button
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    variant="outline"
+                    disabled={visiblePage >= file.pageCount}
+                    onClick={() => {
+                      setPageNumber(visiblePage + 1);
+                      setSelection(null);
+                    }}
+                  >
+                    Далее
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          {file ? (
+            <DocumentPreview
+              key={`${file.id}-${visiblePage}`}
+              documentId={data.documentId}
+              version={data.version}
+              file={file}
+              pageNumber={visiblePage}
+              fields={fields}
+              observations={
+                canViewDetails &&
+                showAllRegions &&
+                ocrDetails.data?.revision === data.revision
+                  ? ocrDetails.data.fields
+                  : undefined
+              }
+              selectedField={selection?.fieldName ?? null}
+              selectedRegionId={selection?.regionId ?? null}
+              selectionRequest={selection?.request ?? 0}
+              hoveredField={hoveredField}
+              onSelectRegion={(name, region) => selectField(name, true, region)}
+              onHoverRegion={(name) => hoverRegion(name)}
+            />
+          ) : (
+            <p className="text-[13px] text-[var(--muted-foreground)]">
+              {data.status === "RETURNED"
+                ? "Файлы возвращённой версии недоступны. Реквизиты и причина возврата сохранены."
+                : "Оригиналы недоступны."}
+            </p>
+          )}
+        </section>
+        <section
+          className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]"
+          aria-label="Поля документа"
+        >
+          <div className="shrink-0 border-b border-[var(--border)] px-3 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">
+                Обязательные поля · {visibleFields.length}
+              </h3>
+              {changedCount > 0 && (
+                <Badge tone="warning">Не сохранено: {changedCount}</Badge>
+              )}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-xs text-[var(--muted-foreground)]">
+              <p>Сверьте значения с оригиналом документа.</p>
+              {mismatchCount > 0 && (
+                <label className="flex cursor-pointer items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    className="accent-[var(--primary)]"
+                    checked={mismatchOnly}
+                    onChange={(event) => setMismatchOnly(event.target.checked)}
+                  />
+                  Только расхождения ({mismatchCount})
+                </label>
+              )}
+            </div>
+          </div>
+          <div
+            ref={fieldsContainer}
+            className="max-h-[60dvh] min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 lg:max-h-none"
+          >
+            <DocumentReviewMetadata data={data} />
+            {canReview && (data.canStartOcr || data.canRetryOcr) && (
+              <div className="pb-3">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy || changedCount > 0}
+                  onClick={() =>
+                    (data.canStartOcr ? startOcr : retryOcr).mutate({
+                      documentId: data.documentId,
+                      version: data.version,
+                      data: { revision: data.revision },
+                    })
+                  }
+                >
+                  {startOcr.isPending || retryOcr.isPending
+                    ? "Отправка…"
+                    : data.canStartOcr
+                      ? "Запустить OCR"
+                      : "Повторить OCR"}
+                </Button>
+                {changedCount > 0 && (
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                    Сохраните или отмените правки перед повторным
+                    распознаванием.
+                  </p>
+                )}
+              </div>
+            )}
+            <dl className="divide-y divide-[var(--border)]">
+              {visibleFields.map((field) => {
+                const onCurrentPage = field.regions.some(
+                  (region) =>
+                    region.fileId === file?.id &&
+                    region.pageNumber === visiblePage,
+                );
+                const firstRegion = field.regions[0];
+                const firstFileIndex = firstRegion
+                  ? files.findIndex((item) => item.id === firstRegion.fileId)
+                  : -1;
+                const isHovered = hoveredField === field.name;
+                const isSelected = selection?.fieldName === field.name;
+                const label =
+                  DOCUMENT_FIELD_LABELS[field.name] ??
+                  field.label ??
+                  field.name;
+                const value = currentValues[field.name];
+                const displayValue = (text: string | null) =>
+                  field.kind === "boolean"
+                    ? text === "true"
+                      ? "Да"
+                      : "Нет"
+                    : field.kind === "date"
+                      ? formatDateRu(text)
+                      : text || "—";
+                const ocrText = field.ocrText ?? field.originalValue;
+                const hasOcr = !!ocrText?.trim();
+                const canApplyOcr =
+                  canEdit &&
+                  hasOcr &&
+                  field.originalValue !== null &&
+                  (field.kind !== "date" ||
+                    !!normalizeDateForApi(field.originalValue)) &&
+                  (field.kind !== "boolean" ||
+                    ["true", "false"].includes(field.originalValue));
+                const inputClass = `block min-h-8 w-full min-w-0 rounded-md border bg-[var(--card)] px-2 py-1 text-[13px] leading-5 caret-[var(--primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] ${field.mismatch ? "border-[var(--warning)]" : "border-[var(--border)]"}`;
+                return (
+                  <div
+                    key={field.name}
+                    ref={(node) => {
+                      rows.current[field.name] = node;
+                    }}
+                    data-field-row={field.name}
+                    onMouseEnter={() => hoverField(field.name)}
+                    onMouseLeave={unhoverField}
+                    className={`grid min-w-0 gap-1 py-2 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3 ${field.mismatch ? "bg-[var(--warning-soft)]" : isSelected ? "bg-[var(--muted)]" : ""} ${isHovered ? `${field.mismatch ? "" : "bg-[var(--muted)]"} outline outline-1 outline-[var(--primary)]` : ""}`}
+                  >
+                    <dt className="min-w-0 text-[13px] leading-5 sm:pt-1.5">
+                      {canEdit ? (
+                        <label
+                          className="break-words"
+                          htmlFor={`field-${data.documentId}-${field.name}`}
+                        >
+                          {label}
+                        </label>
+                      ) : (
+                        <span className="break-words">{label}</span>
+                      )}
+                      {field.regions.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-0 text-xs font-normal text-[var(--muted-foreground)] underline underline-offset-2 hover:text-[var(--foreground)]"
+                            aria-label={`Показать область: ${label}`}
+                            onClick={() =>
+                              selectField(field.name, false, undefined, true)
+                            }
+                          >
+                            На превью
+                          </Button>
+                          {isHovered && !onCurrentPage && firstRegion && (
+                            <span className="text-xs text-[var(--muted-foreground)]">
+                              Область на стр. {firstRegion.pageNumber}
+                              {firstRegion.fileId !== file?.id &&
+                              firstFileIndex >= 0
+                                ? ` · файл ${firstFileIndex + 1}`
+                                : ""}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </dt>
+                    <dd className="min-w-0 break-words text-[13px]">
+                      {canEdit ? (
+                        field.kind === "boolean" || field.kind === "date" ? (
+                          <input
+                            ref={(node) => {
+                              inputs.current[field.name] = node;
+                            }}
+                            id={`field-${data.documentId}-${field.name}`}
+                            type={field.kind === "boolean" ? "checkbox" : "text"}
+                            inputMode={field.kind === "date" ? "numeric" : undefined}
+                            placeholder={field.kind === "date" ? "dd.mm.yyyy" : undefined}
+                            disabled={busy}
+                            checked={
+                              field.kind === "boolean"
+                                ? value === "true"
+                                : undefined
+                            }
+                            value={
+                              field.kind === "date"
+                                ? dateInputDrafts[field.name] ??
+                                  (value ? formatDateRu(value) : "")
+                                : undefined
+                            }
+                            className={
+                              field.kind === "boolean"
+                                ? "mt-2 h-4 w-4 accent-[var(--primary)]"
+                                : inputClass
+                            }
+                            onFocus={() => {
+                              beginDraft();
+                              if (selection?.fieldName !== field.name)
+                                selectField(field.name, false);
+                            }}
+                            onBlur={() => {
+                              if (field.kind !== "date") return;
+                              const entered = dateInputDrafts[field.name] ?? "";
+                              if (entered && !parseDateRu(entered)) return;
+                              setDateInputDrafts((current) => {
+                                const next = { ...current };
+                                delete next[field.name];
+                                return next;
+                              });
+                            }}
+                            onChange={(event) => {
+                              if (field.kind === "boolean") {
+                                setField(field.name, String(event.target.checked));
+                                return;
+                              }
+                              const entered = maskDateRuInput(event.target.value);
+                              setDateInputDrafts((current) => ({ ...current, [field.name]: entered }));
+                              if (!entered) setField(field.name, "");
+                              else {
+                                const isoDate = parseDateRu(entered);
+                                if (isoDate) setField(field.name, isoDate);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <textarea
+                            ref={(node) => {
+                              inputs.current[field.name] = node;
+                            }}
+                            id={`field-${data.documentId}-${field.name}`}
+                            rows={1}
+                            maxLength={16384}
+                            disabled={busy}
+                            className={`${inputClass} max-h-24 resize-y`}
+                            value={value}
+                            onFocus={() => {
+                              beginDraft();
+                              if (selection?.fieldName !== field.name)
+                                selectField(field.name, false);
+                            }}
+                            onChange={(event) =>
+                              setField(field.name, event.target.value)
+                            }
+                          />
+                        )
+                      ) : (
+                        <p className="py-1.5 whitespace-pre-wrap">
+                          {displayValue(value)}
+                        </p>
+                      )}
+                      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs leading-4 text-[var(--muted-foreground)]">
+                        {field.submittedValue !== null &&
+                          field.submittedValue !== value && (
+                            <p className="min-w-0 break-words">
+                              Кандидат: {displayValue(field.submittedValue)}
+                            </p>
+                          )}
+                        {data.ocrSource && (
+                          <div className="min-w-0">
+                            {canApplyOcr ? (
+                              <button
+                                type="button"
+                                disabled={busy || stale}
+                                aria-label={`Подставить OCR: ${label}`}
+                                title="Подставить в поле. Сохранение — кнопкой «Сохранить исправления»."
+                                className="max-w-full whitespace-pre-wrap break-words rounded-sm text-left text-[var(--foreground)] underline decoration-dotted underline-offset-2 hover:decoration-solid focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() =>
+                                  setField(
+                                    field.name,
+                                    field.kind === "date"
+                                      ? normalizeDateForApi(field.originalValue!)!
+                                      : field.originalValue!,
+                                  )
+                                }
+                              >
+                                OCR: {displayValue(ocrText)}
+                              </button>
+                            ) : (
+                              <p className="whitespace-pre-wrap break-words">
+                                OCR:{" "}
+                                {hasOcr
+                                  ? displayValue(ocrText)
+                                  : "Не распознано"}
+                              </p>
+                            )}
+                            {field.editedBy && <p>Исправлено вручную</p>}
+                            {canEdit &&
+                              !draft?.touched[field.name] &&
+                              getReviewFieldValue(field) !==
+                                (field.value ?? "") && (
+                                <p>Подставлено OCR · проверьте по оригиналу</p>
+                              )}
+                          </div>
+                        )}
+                        {field.mismatch && (
+                          <p className="mt-0.5 text-xs leading-4 text-[var(--foreground)]">
+                            Данные кандидата и OCR различаются — сверьте с
+                            оригиналом.
+                          </p>
+                        )}
+                      </div>
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
+            {canViewDetails && (
+              <details
+                className="my-3 border-t border-[var(--border)] pt-3"
+                open={showOcrDetails}
+                onToggle={(event) =>
+                  setShowOcrDetails(event.currentTarget.open)
+                }
+              >
+                <summary className="cursor-pointer text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]">
+                  Подробности распознавания
+                </summary>
+                {showOcrDetails &&
+                  (ocrDetails.isLoading ||
+                  (ocrDetails.data?.revision !== data.revision &&
+                    !ocrDetails.isError) ? (
+                    <p role="status" className="py-2 text-xs">
+                      Загрузка результатов OCR…
+                    </p>
+                  ) : ocrDetails.isError ? (
+                    <p role="alert" className="py-2 text-xs">
+                      Не удалось загрузить OCR.{" "}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void ocrDetails.refetch()}
+                      >
+                        Повторить
+                      </Button>
+                    </p>
                   ) : (
-                    <span className="min-w-0 break-all">
-                      {DOCUMENT_FIELD_LABELS[field.name] ?? field.name}
-                    </span>
-                  )}
-                  {field.regions.length > 0 && (
+                    <>
+                      <DocumentOcrFields fields={ocrDetails.data?.fields} />
+                      {!ocrDetails.data?.fields.length && (
+                        <p className="py-2 text-xs">
+                          Результатов OCR пока нет.
+                        </p>
+                      )}
+                    </>
+                  ))}
+              </details>
+            )}
+            {!fields.length && (
+              <p className="py-3 text-[13px] text-[var(--muted-foreground)]">
+                В документе нет обязательных полей для ручной проверки.
+              </p>
+            )}
+            {mismatchOnly && !visibleFields.length && !!fields.length && (
+              <p className="py-3 text-[13px] text-[var(--muted-foreground)]">
+                Расхождений нет — снимите фильтр, чтобы увидеть все обязательные
+                поля.
+              </p>
+            )}
+            {data.delivery && (
+              <div
+                role="status"
+                className="my-2 rounded-md bg-[var(--muted)] p-2 text-xs"
+              >
+                <p className="font-semibold">
+                  {data.delivery.status === "SENT"
+                    ? "Документ отправлен в ERP"
+                    : data.delivery.status === "WAITING_CONTRACT"
+                      ? "Ожидается контракт ERP для отправки по code_1c"
+                      : data.delivery.status === "REQUIRES_MANUAL"
+                        ? "Требует отправки в ERP"
+                        : "Отправка в ERP"}
+                </p>
+                {canDebug && data.delivery.errorCode && (
+                  <p className="mt-1">
+                    ERP недоступна или не приняла документ. Документ сохранён в
+                    ЭДО. Код: {data.delivery.errorCode}
+                  </p>
+                )}
+                {canDebug && data.delivery.attempts[0] && (
+                  <ErpAttemptResponse attempt={data.delivery.attempts[0]} />
+                )}
+                {canSend && data.delivery.status === "REQUIRES_MANUAL" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2"
+                    disabled={busy}
+                    onClick={() =>
+                      send.mutate({
+                        documentId: data.documentId,
+                        version: data.version,
+                      })
+                    }
+                  >
+                    {send.isPending ? "Отправка…" : "Отправить в ERP"}
+                  </Button>
+                )}
+                {canDebug && !!data.delivery.attempts.length && (
+                  <details className="mt-2">
+                    <summary>История отправок</summary>
+                    <ul>
+                      {data.delivery.attempts.map((attempt) => (
+                        <li key={attempt.id} className="mt-2">
+                          {formatDateTimeRu(attempt.startedAt)}{" "}
+                          ·{" "}
+                          {attempt.errorCode ??
+                            (attempt.finishedAt ? "Отправлено" : "Выполняется")}
+                          <ErpAttemptResponse attempt={attempt} />
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+            {data.rejectionReason && (
+              <p role="status" className="py-2 text-xs text-[var(--primary)]">
+                Причина возврата: {data.rejectionReason}
+              </p>
+            )}
+            {data.status === "IN_REVIEW" && !canReview && (
+              <p className="py-2 text-xs text-[var(--muted-foreground)]">
+                {readOnly
+                  ? "Документ доступен только для просмотра."
+                  : "Для исправления и подтверждения нужно право проверки документов."}
+              </p>
+            )}
+            {data.approvedAt && !data.reviewedAt && (
+              <p className="py-2 text-xs text-[var(--muted-foreground)]">
+                Подтверждён {formatDateTimeRu(data.approvedAt)}.
+              </p>
+            )}
+          </div>
+          {(canReview || message || (stale && changedCount > 0)) && (
+            <div
+              className="sticky bottom-0 z-10 shrink-0 border-t border-[var(--border)] bg-[var(--card)] p-3"
+              aria-label="Действия проверки"
+            >
+              {canEdit && showReject && (
+                <div className="mb-2 flex flex-col gap-1.5">
+                  <label
+                    className="text-xs font-semibold"
+                    htmlFor="document-rejection-reason"
+                  >
+                    Причина отклонения
+                  </label>
+                  <textarea
+                    id="document-rejection-reason"
+                    value={rejectionReason}
+                    rows={2}
+                    maxLength={1024}
+                    className="max-h-24 min-h-12 resize-y rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-[13px] caret-[var(--primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+                    onChange={(event) => setRejectionReason(event.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      disabled={busy || !rejectionReason.trim()}
+                      onClick={() =>
+                        reject.mutate({
+                          documentId: data.documentId,
+                          version: data.version,
+                          data: {
+                            revision: data.revision,
+                            reason: rejectionReason,
+                          },
+                        })
+                      }
+                    >
+                      Вернуть кандидату
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"
-                      aria-label={`Показать область: ${DOCUMENT_FIELD_LABELS[field.name] ?? field.name}`}
-                      onClick={() =>
-                        selectField(field.name, false, undefined, true)
-                      }
+                      disabled={busy}
+                      onClick={() => setShowReject(false)}
                     >
-                      На превью
+                      Отмена
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {stale && changedCount > 0 && (
+                <p role="alert" className="mb-2 text-xs">
+                  Документ изменён другим проверяющим. Скопируйте нужные
+                  исправления, нажмите «Отменить правки» и начните с актуальных
+                  данных.
+                </p>
+              )}
+              {canReview && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {canEdit && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-[var(--primary)]"
+                      aria-label="Отклонить документ"
+                      disabled={busy || hasManualChanges || invalidDateDraft}
+                      onClick={() => setShowReject(!showReject)}
+                    >
+                      <X size={14} />
+                      Отклонить
                     </Button>
                   )}
-                </dt>
-                <dd className="min-w-0 break-words text-sm">
-                  {canEdit ? (
-                    <textarea
-                      ref={(node) => {
-                        inputs.current[field.name] = node;
-                      }}
-                      id={`field-${data.documentId}-${field.name}`}
-                      rows={1}
-                      maxLength={16384}
-                      disabled={busy}
-                      className="block w-full min-w-0 max-w-full resize-y rounded-[8px] border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
-                      value={draft?.values[field.name] ?? field.value ?? ""}
-                      onFocus={() => {
-                        beginDraft();
-                        if (selection?.fieldName !== field.name)
-                          selectField(field.name, false);
-                      }}
-                      onChange={(event) => {
-                        const values =
-                          draft?.values ??
-                          Object.fromEntries(
-                            data.fields.map((item) => [
-                              item.name,
-                              item.value ?? "",
-                            ]),
-                          );
-                        setDraft({
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    disabled={busy || !changedCount || stale || invalidDateDraft}
+                    onClick={() => {
+                      edit.mutate({
+                        documentId: data.documentId,
+                        version: data.version,
+                        data: {
                           revision: draft?.revision ?? data.revision,
-                          original: draft?.original ?? values,
-                          values: {
-                            ...values,
-                            [field.name]: event.target.value,
-                          },
-                        });
-                        setMessage("");
-                      }}
-                    />
-                  ) : (
-                    <p className="whitespace-pre-wrap">
-                      {draft?.values[field.name] ?? field.value ?? "—"}
-                    </p>
+                          fields: changes,
+                        },
+                      });
+                    }}
+                  >
+                    <Save size={14} />
+                    {edit.isPending ? "Сохранение…" : "Сохранить исправления"}
+                  </Button>
+                  {canEdit && (
+                    <Button
+                      size="sm"
+                      aria-label="Подтвердить документ"
+                      disabled={busy || changedCount > 0 || invalidDateDraft}
+                      onClick={() =>
+                        approve.mutate({
+                          documentId: data.documentId,
+                          version: data.version,
+                          data: { revision: data.revision },
+                        })
+                      }
+                    >
+                      <Check size={14} />
+                      {approve.isPending ? "Подтверждение…" : "Подтвердить"}
+                    </Button>
                   )}
-                  {(field.editedBy ||
-                    (draft &&
-                      draft.values[field.name] !==
-                        (field.originalValue ?? ""))) && (
-                    <p className="mt-1 whitespace-pre-wrap text-xs text-[var(--muted-foreground)]">
-                      OCR: {field.originalValue ?? "не распознано"}
-                      {field.editedBy && " · исправлено вручную"}
-                    </p>
-                  )}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-        {!fields.length && (
-          <p className="text-sm text-[var(--muted-foreground)]">
-            Распознанных полей пока нет.
-          </p>
-        )}
-        {stale && changedCount > 0 && (
-          <p role="alert" className="text-sm">
-            Документ изменён другим проверяющим. Скопируйте нужные исправления,
-            нажмите «Отменить правки» и начните с актуальных данных.
-          </p>
-        )}
-        {canReview && (
-          <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-4">
-            <Button
-              disabled={busy || !changedCount || stale}
-              onClick={() => {
-                if (draft)
-                  edit.mutate({
-                    documentId: data.documentId,
-                    version: data.version,
-                    data: { revision: draft.revision, fields: changes },
-                  });
-              }}
-            >
-              {edit.isPending ? "Сохранение…" : "Сохранить исправления"}
-            </Button>
-            {draft && (
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={() => {
-                  setDraft(null);
-                  setMessage("");
-                }}
-              >
-                Отменить правки
-              </Button>
-            )}
-          </div>
-        )}
-        {canEdit && (
-          <div className="flex flex-col items-start gap-2">
-            <p className="text-sm text-[var(--muted-foreground)]">
-              {changedCount
-                ? "Сначала сохраните исправления, затем подтвердите документ."
-                : "Сверьте поля с оригиналом перед подтверждением."}
-            </p>
-            <Button
-              variant="outline"
-              disabled={busy || changedCount > 0}
-              onClick={() =>
-                approve.mutate({
-                  documentId: data.documentId,
-                  version: data.version,
-                  data: { revision: data.revision },
-                })
-              }
-            >
-              {approve.isPending ? "Подтверждение…" : "Подтвердить документ"}
-            </Button>
-          </div>
-        )}
-        {data.status === "IN_REVIEW" && !canReview && (
-          <p className="text-sm text-[var(--muted-foreground)]">
-            Для исправления и подтверждения нужно право проверки документов.
-          </p>
-        )}
-        {data.approvedAt && (
-          <p className="text-sm text-[var(--muted-foreground)]">
-            Подтверждён {new Date(data.approvedAt).toLocaleString("ru-RU")}.
-          </p>
-        )}
-        {message && (
-          <p role="status" className="text-sm">
-            {message}
-          </p>
-        )}
-      </section>
+                </div>
+              )}
+              {invalidDateDraft && (
+                <p role="alert" className="mt-1 text-xs text-[var(--primary)]">
+                  Введите дату полностью в формате dd.mm.yyyy.
+                </p>
+              )}
+              {draft && (
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-1">
+                  <span className="text-xs text-[var(--muted-foreground)]">
+                    {changedCount
+                      ? "Сначала сохраните исправления."
+                      : "Изменений нет."}
+                  </span>
+                  <Button
+                    size="sm"
+                    className="h-6 px-1 text-xs font-normal"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => {
+                      setDraft(null);
+                      setMessage("");
+                    }}
+                  >
+                    Отменить правки
+                  </Button>
+                </div>
+              )}
+              {message && (
+                <p role="status" className="mt-2 text-xs">
+                  {message}
+                </p>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
+    </>
+  );
+}
+
+function ErpAttemptResponse({
+  attempt,
+}: {
+  attempt: DocumentDeliveryAttemptDto;
+}) {
+  return (
+    <div className="mt-1">
+      {attempt.httpStatus != null && <p>Ответ 1С: HTTP {attempt.httpStatus}</p>}
+      {attempt.responseBody != null ? (
+        <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-sans text-xs">
+          {attempt.responseBody || "1С вернула пустой ответ."}
+        </pre>
+      ) : attempt.finishedAt && attempt.httpStatus == null ? (
+        <p>Текст ответа для этой попытки не сохранён.</p>
+      ) : null}
+      {attempt.responseTruncated && (
+        <p>Ответ показан не полностью: превышен предел размера.</p>
+      )}
+      {attempt.responseReadError && (
+        <p>
+          Не удалось полностью прочитать ответ 1С. Код:{" "}
+          {attempt.responseReadError}
+        </p>
+      )}
     </div>
   );
 }
