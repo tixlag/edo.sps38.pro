@@ -53,6 +53,14 @@ enum AuditAction {
   LK_EVENT_APPLIED
   DOCUMENT_OCR_RETRIED
   DOCUMENT_OCR_REQUESTED
+  ANNOTATION_CATALOG_CHANGED
+  ANNOTATION_PREFERENCE_CHANGED
+  ANNOTATION_CLAIMED
+  ANNOTATION_SAVED
+  ANNOTATION_SUBMITTED
+  ANNOTATION_ACCEPTED
+  ANNOTATION_CHANGES_REQUESTED
+  ANNOTATION_REASSIGNED
 }
 
 model Employee {
@@ -136,6 +144,7 @@ model DocumentVersion {
   submittedAt DateTime?             @db.DateTime(3)
   reviewedAt DateTime?              @db.DateTime(3)
   reviewedBy String?                @db.VarChar(64)
+  annotation DocumentAnnotation?
   ocrFields DocumentVersionOcrField[]
   positionCode1c String? @db.VarChar(64)
   citizenship String? @db.VarChar(2)
@@ -611,4 +620,140 @@ model OcrOutbox {
 
   @@index([availableAt, publishedAt])
   @@map("ocr_outbox")
+}
+
+// Annotation catalog identity is independent of ERP-owned document type rows.
+model AnnotationCatalogFamily {
+  id               String              @id @default(cuid()) @db.VarChar(64)
+  documentTypeCode String              @db.VarChar(64)
+  profile          String              @db.VarChar(8)
+  catalogs         AnnotationCatalog[]
+
+  @@unique([documentTypeCode, profile])
+  @@map("annotation_catalog_families")
+}
+
+model AnnotationCatalog {
+  id          String                        @id @default(cuid()) @db.VarChar(64)
+  familyId    String                        @db.VarChar(64)
+  version     Int
+  status      String                        @default("DRAFT") @db.VarChar(16)
+  draftSlot   Int?                          @default(1)
+  revision    Int                           @default(0)
+  title       String                        @db.VarChar(255)
+  createdAt   DateTime                      @default(now()) @db.DateTime(3)
+  publishedAt DateTime?                     @db.DateTime(3)
+  family      AnnotationCatalogFamily       @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  fields      AnnotationCatalogField[]
+  annotations DocumentAnnotation[]
+  suggestions AnnotationCatalogSuggestion[]
+
+  @@unique([familyId, version])
+  @@unique([familyId, draftSlot])
+  @@map("annotation_catalogs")
+}
+
+model AnnotationCatalogField {
+  id                String            @id @default(cuid()) @db.VarChar(64)
+  catalogId         String            @db.VarChar(64)
+  key               String            @db.VarChar(64)
+  label             String            @db.VarChar(255)
+  ordinal           Int
+  multiline         Boolean           @default(false)
+  businessFieldName String?           @db.VarChar(128)
+  catalog           AnnotationCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+
+  @@unique([catalogId, key])
+  @@map("annotation_catalog_fields")
+}
+
+model AnnotationCatalogSuggestion {
+  id        String            @id @default(cuid()) @db.VarChar(64)
+  catalogId String            @db.VarChar(64)
+  authorId  String            @db.VarChar(64)
+  key       String            @db.VarChar(64)
+  label     String            @db.VarChar(255)
+  status    String            @default("PENDING") @db.VarChar(16)
+  createdAt DateTime          @default(now()) @db.DateTime(3)
+  catalog   AnnotationCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+
+  @@map("annotation_catalog_suggestions")
+}
+
+model AnnotationPreference {
+  actorId   String   @id @db.VarChar(64)
+  enabled   Boolean  @default(false)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+
+  @@map("annotation_preferences")
+}
+
+model DocumentAnnotation {
+  id             String                  @id @default(cuid()) @db.VarChar(64)
+  versionId      String                  @unique @db.VarChar(64)
+  catalogId      String                  @db.VarChar(64)
+  authorId       String                  @db.VarChar(64)
+  status         String                  @default("DRAFT") @db.VarChar(24)
+  revision       Int                     @default(0)
+  schemaSnapshot Json
+  sourceSnapshot Json
+  note           String?                 @db.VarChar(2000)
+  submittedAt    DateTime?               @db.DateTime(3)
+  acceptedAt     DateTime?               @db.DateTime(3)
+  createdAt      DateTime                @default(now()) @db.DateTime(3)
+  updatedAt      DateTime                @updatedAt @db.DateTime(3)
+  version        DocumentVersion         @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  catalog        AnnotationCatalog       @relation(fields: [catalogId], references: [id], onDelete: Restrict)
+  fields         AnnotationFieldAnswer[]
+  snapshots      AnnotationSnapshot[]
+
+  @@index([status, updatedAt])
+  @@map("document_annotations")
+}
+
+model AnnotationFieldAnswer {
+  id           String             @id @default(cuid()) @db.VarChar(64)
+  annotationId String             @db.VarChar(64)
+  key          String             @db.VarChar(64)
+  disposition  String             @db.VarChar(16)
+  annotation   DocumentAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  lines        AnnotationLine[]
+
+  @@unique([annotationId, key])
+  @@map("annotation_field_answers")
+}
+
+model AnnotationLine {
+  id       String                @id @default(cuid()) @db.VarChar(64)
+  answerId String                @db.VarChar(64)
+  clientId String                @db.VarChar(64)
+  pageId   String                @db.VarChar(96)
+  order    Int
+  text     String                @db.VarChar(2000)
+  x0       Float
+  y0       Float
+  x1       Float
+  y1       Float
+  x2       Float
+  y2       Float
+  x3       Float
+  y3       Float
+  answer   AnnotationFieldAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@unique([answerId, order])
+  @@map("annotation_lines")
+}
+
+model AnnotationSnapshot {
+  id           String             @id @default(cuid()) @db.VarChar(64)
+  annotationId String             @db.VarChar(64)
+  revision     Int
+  status       String             @db.VarChar(24)
+  payload      Json
+  createdAt    DateTime           @default(now()) @db.DateTime(3)
+  annotation   DocumentAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+
+  @@unique([annotationId, revision])
+  @@index([status])
+  @@map("annotation_snapshots")
 }

@@ -1,13 +1,16 @@
-import { ForbiddenException } from '@nestjs/common';
-import { describe, expect, it, vi } from 'vitest';
-import { AuditLogsService } from '../src/audit/audit-logs.service';
+import { ForbiddenException } from "@nestjs/common";
+import { describe, expect, it, vi } from "vitest";
+import { AuditLogsService } from "../src/audit/audit-logs.service";
 
 /**
  * Object-scope policy for audit history (scoped = scope.all === false).
  * Mocks only — never the shared MariaDB/RabbitMQ/Redis/S3.
  */
 
-const principal = (accessRules: Record<string, string[]>, uuid = 'reviewer-1') => ({
+const principal = (
+  accessRules: Record<string, string[]>,
+  uuid = "reviewer-1",
+) => ({
   uuid,
   code1c: null,
   sid: null,
@@ -47,30 +50,34 @@ function rawArg(prisma: PrismaMock): { sql?: string; values?: unknown[] } {
   );
 }
 
-function docRow(id: string, entityId: string, extra: Record<string, unknown> = {}) {
+function docRow(
+  id: string,
+  entityId: string,
+  extra: Record<string, unknown> = {},
+) {
   return {
     id,
-    actorId: 'reviewer-1',
-    action: 'DOCUMENT_APPROVED',
-    entityType: 'Document',
+    actorId: "reviewer-1",
+    action: "DOCUMENT_APPROVED",
+    entityType: "Document",
     entityId,
     after: { version: 1 },
-    createdAt: new Date('2026-10-05T10:00:00.000Z'),
+    createdAt: new Date("2026-10-05T10:00:00.000Z"),
     ...extra,
   };
 }
 
-describe('AuditLogsService object scope', () => {
-  it('1. 20005+20007 sees documents of its own location (DB-level EXISTS, no ID preload)', async () => {
+describe("AuditLogsService object scope", () => {
+  it("1. 20005+20007 sees documents of its own location (DB-level EXISTS, no ID preload)", async () => {
     const prisma = mockPrisma({
-      $queryRaw: vi.fn().mockResolvedValue([docRow('a1', 'doc-own')]),
+      $queryRaw: vi.fn().mockResolvedValue([docRow("a1", "doc-own")]),
     });
     const dto = await new AuditLogsService(prisma as never).list(
-      principal({ '20005': [], '20007': ['98'] }) as never,
+      principal({ "20005": [], "20007": ["98"] }) as never,
       {} as never,
     );
     expect(dto.items).toHaveLength(1);
-    expect(dto.items[0].entityId).toBe('doc-own');
+    expect(dto.items[0].entityId).toBe("doc-own");
     expect(dto.items[0].version).toBe(1);
     // Perf: exactly one scoped query; no unbounded ID preloads.
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
@@ -78,16 +85,16 @@ describe('AuditLogsService object scope', () => {
     expect(prisma.employee.findMany).not.toHaveBeenCalled();
     expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
     // The scope really is in the query: EXISTS + location values.
-    expect(rawArg(prisma).sql ?? '').toContain('EXISTS');
-    expect(rawArg(prisma).sql ?? '').toContain('`documents`');
+    expect(rawArg(prisma).sql ?? "").toContain("EXISTS");
+    expect(rawArg(prisma).sql ?? "").toContain("`documents`");
     expect(rawArg(prisma).values ?? []).toContain(98);
   });
 
-  it('2. scoped caller does not see a foreign document (point check, no audit read)', async () => {
+  it("2. scoped caller does not see a foreign document (point check, no audit read)", async () => {
     const prisma = mockPrisma();
     const dto = await new AuditLogsService(prisma as never).list(
-      principal({ '20005': [], '20007': ['98'] }) as never,
-      { entityType: 'Document', entityId: 'doc-foreign' } as never,
+      principal({ "20005": [], "20007": ["98"] }) as never,
+      { entityType: "Document", entityId: "doc-foreign" } as never,
     );
     expect(dto).toEqual({ items: [], nextCursor: null });
     expect(prisma.document.findFirst).toHaveBeenCalledTimes(1);
@@ -96,17 +103,17 @@ describe('AuditLogsService object scope', () => {
     expect(prisma.document.findMany).not.toHaveBeenCalled();
   });
 
-  it('3. Candidate of a foreign location is unavailable (own locationId only)', async () => {
+  it("3. Candidate of a foreign location is unavailable (own locationId only)", async () => {
     const prisma = mockPrisma();
     const dto = await new AuditLogsService(prisma as never).list(
-      principal({ '20005': [], '20007': ['98'] }) as never,
-      { entityType: 'Candidate', entityId: 'cand-foreign' } as never,
+      principal({ "20005": [], "20007": ["98"] }) as never,
+      { entityType: "Candidate", entityId: "cand-foreign" } as never,
     );
     expect(dto).toEqual({ items: [], nextCursor: null });
     // Point check is on the candidate row itself...
     expect(prisma.candidate.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: 'cand-foreign' }),
+        where: expect.objectContaining({ id: "cand-foreign" }),
       }),
     );
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
@@ -114,71 +121,72 @@ describe('AuditLogsService object scope', () => {
     // ...and the list predicate never widens Candidate via employee bindings:
     // a Candidate-filtered list query must not join documents/employees.
     const prisma2 = mockPrisma({
-      candidate: { findFirst: vi.fn().mockResolvedValue({ id: 'cand-own' }) },
+      candidate: { findFirst: vi.fn().mockResolvedValue({ id: "cand-own" }) },
       $queryRaw: vi.fn().mockResolvedValue([]),
     });
     await new AuditLogsService(prisma2 as never).list(
-      principal({ '20005': [], '20007': ['98'] }) as never,
-      { entityType: 'Candidate' } as never,
+      principal({ "20005": [], "20007": ["98"] }) as never,
+      { entityType: "Candidate" } as never,
     );
     expect(prisma2.$queryRaw).toHaveBeenCalledTimes(1);
-    const sql = rawArg(prisma2).sql ?? '';
-    expect(sql).toContain('`candidates`');
-    expect(sql).not.toContain('`documents`');
-    expect(sql).not.toContain('LEFT JOIN `employees`');
+    const sql = rawArg(prisma2).sql ?? "";
+    expect(sql).toContain("`candidates`");
+    expect(sql).not.toContain("`documents`");
+    expect(sql).not.toContain("LEFT JOIN `employees`");
   });
 
-  it('4. unknown entityType never bypasses scoped restrictions', async () => {
+  it("4. unknown entityType never bypasses scoped restrictions", async () => {
     const prisma = mockPrisma();
     // Filtered unknown type: denied without touching the audit table.
     const dto = await new AuditLogsService(prisma as never).list(
-      principal({ '20005': [], '20007': ['98'] }) as never,
-      { entityType: 'LkEmployee', entityId: 'x-1' } as never,
+      principal({ "20005": [], "20007": ["98"] }) as never,
+      { entityType: "LkEmployee", entityId: "x-1" } as never,
     );
     expect(dto).toEqual({ items: [], nextCursor: null });
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
     expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
     // Unfiltered history predicate only admits Document/Employee/Candidate.
     const prisma2 = mockPrisma({
-      $queryRaw: vi.fn().mockResolvedValue([docRow('a1', 'doc-own')]),
+      $queryRaw: vi.fn().mockResolvedValue([docRow("a1", "doc-own")]),
     });
     await new AuditLogsService(prisma2 as never).list(
-      principal({ '20005': [], '20007': ['98'] }) as never,
+      principal({ "20005": [], "20007": ["98"] }) as never,
       {} as never,
     );
-    const sql = rawArg(prisma2).sql ?? '';
+    const sql = rawArg(prisma2).sql ?? "";
     expect(sql).toContain("'Document'");
     expect(sql).toContain("'Employee'");
     expect(sql).toContain("'Candidate'");
-    expect(sql).not.toContain('LkEmployee');
+    expect(sql).not.toContain("LkEmployee");
     expect(prisma2.document.findMany).not.toHaveBeenCalled();
     expect(prisma2.employee.findMany).not.toHaveBeenCalled();
   });
 
-  it('5. 20002+mine shows own actions, still object-scoped', async () => {
+  it("5. 20002+mine shows own group actions across all locations", async () => {
     const prisma = mockPrisma({
-      $queryRaw: vi.fn().mockResolvedValue([docRow('a1', 'doc-own')]),
+      $queryRaw: vi.fn().mockResolvedValue([docRow("a1", "doc-own")]),
     });
     const dto = await new AuditLogsService(prisma as never).list(
-      principal({ '20002': [], '20007': ['98'] }) as never,
+      principal({ "20002": [], "20007": ["98"] }) as never,
       { mine: true } as never,
     );
     expect(dto.items).toHaveLength(1);
-    expect(dto.items[0].actorId).toBe('reviewer-1');
+    expect(dto.items[0].actorId).toBe("reviewer-1");
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
     // Both the caller filter and the location scope are in the query.
-    expect(rawArg(prisma).values ?? []).toContain('reviewer-1');
-    expect(rawArg(prisma).values ?? []).toContain(98);
-    expect(rawArg(prisma).sql ?? '').toContain('EXISTS');
+    expect(rawArg(prisma).values ?? []).toContain("reviewer-1");
+    expect(rawArg(prisma).values ?? []).not.toContain(98);
+    expect(rawArg(prisma).sql ?? "").toContain("citizenship");
+    expect(rawArg(prisma).sql ?? "").toContain("EXISTS");
     expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
     expect(prisma.document.findMany).not.toHaveBeenCalled();
   });
 
-  it('6. 20002 without mine is 403 on general history', async () => {
+  it("6. 20002 without mine is 403 on general history", async () => {
     const prisma = mockPrisma();
     await expect(
       new AuditLogsService(prisma as never).list(
-        principal({ '20002': [], '20007': ['98'] }) as never,
+        principal({ "20002": [], "20007": ["98"] }) as never,
         {} as never,
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -186,24 +194,24 @@ describe('AuditLogsService object scope', () => {
     expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
   });
 
-  it('7. 20005+20008 sees everything by policy; bare 20008 has no audit right', async () => {
+  it("7. 20005+20008 sees everything by policy; bare 20008 has no audit right", async () => {
     const rows = [
-      docRow('a1', 'doc-any'),
+      docRow("a1", "doc-any"),
       {
-        id: 'lk1',
-        actorId: 'sys',
-        action: 'LK_EVENT_APPLIED',
-        entityType: 'LkEmployee',
-        entityId: 'code-1',
+        id: "lk1",
+        actorId: "sys",
+        action: "LK_EVENT_APPLIED",
+        entityType: "LkEmployee",
+        entityId: "code-1",
         after: {},
-        createdAt: new Date('2026-10-05T11:00:00.000Z'),
+        createdAt: new Date("2026-10-05T11:00:00.000Z"),
       },
     ];
     const prisma = mockPrisma({
       auditLog: { findMany: vi.fn().mockResolvedValue(rows) },
     });
     const dto = await new AuditLogsService(prisma as never).list(
-      principal({ '20005': [], '20008': [] }) as never,
+      principal({ "20005": [], "20008": [] }) as never,
       {} as never,
     );
     // scope.all: full-access path, unknown types included, no scope predicate.
@@ -215,7 +223,7 @@ describe('AuditLogsService object scope', () => {
     const prismaBare = mockPrisma();
     await expect(
       new AuditLogsService(prismaBare as never).list(
-        principal({ '20008': [] }) as never,
+        principal({ "20008": [] }) as never,
         {} as never,
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -223,52 +231,47 @@ describe('AuditLogsService object scope', () => {
     expect(prismaBare.$queryRaw).not.toHaveBeenCalled();
   });
 
-  it('8. 20009 sees everything including unknown types', async () => {
+  it("8. 20009 sees everything including unknown types", async () => {
     const rows = [
-      docRow('a1', 'doc-any'),
+      docRow("a1", "doc-any"),
       {
-        id: 'lk1',
+        id: "lk1",
         actorId: null,
-        action: 'LK_EVENT_APPLIED',
-        entityType: 'LkDepartment',
-        entityId: 'dep-1',
+        action: "LK_EVENT_APPLIED",
+        entityType: "LkDepartment",
+        entityId: "dep-1",
         after: {},
-        createdAt: new Date('2026-10-05T12:00:00.000Z'),
+        createdAt: new Date("2026-10-05T12:00:00.000Z"),
       },
     ];
     const prisma = mockPrisma({
       auditLog: { findMany: vi.fn().mockResolvedValue(rows) },
     });
     const dto = await new AuditLogsService(prisma as never).list(
-      principal({ '20009': [] }) as never,
+      principal({ "20009": [] }) as never,
       {} as never,
     );
     expect(dto.items).toHaveLength(2);
     expect(dto.items.map((i) => i.entityType).sort()).toEqual([
-      'Document',
-      'LkDepartment',
+      "Document",
+      "LkDepartment",
     ]);
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
     expect(prisma.document.findMany).not.toHaveBeenCalled();
     expect(prisma.employee.findMany).not.toHaveBeenCalled();
   });
 
-  it('9. empty scope is never access-to-all', async () => {
-    for (const rules of [
-      { '20005': [] },
-      { '20005': [], '20007': [] },
-      { '20002': [] },
-    ]) {
+  it("9. empty scope is never access-to-all", async () => {
+    for (const rules of [{ "20005": [] }, { "20005": [], "20007": [] }]) {
       const prisma = mockPrisma({
         $queryRaw: vi.fn(),
         auditLog: { findMany: vi.fn() },
       });
       const dto = await new AuditLogsService(prisma as never).list(
-        principal(rules, 'u1') as never,
-        rules['20002'] && !rules['20005'] ? ({ mine: true }) as never : ({} as never),
+        principal(rules, "u1") as never,
+        {},
       );
       void dto;
-      // 20002+mine with empty location list: scoped, no locations -> empty.
       // Others: 403 (no AUDIT_VIEW) or empty (no locations) — either way
       // the audit table is never read.
       expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
@@ -279,7 +282,7 @@ describe('AuditLogsService object scope', () => {
     // Explicit: AUDIT_VIEW with an empty 20007 list returns empty, no reads.
     const prisma = mockPrisma();
     const dto = await new AuditLogsService(prisma as never).list(
-      principal({ '20005': [], '20007': [] }) as never,
+      principal({ "20005": [], "20007": [] }) as never,
       {} as never,
     );
     expect(dto).toEqual({ items: [], nextCursor: null });
@@ -287,11 +290,11 @@ describe('AuditLogsService object scope', () => {
     expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
   });
 
-  it('10. entityId probing of foreign objects is closed (Employee + Candidate)', async () => {
+  it("10. entityId probing of foreign objects is closed (Employee + Candidate)", async () => {
     const prismaEmp = mockPrisma();
     const dtoEmp = await new AuditLogsService(prismaEmp as never).list(
-      principal({ '20005': [], '20007': ['98'] }) as never,
-      { entityType: 'Employee', entityId: 'emp-foreign' } as never,
+      principal({ "20005": [], "20007": ["98"] }) as never,
+      { entityType: "Employee", entityId: "emp-foreign" } as never,
     );
     expect(dtoEmp).toEqual({ items: [], nextCursor: null });
     expect(prismaEmp.employee.findFirst).toHaveBeenCalledTimes(1);
@@ -301,8 +304,8 @@ describe('AuditLogsService object scope', () => {
 
     const prismaCand = mockPrisma();
     const dtoCand = await new AuditLogsService(prismaCand as never).list(
-      principal({ '20005': [], '20007': ['98'] }) as never,
-      { entityType: 'Candidate', entityId: 'cand-foreign' } as never,
+      principal({ "20005": [], "20007": ["98"] }) as never,
+      { entityType: "Candidate", entityId: "cand-foreign" } as never,
     );
     expect(dtoCand).toEqual({ items: [], nextCursor: null });
     expect(prismaCand.candidate.findFirst).toHaveBeenCalledTimes(1);
@@ -310,7 +313,7 @@ describe('AuditLogsService object scope', () => {
     expect(prismaCand.auditLog.findMany).not.toHaveBeenCalled();
   });
 
-  it('11. perf: one scoped query per page regardless of 10/1000/50000 documents; 20 rows at 50k', async () => {
+  it("11. perf: one scoped query per page regardless of 10/1000/50000 documents; 20 rows at 50k", async () => {
     for (const total of [10, 1000, 50000]) {
       void total;
       // Simulate a full page (limit 20 -> take 21) with legacy + versioned rows.
@@ -324,7 +327,7 @@ describe('AuditLogsService object scope', () => {
         $queryRaw: vi.fn().mockResolvedValue(takeRows),
       });
       const dto = await new AuditLogsService(prisma as never).list(
-        principal({ '20005': [], '20007': ['98'] }) as never,
+        principal({ "20005": [], "20007": ["98"] }) as never,
         { limit: 20 } as never,
       );
       // Correct page: 20 rows + cursor for the next one.

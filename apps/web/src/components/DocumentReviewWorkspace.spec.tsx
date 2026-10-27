@@ -12,6 +12,14 @@ import {
 } from "@edo/api-client";
 import { DocumentReviewWorkspace } from "./DocumentReviewWorkspace";
 
+vi.mock("./annotations/DocumentAnnotations", () => ({
+  DocumentAnnotations: ({ allowClaim }: { allowClaim: boolean }) => (
+    <div data-annotation-claim={String(allowClaim)}>
+      <input aria-label="Черновик разметки" defaultValue="" />
+    </div>
+  ),
+}));
+
 vi.mock("@edo/api-client", () => ({
   useGetMe: vi.fn(() => ({ data: { permissions: { "20002": true } } })),
   useEditDocumentFields: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
@@ -199,7 +207,14 @@ function fireImgLoad(container: Element) {
   }
 }
 
-function renderWorkspace(data: DocumentVersionDto) {
+function renderWorkspace(
+  data: DocumentVersionDto,
+  options: {
+    readOnly?: boolean;
+    allowAnnotation?: boolean;
+    allowAnnotationClaim?: boolean;
+  } = {},
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({
@@ -210,7 +225,7 @@ function renderWorkspace(data: DocumentVersionDto) {
     act(() => {
       root.render(
         <QueryClientProvider client={client}>
-          <DocumentReviewWorkspace data={nextData} />
+          <DocumentReviewWorkspace data={nextData} {...options} />
         </QueryClientProvider>,
       );
     });
@@ -689,7 +704,40 @@ describe("DocumentReviewWorkspace hover vs select", () => {
     }
   });
 
-  it("shows the ERP response and retains it as plain text in attempt history", () => {
+  it("hides ERP response diagnostics from ordinary reviewers even if old cached data contains them", () => {
+    const data = buildData();
+    data.delivery = {
+      status: "REQUIRES_MANUAL",
+      errorCode: "PRIVATE_ERROR",
+      attempts: [
+        {
+          id: "private-attempt",
+          actorId: "private",
+          startedAt: "2026-10-20T02:05:24.806Z",
+          finishedAt: null,
+          errorCode: "PRIVATE_ERROR",
+          httpStatus: 500,
+          responseBody: "PRIVATE_RESPONSE",
+          responseTruncated: false,
+          responseReadError: null,
+        },
+      ],
+    };
+    const { container, cleanup } = renderWorkspace(data);
+    try {
+      expect(container.textContent).toContain("Требует отправки в ERP");
+      expect(container.textContent).not.toContain("PRIVATE_ERROR");
+      expect(container.textContent).not.toContain("PRIVATE_RESPONSE");
+      expect(container.textContent).not.toContain("История отправок");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("shows the ERP response to admins and retains it as plain text in attempt history", () => {
+    vi.mocked(useGetMe).mockReturnValue({
+      data: { permissions: { "20009": [] } },
+    } as never);
     const data = buildData();
     data.status = "APPROVED";
     data.delivery = {
@@ -727,6 +775,9 @@ describe("DocumentReviewWorkspace hover vs select", () => {
     }
   });
   it("does not invent a response for historical attempts", () => {
+    vi.mocked(useGetMe).mockReturnValue({
+      data: { permissions: { "20009": [] } },
+    } as never);
     const data = buildData();
     data.delivery = {
       status: "REQUIRES_MANUAL",
@@ -797,6 +848,92 @@ describe("DocumentReviewWorkspace hover vs select", () => {
       container.remove();
     }
   });
+
+  it.each(["APPROVED", "SIGNED"] as const)(
+    "keeps retained historic %s annotation accessible independently of business editing and OCR permissions",
+    (status) => {
+      vi.mocked(useGetMe).mockReturnValue({
+        data: { permissions: { "20002": [] } },
+      } as never);
+      const data = { ...buildData(), status };
+      const { container, rerender, cleanup } = renderWorkspace(data, {
+        readOnly: true,
+        allowAnnotation: true,
+        allowAnnotationClaim: false,
+      });
+      try {
+        expect(
+          container.querySelector('[aria-label="Действия проверки"]'),
+        ).toBeNull();
+        expect(container.querySelector("textarea")).toBeNull();
+        click(
+          [...container.querySelectorAll("button")].find(
+            (button) => button.textContent === "Разметка строк",
+          )!,
+        );
+        const input = container.querySelector<HTMLInputElement>(
+          '[aria-label="Черновик разметки"]',
+        )!;
+        expect(input).not.toBeNull();
+        expect(
+          container.querySelector('[data-annotation-claim="false"]'),
+        ).not.toBeNull();
+        input.value = "Ранее начатая работа";
+        rerender({
+          ...data,
+          revision: data.revision + 1,
+          files: data.files.map((file) => ({ ...file, deleted: true })),
+        });
+        expect(
+          container.querySelector<HTMLInputElement>(
+            '[aria-label="Черновик разметки"]',
+          )?.value,
+        ).toBe("Ранее начатая работа");
+      } finally {
+        cleanup();
+      }
+    },
+  );
+
+  it.each([
+    {
+      name: "history reader",
+      options: { readOnly: true },
+      status: "APPROVED",
+      permissions: { "20002": [] },
+    },
+    {
+      name: "wrong reviewer group",
+      options: { allowAnnotation: true },
+      status: "APPROVED",
+      permissions: { "20011": [] },
+    },
+    {
+      name: "returned source",
+      options: { allowAnnotation: true },
+      status: "RETURNED",
+      permissions: { "20002": [] },
+    },
+  ] as const)(
+    "does not offer annotation for $name",
+    ({ options, status, permissions }) => {
+      vi.mocked(useGetMe).mockReturnValue({ data: { permissions } } as never);
+      const data = buildData();
+      const { container, cleanup } = renderWorkspace(
+        { ...data, status },
+        options,
+      );
+      try {
+        expect(
+          [...container.querySelectorAll("button")].find(
+            (button) => button.textContent === "Разметка строк",
+          ),
+        ).toBeUndefined();
+      } finally {
+        cleanup();
+      }
+    },
+  );
 
   it("клик по OCR-области открывает поле, скрытое фильтром расхождений", () => {
     const { container, cleanup } = renderWorkspace(buildData());

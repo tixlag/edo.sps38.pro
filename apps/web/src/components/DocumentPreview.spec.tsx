@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import type {
   DocumentFieldDto,
@@ -7,6 +7,7 @@ import type {
   DocumentOcrFieldDto,
 } from "@edo/api-client";
 import { DocumentPreview } from "./DocumentPreview";
+const pdfFixture = vi.hoisted(() => ({ width: 600, height: 900 }));
 
 vi.mock("@edo/api-client", () => ({
   getGetDocumentFileDownloadQueryKey: () => ["file-download"],
@@ -25,8 +26,8 @@ vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
     promise: Promise.resolve({
       getPage: async () => ({
         getViewport: ({ scale }: { scale: number }) => ({
-          width: 600 * scale,
-          height: 900 * scale,
+          width: pdfFixture.width * scale,
+          height: pdfFixture.height * scale,
         }),
         render: () => ({ promise: Promise.resolve(), cancel: vi.fn() }),
       }),
@@ -86,6 +87,7 @@ function renderPreview(props: {
   selectedRegionId?: string;
   observations?: DocumentOcrFieldDto[];
   fields?: DocumentFieldDto[];
+  annotation?: ComponentProps<typeof DocumentPreview>["annotation"];
 }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -99,6 +101,7 @@ function renderPreview(props: {
           file={props.file ?? file}
           pageNumber={1}
           fields={nextFields}
+          annotation={props.annotation}
           observations={props.observations}
           selectedField={null}
           selectedRegionId={props.selectedRegionId ?? null}
@@ -134,6 +137,8 @@ function renderPreview(props: {
 describe("DocumentPreview hover vs select", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+    pdfFixture.width = 600;
+    pdfFixture.height = 900;
     HTMLElement.prototype.scrollTo = vi.fn();
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -357,6 +362,55 @@ describe("DocumentPreview hover vs select", () => {
       expect(stage.style.height).toBe("924px");
     } finally {
       cleanup();
+    }
+  });
+
+  it("renders annotation PDFs in the exact canonical 200 DPI canvas even for fractional page boxes", async () => {
+    pdfFixture.width = 600.25;
+    pdfFixture.height = 900.75;
+    const width = Math.ceil((pdfFixture.width * 200) / 72),
+      height = Math.ceil((pdfFixture.height * 200) / 72);
+    const view = renderPreview({
+      onSelectRegion: vi.fn(),
+      onHoverRegion: vi.fn(),
+      file: { ...file, mimeType: "application/pdf" },
+      annotation: {
+        source: {
+          id: "page",
+          fileId: file.id,
+          pageNumber: 1,
+          sha256: "abc",
+          width,
+          height,
+          rotation: 0,
+          frame: "UPRIGHT_PIXELS_V1",
+          renderDpi: 200,
+          mimeType: "application/pdf",
+          previewUrl: "blob:source",
+          sizeBytes: 10,
+        },
+        lines: [],
+        selectedId: null,
+        editable: true,
+        onSelect: vi.fn(),
+        onChange: vi.fn(),
+        onCreate: vi.fn(),
+      },
+    });
+    try {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      const canvas = view.container.querySelector("canvas")!;
+      expect(canvas.width).toBe(width);
+      expect(canvas.height).toBe(height);
+      expect(
+        view.container
+          .querySelector("[data-annotation-canvas]")
+          ?.getAttribute("viewBox"),
+      ).toBe(`0 0 ${width} ${height}`);
+    } finally {
+      view.cleanup();
     }
   });
 

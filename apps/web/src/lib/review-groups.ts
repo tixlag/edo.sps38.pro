@@ -1,3 +1,4 @@
+import type { DocumentStatus } from "@edo/api-client";
 export const LK_BASE_URL_FALLBACK = "https://lk.sps38.pro";
 
 /** Browser base of the LK directory; override via VITE_LK_BASE_URL. */
@@ -93,6 +94,9 @@ const REVIEW_TABS: ReviewTab[] = ["IN_REVIEW", "ERP_PENDING", "RETURNED"];
 
 export interface ReviewQueueFilters {
   status: ReviewTab;
+  currentStatus?: DocumentStatus;
+  managerName?: string;
+  managerUnassigned?: boolean;
   /** Exact candidate id (ФИО selector over review-candidates). */
   candidateId?: string;
   documentTypeCode?: string;
@@ -143,6 +147,21 @@ export function parseReviewSearchParams(
     status: (REVIEW_TABS as string[]).includes(status)
       ? (status as ReviewTab)
       : "IN_REVIEW",
+    currentStatus: [
+      "DRAFT",
+      "UPLOADED",
+      "OCR_PENDING",
+      "OCR_FAILED",
+      "IN_REVIEW",
+      "RETURNED",
+      "APPROVED",
+      "SIGNED",
+      "EXPIRED",
+    ].includes(String(raw.currentStatus))
+      ? (String(raw.currentStatus) as DocumentStatus)
+      : undefined,
+    managerName: textParam(raw.managerName),
+    managerUnassigned: booleanParam(raw.managerUnassigned),
     candidateId: textParam(raw.candidateId),
     documentTypeCode: textParam(raw.documentTypeCode),
     citizenship: textParam(raw.citizenship),
@@ -161,6 +180,9 @@ export function parseReviewSearchParams(
 /** True when any server-side filter (besides status tab, cursor, drawer) is set. */
 export function hasActiveReviewFilters(filters: ReviewQueueFilters): boolean {
   return Boolean(
+    filters.currentStatus ??
+    filters.managerName ??
+    (filters.managerUnassigned ? "unassigned" : undefined) ??
     filters.candidateId ??
     filters.documentTypeCode ??
     filters.citizenship ??

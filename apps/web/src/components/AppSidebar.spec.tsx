@@ -14,7 +14,7 @@ describe("review navigation permissions", () => {
             active="/review-ig"
             onToggle={() => {}}
             onNavigate={() => {}}
-            profile={{ permissions } as MeResponseDto}
+            profile={{ permissions } as unknown as MeResponseDto}
           />,
         );
       const ru = render({ "20002": [] });
@@ -32,3 +32,33 @@ describe("review navigation permissions", () => {
     },
   );
 });
+
+it.each([false, true])(
+  "hides inaccessible and unfinished sections from reviewers (collapsed=%s)",
+  (collapsed) => {
+    const html = renderToStaticMarkup(
+      <AppSidebar
+        collapsed={collapsed}
+        active="/"
+        onToggle={() => {}}
+        onNavigate={() => {}}
+        profile={
+          {
+            permissions: { "20000": [], "20002": [] },
+          } as unknown as MeResponseDto
+        }
+      />,
+    );
+    expect(html).toContain("Дашборд");
+    expect(html).toContain("История");
+    for (const title of [
+      "Мои задачи",
+      "Работники",
+      "Оформление",
+      "Подписание",
+      "Участники",
+      "Настройки",
+    ])
+      expect(html).not.toContain(collapsed ? `title="${title}"` : `>${title}<`);
+  },
+);

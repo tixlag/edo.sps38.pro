@@ -16,6 +16,8 @@ export interface ReviewProfileFilters {
   projectCode?: string;
   candidateId?: string;
   managerCode1c?: string;
+  managerName?: string;
+  managerUnassigned?: boolean;
   mentorCode1c?: string;
 }
 
@@ -203,7 +205,10 @@ export function buildCandidateProfileWhere(
     and.push(
       filters.hasMentor
         ? {
-            OR: [{ mentorName: { not: null } }, { mentorCode1c: { not: null } }],
+            OR: [
+              { mentorName: { not: null } },
+              { mentorCode1c: { not: null } },
+            ],
           }
         : { mentorName: null, mentorCode1c: null },
     );
@@ -222,6 +227,18 @@ export function buildCandidateProfileWhere(
   if (projectCode) and.push({ projectCode });
   const candidateId = text(filters.candidateId);
   if (candidateId) and.push({ id: candidateId });
+  if (filters.managerName !== undefined) {
+    and.push(
+      { OR: [{ managerCode1c: null }, { managerCode1c: "" }] },
+      { managerName: filters.managerName },
+    );
+  }
+  if (filters.managerUnassigned === true) {
+    and.push(
+      { OR: [{ managerCode1c: null }, { managerCode1c: "" }] },
+      { OR: [{ managerName: null }, { managerName: "" }] },
+    );
+  }
   const managerCode1c = text(filters.managerCode1c);
   if (managerCode1c) and.push({ managerCode1c });
   const mentorCode1c = text(filters.mentorCode1c);
