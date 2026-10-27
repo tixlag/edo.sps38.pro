@@ -9,6 +9,7 @@ import {
   getListAnnotationCatalogSuggestionsQueryKey,
   useGetMe,
   useListAnnotationCatalogs,
+  useListDocumentTypes,
   useListAnnotations,
   useCreateAnnotationCatalog,
   useUpdateAnnotationCatalog,
@@ -177,6 +178,7 @@ function CatalogSettings() {
     [draft, setDraft] = useState<CreateAnnotationCatalogDto>(empty),
     [message, setMessage] = useState(""),
     [dirty, setDirty] = useState(false);
+  const docTypesQuery = useListDocumentTypes();
   const suggestions = useListAnnotationCatalogSuggestions(selected?.id ?? "", {
     query: {
       queryKey: getListAnnotationCatalogSuggestionsQueryKey(selected?.id ?? ""),
@@ -364,16 +366,23 @@ function CatalogSettings() {
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
-              Код типа документа
-              <input
+              Тип документа (из 1С)
+              <select
                 className={control}
-                value={draft.documentTypeCode}
                 disabled={!!selected}
-                maxLength={64}
-                onChange={(event) =>
-                  edit({ documentTypeCode: event.target.value })
-                }
-              />
+                value={draft.documentTypeCode}
+                onChange={(e) => edit({ documentTypeCode: e.target.value })}
+              >
+                <option value="">Выберите тип документа из 1С</option>
+                {docTypesQuery.data?.items.map((t) => (
+                  <option key={t.code} value={t.code}>
+                    {t.title} ({t.code})
+                  </option>
+                ))}
+                {!docTypesQuery.isLoading && docTypesQuery.data?.items.length === 0 && (
+                  <option disabled>Нет типов из 1С</option>
+                )}
+              </select>
             </label>
             <label className="flex flex-col gap-1 text-xs">
               Профиль документа
