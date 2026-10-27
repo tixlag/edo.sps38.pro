@@ -425,3 +425,118 @@ test("rejects crossed, out-of-bounds, nonrectangular and degenerate geometry", a
   ])
     await assert.rejects(cropLine(page, quad));
 });
+
+test("exports oriented segmentation regions and repeated stamps without inventing recognition text", async () => {
+  const { bytes, record } = await fixture();
+  record.payload.schema.sections = [
+    { key: "main", label: "Основной документ", ordinal: 0, repeatable: false },
+    { key: "stamps", label: "Штамп", ordinal: 1, repeatable: true },
+    {
+      key: "missing",
+      label: "Незагруженная страница",
+      ordinal: 2,
+      repeatable: false,
+    },
+  ];
+  record.payload.schema.fields[0].sectionKey = "main";
+  record.payload.schema.fields[0].kind = "TEXT";
+  record.payload.schema.fields.push(
+    {
+      key: "seal",
+      label: "Печать",
+      ordinal: 1,
+      sectionKey: "stamps",
+      kind: "STAMP",
+      multiline: false,
+    },
+    {
+      key: "missing_text",
+      label: "Текст",
+      ordinal: 2,
+      sectionKey: "missing",
+      kind: "TEXT",
+      multiline: true,
+    },
+  );
+  const region = (id, orientationDeg) => ({
+    id,
+    pageId: "page1",
+    shape: "POLYGON",
+    orientationDeg,
+    polygon: [0.05, 0.05, 0.9, 0.05, 0.9, 0.9, 0.05, 0.9],
+  });
+  record.payload.sections = [
+    {
+      id: "main",
+      sectionKey: "main",
+      availability: "PRESENT",
+      pageIds: ["page1"],
+    },
+    {
+      id: "stamp1",
+      sectionKey: "stamps",
+      availability: "PRESENT",
+      pageIds: ["page1"],
+    },
+    {
+      id: "stamp2",
+      sectionKey: "stamps",
+      availability: "PRESENT",
+      pageIds: ["page1"],
+    },
+    {
+      id: "missing",
+      sectionKey: "missing",
+      availability: "NOT_UPLOADED",
+      pageIds: [],
+    },
+  ];
+  record.payload.fields[0].instanceId = "main";
+  record.payload.fields[0].regions = [region("name-region", 0)];
+  record.payload.fields.push(
+    {
+      key: "seal",
+      instanceId: "stamp1",
+      disposition: "PRESENT",
+      lines: [],
+      regions: [region("seal1", 180)],
+    },
+    {
+      key: "seal",
+      instanceId: "stamp2",
+      disposition: "PRESENT",
+      lines: [],
+      regions: [region("seal2", 270)],
+    },
+  );
+  const dir = await mkdtemp(path.join(scratch, "dataset-v2-"));
+  try {
+    const result = await exportAccepted({
+      records: [record],
+      outputDir: dir,
+      readSource: async () => bytes,
+    });
+    assert.equal(result.lines, 2);
+    const regions = (await readFile(path.join(dir, "regions.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    assert.equal(regions.length, 3);
+    assert.deepEqual(
+      regions.map((r) => r.region.orientationDeg),
+      [0, 180, 270],
+    );
+    assert.deepEqual(
+      regions.slice(1).map((r) => r.field.instanceId),
+      ["stamp1", "stamp2"],
+    );
+    assert.ok(regions.every((r) => r.source.pagePath.startsWith("pages/")));
+    const snapshot = JSON.parse(
+      (await readFile(path.join(dir, "snapshots.jsonl"), "utf8")).trim(),
+    );
+    assert.equal(snapshot.formatVersion, 2);
+    assert.equal(snapshot.sections[3].availability, "NOT_UPLOADED");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

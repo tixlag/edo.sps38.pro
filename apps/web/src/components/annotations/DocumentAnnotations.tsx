@@ -1,10 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@edo/ui";
 import {
   getGetAnnotationSourcesQueryKey,
   getListAnnotationCatalogsQueryKey,
-  useGetAnnotationPreference,
-  useSetAnnotationPreference,
   useGetAnnotationSources,
   useListAnnotations,
   useListAnnotationCatalogs,
@@ -23,25 +21,6 @@ export function DocumentAnnotations({
   active?: boolean;
   allowClaim?: boolean;
 }) {
-  const preference = useGetAnnotationPreference();
-  const setting = useSetAnnotationPreference();
-  const [message, setMessage] = useState("");
-  const enabled = preference.data?.enabled === true;
-  const [opened, setOpened] = useState(false);
-  useEffect(() => {
-    if (enabled) setOpened(true);
-  }, [enabled]);
-  if (preference.isLoading)
-    return <p role="status">Загрузка настроек разметки…</p>;
-  if (preference.isError && !preference.data)
-    return (
-      <div role="alert">
-        Не удалось загрузить настройки.{" "}
-        <Button variant="outline" onClick={() => void preference.refetch()}>
-          Повторить
-        </Button>
-      </div>
-    );
   return (
     <section
       aria-label="Разметка документа"
@@ -55,53 +34,12 @@ export function DocumentAnnotations({
             и его отправка остаются в отдельной проверке.
           </p>
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
-          <input
-            type="checkbox"
-            className="accent-[var(--primary)]"
-            checked={enabled}
-            disabled={setting.isPending}
-            onChange={async (event) => {
-              const next = event.target.checked;
-              setMessage("");
-              try {
-                await setting.mutateAsync({ data: { enabled: next } });
-                await preference.refetch();
-              } catch {
-                setMessage(
-                  "Не удалось сохранить настройку. Повторите попытку.",
-                );
-              }
-            }}
-          />
-          Хочу премию
-        </label>
       </div>
-      {preference.isError && (
-        <p role="alert" className="text-sm">
-          Не удалось обновить настройку. Ваш черновик сохранён на экране.
-        </p>
-      )}
-      {message && (
-        <p role="alert" className="text-sm">
-          {message}
-        </p>
-      )}
-      {(enabled || opened) && (
-        <div hidden={!enabled} className={enabled ? "" : "!hidden"}>
-          <AnnotationContext
-            document={document}
-            active={active && enabled}
-            allowClaim={allowClaim}
-          />
-        </div>
-      )}
-      {!enabled && (
-        <p className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 text-sm">
-          Включите «Хочу премию», чтобы {allowClaim ? "взять" : "продолжить"}{" "}
-          разметку документа. Итог работы проверяет администратор.
-        </p>
-      )}
+      <AnnotationContext
+        document={document}
+        active={active}
+        allowClaim={allowClaim}
+      />
     </section>
   );
 }
@@ -151,13 +89,17 @@ function AnnotationContext({
     local && (!server || local.revision >= server.revision) ? local : server;
   const published =
     catalogs.data?.items.filter((item) => item.status === "PUBLISHED") ?? [];
+  const [catalogId, setCatalogId] = useState("");
+  const latest = published.filter(
+    (item) =>
+      !published.some(
+        (other) =>
+          other.profile === item.profile && other.version > item.version,
+      ),
+  );
   const catalog =
-    published
-      .filter((item) => item.profile === source.data?.profile)
-      .sort((a, b) => b.version - a.version)[0] ??
-    published
-      .filter((item) => item.profile === "OTHER")
-      .sort((a, b) => b.version - a.version)[0];
+    latest.find((c) => c.id === catalogId) ??
+    (latest.length === 1 ? latest[0] : undefined);
   if (annotation)
     return (
       <div className="flex min-h-0 flex-col gap-3">
@@ -217,10 +159,27 @@ function AnnotationContext({
           взять на актуальной версии документа.
         </p>
       )}
-      {allowClaim && source.data && !catalog && !catalogs.isLoading && (
+      {allowClaim && source.data && !latest.length && !catalogs.isLoading && (
         <p>
           Администратор ещё не опубликовал список полей для этого документа.
         </p>
+      )}
+      {allowClaim && latest.length > 1 && (
+        <label className="flex w-full flex-col gap-2 text-sm">
+          Вариант документа
+          <select
+            className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
+            value={catalog?.id ?? ""}
+            onChange={(e) => setCatalogId(e.target.value)}
+          >
+            <option value="">Выберите вариант по оригиналу</option>
+            {latest.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
       {allowClaim && catalog && (
         <>

@@ -1,6 +1,5 @@
 import {
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -11,6 +10,7 @@ import { DocumentAccessService } from "../documents/document-access.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import {
   AnnotationCatalogDto,
+  AnnotationSectionInstanceDto,
   AnnotationDisposition,
   AnnotationDto,
   AnnotationQueryDto,
@@ -27,6 +27,7 @@ import {
   AnnotationSourceService,
   SourceManifest,
 } from "./annotation-source.service";
+import { validateDataset } from "./annotation-dataset-validation";
 import { FieldAnswer, validateAnswers } from "./annotation-validation";
 import { transitionAnnotation } from "./annotation-lifecycle";
 const include = {
@@ -35,8 +36,14 @@ const include = {
       document: { include: { candidate: { select: { code1c: true } } } },
     },
   },
+  sections: { include: { pages: true } },
   fields: {
-    include: { lines: { orderBy: { order: "asc" as const } } },
+    include: {
+      lines: { orderBy: { order: "asc" as const } },
+      regions: {
+        include: { vertices: { orderBy: { ordinal: "asc" as const } } },
+      },
+    },
     orderBy: { key: "asc" as const },
   },
 };
@@ -46,6 +53,14 @@ const json = (value: unknown): Prisma.InputJsonValue =>
 function answers(row: Row): FieldAnswer[] {
   return row.fields.map((f) => ({
     key: f.key,
+    instanceId: f.instanceId,
+    regions: f.regions.map((r) => ({
+      id: r.clientId,
+      pageId: r.pageId,
+      shape: r.shape as "RECTANGLE" | "POLYGON",
+      orientationDeg: r.orientationDeg,
+      polygon: r.vertices.flatMap((v) => [v.x, v.y]),
+    })),
     disposition: f.disposition,
     lines: f.lines.map((l) => ({
       id: l.clientId,
@@ -157,55 +172,46 @@ export class AnnotationService {
             );
           return existing;
         }
-        const preference = await tx.annotationPreference.findUnique({
-          where: { actorId: principal.uuid },
-        });
-        if (!preference?.enabled)
-          throw new ForbiddenException("Enable annotation participation first");
         if (version.document.currentVersion !== dto.version)
           throw new ConflictException(
             "New annotation requires the current document version",
           );
         await this.sources.assertRetained(tx, manifest, principal);
-        const exact = await tx.annotationCatalog.findFirst({
-          where: {
-            status: "PUBLISHED",
-            family: {
-              documentTypeCode: manifest.documentTypeCode,
-              profile: manifest.profile,
-            },
-          },
-          orderBy: { version: "desc" },
-        });
         const catalog = await tx.annotationCatalog.findFirst({
           where: {
             id: dto.catalogId,
             status: "PUBLISHED",
-            family: {
-              documentTypeCode: manifest.documentTypeCode,
-              profile: exact ? manifest.profile : "OTHER",
-            },
+            family: { documentTypeCode: manifest.documentTypeCode },
           },
-          include: { family: true, fields: { orderBy: { ordinal: "asc" } } },
+          include: {
+            family: true,
+            sections: { orderBy: { ordinal: "asc" } },
+            fields: { orderBy: { ordinal: "asc" } },
+          },
         });
-        if (!catalog || (exact && exact.id !== catalog.id))
+        if (!catalog)
           throw new ConflictException(
-            "Published catalog does not match the current document type and profile",
+            "Список полей не соответствует типу документа",
           );
-        if (!exact) {
-          const latest = await tx.annotationCatalog.findFirst({
-            where: { status: "PUBLISHED", familyId: catalog.familyId },
-            orderBy: { version: "desc" },
-          });
-          if (latest?.id !== catalog.id)
-            throw new ConflictException("A newer catalog is published");
-        }
+        const latest = await tx.annotationCatalog.findFirst({
+          where: { familyId: catalog.familyId, status: "PUBLISHED" },
+          orderBy: { version: "desc" },
+        });
+        if (latest?.id !== catalog.id)
+          throw new ConflictException("Опубликована новая версия списка полей");
         const created = await tx.documentAnnotation.create({
           data: {
             versionId: version.id,
             catalogId: catalog.id,
             authorId: principal.uuid,
             schemaSnapshot: json(catalogDto(catalog)),
+            sections: {
+              create: catalog.sections.map((section) => ({
+                clientId: section.key,
+                sectionKey: section.key,
+                availability: "NOT_UPLOADED",
+              })),
+            },
             sourceSnapshot: json(manifest),
           },
           include,
@@ -235,6 +241,7 @@ export class AnnotationService {
     principal: AuthPrincipal,
     options: {
       fields?: FieldAnswer[];
+      sections?: AnnotationSectionInstanceDto[];
       note?: string;
       authorId?: string;
       correlationId?: string;
@@ -289,7 +296,26 @@ export class AnnotationService {
           schema.fields,
           manifest.pages,
           operation === "submit" || operation === "accept",
+          !!schema.sections?.length,
         );
+        const sectionInstances =
+          options.sections ??
+          row.sections.map((s) => ({
+            id: s.clientId,
+            sectionKey: s.sectionKey,
+            availability:
+              s.availability as AnnotationSectionInstanceDto["availability"],
+            pageIds: s.pages.map((p) => p.pageId),
+          }));
+        if (schema.sections?.length)
+          validateDataset(
+            fields,
+            schema.fields,
+            schema.sections,
+            sectionInstances,
+            manifest.pages,
+            operation === "submit" || operation === "accept",
+          );
         if (operation === "changes" && !options.note?.trim())
           throw new ConflictException("Explain the requested changes");
         if (operation === "reassign") {
@@ -322,11 +348,45 @@ export class AnnotationService {
           await tx.annotationFieldAnswer.deleteMany({
             where: { annotationId: id },
           });
+          await tx.annotationSectionInstance.deleteMany({
+            where: { annotationId: id },
+          });
+          for (const section of sectionInstances)
+            await tx.annotationSectionInstance.create({
+              data: {
+                annotationId: id,
+                clientId: section.id,
+                sectionKey: section.sectionKey,
+                availability: section.availability,
+                pages: {
+                  create: section.pageIds.map((pageId) => ({ pageId })),
+                },
+              },
+            });
           for (const field of fields)
             await tx.annotationFieldAnswer.create({
               data: {
                 annotationId: id,
                 key: field.key,
+                instanceId: field.instanceId ?? "main",
+                regions: {
+                  create: (field.regions ?? []).map((r) => ({
+                    clientId: r.id,
+                    pageId: r.pageId,
+                    shape: r.shape,
+                    orientationDeg: r.orientationDeg,
+                    vertices: {
+                      create: Array.from(
+                        { length: r.polygon.length / 2 },
+                        (_, ordinal) => ({
+                          ordinal,
+                          x: r.polygon[ordinal * 2],
+                          y: r.polygon[ordinal * 2 + 1],
+                        }),
+                      ),
+                    },
+                  })),
+                },
                 disposition: field.disposition,
                 lines: {
                   create: field.lines.map((l) => ({
@@ -373,6 +433,12 @@ export class AnnotationService {
                 schema,
                 sources: manifest,
                 fields: answers(next),
+                sections: next.sections.map((s) => ({
+                  id: s.clientId,
+                  sectionKey: s.sectionKey,
+                  availability: s.availability,
+                  pageIds: s.pages.map((p) => p.pageId),
+                })),
               }),
             },
           });
@@ -427,6 +493,13 @@ export class AnnotationService {
         row.sourceSnapshot as unknown as SourceManifest,
         principal,
       ),
+      sections: row.sections.map((s) => ({
+        id: s.clientId,
+        sectionKey: s.sectionKey,
+        availability:
+          s.availability as AnnotationSectionInstanceDto["availability"],
+        pageIds: s.pages.map((p) => p.pageId),
+      })),
       fields: answers(row).map((f) => ({
         ...f,
         disposition: f.disposition as AnnotationDisposition,

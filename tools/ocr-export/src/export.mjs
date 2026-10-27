@@ -163,49 +163,122 @@ function collect(record) {
   )
     fail("INVALID_SNAPSHOT");
   const tasks = [],
+    regions = [],
     seen = new Set();
+  const dataset = !!schema.sections?.length;
+  const instances = record.payload.sections ?? [];
+  if (
+    dataset &&
+    (!instances.some((s) => s.availability === "PRESENT") ||
+      schema.sections.some(
+        (s) => !instances.some((i) => i.sectionKey === s.key),
+      ))
+  )
+    fail("INCOMPLETE_SECTIONS");
   for (const definition of [...schema.fields].sort(
     (a, b) => a.ordinal - b.ordinal,
   )) {
-    const answer = fields.find((f) => f.key === definition.key);
-    if (
-      !answer ||
-      !["PRESENT", "NOT_PRESENT", "UNREADABLE"].includes(answer.disposition)
-    )
-      fail("INCOMPLETE_SNAPSHOT");
-    if (answer.disposition !== "PRESENT") {
-      if (answer.lines?.length) fail("INVALID_DISPOSITION");
-      continue;
-    }
-    if (
-      !answer.lines?.length ||
-      (!definition.multiline && answer.lines.length > 1)
-    )
-      fail("INCOMPLETE_LINES");
-    for (const line of [...answer.lines].sort((a, b) => a.order - b.order)) {
+    const matches = dataset
+      ? instances.filter(
+          (i) =>
+            i.sectionKey === (definition.sectionKey ?? "main") &&
+            i.availability === "PRESENT",
+        )
+      : [null];
+    for (const instance of matches) {
+      const answer = fields.find(
+        (f) =>
+          f.key === definition.key &&
+          (!dataset || f.instanceId === instance.id),
+      );
       if (
-        typeof line.text !== "string" ||
-        !line.text.trim() ||
-        line.text.length > 2000 ||
-        /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(line.text)
+        !answer ||
+        !["PRESENT", "NOT_PRESENT", "UNREADABLE"].includes(answer.disposition)
       )
-        fail("INVALID_TRANSCRIPTION");
-      if (seen.has(line.id) || !Number.isInteger(line.order) || line.order < 0)
-        fail("INVALID_LINE_ORDER");
-      seen.add(line.id);
-      const source = sources.pages.find((p) => p.id === line.pageId);
+        fail("INCOMPLETE_SNAPSHOT");
+      if (answer.disposition === "NOT_PRESENT") {
+        if (answer.lines?.length || answer.regions?.length)
+          fail("INVALID_DISPOSITION");
+        continue;
+      }
+      if (dataset) {
+        if (!answer.regions?.length) fail("INCOMPLETE_REGIONS");
+        for (const region of answer.regions) {
+          const source = sources.pages.find((p) => p.id === region.pageId);
+          if (
+            !source ||
+            !instance.pageIds?.includes(region.pageId) ||
+            source.frame !== "UPRIGHT_PIXELS_V1" ||
+            source.renderDpi !== 200 ||
+            !Array.isArray(region.polygon) ||
+            region.polygon.length < 6 ||
+            region.polygon.length > 128 ||
+            region.polygon.length % 2 ||
+            region.polygon.some((n) => !Number.isFinite(n) || n < 0 || n > 1) ||
+            !Number.isFinite(region.orientationDeg) ||
+            region.orientationDeg < 0 ||
+            region.orientationDeg >= 360 ||
+            !["RECTANGLE", "POLYGON"].includes(region.shape)
+          )
+            fail("INVALID_REGION");
+          regions.push({
+            region,
+            source,
+            definition,
+            instanceId: instance.id,
+            disposition: answer.disposition,
+          });
+        }
+      }
+      if (answer.disposition === "UNREADABLE") {
+        if (answer.lines?.length) fail("INVALID_DISPOSITION");
+        continue;
+      }
+      if (definition.kind && definition.kind !== "TEXT") {
+        if (answer.lines?.length) fail("INVALID_DISPOSITION");
+        continue;
+      }
       if (
-        !source ||
-        source.frame !== "UPRIGHT_PIXELS_V1" ||
-        source.renderDpi !== 200 ||
-        !/^[a-f0-9]{64}$/u.test(source.sha256)
+        !answer.lines?.length ||
+        (!definition.multiline && answer.lines.length > 1)
       )
-        fail("INVALID_SOURCE_FRAME");
-      rectangle(line.quad, source.width, source.height);
-      tasks.push({ line, source, definition, index: tasks.length });
+        fail("INCOMPLETE_LINES");
+      for (const line of [...answer.lines].sort((a, b) => a.order - b.order)) {
+        if (
+          typeof line.text !== "string" ||
+          !line.text.trim() ||
+          line.text.length > 2000 ||
+          /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(line.text)
+        )
+          fail("INVALID_TRANSCRIPTION");
+        if (
+          seen.has(line.id) ||
+          !Number.isInteger(line.order) ||
+          line.order < 0
+        )
+          fail("INVALID_LINE_ORDER");
+        seen.add(line.id);
+        const source = sources.pages.find((p) => p.id === line.pageId);
+        if (
+          !source ||
+          source.frame !== "UPRIGHT_PIXELS_V1" ||
+          source.renderDpi !== 200 ||
+          !/^[a-f0-9]{64}$/u.test(source.sha256) ||
+          (dataset && !instance.pageIds.includes(source.id))
+        )
+          fail("INVALID_SOURCE_FRAME");
+        rectangle(line.quad, source.width, source.height);
+        tasks.push({
+          line,
+          source,
+          definition,
+          instanceId: instance?.id,
+          index: tasks.length,
+        });
+      }
     }
   }
-  return { annotation, schema, sources, tasks };
+  return { annotation, schema, sources, tasks, regions, dataset };
 }
 
 /** readSource is injected by the operator CLI and uses existing private StorageService. */
@@ -220,6 +293,7 @@ export async function exportAccepted({
   const target = path.resolve(outputDir);
   const assertUnpublished = async () => {
     for (const name of [
+      "regions.jsonl",
       "manifest.jsonl",
       "snapshots.jsonl",
       "labels.txt",
@@ -235,6 +309,7 @@ export async function exportAccepted({
     }
   };
   await assertUnpublished();
+  const regionManifests = [];
   const manifests = [],
     labels = [],
     snapshots = [];
@@ -249,7 +324,8 @@ export async function exportAccepted({
     for (const record of [...records].sort((a, b) =>
       a.id.localeCompare(b.id),
     )) {
-      const { annotation, schema, sources, tasks } = collect(record);
+      const { annotation, schema, sources, tasks, regions, dataset } =
+        collect(record);
       // Every pinned original must still exist, even if every field was marked
       // absent/unreadable and no training crop will be generated from that file.
       const verifiedFiles = new Set();
@@ -266,7 +342,7 @@ export async function exportAccepted({
       }
       snapshots.push(
         JSON.stringify({
-          formatVersion: 1,
+          formatVersion: dataset ? 2 : 1,
           renderProfile: RENDER_PROFILE,
           snapshot: {
             id: record.id,
@@ -282,15 +358,19 @@ export async function exportAccepted({
             ),
           },
           fields: record.payload.fields,
+          ...(dataset ? { sections: record.payload.sections } : {}),
         }),
       );
       const recordKey = sha256(
         Buffer.from(`${record.id}:${record.revision}`),
       ).slice(0, 24);
       const rows = new Array(tasks.length);
-      for (const pageId of new Set(tasks.map((t) => t.source.id))) {
+      for (const pageId of new Set([
+        ...tasks.map((t) => t.source.id),
+        ...regions.map((r) => r.source.id),
+      ])) {
         const pageTasks = tasks.filter((t) => t.source.id === pageId),
-          source = pageTasks[0].source;
+          source = sources.pages.find((p) => p.id === pageId);
         const bytes = await readSource(source, record);
         if (
           !Buffer.isBuffer(bytes) ||
@@ -320,13 +400,52 @@ export async function exportAccepted({
             mode: 0o700,
           });
         }
+        for (const item of regions.filter((r) => r.source.id === pageId)) {
+          regionManifests.push(
+            JSON.stringify({
+              formatVersion: 2,
+              snapshot: { id: record.id, revision: record.revision },
+              annotation,
+              schema: {
+                id: schema.id,
+                version: schema.version,
+                documentTypeCode: schema.documentTypeCode,
+                variantCode: schema.profile,
+              },
+              field: {
+                key: item.definition.key,
+                label: item.definition.label,
+                kind: item.definition.kind ?? "TEXT",
+                sectionKey: item.definition.sectionKey,
+                instanceId: item.instanceId,
+              },
+              disposition: item.disposition,
+              source: {
+                fileId: source.fileId,
+                pageNumber: source.pageNumber,
+                sha256: source.sha256,
+                width: page.width,
+                height: page.height,
+                frame: source.frame,
+                pagePath,
+                pageSha256: sha256(page.png),
+              },
+              region: item.region,
+              splitGroup: annotation.candidateCode1c
+                ? `person:${annotation.candidateCode1c}`
+                : annotation.candidateId
+                  ? `candidate:${annotation.candidateId}`
+                  : `document:${annotation.documentId}`,
+            }),
+          );
+        }
         for (const task of pageTasks) {
           const crop = await cropLine(page, task.line.quad);
           const cropPath = `lines/${recordKey}-${String(task.index).padStart(4, "0")}.png`;
           if (!dryRun)
             await writeFile(path.join(target, cropPath), crop, { mode: 0o600 });
           rows[task.index] = {
-            formatVersion: 1,
+            formatVersion: dataset ? 2 : 1,
             renderProfile: RENDER_PROFILE,
             snapshot: { id: record.id, revision: record.revision },
             annotation,
@@ -336,7 +455,17 @@ export async function exportAccepted({
               documentTypeCode: schema.documentTypeCode,
               profile: schema.profile,
             },
-            field: { key: task.definition.key, label: task.definition.label },
+            field: {
+              key: task.definition.key,
+              label: task.definition.label,
+              ...(dataset
+                ? {
+                    kind: task.definition.kind ?? "TEXT",
+                    sectionKey: task.definition.sectionKey,
+                    instanceId: task.instanceId,
+                  }
+                : {}),
+            },
             source: {
               fileId: source.fileId,
               pageNumber: source.pageNumber,
@@ -375,6 +504,15 @@ export async function exportAccepted({
       renderProfile: RENDER_PROFILE,
     };
     if (!dryRun) {
+      await writeFile(
+        path.join(target, "regions.jsonl.partial"),
+        regionManifests.length ? `${regionManifests.join("\n")}\n` : "",
+        { mode: 0o600 },
+      );
+      await rename(
+        path.join(target, "regions.jsonl.partial"),
+        path.join(target, "regions.jsonl"),
+      );
       // Publication marker is written last. A failed run never claims a complete export.
       await writeFile(
         path.join(target, "labels.txt.partial"),

@@ -20,6 +20,7 @@ import {
 import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import type { PDFDocumentLoadingTask, RenderTask } from "pdfjs-dist";
 import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
+import { formatDateRu, isDateFieldName } from "../lib/date-format";
 import { OCR_FIELD_LABELS } from "./DocumentOcrDetails";
 
 import {
@@ -516,6 +517,13 @@ export function DocumentPreview({
                       DOCUMENT_FIELD_LABELS[field.name] ??
                       field.label ??
                       field.name;
+                    const ocrText = region.text ?? field.originalValue ?? "Не распознано";
+                    const dateField =
+                      ("kind" in field && field.kind === "date") ||
+                      isDateFieldName(field.name);
+                    const displayedOcrText = dateField
+                      ? formatDateRu(ocrText)
+                      : ocrText;
                     const hover = () => {
                       setLocalHoveredRegion(region.id);
                       if (linked) onHoverRegion?.(field.name, region);
@@ -534,7 +542,7 @@ export function DocumentPreview({
                         aria-pressed={
                           linked ? field.name === selectedField : undefined
                         }
-                        aria-label={`${label}. OCR: ${region.text ?? field.originalValue ?? "Не распознано"}`}
+                        aria-label={`${label}. OCR: ${displayedOcrText}`}
                         x={region.x * 1000}
                         y={region.y * 1000}
                         width={region.width * 1000}
@@ -574,7 +582,7 @@ export function DocumentPreview({
                         }}
                       >
                         <title>
-                          {label}: {region.text ?? field.originalValue ?? "—"}
+                          {label}: {dateField ? formatDateRu(ocrText) : ocrText}
                         </title>
                       </rect>
                     );
@@ -596,9 +604,14 @@ export function DocumentPreview({
               inspected.field.name}
           </b>{" "}
           · OCR: «
-          {inspected.region.text ??
-            inspected.field.originalValue ??
-            "Не распознано"}
+          {("kind" in inspected.field && inspected.field.kind === "date") ||
+          isDateFieldName(inspected.field.name)
+            ? formatDateRu(
+                inspected.region.text ?? inspected.field.originalValue,
+              )
+            : inspected.region.text ??
+              inspected.field.originalValue ??
+              "Не распознано"}
           »
         </p>
       )}

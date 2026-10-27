@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Optional,
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -15,16 +16,22 @@ import {
   AnnotationCatalogDto,
   AnnotationCatalogQueryDto,
   AnnotationCatalogSuggestionDto,
-  AnnotationProfile,
   CatalogStatus,
   CreateAnnotationCatalogDto,
   SuggestionStatus,
   UpdateAnnotationCatalogDto,
 } from "./annotation.dto";
-import { suggestAnnotationFields } from "./annotation-catalog-defaults";
+import { ANNOTATION_PRESETS, annotationPreset } from "./annotation-presets";
+import {
+  annotationKey,
+  validateSections,
+} from "./annotation-dataset-validation";
+import { DocumentCatalogService } from "../documents/document-catalog.service";
+import { AnnotationFieldKind } from "./annotation.dto";
 import { validateCatalogFields } from "./annotation-validation";
 const include = {
   family: true,
+  sections: { orderBy: { ordinal: "asc" as const } },
   fields: { orderBy: { ordinal: "asc" as const } },
 };
 type CatalogRow = Prisma.AnnotationCatalogGetPayload<{
@@ -43,12 +50,15 @@ export function catalogDto(row: CatalogRow): AnnotationCatalogDto {
   return {
     id: row.id,
     documentTypeCode: row.family.documentTypeCode,
-    profile: row.family.profile as AnnotationProfile,
+    profile: row.family.profile,
     title: row.title,
     version: row.version,
     status: row.status as CatalogStatus,
     revision: row.revision,
+    sections: row.sections ?? [],
     fields: row.fields.map((f) => ({
+      sectionKey: f.sectionKey,
+      kind: f.kind as AnnotationFieldKind,
       key: f.key,
       label: f.label,
       ordinal: f.ordinal,
@@ -62,6 +72,7 @@ export class AnnotationCatalogService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Optional() private readonly documentCatalog?: DocumentCatalogService,
   ) {}
   async list(query: AnnotationCatalogQueryDto, principal: AuthPrincipal) {
     const items = await this.prisma.annotationCatalog.findMany({
@@ -84,8 +95,25 @@ export class AnnotationCatalogService {
     dto: CreateAnnotationCatalogDto,
     principal: AuthPrincipal,
     correlationId?: string,
+    initialize = false,
   ) {
+    requireAnnotationAdmin(principal);
+    if (
+      !(await this.prisma.documentType.findUnique({
+        where: { code: dto.documentTypeCode },
+      }))
+    )
+      throw new NotFoundException("Тип документа не найден");
+    const sections = dto.sections ? validateSections(dto.sections) : [];
     const fields = validateCatalogFields(dto.fields);
+    if (
+      sections.length &&
+      fields.some(
+        (f) => !sections.some((s) => s.key === (f.sectionKey ?? "main")),
+      )
+    )
+      throw new ConflictException("Выберите раздел для каждого поля");
+    const profile = dto.profile || annotationKey(dto.title, new Set());
     return this.prisma.$transaction(
       async (tx) => {
         requireAnnotationAdmin(principal);
@@ -93,16 +121,21 @@ export class AnnotationCatalogService {
           where: {
             documentTypeCode_profile: {
               documentTypeCode: dto.documentTypeCode,
-              profile: dto.profile,
+              profile,
             },
           },
           create: {
             documentTypeCode: dto.documentTypeCode,
-            profile: dto.profile,
+            profile,
           },
           update: {},
         });
         await tx.$queryRaw`SELECT id FROM annotation_catalog_families WHERE id = ${family.id} FOR UPDATE`;
+        if (
+          initialize &&
+          (await tx.annotationCatalog.count({ where: { familyId: family.id } }))
+        )
+          throw new ConflictException("Список уже настроен");
         if (
           await tx.annotationCatalog.findFirst({
             where: { familyId: family.id, status: "DRAFT" },
@@ -118,7 +151,15 @@ export class AnnotationCatalogService {
             familyId: family.id,
             version: (max._max.version ?? 0) + 1,
             title: dto.title,
+            ...(initialize
+              ? {
+                  status: "PUBLISHED",
+                  draftSlot: null,
+                  publishedAt: new Date(),
+                }
+              : {}),
             fields: { create: fields },
+            sections: { create: sections },
           },
           include,
         });
@@ -154,6 +195,16 @@ export class AnnotationCatalogService {
       if (row.status !== "DRAFT" || row.revision !== revision)
         throw new ConflictException("Catalog is published or revision changed");
       const fields = dto ? validateCatalogFields(dto.fields) : row.fields;
+      const sections = dto?.sections
+        ? validateSections(dto.sections)
+        : (row.sections ?? []);
+      if (
+        sections.length &&
+        fields.some(
+          (f) => !sections.some((s) => s.key === (f.sectionKey ?? "main")),
+        )
+      )
+        throw new ConflictException("Выберите раздел для каждого поля");
       if (publish) validateCatalogFields(fields);
       // A CAS protects both publication and replacement of relational field rows.
       const result = await tx.annotationCatalog.updateMany({
@@ -182,12 +233,21 @@ export class AnnotationCatalogService {
         return { deleted: true };
       }
       if (dto) {
+        await tx.annotationCatalogSection.deleteMany({
+          where: { catalogId: id },
+        });
+        if (sections.length)
+          await tx.annotationCatalogSection.createMany({
+            data: sections.map((s) => ({ ...s, catalogId: id })),
+          });
         await tx.annotationCatalogField.deleteMany({
           where: { catalogId: id },
         });
         await tx.annotationCatalogField.createMany({
           data: fields.map((f) => ({
             catalogId: id,
+            sectionKey: f.sectionKey ?? "main",
+            kind: f.kind ?? "TEXT",
             key: f.key,
             label: f.label,
             ordinal: f.ordinal,
@@ -212,14 +272,99 @@ export class AnnotationCatalogService {
       return catalogDto(next);
     });
   }
-  async defaults(documentTypeCode: string, principal: AuthPrincipal) {
+  async defaults(
+    documentTypeCode: string,
+    principal: AuthPrincipal,
+    profile?: string,
+  ) {
     requireAnnotationAdmin(principal);
     const type = await this.prisma.documentType.findUnique({
       where: { code: documentTypeCode },
-      include: { definitions: { orderBy: { ordinal: "asc" } } },
     });
-    if (!type) throw new NotFoundException("Document type not found");
-    return { fields: suggestAnnotationFields(type.definitions) };
+    if (!type) throw new NotFoundException("Тип документа не найден");
+    const preset = annotationPreset(documentTypeCode, profile);
+    return {
+      fields: preset?.fields ?? [],
+      sections: preset?.sections ?? [
+        {
+          key: "main",
+          label: "Основной документ",
+          ordinal: 0,
+          repeatable: false,
+        },
+      ],
+      title: preset?.title ?? type.title,
+      profile: preset?.profile ?? "",
+    };
+  }
+  async documentTypes(principal: AuthPrincipal, refresh = false) {
+    requireAnnotationAdmin(principal);
+    const result =
+      refresh && this.documentCatalog
+        ? await this.documentCatalog.refreshForAnnotations()
+        : { stale: false };
+    if (refresh) await this.bootstrap(principal);
+    const items = await this.prisma.documentType.findMany({
+      where: { catalogSyncedAt: { not: null } },
+      include: { definitions: true },
+      orderBy: { title: "asc" },
+    });
+    const dates = items.map((t) => t.catalogSyncedAt?.getTime() ?? 0);
+    return {
+      items: items.map((t) => ({
+        code: t.code,
+        title: t.title.trim(),
+        businessFields: t.definitions.map((f) => f.name),
+      })),
+      syncedAt: Math.max(0, ...dates)
+        ? new Date(Math.max(...dates)).toISOString()
+        : null,
+      stale: result.stale || !items.length,
+    };
+  }
+  async bootstrap(principal: AuthPrincipal) {
+    requireAnnotationAdmin(principal);
+    const types = await this.prisma.documentType.findMany({
+      where: { catalogSyncedAt: { not: null } },
+      select: { code: true },
+    });
+    const available = new Set(types.map((t) => t.code));
+    let created = 0,
+      skipped = 0;
+    for (const preset of ANNOTATION_PRESETS) {
+      if (!available.has(preset.documentTypeCode)) {
+        skipped++;
+        continue;
+      }
+      const existing = await this.prisma.annotationCatalogFamily.findUnique({
+        where: {
+          documentTypeCode_profile: {
+            documentTypeCode: preset.documentTypeCode,
+            profile: preset.profile,
+          },
+        },
+        include: { catalogs: true },
+      });
+      if (existing?.catalogs.length) {
+        skipped++;
+        continue;
+      }
+      try {
+        await this.create(preset, principal, undefined, true);
+        created++;
+      } catch (error) {
+        if (
+          error instanceof ConflictException ||
+          (error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === "P2002")
+        ) {
+          skipped++;
+          continue;
+        }
+        throw error;
+      }
+    }
+    return { created, skipped };
   }
   async suggestions(id: string, principal: AuthPrincipal) {
     const catalog = await this.prisma.annotationCatalog.findUnique({
@@ -300,6 +445,7 @@ export class AnnotationCatalogService {
             key: row.key,
             catalog: {
               familyId: row.catalog.familyId,
+              status: "PUBLISHED",
               version: { gt: row.catalog.version },
             },
           },

@@ -7,6 +7,7 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Length,
@@ -42,8 +43,71 @@ export enum SuggestionStatus {
   APPLIED = "APPLIED",
   DISMISSED = "DISMISSED",
 }
-export class AnnotationCatalogFieldDto {
+export enum AnnotationFieldKind {
+  TEXT = "TEXT",
+  PHOTO = "PHOTO",
+  SIGNATURE = "SIGNATURE",
+  STAMP = "STAMP",
+  CODE = "CODE",
+}
+export class AnnotationCatalogSectionDto {
   @ApiProperty() @IsString() @Length(1, 64) key!: string;
+  @ApiProperty() @IsString() @Length(1, 255) label!: string;
+  @ApiProperty() @IsInt() @Min(0) ordinal!: number;
+  @ApiProperty() @IsBoolean() repeatable!: boolean;
+}
+export class AnnotationSectionInstanceDto {
+  @ApiProperty() @IsString() @Length(1, 64) id!: string;
+  @ApiProperty() @IsString() @Length(1, 64) sectionKey!: string;
+  @ApiProperty({ enum: ["PRESENT", "NOT_UPLOADED", "NOT_PRESENT"] })
+  @IsEnum({
+    PRESENT: "PRESENT",
+    NOT_UPLOADED: "NOT_UPLOADED",
+    NOT_PRESENT: "NOT_PRESENT",
+  })
+  availability!: "PRESENT" | "NOT_UPLOADED" | "NOT_PRESENT";
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  pageIds!: string[];
+}
+export class AnnotationRegionDto {
+  @ApiProperty() @IsString() @Length(1, 64) id!: string;
+  @ApiProperty() @IsString() @Length(1, 96) pageId!: string;
+  @ApiProperty({ enum: ["RECTANGLE", "POLYGON"] })
+  @IsEnum({ RECTANGLE: "RECTANGLE", POLYGON: "POLYGON" })
+  shape!: "RECTANGLE" | "POLYGON";
+  @ApiProperty({
+    minimum: 0,
+    maximum: 360,
+    description:
+      "Clockwise rotation; 0 means top of source image. 180 preserves opposite reading direction.",
+  })
+  @IsNumber()
+  @Min(0)
+  @Max(359.999999)
+  orientationDeg!: number;
+  @ApiProperty({ type: [Number], minItems: 6, maxItems: 128 })
+  @IsArray()
+  @ArrayMinSize(6)
+  @ArrayMaxSize(128)
+  polygon!: number[];
+}
+export class AnnotationCatalogFieldDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  sectionKey?: string;
+  @ApiPropertyOptional({
+    enum: AnnotationFieldKind,
+    enumName: "AnnotationFieldKind",
+  })
+  @IsOptional()
+  @IsEnum(AnnotationFieldKind)
+  kind?: AnnotationFieldKind;
+  @ApiProperty() @IsString() @Length(0, 64) key!: string;
   @ApiProperty() @IsString() @Length(1, 255) label!: string;
   @ApiProperty({ minimum: 0, type: Number }) @IsInt() @Min(0) ordinal!: number;
   @ApiProperty() @IsBoolean() multiline!: boolean;
@@ -55,9 +119,19 @@ export class AnnotationCatalogFieldDto {
 }
 export class CreateAnnotationCatalogDto {
   @ApiProperty() @IsString() @Length(1, 64) documentTypeCode!: string;
-  @ApiProperty({ enum: AnnotationProfile, enumName: "AnnotationProfile" })
-  @IsEnum(AnnotationProfile)
-  profile!: AnnotationProfile;
+  @ApiProperty({
+    description: "Stable document variant code, independent of citizenship",
+  })
+  @IsString()
+  @Length(0, 64)
+  profile!: string;
+  @ApiPropertyOptional({ type: [AnnotationCatalogSectionDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => AnnotationCatalogSectionDto)
+  sections?: AnnotationCatalogSectionDto[];
   @ApiProperty() @IsString() @Length(1, 255) title!: string;
   @ApiProperty({ type: [AnnotationCatalogFieldDto] })
   @IsArray()
@@ -71,6 +145,13 @@ export class AnnotationRevisionDto {
   @ApiProperty({ minimum: 0, type: Number }) @IsInt() @Min(0) revision!: number;
 }
 export class UpdateAnnotationCatalogDto extends AnnotationRevisionDto {
+  @ApiPropertyOptional({ type: [AnnotationCatalogSectionDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => AnnotationCatalogSectionDto)
+  sections?: AnnotationCatalogSectionDto[];
   @ApiProperty() @IsString() @Length(1, 255) title!: string;
   @ApiProperty({ type: [AnnotationCatalogFieldDto] })
   @IsArray()
@@ -96,13 +177,11 @@ export class AnnotationCatalogQueryDto {
   @IsString()
   @Length(1, 64)
   documentTypeCode?: string;
-  @ApiPropertyOptional({
-    enum: AnnotationProfile,
-    enumName: "AnnotationProfile",
-  })
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsEnum(AnnotationProfile)
-  profile?: AnnotationProfile;
+  @IsString()
+  @Length(1, 64)
+  profile?: string;
 }
 export class AnnotationPageDto {
   @ApiProperty() id!: string;
@@ -152,6 +231,18 @@ export class AnnotationLineDto {
   quad!: number[];
 }
 export class AnnotationFieldAnswerDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  instanceId?: string;
+  @ApiPropertyOptional({ type: [AnnotationRegionDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => AnnotationRegionDto)
+  regions?: AnnotationRegionDto[];
   @ApiProperty() @IsString() @Length(1, 64) key!: string;
   @ApiProperty({
     enum: AnnotationDisposition,
@@ -167,6 +258,13 @@ export class AnnotationFieldAnswerDto {
   lines!: AnnotationLineDto[];
 }
 export class SaveAnnotationDto extends AnnotationRevisionDto {
+  @ApiPropertyOptional({ type: [AnnotationSectionInstanceDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => AnnotationSectionInstanceDto)
+  sections?: AnnotationSectionInstanceDto[];
   @ApiProperty({ type: [AnnotationFieldAnswerDto] })
   @IsArray()
   @ArrayMaxSize(200)
@@ -187,6 +285,8 @@ export class ClaimAnnotationDto {
   sourceKind?: AnnotationSourceKind;
 }
 export class AnnotationDto {
+  @ApiPropertyOptional({ type: [AnnotationSectionInstanceDto] })
+  sections?: AnnotationSectionInstanceDto[];
   @ApiProperty() id!: string;
   @ApiProperty() documentId!: string;
   @ApiProperty() versionId!: string;
@@ -259,6 +359,26 @@ export class ResolveAnnotationCatalogSuggestionDto {
 }
 
 export class AnnotationCatalogDefaultsDto {
+  @ApiPropertyOptional({ type: [AnnotationCatalogSectionDto] })
+  sections?: AnnotationCatalogSectionDto[];
+  @ApiPropertyOptional() title?: string;
+  @ApiPropertyOptional() profile?: string;
   @ApiProperty({ type: [AnnotationCatalogFieldDto] })
   fields!: AnnotationCatalogFieldDto[];
+}
+
+export class AnnotationDocumentTypeDto {
+  @ApiProperty() code!: string;
+  @ApiProperty() title!: string;
+  @ApiProperty({ type: [String] }) businessFields!: string[];
+}
+export class AnnotationDocumentTypesDto {
+  @ApiProperty({ type: [AnnotationDocumentTypeDto] })
+  items!: AnnotationDocumentTypeDto[];
+  @ApiProperty({ type: String, nullable: true }) syncedAt!: string | null;
+  @ApiProperty() stale!: boolean;
+}
+export class AnnotationBootstrapDto {
+  @ApiProperty() created!: number;
+  @ApiProperty() skipped!: number;
 }

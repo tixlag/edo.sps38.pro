@@ -18,6 +18,7 @@ import {
   type AuditLink,
   type AuditLogItem,
 } from "../lib/audit-types";
+import { formatDateTimeRu } from "../lib/date-format";
 
 const PAGE_LIMIT = 50;
 
@@ -375,7 +376,7 @@ function AuditLogList({
                         <td
                           className={`${TD} whitespace-nowrap text-[var(--muted-foreground)]`}
                         >
-                          {new Date(item.createdAt).toLocaleString("ru-RU")}
+                          {formatDateTimeRu(item.createdAt)}
                         </td>
                         <td className={TD}>
                           {item.actorName ?? item.actorId ?? "—"}

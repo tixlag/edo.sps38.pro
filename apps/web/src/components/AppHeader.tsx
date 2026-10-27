@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Bell, Search } from 'lucide-react';
+import { formatDateRu } from '../lib/date-format';
 import type { MeResponseDto } from '@edo/api-client';
 import { profileAvatar, profileLabel, profileInitials, profileShortName } from '../lib/profile';
 
@@ -45,7 +46,9 @@ export function AppHeader({ crumb, profile }: { crumb: string; profile?: MeRespo
           {locationLabel}
         </span>
         <span className="hidden rounded-[10px] bg-[var(--muted)] px-[14px] py-[10px] text-[13px] md:inline">
-          {new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date())}
+          {formatDateRu(
+            `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`,
+          )}
         </span>
         <button
           aria-label="Поиск"

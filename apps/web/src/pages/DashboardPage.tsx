@@ -21,6 +21,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { formatDateTimeRu } from "../lib/date-format";
 
 export const KPI_META: Record<
   string,
@@ -434,7 +435,7 @@ export function DashboardPage() {
                       <ActivityItem
                         key={`${item.time}-${index}`}
                         {...item}
-                        time={new Date(item.time).toLocaleString("ru-RU")}
+                        time={formatDateTimeRu(item.time)}
                       />
                     ))}
                   </div>
