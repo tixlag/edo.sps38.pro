@@ -878,9 +878,6 @@ export function ReviewDocumentPage({
   const viewedStatus = version.data
     ? (VERSION_STATUS_LABEL[version.data.status] ?? version.data.status)
     : "";
-  const candidateSurname = info.data?.candidate?.fullName
-    ?.trim()
-    .split(/\s+/u)[0];
   const decidedAt = version.data?.approvedAt
     ? formatDateTimeRu(version.data.approvedAt)
     : null;
@@ -894,7 +891,7 @@ export function ReviewDocumentPage({
         {readOnly ? "← История" : "← Очередь проверки"}
       </Link>
       <PageHeader
-        title={candidateSurname || info.data?.title || "Проверка документа"}
+        title={info.data?.candidate?.fullName?.trim() || info.data?.title || "Проверка документа"}
         subtitle={
           info.data ? `${info.data.title} · Версия ${number || "—"}` : undefined
         }
