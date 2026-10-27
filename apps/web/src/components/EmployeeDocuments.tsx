@@ -93,7 +93,7 @@ function DocumentViewer({
       )}
       {["UPLOADED", "OCR_PENDING"].includes(data.status) && (
         <p role="status" className="text-sm">
-          Документ распознаётся. Результат появится автоматически.
+          Проверяем изображения документа. Результат появится автоматически.
         </p>
       )}
       {data.job?.status === "FAILED" && (

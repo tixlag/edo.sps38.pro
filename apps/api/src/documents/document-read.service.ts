@@ -12,6 +12,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { documentCheckEnabled } from "../ocr/document-check";
 import {
   canRetryDocumentOcr,
   canStartDocumentOcr,
@@ -350,12 +351,25 @@ export class DocumentReadService {
         : "RU",
       status: row.status,
       revision: row.revision,
-      canRetryOcr: canRetryDocumentOcr(row, ocrEnabled),
-      canStartOcr: canStartDocumentOcr(row, ocrEnabled),
+      canRetryOcr: canRetryDocumentOcr(
+        row,
+        ocrEnabled,
+        documentCheckEnabled(this.config),
+      ),
+      canStartOcr: canStartDocumentOcr(
+        row,
+        ocrEnabled,
+        documentCheckEnabled(this.config),
+      ),
       submittedAt: row.submittedAt?.toISOString() ?? null,
       reviewedAt: row.reviewedAt?.toISOString() ?? null,
       reviewedBy: row.reviewedBy ?? null,
-      reviewedByName: reviewers.length === 1 ? reviewers[0].fullName : null,
+      reviewedByName:
+        row.reviewedBy === "ocr-document-check"
+          ? "Автоматическая проверка"
+          : reviewers.length === 1
+            ? reviewers[0].fullName
+            : null,
       ocrFields: (row.ocrFields ?? [])
         .filter((observation) =>
           row.fields.some(
@@ -571,9 +585,14 @@ export class DocumentReadService {
           cleanupPending: false,
           OR: [{ submission: null }, { submission: { status: "SUCCEEDED" } }],
         },
-        // Rejected/incomplete uploads are unavailable even while cleanup is pending.
+        // Returned/incomplete uploads are unavailable even while cleanup is pending.
         OR: [
           { version: { job: null } },
+          {
+            version: {
+              job: { status: "REJECTED", cleanupPending: false },
+            },
+          },
           {
             version: {
               job: { status: { in: ["SUCCEEDED", "QUEUED", "RUNNING"] } },

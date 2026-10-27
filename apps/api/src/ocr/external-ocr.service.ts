@@ -2,6 +2,13 @@ import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { z } from "zod";
 import {
+  checkDocumentPresence,
+  documentCheckEnabled,
+  nonDocumentResult,
+  type DocumentCheckResult,
+} from "./document-check";
+import { readOcrBody as readBody } from "./ocr-http";
+import {
   OcrService,
   ocrSourceRegionSchema,
   type OcrRequest,
@@ -106,22 +113,31 @@ export function normalizeOcrResponse(
   );
   const rejected = (
     code: "DOCUMENT_TYPE_MISMATCH" | "POOR_IMAGE_QUALITY",
-  ): OcrResult => ({
-    outcome: "REJECTED",
-    source: "EXTERNAL",
-    raw: { profile },
-    issues: [
-      {
-        code,
-        message:
-          code === "DOCUMENT_TYPE_MISMATCH"
-            ? "Распознан другой тип документа"
-            : "Не удалось распознать поля документа",
-        fileOrdinal: null,
-        pageNumber: null,
-      },
-    ],
-  });
+  ): OcrResult =>
+    code === "POOR_IMAGE_QUALITY"
+      ? {
+          outcome: "SUCCEEDED",
+          source: "EXTERNAL",
+          fields: {},
+          ocrFields: [],
+          raw: { profile, recognition: "NO_FIELDS" },
+        }
+      : {
+          outcome: "REJECTED",
+          source: "EXTERNAL",
+          raw: { profile },
+          issues: [
+            {
+              code,
+              message:
+                code === "DOCUMENT_TYPE_MISMATCH"
+                  ? "Распознан другой тип документа"
+                  : "Не удалось распознать поля документа",
+              fileOrdinal: null,
+              pageNumber: null,
+            },
+          ],
+        };
   if (!selected.length)
     return rejected(
       docs.length ? "DOCUMENT_TYPE_MISMATCH" : "POOR_IMAGE_QUALITY",
@@ -202,27 +218,6 @@ export function normalizeOcrResponse(
   };
 }
 
-/** Bounded body reader: do not buffer untrusted responses before checking their size. */
-async function readBody(response: Response, max: number): Promise<Buffer> {
-  if (!response.body) throw new Error("OCR_CONTRACT_INVALID");
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  try {
-    for (;;) {
-      const item = await reader.read();
-      if (item.done) break;
-      length += item.value.byteLength;
-      if (length > max) throw new Error("OCR_CONTRACT_INVALID");
-      chunks.push(item.value);
-    }
-    return Buffer.concat(chunks, length);
-  } finally {
-    await reader.cancel().catch(() => undefined);
-    reader.releaseLock();
-  }
-}
-
 @Injectable()
 export class ExternalOcrService extends OcrService {
   constructor(private readonly config: ConfigService) {
@@ -263,8 +258,6 @@ export class ExternalOcrService extends OcrService {
   ): Promise<OcrResult> {
     if (!this.isAvailable()) throw new Error("OCR_NOT_CONFIGURED");
     const profile = resolveOcrProfile(request);
-    if (!profile) throw new Error("OCR_UNSUPPORTED_DOCUMENT");
-    const endpoint = this.endpoint(profile);
     const signal = AbortSignal.any([
       caller,
       AbortSignal.timeout(
@@ -300,6 +293,25 @@ export class ExternalOcrService extends OcrService {
         `document-${file.ordinal}.${extension}`,
       );
     }
+    const documentCheck: DocumentCheckResult = documentCheckEnabled(this.config)
+      ? await checkDocumentPresence(
+          this.config.get<string>("OCR_UZ_BASE_URL"),
+          form,
+          request.files,
+          signal,
+          Number(this.config.get("OCR_DOCUMENT_CHECK_TIMEOUT_MS") ?? 60000),
+        )
+      : { status: "DISABLED" };
+    const rejected = nonDocumentResult(documentCheck, request.files);
+    if (rejected) return rejected;
+    if (!profile)
+      return {
+        outcome: "SUCCEEDED",
+        source: "EXTERNAL",
+        fields: {},
+        raw: { documentCheck, recognition: "UNSUPPORTED_PROFILE" },
+      };
+    const endpoint = this.endpoint(profile);
     const response = await fetch(endpoint, {
       method: "POST",
       body: form,
@@ -310,17 +322,10 @@ export class ExternalOcrService extends OcrService {
       await response.body?.cancel();
       if (profile !== "passport_ru" && response.status === 400)
         return {
-          outcome: "REJECTED",
+          outcome: "SUCCEEDED",
           source: "EXTERNAL",
-          raw: { profile },
-          issues: [
-            {
-              code: "POOR_IMAGE_QUALITY",
-              message: "Не удалось распознать документ",
-              fileOrdinal: null,
-              pageNumber: null,
-            },
-          ],
+          fields: {},
+          raw: { profile, documentCheck, recognition: "NO_FIELDS" },
         };
       throw new Error(
         response.status >= 400 &&
@@ -337,6 +342,7 @@ export class ExternalOcrService extends OcrService {
     } catch {
       throw new Error("OCR_CONTRACT_INVALID");
     }
-    return normalizeOcrResponse(profile, body);
+    const result = normalizeOcrResponse(profile, body);
+    return { ...result, raw: { ...result.raw, documentCheck } };
   }
 }

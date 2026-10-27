@@ -45,6 +45,8 @@ const envSchema = z.object({
   OCR_UZ_BASE_URL: z.string().url().optional(),
   OCR_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600000).default(240000),
   OCR_WORKER_ENABLED: z.enum(['true', 'false']).default('true'),
+  OCR_DOCUMENT_CHECK_ENABLED: z.enum(['true', 'false']).default('true'),
+  OCR_DOCUMENT_CHECK_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(60000),
   EDO_OCR_QUEUE: z.string().regex(/^edo\.[a-zA-Z0-9._-]+$/).default('edo.ocr'),
   S3_ENDPOINT: z.string().default('http://localhost:9000'),
   S3_REGION: z.string().default('us-east-1'),

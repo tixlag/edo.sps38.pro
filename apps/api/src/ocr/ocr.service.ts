@@ -97,6 +97,8 @@ export const ocrResultSchema = z
     }),
     z.object({
       outcome: z.literal("REJECTED"),
+      // Internal discriminator; OCR failure/empty fields must never return a document.
+      rejectionKind: z.literal("NON_DOCUMENT").optional(),
       source: z.enum(["STUB", "EXTERNAL"]),
       issues: z.array(ocrIssueSchema).min(1).max(100),
       raw: z.record(z.unknown()),

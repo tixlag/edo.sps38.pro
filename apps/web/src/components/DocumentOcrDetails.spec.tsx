@@ -39,6 +39,25 @@ function render(properties: Partial<DocumentVersionDto>) {
   return container;
 }
 describe("OCR review details", () => {
+  it("shows an automatic return reason without suggesting manual review of a returned document", () => {
+    const node = render({
+      status: "RETURNED",
+      rejectionReason: "Документ не надлежащего качества. фото № 2",
+      job: { status: "REJECTED" } as DocumentVersionDto["job"],
+    });
+    expect(node.textContent).toContain(
+      "Документ не надлежащего качества. фото № 2",
+    );
+    expect(node.textContent).not.toContain("Доступна ручная проверка");
+  });
+  it("keeps pending document checking distinct from available manual review", () => {
+    const node = render({
+      status: "OCR_PENDING",
+      job: { status: "QUEUED" } as DocumentVersionDto["job"],
+    });
+    expect(node.textContent).toContain("Проверяем изображения документа");
+    expect(node.textContent).not.toContain("Можно проверить вручную");
+  });
   it("shows unmapped fields and the original Paddle confidence after GLM fallback", () => {
     const node = render({
       ocrFields: [

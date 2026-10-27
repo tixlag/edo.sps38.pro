@@ -477,9 +477,20 @@ export class UploadAcceptedDto {
   @ApiProperty() candidateId!: string;
   @ApiProperty() documentId!: string;
   @ApiProperty() version!: number;
-  @ApiProperty({ type: String, nullable: true }) jobId!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "Background processing job, including document presence checks; null when processing is disabled",
+  })
+  jobId!: string | null;
   @ApiPropertyOptional() submissionId?: string;
-  @ApiPropertyOptional({ enum: DocumentStatus }) status?: DocumentStatus;
+  @ApiPropertyOptional({
+    enum: DocumentStatus,
+    description:
+      "OCR_PENDING while checking images; RETURNED on a confirmed non-document; IN_REVIEW for manual verification",
+  })
+  status?: DocumentStatus;
 }
 export class EmployeeLinkDto {
   @ApiProperty({ maxLength: 64 })

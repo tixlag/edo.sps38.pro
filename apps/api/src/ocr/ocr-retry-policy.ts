@@ -24,6 +24,7 @@ export interface OcrRetryVersion {
 function canProcessDocumentOcr(
   version: OcrRetryVersion,
   enabled: boolean,
+  checkDocuments = false,
 ): boolean {
   return Boolean(
     enabled &&
@@ -33,20 +34,22 @@ function canProcessDocumentOcr(
     !version.cleanupPending &&
     version.files.length > 0 &&
     version.files.every((file) => !file.deletedAt) &&
-    resolveOcrProfile({
-      documentUid: version.document.documentType?.erpUid,
-      documentTypeCode: version.document.documentType?.code ?? "",
-      citizenship: version.citizenship,
-    }),
+    (checkDocuments ||
+      resolveOcrProfile({
+        documentUid: version.document.documentType?.erpUid,
+        documentTypeCode: version.document.documentType?.code ?? "",
+        citizenship: version.citizenship,
+      })),
   );
 }
 
 export function canRetryDocumentOcr(
   version: OcrRetryVersion,
   enabled: boolean,
+  checkDocuments = false,
 ): boolean {
   return Boolean(
-    canProcessDocumentOcr(version, enabled) &&
+    canProcessDocumentOcr(version, enabled, checkDocuments) &&
     version.job &&
     ["FAILED", "REJECTED"].includes(version.job.status) &&
     !version.job.cleanupPending &&
@@ -57,9 +60,10 @@ export function canRetryDocumentOcr(
 export function canStartDocumentOcr(
   version: OcrRetryVersion,
   enabled: boolean,
+  checkDocuments = false,
 ): boolean {
   return Boolean(
-    canProcessDocumentOcr(version, enabled) &&
+    canProcessDocumentOcr(version, enabled, checkDocuments) &&
     version.status === "IN_REVIEW" &&
     version.job === null &&
     version.ocrSource === null &&

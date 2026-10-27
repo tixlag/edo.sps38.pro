@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
+import { documentCheckEnabled } from "../ocr/document-check";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -76,7 +77,10 @@ export class DocumentOcrRetryService {
         await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${initial.candidateId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM documents WHERE id = ${documentId} FOR UPDATE`;
       const doc = await tx.document.findFirst({
-        where: { id: documentId, ...this.access.documentReviewWhere(principal) },
+        where: {
+          id: documentId,
+          ...this.access.documentReviewWhere(principal),
+        },
       });
       if (!doc) throw new NotFoundException("Document not found");
       if (
@@ -97,8 +101,16 @@ export class DocumentOcrRetryService {
         !version ||
         version.revision !== revision ||
         !(action === "start"
-          ? canStartDocumentOcr(version, true)
-          : canRetryDocumentOcr(version, true))
+          ? canStartDocumentOcr(
+              version,
+              true,
+              documentCheckEnabled(this.config),
+            )
+          : canRetryDocumentOcr(
+              version,
+              true,
+              documentCheckEnabled(this.config),
+            ))
       )
         throw new ConflictException(
           "OCR action is unavailable for this version",
@@ -134,7 +146,10 @@ export class DocumentOcrRetryService {
         if (changed.count !== 1)
           throw new ConflictException("OCR job has changed");
       }
-      const status = version.submission ? "IN_REVIEW" : "OCR_PENDING";
+      const status =
+        version.submission && !documentCheckEnabled(this.config)
+          ? "IN_REVIEW"
+          : "OCR_PENDING";
       await tx.documentVersion.update({
         where: { id: version.id },
         data: {
