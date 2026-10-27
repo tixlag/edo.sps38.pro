@@ -1,5 +1,10 @@
 import type { DocumentVersionDto, DocumentOcrFieldDto } from "@edo/api-client";
 import { DOCUMENT_FIELD_LABELS } from "./document-field-labels";
+import {
+  formatDateRu,
+  formatDateTimeRu,
+  isDateFieldName,
+} from "../lib/date-format";
 
 export const OCR_FIELD_LABELS: Record<string, string> = {
   series: "Серия",
@@ -38,8 +43,8 @@ export const OCR_FIELD_LABELS: Record<string, string> = {
 
 function Timestamp({ value }: { value: string }) {
   return (
-    <time dateTime={value} title={`${value} (UTC)`}>
-      {new Date(value).toLocaleString("ru-RU", { timeZoneName: "short" })}
+    <time dateTime={value}>
+      {formatDateTimeRu(value)}
     </time>
   );
 }
@@ -122,7 +127,9 @@ export function DocumentOcrFields({
             </dt>
             <dd className="min-w-0 text-[13px]">
               <p className="whitespace-pre-wrap break-words">
-                {field.value || "Не распознано"}
+                {isDateFieldName(field.name)
+                  ? formatDateRu(field.value)
+                  : field.value || "Не распознано"}
               </p>
               <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
                 Источник:{" "}
@@ -134,7 +141,9 @@ export function DocumentOcrFields({
               </p>
               {field.paddleText !== null && (
                 <p className="whitespace-pre-wrap break-words text-xs text-[var(--muted-foreground)]">
-                  PaddleOCR: {field.paddleText || "пустой результат"}
+                  PaddleOCR: {isDateFieldName(field.name)
+                    ? formatDateRu(field.paddleText)
+                    : field.paddleText || "пустой результат"}
                 </p>
               )}
               {field.paddleConfidence !== null && (

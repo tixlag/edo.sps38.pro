@@ -1,4 +1,5 @@
 import type { DocumentStatus } from "@edo/api-client";
+import { formatDateRu } from "./date-format";
 export const LK_BASE_URL_FALLBACK = "https://lk.sps38.pro";
 
 /** Browser base of the LK directory; override via VITE_LK_BASE_URL. */
@@ -39,11 +40,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export function formatBirthDateRu(
   birthDate: string | null | undefined,
 ): string {
-  if (!birthDate) return "—";
-  const match = DATE_RE.exec(birthDate.trim());
-  if (!match) return birthDate;
-  const [year, month, day] = birthDate.trim().split("-");
-  return `${day}.${month}.${year}`;
+  return formatDateRu(birthDate);
 }
 
 /**
