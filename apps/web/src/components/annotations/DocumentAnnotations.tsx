@@ -3,8 +3,6 @@ import { Button } from "@edo/ui";
 import {
   getGetAnnotationSourcesQueryKey,
   getListAnnotationCatalogsQueryKey,
-  useGetAnnotationPreference,
-  useSetAnnotationPreference,
   useGetAnnotationSources,
   useListAnnotations,
   useListAnnotationCatalogs,
@@ -23,25 +21,7 @@ export function DocumentAnnotations({
   active?: boolean;
   allowClaim?: boolean;
 }) {
-  const preference = useGetAnnotationPreference();
-  const setting = useSetAnnotationPreference();
   const [message, setMessage] = useState("");
-  const enabled = preference.data?.enabled === true;
-  const [opened, setOpened] = useState(false);
-  useEffect(() => {
-    if (enabled) setOpened(true);
-  }, [enabled]);
-  if (preference.isLoading)
-    return <p role="status">Загрузка настроек разметки…</p>;
-  if (preference.isError && !preference.data)
-    return (
-      <div role="alert">
-        Не удалось загрузить настройки.{" "}
-        <Button variant="outline" onClick={() => void preference.refetch()}>
-          Повторить
-        </Button>
-      </div>
-    );
   return (
     <section
       aria-label="Разметка документа"
@@ -55,53 +35,18 @@ export function DocumentAnnotations({
             и его отправка остаются в отдельной проверке.
           </p>
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
-          <input
-            type="checkbox"
-            className="accent-[var(--primary)]"
-            checked={enabled}
-            disabled={setting.isPending}
-            onChange={async (event) => {
-              const next = event.target.checked;
-              setMessage("");
-              try {
-                await setting.mutateAsync({ data: { enabled: next } });
-                await preference.refetch();
-              } catch {
-                setMessage(
-                  "Не удалось сохранить настройку. Повторите попытку.",
-                );
-              }
-            }}
-          />
-          Хочу премию
-        </label>
+
       </div>
-      {preference.isError && (
-        <p role="alert" className="text-sm">
-          Не удалось обновить настройку. Ваш черновик сохранён на экране.
-        </p>
-      )}
       {message && (
         <p role="alert" className="text-sm">
           {message}
         </p>
       )}
-      {(enabled || opened) && (
-        <div hidden={!enabled} className={enabled ? "" : "!hidden"}>
-          <AnnotationContext
-            document={document}
-            active={active && enabled}
-            allowClaim={allowClaim}
-          />
-        </div>
-      )}
-      {!enabled && (
-        <p className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 text-sm">
-          Включите «Хочу премию», чтобы {allowClaim ? "взять" : "продолжить"}{" "}
-          разметку документа. Итог работы проверяет администратор.
-        </p>
-      )}
+      <AnnotationContext
+        document={document}
+        active={active && true}
+        allowClaim={allowClaim}
+      />
     </section>
   );
 }
