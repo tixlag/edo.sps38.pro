@@ -53,7 +53,11 @@ function fixture() {
     ocrRegion: { deleteMany: vi.fn() },
     documentVersionField: { updateMany: vi.fn() },
   };
-  const config = { OCR_MODE: "external", OCR_WORKER_ENABLED: "true" };
+  const config = {
+    OCR_MODE: "external",
+    OCR_WORKER_ENABLED: "true",
+    OCR_DOCUMENT_CHECK_ENABLED: "false",
+  };
   const audit = { logInTransaction: vi.fn() };
   const reads = {
     version: vi.fn(async () => ({

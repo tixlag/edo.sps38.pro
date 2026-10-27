@@ -46,6 +46,7 @@ const service = (extra: Record<string, unknown> = {}) =>
         OCR_MODE: "external",
         OCR_RU_BASE_URL: "http://ocr.test:8001",
         OCR_UZ_BASE_URL: "http://ocr.test:8000",
+        OCR_DOCUMENT_CHECK_ENABLED: "false",
         ...extra,
       })[key],
   } as never);
@@ -233,8 +234,9 @@ describe("OCR profiles and normalization without inference", () => {
       issues: [{ code: "DOCUMENT_TYPE_MISMATCH" }],
     });
     expect(normalizeOcrResponse("passport_uz", [])).toMatchObject({
-      outcome: "REJECTED",
-      issues: [{ code: "POOR_IMAGE_QUALITY" }],
+      outcome: "SUCCEEDED",
+      fields: {},
+      raw: { recognition: "NO_FIELDS" },
     });
     expect(() =>
       normalizeOcrResponse("passport_ru", {

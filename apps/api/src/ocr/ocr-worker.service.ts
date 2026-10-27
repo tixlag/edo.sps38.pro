@@ -18,6 +18,7 @@ import {
   type OcrResult,
 } from "./ocr.service";
 import { OcrQueueService } from "./ocr-queue.service";
+import { documentReturnReason } from "./document-check";
 
 const LEASE_MS = 120_000;
 const MAX_ATTEMPTS = 5;
@@ -285,7 +286,9 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
       });
       if (
         !current ||
-        current.status !== (manual ? "IN_REVIEW" : "OCR_PENDING") ||
+        !(manual ? ["IN_REVIEW", "OCR_PENDING"] : ["OCR_PENDING"]).includes(
+          current.status,
+        ) ||
         current.document.currentVersion !== current.version
       ) {
         await tx.ocrJob.updateMany({
@@ -308,15 +311,28 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
         },
         data: {
           status: result.outcome,
-          cleanupPending: !manual && result.outcome === "REJECTED",
+          cleanupPending:
+            result.outcome === "REJECTED" &&
+            result.rejectionKind === "NON_DOCUMENT",
           leaseToken: null,
           leaseUntil: null,
           errorCode: null,
         },
       });
       if (!changed.count) return;
-      const status =
-        manual || result.outcome === "SUCCEEDED" ? "IN_REVIEW" : "OCR_FAILED";
+      const returned =
+        result.outcome === "REJECTED" &&
+        result.rejectionKind === "NON_DOCUMENT";
+      const status = returned ? "RETURNED" : "IN_REVIEW";
+      const rejectionReason = returned
+        ? documentReturnReason(
+            result.issues,
+            await tx.documentVersionFile.findMany({
+              where: { versionId: initial.versionId },
+              select: { ordinal: true, mimeType: true },
+            }),
+          )
+        : null;
       await tx.documentVersion.update({
         where: { id: initial.versionId },
         data: {
@@ -324,6 +340,15 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           ocrRaw: raw,
           ocrSource: result.source,
           revision: { increment: 1 },
+          ...(returned
+            ? {
+                rejectionReason,
+                reviewedAt: new Date(),
+                reviewedBy: "ocr-document-check",
+                // OcrJob cleanup owns removal of this rejected bundle.
+                cleanupPending: false,
+              }
+            : {}),
         },
       });
       if (result.outcome === "SUCCEEDED") {
@@ -438,6 +463,21 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           source: result.source,
         },
       });
+      if (returned)
+        await this.audit.logInTransaction(tx, {
+          actorId: "ocr-document-check",
+          action: "DOCUMENT_RETURNED",
+          entityType: "Document",
+          entityId: initial.version.documentId,
+          correlationId: initial.correlationId,
+          before: { version: current.version, status: current.status },
+          after: {
+            version: current.version,
+            status: "RETURNED",
+            rejectionReason,
+            automatic: true,
+          },
+        });
     });
   }
 
@@ -456,6 +496,28 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${job.candidateId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM documents WHERE id = ${job.version.documentId} FOR UPDATE`;
       const manual = !!job.version.submission;
+      const current = await tx.documentVersion.findUnique({
+        where: { id: job.versionId },
+        include: { document: true },
+      });
+      if (
+        !current ||
+        !(manual ? ["IN_REVIEW", "OCR_PENDING"] : ["OCR_PENDING"]).includes(
+          current.status,
+        ) ||
+        current.document.currentVersion !== current.version
+      ) {
+        await tx.ocrJob.updateMany({
+          where: { id: jobId, status: "RUNNING", leaseToken: token },
+          data: {
+            status: "CANCELLED",
+            leaseToken: null,
+            leaseUntil: null,
+            cleanupPending: false,
+          },
+        });
+        return;
+      }
       const final = permanent || job.attempts >= MAX_ATTEMPTS;
       const changed = await tx.ocrJob.updateMany({
         where: { id: jobId, status: "RUNNING", leaseToken: token },

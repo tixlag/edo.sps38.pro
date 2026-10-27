@@ -42,11 +42,7 @@ export const OCR_FIELD_LABELS: Record<string, string> = {
 };
 
 function Timestamp({ value }: { value: string }) {
-  return (
-    <time dateTime={value}>
-      {formatDateTimeRu(value)}
-    </time>
-  );
+  return <time dateTime={value}>{formatDateTimeRu(value)}</time>;
 }
 
 export function DocumentReviewMetadata({ data }: { data: DocumentVersionDto }) {
@@ -81,9 +77,16 @@ export function DocumentReviewMetadata({ data }: { data: DocumentVersionDto }) {
         )}
       </p>
       {pending && (
-        <p role="status">Документ распознаётся. Можно проверить вручную.</p>
+        <p role="status">
+          {data.status === "OCR_PENDING"
+            ? "Проверяем изображения документа. Результат появится автоматически."
+            : "Документ распознаётся. Можно проверить вручную."}
+        </p>
       )}
-      {failed && (
+      {data.status === "RETURNED" && data.rejectionReason && (
+        <p role="status">{data.rejectionReason}</p>
+      )}
+      {failed && data.status !== "RETURNED" && (
         <p role="status">
           {data.issues[0]?.message || "Не удалось распознать документ"}.
           Доступна ручная проверка.
@@ -93,7 +96,11 @@ export function DocumentReviewMetadata({ data }: { data: DocumentVersionDto }) {
         <p>Распознавание отменено после решения проверяющего.</p>
       )}
       {status === "SUCCEEDED" && (
-        <p role="status">Распознавание завершено. Сверьте поля с оригиналом.</p>
+        <p role="status">
+          {data.ocrFields.length
+            ? "Распознавание завершено. Сверьте поля с оригиналом."
+            : "Документ передан на проверку. Поля не распознаны автоматически."}
+        </p>
       )}
     </div>
   );
@@ -141,7 +148,8 @@ export function DocumentOcrFields({
               </p>
               {field.paddleText !== null && (
                 <p className="whitespace-pre-wrap break-words text-xs text-[var(--muted-foreground)]">
-                  PaddleOCR: {isDateFieldName(field.name)
+                  PaddleOCR:{" "}
+                  {isDateFieldName(field.name)
                     ? formatDateRu(field.paddleText)
                     : field.paddleText || "пустой результат"}
                 </p>

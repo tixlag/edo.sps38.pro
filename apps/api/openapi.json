@@ -10736,7 +10736,8 @@
           },
           "jobId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Background processing job, including document presence checks; null when processing is disabled"
           },
           "submissionId": {
             "type": "string"
@@ -10753,7 +10754,8 @@
               "APPROVED",
               "SIGNED",
               "EXPIRED"
-            ]
+            ],
+            "description": "OCR_PENDING while checking images; RETURNED on a confirmed non-document; IN_REVIEW for manual verification"
           }
         },
         "required": [

@@ -8,6 +8,7 @@ import {
 import { Prisma, type DocumentStatus } from "@prisma/client";
 import { ConfigService } from "@nestjs/config";
 import { resolveOcrProfile } from "../ocr/ocr-profile";
+import { documentCheckEnabled } from "../ocr/document-check";
 import { createHash, randomUUID } from "node:crypto";
 import { assertDocumentUploadAllowed } from "./document-upload-policy";
 import { PrismaService } from "../prisma/prisma.service";
@@ -69,7 +70,7 @@ export class ManualDocumentService {
       where: {
         identityKey_idempotencyKey: { identityKey, idempotencyKey: key },
       },
-      include: { version: { include: { document: true } } },
+      include: { version: { include: { document: true, job: true } } },
     });
     if (previous) return this.reuse(previous, fingerprint);
     await this.catalog.ensure();
@@ -103,6 +104,13 @@ export class ManualDocumentService {
         })
       )?.locationId;
     const token = randomUUID();
+    const checking =
+      this.config?.get("OCR_MODE") === "external" &&
+      this.config.get("OCR_WORKER_ENABLED") !== "false" &&
+      documentCheckEnabled(this.config);
+    const acceptedStatus: DocumentStatus = checking
+      ? "OCR_PENDING"
+      : "IN_REVIEW";
     const correlation = correlationId.slice(0, 64);
     const reserved = await this.reserve(
       identityKey,
@@ -129,7 +137,7 @@ export class ManualDocumentService {
           signal,
         );
       }
-      await this.prisma.$transaction(async (tx) => {
+      const jobId = await this.prisma.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${reserved.submission.version.document.candidateId} FOR UPDATE`;
         const changed = await tx.documentSubmission.updateMany({
           where: {
@@ -143,19 +151,20 @@ export class ManualDocumentService {
           throw new ConflictException("Upload lease expired");
         await tx.documentVersion.update({
           where: { id: reserved.submission.versionId },
-          data: { status: "IN_REVIEW", submittedAt: new Date() },
+          data: { status: acceptedStatus, submittedAt: new Date() },
         });
         const profile = resolveOcrProfile({
           documentUid: metadata.documentUid,
           documentTypeCode: type.code,
           citizenship: metadata.citizenship,
         });
+        let queuedJobId: string | null = null;
         if (
-          profile &&
+          (profile || checking) &&
           this.config?.get("OCR_MODE") === "external" &&
           this.config.get("OCR_WORKER_ENABLED") !== "false"
         ) {
-          await tx.ocrJob.create({
+          const job = await tx.ocrJob.create({
             data: {
               versionId: reserved.submission.versionId,
               candidateId: reserved.submission.version.document.candidateId!,
@@ -166,6 +175,7 @@ export class ManualDocumentService {
               outbox: { create: {} },
             },
           });
+          queuedJobId = job.id;
         }
         await tx.document.updateMany({
           where: {
@@ -174,7 +184,7 @@ export class ManualDocumentService {
           },
           data: {
             currentVersion: reserved.submission.version.version,
-            status: "IN_REVIEW",
+            status: acceptedStatus,
           },
         });
         await this.audit.logInTransaction(tx, {
@@ -196,8 +206,9 @@ export class ManualDocumentService {
               : {}),
           },
         });
+        return queuedJobId;
       });
-      return this.accepted(reserved.submission);
+      return { ...this.accepted(reserved.submission, acceptedStatus), jobId };
     } catch (error) {
       await this.fail(reserved.submission.id, token);
       if (error instanceof ConflictException) throw error;
@@ -277,7 +288,9 @@ export class ManualDocumentService {
                 },
               },
               include: {
-                version: { include: { document: true, files: true } },
+                version: {
+                  include: { document: true, files: true, job: true },
+                },
               },
             });
             if (previous) return { reused: true, submission: previous };
@@ -358,7 +371,9 @@ export class ManualDocumentService {
                 leaseUntil: new Date(Date.now() + 600000),
               },
               include: {
-                version: { include: { document: true, files: true } },
+                version: {
+                  include: { document: true, files: true, job: true },
+                },
               },
             });
             await this.audit.logInTransaction(tx, {
@@ -391,6 +406,7 @@ export class ManualDocumentService {
         documentId: string;
         version: number;
         document: { candidateId: string | null };
+        job?: { id: string } | null;
       };
     },
     status: DocumentStatus = "IN_REVIEW",
@@ -400,7 +416,7 @@ export class ManualDocumentService {
       documentId: row.version.documentId,
       version: row.version.version,
       submissionId: row.id,
-      jobId: null,
+      jobId: row.version.job?.id ?? null,
       status,
     };
   }
@@ -414,6 +430,7 @@ export class ManualDocumentService {
         documentId: string;
         version: number;
         document: { candidateId: string | null };
+        job?: { id: string } | null;
       };
     },
     fingerprint: string,

@@ -101,6 +101,115 @@ function workerFixture() {
 afterEach(() => vi.useRealTimers());
 
 describe("manual review enrichment", () => {
+  it("returns a confirmed non-document atomically with its reason and automatic decision audit", async () => {
+    const { worker, tx, job, version, audit } = workerFixture();
+    job.status = "RUNNING";
+    job.leaseToken = "lease";
+    version.status = "OCR_PENDING";
+    await worker.complete(
+      "job",
+      "lease",
+      {
+        outcome: "REJECTED",
+        rejectionKind: "NON_DOCUMENT",
+        source: "EXTERNAL",
+        raw: {},
+        issues: [
+          {
+            code: "POOR_IMAGE_QUALITY",
+            message: "Документ не надлежащего качества",
+            fileOrdinal: 0,
+            pageNumber: 1,
+          },
+        ],
+      },
+      {},
+    );
+    expect(job.status).toBe("REJECTED");
+    expect(tx.documentVersion.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "RETURNED",
+          cleanupPending: false,
+          rejectionReason: "Документ не надлежащего качества. фото № 1",
+          reviewedBy: "ocr-document-check",
+        }),
+      }),
+    );
+    expect(tx.document.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: "RETURNED" } }),
+    );
+    expect(audit.logInTransaction).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        actorId: "ocr-document-check",
+        action: "DOCUMENT_RETURNED",
+      }),
+    );
+    expect(tx.documentVersionField.updateMany).not.toHaveBeenCalled();
+  });
+  it.each(["APPROVED", "RETURNED"])(
+    "does not apply a late automatic return or failure after %s",
+    async (status) => {
+      const { worker, tx, job, version } = workerFixture();
+      job.status = "RUNNING";
+      job.leaseToken = "lease";
+      version.status = status;
+      await worker.complete(
+        "job",
+        "lease",
+        {
+          outcome: "REJECTED",
+          rejectionKind: "NON_DOCUMENT",
+          source: "EXTERNAL",
+          raw: {},
+          issues: [
+            {
+              code: "POOR_IMAGE_QUALITY",
+              message: "Quality",
+              fileOrdinal: 0,
+              pageNumber: 1,
+            },
+          ],
+        },
+        {},
+      );
+      expect(job.status).toBe("CANCELLED");
+      expect(tx.documentVersion.update).not.toHaveBeenCalled();
+      job.status = "RUNNING";
+      job.leaseToken = "lease";
+      await worker.failAttempt("job", "lease", "OCR_UNAVAILABLE", true);
+      expect(job.status).toBe("CANCELLED");
+      expect(tx.documentVersion.update).not.toHaveBeenCalled();
+    },
+  );
+  it("propagates automatic return audit failures from the state transaction", async () => {
+    const { worker, job, audit } = workerFixture();
+    job.status = "RUNNING";
+    job.leaseToken = "lease";
+    audit.logInTransaction.mockRejectedValue(new Error("audit unavailable"));
+    await expect(
+      worker.complete(
+        "job",
+        "lease",
+        {
+          outcome: "REJECTED",
+          rejectionKind: "NON_DOCUMENT",
+          source: "EXTERNAL",
+          raw: {},
+          issues: [
+            {
+              code: "POOR_IMAGE_QUALITY",
+              message: "Quality",
+              fileOrdinal: 0,
+              pageNumber: 1,
+            },
+          ],
+        },
+        {},
+      ),
+    ).rejects.toThrow("audit unavailable");
+  });
   it("stores source boxes for split and unmapped observations without creating candidate requisites", async () => {
     const { worker, tx, job } = workerFixture();
     job.status = "RUNNING";

@@ -52,7 +52,7 @@ function fixture(status: DocumentStatus, externalOcr = false) {
     };
   } | null = null;
   const tx = {
-    ocrJob: { create: vi.fn() },
+    ocrJob: { create: vi.fn(async () => ({ id: "check-job" })) },
     $queryRaw: vi.fn(async () => []),
     candidate: {
       upsert: vi.fn(async () => ({ id: "owner" })),
@@ -173,12 +173,12 @@ describe("candidate document resubmission", () => {
       "DOCUMENT_IN_REVIEW",
     );
   });
-  it("dates a successful replacement and queues enrichment exactly once, without copying review metadata", async () => {
+  it("dates a successful replacement and queues checking exactly once, without copying review metadata", async () => {
     const { service, tx } = fixture("RETURNED", true);
     await service.upload(staged, "bundle", "");
     expect(tx.documentVersion.update).toHaveBeenCalledWith({
       where: { id: "version" },
-      data: { status: "IN_REVIEW", submittedAt: expect.any(Date) },
+      data: { status: "OCR_PENDING", submittedAt: expect.any(Date) },
     });
     expect(tx.ocrJob.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -195,6 +195,29 @@ describe("candidate document resubmission", () => {
     await service.upload(staged, "bundle", "");
     expect(tx.documentVersion.update).toHaveBeenCalledTimes(1);
     expect(tx.ocrJob.create).toHaveBeenCalledTimes(1);
+  });
+  it("queues image checking for a document without any field OCR profile", async () => {
+    const { service, tx } = fixture("RETURNED", true);
+    const result = await service.upload(
+      {
+        ...staged,
+        metadata: {
+          ...staged.metadata!,
+          documentUid: "00000000-0000-4000-8000-000000000099",
+        },
+      },
+      "bundle",
+      "check-other-document",
+    );
+    expect(result).toMatchObject({ status: "OCR_PENDING", jobId: "check-job" });
+    expect(tx.ocrJob.create).toHaveBeenCalledTimes(1);
+  });
+  it("blocks replacement while document checking is pending", async () => {
+    const { service, storage } = fixture("OCR_PENDING", true);
+    await expect(service.upload(staged, "bundle", "")).rejects.toThrow(
+      "DOCUMENT_IN_REVIEW",
+    );
+    expect(storage.upload).not.toHaveBeenCalled();
   });
   it("blocks a simultaneous new bundle while the first transfer is still uploading", async () => {
     const { service, tx, storage } = fixture("RETURNED");

@@ -487,7 +487,34 @@ describe.skipIf(!enabled)(
       }
     });
 
-    it("returns wrong-document/quality reasons including PDF page, deletes all rejected originals, and retries cleanup", async () => {
+    it("keeps field recognition issues and originals available for manual review", async () => {
+      const a = await accepted();
+      ocr.responses.set(a.jobId, {
+        outcome: "REJECTED",
+        source: "STUB",
+        raw: {},
+        issues: [
+          {
+            code: "DOCUMENT_TYPE_MISMATCH",
+            message: "Uncertain document type",
+            fileOrdinal: null,
+            pageNumber: null,
+          },
+        ],
+      });
+      await worker.process(a.jobId);
+      const r = await result(a);
+      expect(r.status).toBe("IN_REVIEW");
+      expect(r.job?.cleanupPending).toBe(false);
+      const download = await app.inject({
+        method: "GET",
+        url: `/api/v1/documents/${a.documentId}/versions/1/files/${r.files[0].id}/download`,
+        headers: reviewer(),
+      });
+      expect(download.statusCode).toBe(200);
+    });
+
+    it("returns a confirmed non-document with its PDF page, deletes all returned originals, and retries cleanup", async () => {
       const id = chat();
       const response = await upload(id, randomUUID(), {}, [
         { bytes: pdf, name: "pages.pdf", mime: "application/pdf" },
@@ -495,18 +522,19 @@ describe.skipIf(!enabled)(
       const a: UploadAcceptedDto = response.json();
       ocr.responses.set(a.jobId, {
         outcome: "REJECTED",
+        rejectionKind: "NON_DOCUMENT",
         source: "STUB",
         raw: { fixture: "quality" },
         issues: [
           {
-            code: "DOCUMENT_TYPE_MISMATCH",
-            message: "Expected passport",
-            fileOrdinal: null,
-            pageNumber: null,
+            code: "POOR_IMAGE_QUALITY",
+            message: "Документ не надлежащего качества",
+            fileOrdinal: 0,
+            pageNumber: 1,
           },
           {
             code: "POOR_IMAGE_QUALITY",
-            message: "Page is blurred",
+            message: "Документ не надлежащего качества",
             fileOrdinal: 0,
             pageNumber: 2,
           },
@@ -515,6 +543,8 @@ describe.skipIf(!enabled)(
       await worker.process(a.jobId);
       const r = await result(a);
       expect(r.job?.status).toBe("REJECTED");
+      expect(r.status).toBe("RETURNED");
+      expect(r.rejectionReason).toContain("файл № 1, страницы 1, 2");
       expect(r.issues[1].pageNumber).toBe(2);
       const download = await app.inject({
         method: "GET",

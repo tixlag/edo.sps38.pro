@@ -645,6 +645,9 @@ export interface ApiErrorDto {
   path: string | null;
 }
 
+/**
+ * OCR_PENDING while checking images; RETURNED on a confirmed non-document; IN_REVIEW for manual verification
+ */
 export type UploadAcceptedDtoStatus =
   (typeof UploadAcceptedDtoStatus)[keyof typeof UploadAcceptedDtoStatus];
 
@@ -665,9 +668,13 @@ export interface UploadAcceptedDto {
   candidateId: string;
   documentId: string;
   version: number;
-  /** @nullable */
+  /**
+   * Background processing job, including document presence checks; null when processing is disabled
+   * @nullable
+   */
   jobId: string | null;
   submissionId?: string;
+  /** OCR_PENDING while checking images; RETURNED on a confirmed non-document; IN_REVIEW for manual verification */
   status?: UploadAcceptedDtoStatus;
 }
 
