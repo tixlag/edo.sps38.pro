@@ -44,7 +44,20 @@ class RouteTests(unittest.TestCase):
         self.client = TestClient(app)
 
     def test_health(self):
-        self.assertEqual(self.client.get('/health').json(), {'status':'ok','models':{'doc_model':True}})
+        self.assertEqual(self.client.get('/health').json(), {'status':'ok','models':{'doc_model':True},
+                                                          'document_check_memory': {}})
+
+    def test_document_check_has_a_separate_typed_contract(self):
+        from recognizeuz.api import routes
+        result = {'policy_version': 'document-check-v1', 'model': 'test', 'model_revision': 'revision',
+                  'elapsed_ms': 1, 'pages': [{'file_index': 0, 'page_number': 1,
+                      'verdict': 'NON_DOCUMENT', 'reason': None, 'non_document_scores': [0.999] * 4}]}
+        with patch.object(routes, 'check_files', return_value=result) as check:
+            response = self.client.post('/document-check', files={'files': ('x.jpg', b'photo', 'image/jpeg')})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), result)
+        check.assert_called_once_with([('x.jpg', b'photo', 'image/jpeg')])
+        self.assertEqual(self.calls, [])
 
     def test_multipart_form_flags_override_query(self):
         response = self.client.post('/recognize?debug=true&ocr_improve=true&dump_segments=true',

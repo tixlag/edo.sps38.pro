@@ -8,7 +8,7 @@
 
 | Сервис | Порт | Маршруты |
 |---|---|---|
-| UZ + миграционная карта | 8000 | `POST /recognize`, `POST /recognize-base64`, `GET /health` |
+| UZ + миграционная карта + проверка изображений | 8000 | `POST /recognize`, `POST /recognize-base64`, `POST /document-check`, `GET /health` |
 | РФ | 8001 | `POST /parse`, `POST /parse-id-birthday` |
 | Общий GLM OCR | 8083 | `POST /v1/chat/completions` |
 
@@ -32,6 +32,7 @@ bash scripts/setup_service.sh ru
 ```bash
 python3 scripts/models.py install /path/to/recognizeuz-models-2026-10-20.tar.gz
 python3 scripts/models.py verify
+python3 scripts/public_models.py
 ```
 
 Манифест `models/manifest.json` фиксирует состав, размеры и SHA-256. Архив содержит только рабочие модели и их конфигурации/словари. GLM устанавливается отдельно; обучение моделей для запуска не требуется. Подробнее: [модели](models/README.md).
@@ -53,6 +54,7 @@ GLM: [конфигурация Docker](deploy/glm/README.md). Шаблоны sys
 
 ```bash
 curl http://127.0.0.1:8000/health
+curl -F 'files=@/path/to/document.jpg' http://127.0.0.1:8000/document-check
 curl -F 'files=@/path/to/uz-passport.jpg' http://127.0.0.1:8000/recognize
 curl -F 'files=@/path/to/migration-card.jpg' http://127.0.0.1:8000/recognize
 curl -F 'files=@/path/to/ru-passport.jpg' 'http://127.0.0.1:8001/parse?doc_type=passport_ru'

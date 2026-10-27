@@ -1,0 +1,4 @@
+# Additive wheels for the new classifier; the existing OCR wheelhouse stays intact.
+transformers==5.9.0
+tokenizers==0.22.2
+regex==2025.11.3

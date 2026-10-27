@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/deploy_pc.py'
 
@@ -34,6 +35,20 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual((self.root / 'current/code.txt').read_text(), 'new code')
         self.assertEqual((self.old / 'code.txt').read_text(), 'old code')
         self.assertEqual((self.root / 'models/private.pt').read_bytes(), b'private model')
+
+    def test_public_model_preparation_failure_keeps_the_running_release(self):
+        (self.new / 'models').mkdir()
+        (self.new / 'models/public-manifest.json').write_text('{}')
+        with patch.object(self.module, 'run', side_effect=RuntimeError('network unavailable')) as run:
+            with self.assertRaisesRegex(RuntimeError, 'network unavailable'):
+                self.module.prepare_classifier(self.new, self.root / 'shared')
+        self.assertIn('public_models.py', run.call_args.args[1])
+        self.assertEqual((self.root / 'current').resolve(), self.old)
+
+    def test_old_release_does_not_require_a_classifier_during_rollback(self):
+        with patch.object(self.module, 'run') as run:
+            self.module.prepare_classifier(self.old, self.root / 'shared')
+        run.assert_not_called()
 
     def test_failed_health_restores_previous_release_and_propagates_failure(self):
         def health():

@@ -1,0 +1,34 @@
+{
+  "version": "document-check-v1",
+  "model": "google/siglip2-base-patch16-224",
+  "revision": "75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2",
+  "reject_threshold": 0.99,
+  "document_threshold": 0.9,
+  "rotations": [0, 90, 180, 270],
+  "document_prompts": [
+    "a photograph of an official document",
+    "a photograph of a passport or identity card",
+    "a photograph of an open passport booklet",
+    "a scanned page of a paper document",
+    "a photograph of a printed form or certificate",
+    "a photograph of a migration card or residence permit",
+    "a photograph of a medical certificate or medical booklet",
+    "a photograph of a handwritten paper document",
+    "a photograph of a contract, receipt, or employment record",
+    "a screenshot or a screen displaying a document",
+    "a blurry or partially cropped photograph of a document",
+    "a photograph of the back of an identity document",
+    "a photograph of a blank paper page"
+  ],
+  "non_document_prompts": [
+    "a photograph of a cat or a dog",
+    "a photograph of animals",
+    "a selfie or a portrait of a person without any document",
+    "a photograph of food or a meal",
+    "a photograph of a car or a vehicle",
+    "a photograph of a landscape, trees, or flowers",
+    "a photograph of a building or a street",
+    "a photograph of a room, furniture, or household objects",
+    "a cartoon or a drawing of fictional characters"
+  ]
+}

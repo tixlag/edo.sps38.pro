@@ -9,7 +9,21 @@ service_root="$repo_root/services/$service"
 environment_root="${SERVICE_VENV:-$service_root/.venv}"
 "$python_bin" -m venv "$environment_root"
 if [[ -n "${WHEELHOUSE:-}" ]]; then
-  "$environment_root/bin/python" -m pip install --no-deps --no-index --find-links "$WHEELHOUSE" -r "$service_root/requirements.lock"
+  extra_wheels="${DOCUMENT_CHECK_WHEELHOUSE:-$repo_root/.cache/document-check-wheels}"
+  if [[ "$service" == uz ]]; then
+    mkdir -p "$extra_wheels"
+    # Reuse exact local wheels first. Only the three new pinned packages may be
+    # downloaded online; never refresh the original OCR environment wholesale.
+    if ! "$environment_root/bin/python" -m pip download --no-deps --only-binary=:all: --no-index \
+      --find-links "$WHEELHOUSE" --find-links "$extra_wheels" --dest "$extra_wheels" \
+      -r "$service_root/requirements-document-check.txt"; then
+      "$environment_root/bin/python" -m pip download --no-deps --only-binary=:all: \
+        --index-url https://pypi.org/simple --dest "$extra_wheels" \
+        -r "$service_root/requirements-document-check.txt"
+    fi
+  fi
+  "$environment_root/bin/python" -m pip install --no-deps --no-index --find-links "$WHEELHOUSE" \
+    --find-links "$extra_wheels" -r "$service_root/requirements.lock"
 else
   case "$service" in uz) paddle_cuda=cu130; paddle_version=3.3.0;; ru) paddle_cuda=cu129; paddle_version=3.2.2;; esac
   "$environment_root/bin/python" -m pip install --no-deps \

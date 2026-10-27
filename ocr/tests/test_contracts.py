@@ -22,7 +22,11 @@ def routes(path):
 
 class ContractTests(unittest.TestCase):
     def test_uz_signatures_preserved(self):
-        self.assertEqual(routes(ROOT / 'services/uz/recognizeuz/api/routes.py'), BASELINE['uz_modular'])
+        # The document presence endpoint is additive; existing routes and all
+        # their parameters retain the exact historical contract.
+        existing = [route for route in routes(ROOT / 'services/uz/recognizeuz/api/routes.py')
+                    if route['path'] != '/document-check']
+        self.assertEqual(existing, BASELINE['uz_modular'])
 
     def test_ru_signatures_preserved(self):
         self.assertEqual(routes(ROOT / 'services/ru/doc_recognizer_universe.py'), BASELINE['ru'])

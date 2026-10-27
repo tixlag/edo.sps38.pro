@@ -19,6 +19,7 @@ from recognizeuz.core.config import (
     USE_GPU,
 )
 from recognizeuz.core.paddle_args import TextRecognizer, make_rec_args
+from recognizeuz.quality.document_check import checker
 
 infer_lock = Lock()
 ocr_improve_dataset_lock = Lock()
@@ -85,6 +86,7 @@ def get_models_status() -> dict[str, bool]:
         "migration_fields_model": migration_fields_model is not None,
         "passport_ocr": passport_ocr is not None,
         "migration_ocr": migration_ocr is not None,
+        "document_check": checker.model is not None,
         "registry": model_registry.status(),
     }
 
@@ -102,6 +104,7 @@ def cleanup_models() -> None:
     passport_ocr = None
     migration_ocr = None
     model_registry.clear()
+    checker.clear()
 
 
 def load_models() -> None:
@@ -137,6 +140,7 @@ def load_models() -> None:
     model_registry.yolo["migration_fields"] = migration_fields_model
     model_registry.recognizers["passport_ocr"] = passport_ocr
     model_registry.recognizers["migration_ocr"] = migration_ocr
+    checker.load()
 
     # Future hook: a migration FIO glyph detector can be registered here as
     # model_registry.extra["migration_fio_glyph_detector"] or yolo/paddle entry.

@@ -5,11 +5,29 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
-from recognizeuz.api.schemas import Base64Request
+from recognizeuz.api.schemas import Base64Request, DocumentCheckResponse
 from recognizeuz.core import resources
 from recognizeuz.pipeline.recognition import recognize_files_payload
+from recognizeuz.quality.document_check import check_files, checker
 
 router = APIRouter()
+
+
+@router.post('/document-check', response_model=DocumentCheckResponse,
+             operation_id='checkDocumentPresence',
+             responses={413: {'description': 'Upload limits exceeded'}})
+def document_check(files: list[UploadFile] = File(...)) -> dict[str, Any]:
+    if not 1 <= len(files) <= 20:
+        raise HTTPException(413, 'Upload limits exceeded')
+    payload = []
+    total = 0
+    for file in files:
+        data = file.file.read(10 * 1024 * 1024 + 1)
+        total += len(data)
+        if len(data) > 10 * 1024 * 1024 or total > 50 * 1024 * 1024:
+            raise HTTPException(413, 'Upload limits exceeded')
+        payload.append((file.filename or 'upload', data, file.content_type))
+    return check_files(payload)
 
 
 @router.get("/health")
@@ -17,6 +35,7 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "models": resources.get_models_status(),
+        "document_check_memory": checker.memory,
     }
 
 

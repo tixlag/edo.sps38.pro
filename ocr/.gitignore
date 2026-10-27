@@ -5,6 +5,7 @@
 # Runtime artifacts and models
 /models/*
 !/models/manifest.json
+!/models/public-manifest.json
 !/models/README.md
 /vendor/
 /var/

@@ -129,9 +129,12 @@ def check_http(url, timeout, validate=None):
 
 
 def services_healthy(root):
+    classifier = root / 'current/contracts/document-check-v1.json'
     def loaded(data):
         keys = ('doc_model', 'passport_fields_model', 'migration_fields_model',
                 'passport_ocr', 'migration_ocr')
+        if classifier.is_file():
+            keys += ('document_check',)
         return data.get('status') == 'ok' and all(data.get('models', {}).get(k) is True for k in keys)
     check_http('http://127.0.0.1:8000/health', 120, loaded)
     check_http('http://127.0.0.1:8001/openapi.json', 120,
@@ -158,6 +161,20 @@ def services_healthy(root):
         if status != 200 or not valid:
             raise RuntimeError('Real inference check failed: ' + label)
         print('Private inference smoke passed: ' + label)
+    # Inspect the active release, including rollback to a release that predates
+    # this endpoint. The deploy script itself belongs to the pipeline commit.
+    if classifier.is_file():
+        run(sys.executable, str(root / 'current/scripts/check_document_check.py'), 'check',
+            '--private-dir', str(private))
+
+
+def prepare_classifier(release, shared):
+    if not (release / 'models/public-manifest.json').is_file():
+        return
+    run(sys.executable, str(release / 'scripts/public_models.py'),
+        '--models-dir', str(shared / 'models'))
+    run(sys.executable, str(release / 'scripts/check_document_check.py'), 'prepare',
+        '--private-dir', str(shared / 'var/regression'))
 
 
 def prepare_release(repo, commit, root, bootstrap=False):
@@ -170,12 +187,14 @@ def prepare_release(repo, commit, root, bootstrap=False):
         # Even a retry must re-check private assets before stopping services.
         run(sys.executable, str(release / 'scripts/models.py'), 'verify',
             '--models-dir', str(root / 'shared/models'))
+        prepare_classifier(release, shared)
         return release
     if release.exists():
         shutil.rmtree(release)
     export_component(repo, commit, release)
     run(sys.executable, str(release / 'scripts/models.py'), 'verify',
         '--models-dir', str(shared / 'models'))
+    prepare_classifier(release, shared)
     (shared / 'var').mkdir(parents=True, exist_ok=True)
     (release / 'var').symlink_to(shared / 'var')
     vendor_key = fingerprint(release / 'scripts/setup_paddleocr.py',
@@ -193,7 +212,8 @@ def prepare_release(repo, commit, root, bootstrap=False):
         if not marker.is_file():
             if environment.exists():
                 shutil.rmtree(environment)
-            env = {**os.environ, 'SERVICE_VENV': str(environment)}
+            env = {**os.environ, 'SERVICE_VENV': str(environment),
+                   'DOCUMENT_CHECK_WHEELHOUSE': str(shared / 'wheels/document-check')}
             if os.getenv('OCR_WHEELHOUSE'):
                 env['WHEELHOUSE'] = os.environ['OCR_WHEELHOUSE']
             run('bash', str(release / 'scripts/setup_service.sh'), service, env=env)
