@@ -12850,18 +12850,11 @@
           },
           "title": {
             "type": "string"
-          },
-          "businessFields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           }
         },
         "required": [
           "code",
-          "title",
-          "businessFields"
+          "title"
         ]
       },
       "AnnotationDocumentTypesDto": {

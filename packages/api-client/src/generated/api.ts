@@ -1449,7 +1449,6 @@ export interface ReassignAnnotationDto {
 export interface AnnotationDocumentTypeDto {
   code: string;
   title: string;
-  businessFields: string[];
 }
 
 export interface AnnotationDocumentTypesDto {

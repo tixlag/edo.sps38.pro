@@ -17,7 +17,6 @@ import {
 } from "@edo/api-client";
 import { AnnotationCatalogSuggestions } from "./AnnotationCatalogSuggestions";
 import { SearchSelect } from "../SearchSelect";
-import { DOCUMENT_FIELD_LABELS } from "../document-field-labels";
 const control =
   "min-w-0 rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]";
 const main = () => [
@@ -121,9 +120,6 @@ export function AnnotationCatalogSettings() {
   const variants = (catalogs.data?.items ?? []).filter(
     (c) => c.documentTypeCode === draft.documentTypeCode,
   );
-  const definitions =
-    types.data?.items.find((t) => t.code === draft.documentTypeCode)
-      ?.businessFields ?? [];
   const usable = refresh.data ?? types.data;
   const valid =
     !!draft.documentTypeCode &&
@@ -196,6 +192,12 @@ export function AnnotationCatalogSettings() {
           Справочник обновлён:{" "}
           {new Date(usable.syncedAt).toLocaleString("ru-RU")}
           {usable.stale ? " · Используются сохранённые сведения" : ""}
+        </p>
+      )}
+      {usable?.stale && !usable.syncedAt && (
+        <p role="status" className="text-sm">
+          Не удалось обновить типы из 1С. Готовые списки полей доступны; новые
+          типы появятся после обновления.
         </p>
       )}
       {(types.isError || catalogs.isError) && (
@@ -467,26 +469,6 @@ export function AnnotationCatalogSettings() {
                       {Object.entries(kinds).map(([value, label]) => (
                         <option key={value} value={value}>
                           {label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1 text-xs">
-                    Связь с реквизитом 1С
-                    <select
-                      className={control}
-                      value={f.businessFieldName ?? ""}
-                      onChange={(e) =>
-                        field(index, {
-                          businessFieldName: e.target.value || null,
-                        })
-                      }
-                    >
-                      <option value="">Не связывать</option>
-                      {definitions.map((name) => (
-                        <option key={name} value={name}>
-                          {DOCUMENT_FIELD_LABELS[name] ??
-                            "Дополнительный реквизит"}
                         </option>
                       ))}
                     </select>
