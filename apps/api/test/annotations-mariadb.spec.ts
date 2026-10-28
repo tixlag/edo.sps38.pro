@@ -278,9 +278,10 @@ suite("annotation real MariaDB transactions", () => {
     ];
     const ids: string[] = [];
     try {
-      for (const [code, title] of unique) {
+      // A partial stale snapshot must not prevent creating all presets.
+      for (const [code, title] of unique.slice(0, 5)) {
         const type = await prisma.documentType.create({
-          data: { code, title, catalogSyncedAt: new Date() },
+          data: { code, title },
         });
         ids.push(type.id);
       }
@@ -299,6 +300,16 @@ suite("annotation real MariaDB transactions", () => {
         include: { fields: true, sections: true },
       });
       expect(published).toHaveLength(31);
+      expect(
+        published
+          .flatMap((p) => p.fields)
+          .every((f) => f.businessFieldName === null),
+      ).toBe(true);
+      const available = await catalogs.documentTypes(admin);
+      expect(available.items).toHaveLength(29);
+      expect(available.items.find((t) => t.code === "PASSPORT")?.title).toBe(
+        "Паспорт",
+      );
       expect(
         published.every(
           (p) =>

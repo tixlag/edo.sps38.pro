@@ -63,7 +63,7 @@ export function catalogDto(row: CatalogRow): AnnotationCatalogDto {
       label: f.label,
       ordinal: f.ordinal,
       multiline: f.multiline,
-      businessFieldName: f.businessFieldName,
+      businessFieldName: null,
     })),
   };
 }
@@ -99,13 +99,17 @@ export class AnnotationCatalogService {
   ) {
     requireAnnotationAdmin(principal);
     if (
+      !annotationPreset(dto.documentTypeCode) &&
       !(await this.prisma.documentType.findUnique({
         where: { code: dto.documentTypeCode },
       }))
     )
       throw new NotFoundException("Тип документа не найден");
     const sections = dto.sections ? validateSections(dto.sections) : [];
-    const fields = validateCatalogFields(dto.fields);
+    const fields = validateCatalogFields(dto.fields).map((field) => ({
+      ...field,
+      businessFieldName: null,
+    }));
     if (
       sections.length &&
       fields.some(
@@ -194,7 +198,12 @@ export class AnnotationCatalogService {
       if (!row) throw new NotFoundException("Catalog not found");
       if (row.status !== "DRAFT" || row.revision !== revision)
         throw new ConflictException("Catalog is published or revision changed");
-      const fields = dto ? validateCatalogFields(dto.fields) : row.fields;
+      const fields = dto
+        ? validateCatalogFields(dto.fields).map((field) => ({
+            ...field,
+            businessFieldName: null,
+          }))
+        : row.fields;
       const sections = dto?.sections
         ? validateSections(dto.sections)
         : (row.sections ?? []);
@@ -281,8 +290,9 @@ export class AnnotationCatalogService {
     const type = await this.prisma.documentType.findUnique({
       where: { code: documentTypeCode },
     });
-    if (!type) throw new NotFoundException("Тип документа не найден");
     const preset = annotationPreset(documentTypeCode, profile);
+    if (!type && !preset)
+      throw new NotFoundException("Тип документа не найден");
     return {
       fields: preset?.fields ?? [],
       sections: preset?.sections ?? [
@@ -293,29 +303,41 @@ export class AnnotationCatalogService {
           repeatable: false,
         },
       ],
-      title: preset?.title ?? type.title,
+      title: preset?.title ?? type!.title,
       profile: preset?.profile ?? "",
     };
   }
   async documentTypes(principal: AuthPrincipal, refresh = false) {
     requireAnnotationAdmin(principal);
+    if (refresh) await this.bootstrap(principal);
     const result =
       refresh && this.documentCatalog
         ? await this.documentCatalog.refreshForAnnotations()
         : { stale: false };
-    if (refresh) await this.bootstrap(principal);
     const items = await this.prisma.documentType.findMany({
       where: { catalogSyncedAt: { not: null } },
-      include: { definitions: true },
       orderBy: { title: "asc" },
     });
+    const types = new Map<string, { code: string; title: string }>();
+    for (const preset of ANNOTATION_PRESETS) {
+      if (!types.has(preset.documentTypeCode))
+        types.set(preset.documentTypeCode, {
+          code: preset.documentTypeCode,
+          title:
+            preset.documentTypeCode === "PASSPORT"
+              ? "Паспорт"
+              : preset.documentTypeCode === "SNILS"
+                ? "СНИЛС"
+                : preset.title,
+        });
+    }
+    for (const item of items)
+      types.set(item.code, { code: item.code, title: item.title.trim() });
     const dates = items.map((t) => t.catalogSyncedAt?.getTime() ?? 0);
     return {
-      items: items.map((t) => ({
-        code: t.code,
-        title: t.title.trim(),
-        businessFields: t.definitions.map((f) => f.name),
-      })),
+      items: [...types.values()].sort((a, b) =>
+        a.title.localeCompare(b.title, "ru"),
+      ),
       syncedAt: Math.max(0, ...dates)
         ? new Date(Math.max(...dates)).toISOString()
         : null,
@@ -324,18 +346,9 @@ export class AnnotationCatalogService {
   }
   async bootstrap(principal: AuthPrincipal) {
     requireAnnotationAdmin(principal);
-    const types = await this.prisma.documentType.findMany({
-      where: { catalogSyncedAt: { not: null } },
-      select: { code: true },
-    });
-    const available = new Set(types.map((t) => t.code));
     let created = 0,
       skipped = 0;
     for (const preset of ANNOTATION_PRESETS) {
-      if (!available.has(preset.documentTypeCode)) {
-        skipped++;
-        continue;
-      }
       const existing = await this.prisma.annotationCatalogFamily.findUnique({
         where: {
           documentTypeCode_profile: {

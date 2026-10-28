@@ -163,16 +163,6 @@ const kinds: Record<string, K> = {
   stamp: K.STAMP,
   machine_code: K.CODE,
 };
-const business: Record<string, string> = {
-  series: "series",
-  number: "number",
-  issue_date: "issueDate",
-  expiry_date: "expiryDate",
-  issued_by: "issuedBy",
-  department_code: "departmentCode",
-  last_name_latin: "lastNameLatin",
-  first_name_latin: "firstNameLatin",
-};
 type SectionSpec = [string, string, string, boolean?];
 function preset(
   code: string,
@@ -205,7 +195,7 @@ function preset(
             sectionKey,
             kind: kinds[key] ?? K.TEXT,
             multiline: multiline.has(key),
-            businessFieldName: business[key] ?? null,
+            businessFieldName: null,
           };
         }),
     ),

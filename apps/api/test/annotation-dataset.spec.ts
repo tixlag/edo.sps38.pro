@@ -41,9 +41,20 @@ describe("independent dataset schema", () => {
       expect(validateCatalogFields(p.fields)).toHaveLength(p.fields.length);
       for (const f of p.fields) {
         expect(f.label).toMatch(/[А-Яа-яЁё]/);
+        expect(f.businessFieldName).toBeNull();
         expect(p.sections?.some((s) => s.key === f.sectionKey)).toBe(true);
       }
     }
+    const ru = ANNOTATION_PRESETS.find(
+      (p) => p.documentTypeCode === "PASSPORT" && p.profile === "RU",
+    )!;
+    const uz = ANNOTATION_PRESETS.find(
+      (p) => p.documentTypeCode === "PASSPORT" && p.profile === "UZ",
+    )!;
+    expect(ru.fields.some((f) => f.key === "department_code")).toBe(true);
+    expect(uz.fields.some((f) => f.key === "personal_number")).toBe(true);
+    expect(ru.fields.some((f) => f.key === "personal_number")).toBe(false);
+    expect(uz.fields.some((f) => f.key === "department_code")).toBe(false);
     for (const key of ["birth_place", "issued_by"])
       expect(
         ANNOTATION_PRESETS.find((p) => p.profile === "RU")?.fields.find(

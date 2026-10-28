@@ -370,7 +370,6 @@ export class AnnotationCatalogDefaultsDto {
 export class AnnotationDocumentTypeDto {
   @ApiProperty() code!: string;
   @ApiProperty() title!: string;
-  @ApiProperty({ type: [String] }) businessFields!: string[];
 }
 export class AnnotationDocumentTypesDto {
   @ApiProperty({ type: [AnnotationDocumentTypeDto] })
