@@ -207,7 +207,9 @@ export function CandidateDrawer({
         <div className="min-h-0 flex-1 overflow-auto p-4">
           <h3 className="mb-2 text-[13px] font-semibold">
             {returnedHistory ? "Возвращённые версии" : "Документы"}
-            {docs.data ? ` (${items.length})` : ""}
+            {docs.data
+              ? ` (${items.length + (returnedHistory ? 0 : (docs.data.missingDocuments?.length ?? 0))})`
+              : ""}
           </h3>
           {docs.isLoading && <p role="status">Загрузка документов…</p>}
           {docs.isError && (
@@ -222,13 +224,39 @@ export function CandidateDrawer({
               </Button>
             </div>
           )}
-          {docs.data && items.length === 0 && (
-            <p className="text-[13px] text-[var(--muted-foreground)]">
-              {returnedHistory
-                ? "У кандидата нет возвращённых версий."
-                : "У кандидата нет документов."}
-            </p>
-          )}
+          {docs.data &&
+            items.length === 0 &&
+            (returnedHistory || !docs.data.missingDocuments?.length) && (
+              <p className="text-[13px] text-[var(--muted-foreground)]">
+                {returnedHistory
+                  ? "У кандидата нет возвращённых версий."
+                  : "У кандидата нет документов."}
+              </p>
+            )}
+          {!returnedHistory &&
+            docs.data?.missingDocuments == null &&
+            docs.data && (
+              <p className="mb-2 text-xs text-[var(--muted-foreground)]">
+                Не удалось определить список необходимых документов: не указана
+                должность кандидата.
+              </p>
+            )}
+          {!returnedHistory &&
+            (docs.data?.missingDocuments?.length ?? 0) > 0 && (
+              <ul className="mb-2 flex flex-col gap-2">
+                {docs.data?.missingDocuments?.map((type) => (
+                  <li
+                    key={type.code}
+                    className="flex items-center justify-between gap-3 rounded-[8px] border border-[var(--border)] px-3 py-2.5"
+                  >
+                    <span className="break-words text-[13px] font-semibold">
+                      {type.title}
+                    </span>
+                    <Badge>Не загружен</Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
           {items.length > 0 && (
             <ul className="flex flex-col gap-2">
               {items.map(({ doc, returnedVersion }) => (

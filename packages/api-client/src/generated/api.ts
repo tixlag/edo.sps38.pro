@@ -1022,9 +1022,28 @@ export interface CandidateDocumentSummaryDto {
   deliveryStatus: string | null;
 }
 
+export interface MissingDocumentTypeDto {
+  code: string;
+  title: string;
+}
+
 export interface CandidateDetailsDto {
   candidate: CandidateProfileDto;
   documents: CandidateDocumentSummaryDto[];
+  /**
+   * Null when the applicable requirements cannot be determined
+   * @nullable
+   */
+  missingDocuments?: MissingDocumentTypeDto[] | null;
+}
+
+export interface EmployeeDocumentListDto {
+  items: DocumentDto[];
+  /**
+   * Null when the applicable requirements cannot be determined
+   * @nullable
+   */
+  missingDocuments: MissingDocumentTypeDto[] | null;
 }
 
 /**
@@ -4245,7 +4264,7 @@ export const listEmployeeDocuments = (
   employeeId: string,
   signal?: AbortSignal,
 ) => {
-  return customInstance<DocumentListDto>({
+  return customInstance<EmployeeDocumentListDto>({
     url: `/api/v1/employees/${employeeId}/documents`,
     method: "GET",
     signal,

@@ -43,6 +43,8 @@ import type {
   CandidateListDto,
   DocumentDto,
   DocumentListDto,
+  EmployeeDocumentListDto,
+  MissingDocumentTypeDto,
   DocumentVersionDto,
   DocumentOcrDetailsDto,
   DownloadDto,
@@ -273,7 +275,33 @@ export class DocumentReadService {
     return {
       candidate,
       documents: rows.map((row) => this.documentSummary(row)),
+      missingDocuments: await this.missingDocumentTypes(
+        owner,
+        rows.map((row) => row.documentType?.code),
+      ),
     };
+  }
+
+  private async missingDocumentTypes(
+    profile: { positionCode: string | null; citizenship: string | null } | null,
+    uploadedCodes: (string | null | undefined)[],
+  ): Promise<MissingDocumentTypeDto[] | null> {
+    if (!profile?.positionCode) return null;
+    const types = await this.prisma.documentType.findMany({
+      where: { catalogSyncedAt: { not: null } },
+      include: { positions: true },
+    });
+    const uploaded = new Set(uploadedCodes);
+    return types
+      .filter(
+        (type) =>
+          applicable(
+            type,
+            profile.positionCode!,
+            profile.citizenship ?? "ru",
+          ) && !uploaded.has(type.code),
+      )
+      .map(({ code, title }) => ({ code, title }));
   }
 
   async candidateDocuments(
@@ -295,9 +323,9 @@ export class DocumentReadService {
   async employeeDocuments(
     id: string,
     principal: AuthPrincipal,
-  ): Promise<DocumentListDto> {
+  ): Promise<EmployeeDocumentListDto> {
     const employee = await this.access.employee(id, principal);
-    return this.documents({
+    const documents = await this.documents({
       AND: [
         this.access.documentWhere(principal),
         {
@@ -310,6 +338,42 @@ export class DocumentReadService {
         },
       ],
     });
+    let profile = employee.lkEmployeeCode1c
+      ? await this.prisma.candidate.findFirst({
+          where: {
+            AND: [
+              { code1c: employee.lkEmployeeCode1c },
+              this.access.candidateWhere(principal),
+            ],
+          },
+          orderBy: { updatedAt: "desc" },
+          select: { positionCode: true, citizenship: true },
+        })
+      : null;
+    if (!profile?.positionCode && employee.lkEmployeeCode1c) {
+      const lk = await this.prisma.lkEmployee.findUnique({
+        where: { code1c: employee.lkEmployeeCode1c },
+        select: { positionCode1c: true, citizenship: true },
+      });
+      if (
+        lk?.positionCode1c &&
+        /^[a-z]{2}$/i.test(lk.citizenship?.trim() ?? "")
+      ) {
+        profile = {
+          positionCode: lk.positionCode1c,
+          citizenship: lk.citizenship!.trim(),
+        };
+      }
+    }
+    return {
+      ...documents,
+      missingDocuments: await this.missingDocumentTypes(
+        profile,
+        documents.items
+          .filter((doc) => doc.currentVersion > 0)
+          .map((doc) => doc.documentTypeCode),
+      ),
+    };
   }
 
   async version(

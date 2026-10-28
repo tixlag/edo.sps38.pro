@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { Clock, Check, X } from "lucide-react";
-import {
-  useListDocumentTypes,
-  useListEmployeeDocuments,
-} from "@edo/api-client";
+import { useListEmployeeDocuments } from "@edo/api-client";
 import {
   Badge,
   Button,
@@ -143,11 +140,10 @@ function DocumentViewer({
 
 export function EmployeeDocuments({ employeeId }: { employeeId: string }) {
   const documents = useListEmployeeDocuments(employeeId);
-  const types = useListDocumentTypes();
   const [selected, setSelected] = useState<string | null>(null);
-  const active =
-    documents.data?.items.find((item) => item.id === selected) ??
-    documents.data?.items[0];
+  const uploaded =
+    documents.data?.items.filter((item) => item.currentVersion > 0) ?? [];
+  const active = uploaded.find((item) => item.id === selected) ?? uploaded[0];
   return (
     <Card>
       <CardHeader>
@@ -170,26 +166,43 @@ export function EmployeeDocuments({ employeeId }: { employeeId: string }) {
             </Button>
           </div>
         )}
-        {documents.data && !active && (
-          <p className="py-6 text-sm text-[var(--muted-foreground)]">
-            Работник пока не загрузил документы.
+        {documents.data?.missingDocuments == null && documents.data && (
+          <p className="mb-3 text-sm text-[var(--muted-foreground)]">
+            Не удалось определить список необходимых документов по данным
+            сотрудника.
           </p>
         )}
+        {(documents.data?.missingDocuments?.length ?? 0) > 0 && (
+          <ul className="mb-4 flex flex-col gap-2">
+            {documents.data?.missingDocuments?.map((type) => (
+              <li
+                key={type.code}
+                className="flex items-center justify-between gap-3 rounded-[8px] border border-[var(--border)] px-3 py-2.5"
+              >
+                <span className="text-sm font-semibold">{type.title}</span>
+                <Badge>Не загружен</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+        {documents.data &&
+          !active &&
+          !documents.data.missingDocuments?.length && (
+            <p className="py-6 text-sm text-[var(--muted-foreground)]">
+              Работник пока не загрузил документы.
+            </p>
+          )}
         {active && (
           <div className="flex flex-col gap-5">
             <div className="flex flex-wrap gap-2" aria-label="Выбор документа">
-              {documents.data?.items.map((doc) => (
+              {uploaded.map((doc) => (
                 <Button
                   key={doc.id}
                   variant={doc.id === active.id ? "secondary" : "outline"}
                   aria-pressed={doc.id === active.id}
                   onClick={() => setSelected(doc.id)}
                 >
-                  {types.data?.items.find(
-                    (type) => type.code === doc.documentTypeCode,
-                  )?.title ??
-                    doc.documentTypeCode ??
-                    "Документ"}
+                  {doc.title}
                 </Button>
               ))}
             </div>

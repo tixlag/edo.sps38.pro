@@ -44,6 +44,7 @@ import {
   CandidateListDto,
   CandidateQueryDto,
   DocumentListDto,
+  EmployeeDocumentListDto,
   DocumentTypeListDto,
   DocumentTypesQueryDto,
   DocumentVersionDto,
@@ -305,11 +306,11 @@ export class DocumentsController {
     summary: "List employee and explicitly linked candidate documents",
     operationId: "listEmployeeDocuments",
   })
-  @ApiResponse({ status: 200, type: DocumentListDto })
+  @ApiResponse({ status: 200, type: EmployeeDocumentListDto })
   employeeDocuments(
     @Param("employeeId") id: string,
     @CurrentPrincipal() principal: AuthPrincipal,
-  ): Promise<DocumentListDto> {
+  ): Promise<EmployeeDocumentListDto> {
     return this.reads.employeeDocuments(id, principal);
   }
 

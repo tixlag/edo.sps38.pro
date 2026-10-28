@@ -3248,7 +3248,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentListDto"
+                  "$ref": "#/components/schemas/EmployeeDocumentListDto"
                 }
               }
             }
@@ -11822,6 +11822,21 @@
           "deliveryStatus"
         ]
       },
+      "MissingDocumentTypeDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "title"
+        ]
+      },
       "CandidateDetailsDto": {
         "type": "object",
         "properties": {
@@ -11833,11 +11848,42 @@
             "items": {
               "$ref": "#/components/schemas/CandidateDocumentSummaryDto"
             }
+          },
+          "missingDocuments": {
+            "nullable": true,
+            "description": "Null when the applicable requirements cannot be determined",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDocumentTypeDto"
+            }
           }
         },
         "required": [
           "candidate",
           "documents"
+        ]
+      },
+      "EmployeeDocumentListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentDto"
+            }
+          },
+          "missingDocuments": {
+            "nullable": true,
+            "description": "Null when the applicable requirements cannot be determined",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDocumentTypeDto"
+            }
+          }
+        },
+        "required": [
+          "items",
+          "missingDocuments"
         ]
       },
       "DocumentOcrDetailsDto": {
