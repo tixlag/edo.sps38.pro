@@ -103,7 +103,7 @@ describe("document presence before field OCR", () => {
   });
 
   it.each(["DOCUMENT", "UNCERTAIN"])(
-    "keeps %s documents without a field profile in manual review",
+    "routes %s documents without a field profile",
     async (verdict) => {
       const body = response();
       body.pages = [
@@ -112,13 +112,27 @@ describe("document presence before field OCR", () => {
         page(1, 2, verdict),
       ];
       fetchResponse(body);
-      await expect(
-        service().recognize(request, new AbortController().signal),
-      ).resolves.toMatchObject({
-        outcome: "SUCCEEDED",
-        fields: {},
-        raw: { documentCheck: { status: "COMPLETED" } },
-      });
+      const actual = await service().recognize(
+        request,
+        new AbortController().signal,
+      );
+      expect(actual).toMatchObject(
+        verdict === "DOCUMENT"
+          ? {
+              outcome: "SUCCEEDED",
+              fields: {},
+              raw: { documentCheck: { status: "COMPLETED" } },
+            }
+          : {
+              outcome: "REJECTED",
+              rejectionKind: "NON_DOCUMENT",
+              issues: [
+                { fileOrdinal: 0, pageNumber: 1 },
+                { fileOrdinal: 1, pageNumber: 1 },
+                { fileOrdinal: 1, pageNumber: 2 },
+              ],
+            },
+      );
     },
   );
 

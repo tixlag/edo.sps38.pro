@@ -103,8 +103,8 @@ export async function checkDocumentPresence(
       result: validateDocumentCheck(JSON.parse(bytes.toString("utf8")), files),
     };
   } catch {
-    // Only an explicit, fully validated NON_DOCUMENT result may return a
-    // document. Outages, missing endpoints and invalid/partial results fail open.
+    // Outages, missing endpoints and invalid/partial results do not consume
+    // a candidate's automatic return attempts.
     caller.throwIfAborted();
     return { status: "UNAVAILABLE" };
   }
@@ -116,7 +116,7 @@ export function nonDocumentResult(
 ): OcrResult | null {
   if (check.status !== "COMPLETED") return null;
   const pages = check.result.pages.filter(
-    (page) => page.verdict === "NON_DOCUMENT",
+    (page) => page.verdict !== "DOCUMENT",
   );
   if (!pages.length) return null;
   return {

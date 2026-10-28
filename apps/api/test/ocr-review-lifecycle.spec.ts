@@ -65,6 +65,7 @@ function workerFixture() {
     ocrOutbox: { update: vi.fn() },
     documentVersion: {
       findUnique: vi.fn(async () => version),
+      findMany: vi.fn(async () => []),
       update: vi.fn(),
     },
     documentVersionOcrField: { createMany: vi.fn() },

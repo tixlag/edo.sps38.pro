@@ -302,6 +302,29 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
         });
         return;
       }
+      const candidateReturn =
+        result.outcome === "REJECTED" &&
+        result.rejectionKind === "NON_DOCUMENT";
+      const previous = candidateReturn
+        ? await tx.documentVersion.findMany({
+            where: {
+              documentId: initial.version.documentId,
+              version: { lt: current.version },
+              submittedAt: { not: null },
+            },
+            orderBy: { version: "desc" },
+            take: 2,
+            select: { status: true, reviewedBy: true },
+          })
+        : [];
+      const passToReview =
+        previous.length === 2 &&
+        previous.every(
+          (version) =>
+            version.status === "RETURNED" &&
+            version.reviewedBy === "ocr-document-check",
+        );
+      const returned = candidateReturn && !passToReview;
       const changed = await tx.ocrJob.updateMany({
         where: {
           id: jobId,
@@ -310,19 +333,14 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           leaseUntil: { gt: new Date() },
         },
         data: {
-          status: result.outcome,
-          cleanupPending:
-            result.outcome === "REJECTED" &&
-            result.rejectionKind === "NON_DOCUMENT",
+          status: passToReview ? "SUCCEEDED" : result.outcome,
+          cleanupPending: returned,
           leaseToken: null,
           leaseUntil: null,
           errorCode: null,
         },
       });
       if (!changed.count) return;
-      const returned =
-        result.outcome === "REJECTED" &&
-        result.rejectionKind === "NON_DOCUMENT";
       const status = returned ? "RETURNED" : "IN_REVIEW";
       const rejectionReason = returned
         ? documentReturnReason(
@@ -337,7 +355,12 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
         where: { id: initial.versionId },
         data: {
           status,
-          ocrRaw: raw,
+          ocrRaw: passToReview
+            ? {
+                ...(raw as Prisma.InputJsonObject),
+                automaticReturnLimitReached: true,
+              }
+            : raw,
           ocrSource: result.source,
           revision: { increment: 1 },
           ...(returned
@@ -437,7 +460,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           });
           await tx.ocrRegion.createMany({ data: regions });
         }
-      } else {
+      } else if (!passToReview) {
         await tx.ocrIssue.createMany({
           data: result.issues.map((issue) => ({
             versionId: initial.versionId,
@@ -459,8 +482,9 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
         correlationId: initial.correlationId,
         after: {
           version: initial.version.version,
-          outcome: result.outcome,
+          outcome: passToReview ? "SUCCEEDED" : result.outcome,
           source: result.source,
+          ...(passToReview ? { automaticReturnLimitReached: true } : {}),
         },
       });
       if (returned)
