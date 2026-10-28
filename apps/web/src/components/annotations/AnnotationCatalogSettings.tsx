@@ -18,7 +18,7 @@ import {
 import { AnnotationCatalogSuggestions } from "./AnnotationCatalogSuggestions";
 import { SearchSelect } from "../SearchSelect";
 const control =
-  "min-w-0 rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]";
+  "min-w-0 rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]";
 const main = () => [
   { key: "main", label: "Основной документ", ordinal: 0, repeatable: false },
 ];
@@ -296,7 +296,7 @@ export function AnnotationCatalogSettings() {
           )}
           <fieldset
             disabled={readonly || busy}
-            className="flex min-w-0 flex-col gap-5"
+            className="flex w-full max-w-6xl min-w-0 flex-col gap-4"
           >
             <label className="flex flex-col gap-2 text-sm font-semibold">
               Название варианта документа
@@ -341,15 +341,15 @@ export function AnnotationCatalogSettings() {
                 Добавить базовые поля
               </Button>
             </div>
-            <div className="flex flex-col gap-3">
-              <h3 className="text-base font-semibold">Страницы и разделы</h3>
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold">Страницы и разделы</h3>
               <p className="text-sm text-[var(--muted-foreground)]">
                 Раздел соответствует части документа. Разметчик привяжет его к
                 загруженным страницам. Повторы подходят для штампов,
                 исследований и записей таблицы.
               </p>
               {sections.map((s, index) => (
-                <div key={s.key} className="flex flex-wrap items-center gap-3">
+                <div key={s.key} className="flex flex-wrap items-center gap-2">
                   <input
                     aria-label={`Название раздела ${index + 1}`}
                     className={`${control} flex-1`}
@@ -381,6 +381,7 @@ export function AnnotationCatalogSettings() {
                   </label>
                   <Button
                     variant="ghost"
+                    size="sm"
                     aria-label={`Удалить раздел ${s.label}`}
                     disabled={
                       sections.length === 1 ||
@@ -403,6 +404,7 @@ export function AnnotationCatalogSettings() {
               <Button
                 className="self-start"
                 variant="outline"
+                size="sm"
                 onClick={() =>
                   edit({
                     sections: [
@@ -421,15 +423,30 @@ export function AnnotationCatalogSettings() {
                 Добавить раздел
               </Button>
             </div>
-            <div className="flex flex-col gap-4">
-              <h3 className="text-base font-semibold">Поля документа</h3>
+            <div className="flex flex-col gap-1">
+              <h3 className="mb-1 text-sm font-semibold">
+                Поля документа{" "}
+                <span className="font-normal text-[var(--muted-foreground)]">
+                  ({draft.fields.length})
+                </span>
+              </h3>
+              <div
+                aria-hidden="true"
+                className="hidden grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)_auto_auto] gap-2 px-1 text-xs text-[var(--muted-foreground)] lg:grid"
+              >
+                <span>Название поля</span>
+                <span>Раздел</span>
+                <span>Вид области</span>
+                <span>Несколько строк</span>
+                <span className="w-24">Порядок</span>
+              </div>
               {draft.fields.map((f, index) => (
                 <div
                   key={index}
-                  className="grid min-w-0 gap-3 border-t border-[var(--border)] pt-4 sm:grid-cols-2 lg:grid-cols-3"
+                  className="grid min-w-0 items-center gap-2 border-t border-[var(--border)] py-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)_auto_auto]"
                 >
                   <label className="flex flex-col gap-1 text-xs">
-                    Название поля
+                    <span className="lg:sr-only">Название поля</span>
                     <input
                       className={control}
                       value={f.label}
@@ -438,7 +455,7 @@ export function AnnotationCatalogSettings() {
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
-                    Раздел
+                    <span className="lg:sr-only">Раздел</span>
                     <select
                       className={control}
                       value={f.sectionKey ?? "main"}
@@ -454,7 +471,7 @@ export function AnnotationCatalogSettings() {
                     </select>
                   </label>
                   <label className="flex flex-col gap-1 text-xs">
-                    Вид области
+                    <span className="lg:sr-only">Вид области</span>
                     <select
                       className={control}
                       value={f.kind ?? "TEXT"}
@@ -473,7 +490,7 @@ export function AnnotationCatalogSettings() {
                       ))}
                     </select>
                   </label>
-                  <label className="flex items-center gap-2 text-sm">
+                  <label className="flex items-center justify-center gap-2 text-xs">
                     <input
                       type="checkbox"
                       disabled={!!f.kind && f.kind !== "TEXT"}
@@ -482,13 +499,15 @@ export function AnnotationCatalogSettings() {
                         field(index, { multiline: e.target.checked })
                       }
                     />
-                    Несколько строк текста
+                    <span className="lg:sr-only">Несколько строк текста</span>
                   </label>
                   <div className="flex items-end justify-end gap-1">
                     {[-1, 1].map((offset) => (
                       <Button
                         key={offset}
                         variant="ghost"
+                        size="sm"
+                        className="w-8 px-0"
                         aria-label={`${offset < 0 ? "Поднять" : "Опустить"} поле ${f.label}`}
                         disabled={
                           index + offset < 0 ||
@@ -517,6 +536,8 @@ export function AnnotationCatalogSettings() {
                     ))}
                     <Button
                       variant="ghost"
+                      size="sm"
+                      className="w-8 px-0"
                       aria-label={`Удалить поле ${f.label}`}
                       onClick={() =>
                         edit({
