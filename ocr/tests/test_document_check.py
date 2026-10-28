@@ -19,6 +19,18 @@ class DocumentCheckTests(unittest.TestCase):
             self.assertEqual(module.verdict_from_scores(scores), 'UNCERTAIN')
         self.assertEqual(module.verdict_from_scores([0.999, 0.999, 0.01, 0.999]), 'DOCUMENT')
 
+    def test_context_requires_baseline_agreement_in_every_orientation(self):
+        # User's office photograph, measured on the GPU model.
+        self.assertEqual(module.verdict_from_scores([0.9999] * 4, [0.7806, 0.9567, 0.8036, 0.8174]), 'NON_DOCUMENT')
+        # Passport/card on the same office background: context alone exceeds
+        # the reject threshold, while the baseline detects document evidence.
+        self.assertEqual(module.verdict_from_scores([0.9983, 0.9998, 0.9946, 0.9991],
+                                                    [0.1804, 0.3995, 0.1961, 0.2123]), 'UNCERTAIN')
+        self.assertEqual(module.verdict_from_scores([0.9994, 0.9999, 0.9971, 1.0],
+                                                    [0.0911, 0.4453, 0.0221, 0.6812]), 'DOCUMENT')
+        self.assertEqual(module.verdict_from_scores([0.9999] * 4, [0.8, 0.8, 0.74, 0.8]), 'UNCERTAIN')
+        self.assertEqual(module.verdict_from_scores([0.9999] * 4, [float('nan')] * 4), 'UNCERTAIN')
+
     def test_all_pages_keep_file_and_page_identity(self):
         resources = types.ModuleType('recognizeuz.core.resources')
         resources.infer_lock = Lock()

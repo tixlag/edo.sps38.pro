@@ -3,6 +3,7 @@
   "model": "google/siglip2-base-patch16-224",
   "revision": "75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2",
   "reject_threshold": 0.99,
+  "context_guard_threshold": 0.75,
   "document_threshold": 0.9,
   "rotations": [0, 90, 180, 270],
   "document_prompts": [
@@ -30,5 +31,15 @@
     "a photograph of a building or a street",
     "a photograph of a room, furniture, or household objects",
     "a cartoon or a drawing of fictional characters"
+  ],
+  "context_non_document_prompts": [
+    "a photograph of an office desk with a computer monitor and cables",
+    "a photograph of a desk with office supplies and objects",
+    "a photograph of a table with cables and a computer screen",
+    "a photograph of a workplace with a table and computers",
+    "a photograph of a computer desk with no paper document",
+    "a photograph of an office table with wires and a container",
+    "a photo of a cluttered office workstation",
+    "a photo of an indoor scene without a document"
   ]
 }

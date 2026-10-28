@@ -23,13 +23,19 @@ def enabled() -> bool:
     return os.getenv('DOCUMENT_CHECK_ENABLED', 'true').lower() not in {'0', 'false', 'no', 'off'}
 
 
-def verdict_from_scores(scores: list[float]) -> str:
+def verdict_from_scores(scores: list[float], baseline_scores: list[float] | None = None) -> str:
     if len(scores) != len(POLICY['rotations']) or any(
             not math.isfinite(score) or not 0 <= score <= 1 for score in scores):
         return 'UNCERTAIN'
-    if all(score >= POLICY['reject_threshold'] for score in scores):
+    if baseline_scores is None:
+        baseline_scores = scores
+    if len(baseline_scores) != len(POLICY['rotations']) or any(
+            not math.isfinite(score) or not 0 <= score <= 1 for score in baseline_scores):
+        return 'UNCERTAIN'
+    if (all(score >= POLICY['reject_threshold'] for score in scores)
+            and all(score >= POLICY['context_guard_threshold'] for score in baseline_scores)):
         return 'NON_DOCUMENT'
-    if any(score <= 1 - POLICY['document_threshold'] for score in scores):
+    if any(score <= 1 - POLICY['document_threshold'] for score in baseline_scores):
         return 'DOCUMENT'
     return 'UNCERTAIN'
 
@@ -60,7 +66,8 @@ class DocumentChecker:
         self.model = AutoModel.from_pretrained(
             directory, local_files_only=True, trust_remote_code=False,
             use_safetensors=True, dtype=torch.float16).to(self.device).eval()
-        prompts = POLICY['document_prompts'] + POLICY['non_document_prompts']
+        prompts = (POLICY['document_prompts'] + POLICY['non_document_prompts']
+                   + POLICY['context_non_document_prompts'])
         inputs = self.processor(text=prompts, padding='max_length', max_length=64,
                                 truncation=True, return_tensors='pt').to(self.device)
         with torch.inference_mode():
@@ -84,7 +91,9 @@ class DocumentChecker:
         from PIL import ImageOps
 
         scores = []
+        baseline_scores = []
         count = len(POLICY['document_prompts'])
+        original_end = count + len(POLICY['non_document_prompts'])
         with torch.inference_mode():
             for angle in POLICY['rotations']:
                 # A square letterbox preserves the entire frame. No center crop
@@ -98,11 +107,13 @@ class DocumentChecker:
                 logits = (features @ self.text_features.T) * self.model.logit_scale.float().exp()
                 logits += self.model.logit_bias.float()
                 document = logits[0, :count].max()
+                baseline = logits[0, count:original_end].max()
                 non_document = logits[0, count:].max()
+                baseline_scores.append(float(torch.sigmoid(baseline - document).item()))
                 scores.append(float(torch.sigmoid(non_document - document).item()))
         self.memory['torch_peak_allocated_bytes'] = torch.cuda.max_memory_allocated(self.device)
         self.memory['gpu_free_bytes'] = torch.cuda.mem_get_info(self.device)[0]
-        return {'verdict': verdict_from_scores(scores), 'reason': None,
+        return {'verdict': verdict_from_scores(scores, baseline_scores), 'reason': None,
                 'non_document_scores': scores}
 
 
