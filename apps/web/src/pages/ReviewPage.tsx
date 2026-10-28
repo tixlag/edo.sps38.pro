@@ -882,7 +882,7 @@ export function ReviewDocumentPage({
     ? formatDateTimeRu(version.data.approvedAt)
     : null;
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-auto p-3 sm:p-4 lg:overflow-hidden">
+    <div className="flex min-h-full min-w-0 flex-col overflow-y-auto p-3 sm:p-4">
       <Link
         to={readOnly ? "/history" : base}
         search={{ ...parseReviewSearchParams(search) }}
@@ -1006,7 +1006,7 @@ export function ReviewDocumentPage({
         </div>
       )}
       {version.data && (
-        <div className="mt-3 min-h-0 lg:flex-1">
+        <div className="mt-3 min-w-0">
           <DocumentReviewWorkspace
             key={`${version.data.documentId}-${version.data.version}`}
             candidateId={info.data?.candidateId ?? undefined}
@@ -1018,7 +1018,6 @@ export function ReviewDocumentPage({
                 ["APPROVED", "SIGNED"].includes(version.data.status))
             }
             allowAnnotationClaim={!readOnly && !historic}
-            fitContainer
           />
         </div>
       )}
