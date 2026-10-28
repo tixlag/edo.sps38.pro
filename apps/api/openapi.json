@@ -3248,7 +3248,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentListDto"
+                  "$ref": "#/components/schemas/EmployeeDocumentListDto"
                 }
               }
             }
@@ -8002,6 +8002,357 @@
         ]
       }
     },
+    "/api/v1/annotation-catalogs/document-types": {
+      "get": {
+        "operationId": "listAnnotationDocumentTypes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnotationDocumentTypesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Типы документов для настройки разметки",
+        "tags": [
+          "annotation-catalogs"
+        ]
+      }
+    },
+    "/api/v1/annotation-catalogs/document-types/refresh": {
+      "post": {
+        "operationId": "refreshAnnotationDocumentTypes",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnotationDocumentTypesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Обновить типы из 1С и подготовить базовые списки полей",
+        "tags": [
+          "annotation-catalogs"
+        ]
+      }
+    },
+    "/api/v1/annotation-catalogs/bootstrap": {
+      "post": {
+        "operationId": "bootstrapAnnotationCatalogs",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnotationBootstrapDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Подготовить опубликованные базовые списки полей",
+        "tags": [
+          "annotation-catalogs"
+        ]
+      }
+    },
     "/api/v1/annotation-catalogs": {
       "get": {
         "operationId": "listAnnotationCatalogs",
@@ -8019,7 +8370,7 @@
             "required": false,
             "in": "query",
             "schema": {
-              "$ref": "#/components/schemas/AnnotationProfile"
+              "type": "string"
             }
           }
         ],
@@ -8269,6 +8620,15 @@
             "name": "documentTypeCode",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "profile",
+            "required": false,
+            "in": "query",
+            "description": "Код варианта документа",
             "schema": {
               "type": "string"
             }
@@ -11464,6 +11824,21 @@
           "deliveryStatus"
         ]
       },
+      "MissingDocumentTypeDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "title"
+        ]
+      },
       "CandidateDetailsDto": {
         "type": "object",
         "properties": {
@@ -11475,11 +11850,42 @@
             "items": {
               "$ref": "#/components/schemas/CandidateDocumentSummaryDto"
             }
+          },
+          "missingDocuments": {
+            "nullable": true,
+            "description": "Null when the applicable requirements cannot be determined",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDocumentTypeDto"
+            }
           }
         },
         "required": [
           "candidate",
           "documents"
+        ]
+      },
+      "EmployeeDocumentListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentDto"
+            }
+          },
+          "missingDocuments": {
+            "nullable": true,
+            "description": "Null when the applicable requirements cannot be determined",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDocumentTypeDto"
+            }
+          }
+        },
+        "required": [
+          "items",
+          "missingDocuments"
         ]
       },
       "DocumentOcrDetailsDto": {
@@ -11829,23 +12235,89 @@
           "CHANGES_REQUESTED"
         ]
       },
+      "AnnotationSectionInstanceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sectionKey": {
+            "type": "string"
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "PRESENT",
+              "NOT_UPLOADED",
+              "NOT_PRESENT"
+            ]
+          },
+          "pageIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "sectionKey",
+          "availability",
+          "pageIds"
+        ]
+      },
       "AnnotationSourceKind": {
         "type": "string",
         "enum": [
           "ORIGINAL"
         ]
       },
-      "AnnotationProfile": {
+      "AnnotationCatalogSectionDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "ordinal": {
+            "type": "number"
+          },
+          "repeatable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "ordinal",
+          "repeatable"
+        ]
+      },
+      "AnnotationFieldKind": {
         "type": "string",
         "enum": [
-          "RU",
-          "UZ",
-          "OTHER"
+          "TEXT",
+          "PHOTO",
+          "SIGNATURE",
+          "STAMP",
+          "CODE"
         ]
       },
       "AnnotationCatalogFieldDto": {
         "type": "object",
         "properties": {
+          "sectionKey": {
+            "type": "string"
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AnnotationFieldKind"
+              }
+            ]
+          },
           "key": {
             "type": "string"
           },
@@ -11885,11 +12357,14 @@
             "type": "string"
           },
           "profile": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/AnnotationProfile"
-              }
-            ]
+            "type": "string",
+            "description": "Stable document variant code, independent of citizenship"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnnotationCatalogSectionDto"
+            }
           },
           "title": {
             "type": "string"
@@ -11926,6 +12401,14 @@
           "version",
           "revision",
           "status"
+        ]
+      },
+      "AnnotationProfile": {
+        "type": "string",
+        "enum": [
+          "RU",
+          "UZ",
+          "OTHER"
         ]
       },
       "AnnotationPageDto": {
@@ -12043,6 +12526,45 @@
           "pages"
         ]
       },
+      "AnnotationRegionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pageId": {
+            "type": "string"
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "RECTANGLE",
+              "POLYGON"
+            ]
+          },
+          "orientationDeg": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 360,
+            "description": "Clockwise rotation; 0 means top of source image. 180 preserves opposite reading direction."
+          },
+          "polygon": {
+            "minItems": 6,
+            "maxItems": 128,
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "pageId",
+          "shape",
+          "orientationDeg",
+          "polygon"
+        ]
+      },
       "AnnotationDisposition": {
         "type": "string",
         "enum": [
@@ -12089,6 +12611,15 @@
       "AnnotationFieldAnswerDto": {
         "type": "object",
         "properties": {
+          "instanceId": {
+            "type": "string"
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnnotationRegionDto"
+            }
+          },
           "key": {
             "type": "string"
           },
@@ -12115,6 +12646,12 @@
       "AnnotationDto": {
         "type": "object",
         "properties": {
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnnotationSectionInstanceDto"
+            }
+          },
           "id": {
             "type": "string"
           },
@@ -12243,6 +12780,12 @@
             "type": "number",
             "minimum": 0
           },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnnotationSectionInstanceDto"
+            }
+          },
           "fields": {
             "type": "array",
             "items": {
@@ -12299,6 +12842,66 @@
           "authorId"
         ]
       },
+      "AnnotationDocumentTypeDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "businessFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "title",
+          "businessFields"
+        ]
+      },
+      "AnnotationDocumentTypesDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnnotationDocumentTypeDto"
+            }
+          },
+          "syncedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "syncedAt",
+          "stale"
+        ]
+      },
+      "AnnotationBootstrapDto": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "number"
+          },
+          "skipped": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "created",
+          "skipped"
+        ]
+      },
       "AnnotationCatalogListDto": {
         "type": "object",
         "properties": {
@@ -12316,6 +12919,18 @@
       "AnnotationCatalogDefaultsDto": {
         "type": "object",
         "properties": {
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnnotationCatalogSectionDto"
+            }
+          },
+          "title": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
           "fields": {
             "type": "array",
             "items": {
@@ -12334,11 +12949,14 @@
             "type": "string"
           },
           "profile": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/AnnotationProfile"
-              }
-            ]
+            "type": "string",
+            "description": "Stable document variant code, independent of citizenship"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnnotationCatalogSectionDto"
+            }
           },
           "title": {
             "type": "string"
@@ -12363,6 +12981,12 @@
           "revision": {
             "type": "number",
             "minimum": 0
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnnotationCatalogSectionDto"
+            }
           },
           "title": {
             "type": "string"

@@ -1,3 +1,4 @@
+import { DocumentsModule } from "../documents/documents.module";
 import { Module } from "@nestjs/common";
 import { PrismaModule } from "../prisma/prisma.module";
 import { AuditModule } from "../audit/audit.module";
@@ -12,7 +13,7 @@ import {
   AnnotationCatalogsController,
 } from "./annotations.controller";
 @Module({
-  imports: [PrismaModule, AuditModule, StorageModule],
+  imports: [PrismaModule, AuditModule, StorageModule, DocumentsModule],
   controllers: [
     AnnotationsController,
     AnnotationSourcesController,

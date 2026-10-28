@@ -1029,9 +1029,28 @@ export interface CandidateDocumentSummaryDto {
   deliveryStatus: string | null;
 }
 
+export interface MissingDocumentTypeDto {
+  code: string;
+  title: string;
+}
+
 export interface CandidateDetailsDto {
   candidate: CandidateProfileDto;
   documents: CandidateDocumentSummaryDto[];
+  /**
+   * Null when the applicable requirements cannot be determined
+   * @nullable
+   */
+  missingDocuments?: MissingDocumentTypeDto[] | null;
+}
+
+export interface EmployeeDocumentListDto {
+  items: DocumentDto[];
+  /**
+   * Null when the applicable requirements cannot be determined
+   * @nullable
+   */
+  missingDocuments: MissingDocumentTypeDto[] | null;
 }
 
 /**
@@ -1177,6 +1196,23 @@ export const AnnotationStatus = {
   CHANGES_REQUESTED: "CHANGES_REQUESTED",
 } as const;
 
+export type AnnotationSectionInstanceDtoAvailability =
+  (typeof AnnotationSectionInstanceDtoAvailability)[keyof typeof AnnotationSectionInstanceDtoAvailability];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationSectionInstanceDtoAvailability = {
+  PRESENT: "PRESENT",
+  NOT_UPLOADED: "NOT_UPLOADED",
+  NOT_PRESENT: "NOT_PRESENT",
+} as const;
+
+export interface AnnotationSectionInstanceDto {
+  id: string;
+  sectionKey: string;
+  availability: AnnotationSectionInstanceDtoAvailability;
+  pageIds: string[];
+}
+
 export type AnnotationSourceKind =
   (typeof AnnotationSourceKind)[keyof typeof AnnotationSourceKind];
 
@@ -1185,17 +1221,28 @@ export const AnnotationSourceKind = {
   ORIGINAL: "ORIGINAL",
 } as const;
 
-export type AnnotationProfile =
-  (typeof AnnotationProfile)[keyof typeof AnnotationProfile];
+export interface AnnotationCatalogSectionDto {
+  key: string;
+  label: string;
+  ordinal: number;
+  repeatable: boolean;
+}
+
+export type AnnotationFieldKind =
+  (typeof AnnotationFieldKind)[keyof typeof AnnotationFieldKind];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
-export const AnnotationProfile = {
-  RU: "RU",
-  UZ: "UZ",
-  OTHER: "OTHER",
+export const AnnotationFieldKind = {
+  TEXT: "TEXT",
+  PHOTO: "PHOTO",
+  SIGNATURE: "SIGNATURE",
+  STAMP: "STAMP",
+  CODE: "CODE",
 } as const;
 
 export interface AnnotationCatalogFieldDto {
+  sectionKey?: string;
+  kind?: AnnotationFieldKind;
   key: string;
   label: string;
   /** @minimum 0 */
@@ -1215,7 +1262,9 @@ export const CatalogStatus = {
 
 export interface AnnotationCatalogDto {
   documentTypeCode: string;
-  profile: AnnotationProfile;
+  /** Stable document variant code, independent of citizenship */
+  profile: string;
+  sections?: AnnotationCatalogSectionDto[];
   title: string;
   fields: AnnotationCatalogFieldDto[];
   id: string;
@@ -1223,6 +1272,16 @@ export interface AnnotationCatalogDto {
   revision: number;
   status: CatalogStatus;
 }
+
+export type AnnotationProfile =
+  (typeof AnnotationProfile)[keyof typeof AnnotationProfile];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationProfile = {
+  RU: "RU",
+  UZ: "UZ",
+  OTHER: "OTHER",
+} as const;
 
 export type AnnotationPageDtoRotation =
   (typeof AnnotationPageDtoRotation)[keyof typeof AnnotationPageDtoRotation];
@@ -1270,6 +1329,32 @@ export interface AnnotationSourceDto {
   pages: AnnotationPageDto[];
 }
 
+export type AnnotationRegionDtoShape =
+  (typeof AnnotationRegionDtoShape)[keyof typeof AnnotationRegionDtoShape];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AnnotationRegionDtoShape = {
+  RECTANGLE: "RECTANGLE",
+  POLYGON: "POLYGON",
+} as const;
+
+export interface AnnotationRegionDto {
+  id: string;
+  pageId: string;
+  shape: AnnotationRegionDtoShape;
+  /**
+   * Clockwise rotation; 0 means top of source image. 180 preserves opposite reading direction.
+   * @minimum 0
+   * @maximum 360
+   */
+  orientationDeg: number;
+  /**
+   * @minItems 6
+   * @maxItems 128
+   */
+  polygon: number[];
+}
+
 export type AnnotationDisposition =
   (typeof AnnotationDisposition)[keyof typeof AnnotationDisposition];
 
@@ -1296,12 +1381,15 @@ export interface AnnotationLineDto {
 }
 
 export interface AnnotationFieldAnswerDto {
+  instanceId?: string;
+  regions?: AnnotationRegionDto[];
   key: string;
   disposition: AnnotationDisposition;
   lines: AnnotationLineDto[];
 }
 
 export interface AnnotationDto {
+  sections?: AnnotationSectionInstanceDto[];
   id: string;
   documentId: string;
   versionId: string;
@@ -1337,6 +1425,7 @@ export interface ClaimAnnotationDto {
 export interface SaveAnnotationDto {
   /** @minimum 0 */
   revision: number;
+  sections?: AnnotationSectionInstanceDto[];
   fields: AnnotationFieldAnswerDto[];
 }
 
@@ -1357,17 +1446,40 @@ export interface ReassignAnnotationDto {
   authorId: string;
 }
 
+export interface AnnotationDocumentTypeDto {
+  code: string;
+  title: string;
+  businessFields: string[];
+}
+
+export interface AnnotationDocumentTypesDto {
+  items: AnnotationDocumentTypeDto[];
+  /** @nullable */
+  syncedAt: string | null;
+  stale: boolean;
+}
+
+export interface AnnotationBootstrapDto {
+  created: number;
+  skipped: number;
+}
+
 export interface AnnotationCatalogListDto {
   items: AnnotationCatalogDto[];
 }
 
 export interface AnnotationCatalogDefaultsDto {
+  sections?: AnnotationCatalogSectionDto[];
+  title?: string;
+  profile?: string;
   fields: AnnotationCatalogFieldDto[];
 }
 
 export interface CreateAnnotationCatalogDto {
   documentTypeCode: string;
-  profile: AnnotationProfile;
+  /** Stable document variant code, independent of citizenship */
+  profile: string;
+  sections?: AnnotationCatalogSectionDto[];
   title: string;
   fields: AnnotationCatalogFieldDto[];
 }
@@ -1375,6 +1487,7 @@ export interface CreateAnnotationCatalogDto {
 export interface UpdateAnnotationCatalogDto {
   /** @minimum 0 */
   revision: number;
+  sections?: AnnotationCatalogSectionDto[];
   title: string;
   fields: AnnotationCatalogFieldDto[];
 }
@@ -1697,7 +1810,14 @@ export type ListAnnotationsParams = {
 
 export type ListAnnotationCatalogsParams = {
   documentTypeCode?: string;
-  profile?: AnnotationProfile;
+  profile?: string;
+};
+
+export type GetAnnotationCatalogDefaultsParams = {
+  /**
+   * Код варианта документа
+   */
+  profile?: string;
 };
 
 export type DeleteAnnotationCatalogParams = {
@@ -4151,7 +4271,7 @@ export const listEmployeeDocuments = (
   employeeId: string,
   signal?: AbortSignal,
 ) => {
-  return customInstance<DocumentListDto>({
+  return customInstance<EmployeeDocumentListDto>({
     url: `/api/v1/employees/${employeeId}/documents`,
     method: "GET",
     signal,
@@ -6966,6 +7086,231 @@ export function useGetAnnotationSources<
 }
 
 /**
+ * @summary Типы документов для настройки разметки
+ */
+export const listAnnotationDocumentTypes = (signal?: AbortSignal) => {
+  return customInstance<AnnotationDocumentTypesDto>({
+    url: `/api/v1/annotation-catalogs/document-types`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListAnnotationDocumentTypesQueryKey = () => {
+  return [`/api/v1/annotation-catalogs/document-types`] as const;
+};
+
+export const getListAnnotationDocumentTypesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAnnotationDocumentTypes>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAnnotationDocumentTypes>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAnnotationDocumentTypesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAnnotationDocumentTypes>>
+  > = ({ signal }) => listAnnotationDocumentTypes(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAnnotationDocumentTypes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAnnotationDocumentTypesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAnnotationDocumentTypes>>
+>;
+export type ListAnnotationDocumentTypesQueryError = ApiErrorDto;
+
+/**
+ * @summary Типы документов для настройки разметки
+ */
+
+export function useListAnnotationDocumentTypes<
+  TData = Awaited<ReturnType<typeof listAnnotationDocumentTypes>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAnnotationDocumentTypes>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAnnotationDocumentTypesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Обновить типы из 1С и подготовить базовые списки полей
+ */
+export const refreshAnnotationDocumentTypes = (signal?: AbortSignal) => {
+  return customInstance<AnnotationDocumentTypesDto>({
+    url: `/api/v1/annotation-catalogs/document-types/refresh`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getRefreshAnnotationDocumentTypesMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshAnnotationDocumentTypes>>,
+    TError,
+    void,
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof refreshAnnotationDocumentTypes>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["refreshAnnotationDocumentTypes"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof refreshAnnotationDocumentTypes>>,
+    void
+  > = () => {
+    return refreshAnnotationDocumentTypes();
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RefreshAnnotationDocumentTypesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof refreshAnnotationDocumentTypes>>
+>;
+
+export type RefreshAnnotationDocumentTypesMutationError = ApiErrorDto;
+
+/**
+ * @summary Обновить типы из 1С и подготовить базовые списки полей
+ */
+export const useRefreshAnnotationDocumentTypes = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshAnnotationDocumentTypes>>,
+    TError,
+    void,
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof refreshAnnotationDocumentTypes>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationOptions =
+    getRefreshAnnotationDocumentTypesMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Подготовить опубликованные базовые списки полей
+ */
+export const bootstrapAnnotationCatalogs = (signal?: AbortSignal) => {
+  return customInstance<AnnotationBootstrapDto>({
+    url: `/api/v1/annotation-catalogs/bootstrap`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getBootstrapAnnotationCatalogsMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bootstrapAnnotationCatalogs>>,
+    TError,
+    void,
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof bootstrapAnnotationCatalogs>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["bootstrapAnnotationCatalogs"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof bootstrapAnnotationCatalogs>>,
+    void
+  > = () => {
+    return bootstrapAnnotationCatalogs();
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type BootstrapAnnotationCatalogsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof bootstrapAnnotationCatalogs>>
+>;
+
+export type BootstrapAnnotationCatalogsMutationError = ApiErrorDto;
+
+/**
+ * @summary Подготовить опубликованные базовые списки полей
+ */
+export const useBootstrapAnnotationCatalogs = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bootstrapAnnotationCatalogs>>,
+    TError,
+    void,
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof bootstrapAnnotationCatalogs>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationOptions =
+    getBootstrapAnnotationCatalogsMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
  * @summary Read published field schemas and administrator drafts
  */
 export const listAnnotationCatalogs = (
@@ -7136,19 +7481,25 @@ export const useCreateAnnotationCatalog = <
  */
 export const getAnnotationCatalogDefaults = (
   documentTypeCode: string,
+  params?: GetAnnotationCatalogDefaultsParams,
   signal?: AbortSignal,
 ) => {
   return customInstance<AnnotationCatalogDefaultsDto>({
     url: `/api/v1/annotation-catalogs/defaults/${documentTypeCode}`,
     method: "GET",
+    params,
     signal,
   });
 };
 
 export const getGetAnnotationCatalogDefaultsQueryKey = (
   documentTypeCode: string,
+  params?: GetAnnotationCatalogDefaultsParams,
 ) => {
-  return [`/api/v1/annotation-catalogs/defaults/${documentTypeCode}`] as const;
+  return [
+    `/api/v1/annotation-catalogs/defaults/${documentTypeCode}`,
+    ...(params ? [params] : []),
+  ] as const;
 };
 
 export const getGetAnnotationCatalogDefaultsQueryOptions = <
@@ -7156,6 +7507,7 @@ export const getGetAnnotationCatalogDefaultsQueryOptions = <
   TError = ApiErrorDto,
 >(
   documentTypeCode: string,
+  params?: GetAnnotationCatalogDefaultsParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>,
@@ -7168,11 +7520,12 @@ export const getGetAnnotationCatalogDefaultsQueryOptions = <
 
   const queryKey =
     queryOptions?.queryKey ??
-    getGetAnnotationCatalogDefaultsQueryKey(documentTypeCode);
+    getGetAnnotationCatalogDefaultsQueryKey(documentTypeCode, params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>
-  > = ({ signal }) => getAnnotationCatalogDefaults(documentTypeCode, signal);
+  > = ({ signal }) =>
+    getAnnotationCatalogDefaults(documentTypeCode, params, signal);
 
   return {
     queryKey,
@@ -7200,6 +7553,7 @@ export function useGetAnnotationCatalogDefaults<
   TError = ApiErrorDto,
 >(
   documentTypeCode: string,
+  params?: GetAnnotationCatalogDefaultsParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof getAnnotationCatalogDefaults>>,
@@ -7210,6 +7564,7 @@ export function useGetAnnotationCatalogDefaults<
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetAnnotationCatalogDefaultsQueryOptions(
     documentTypeCode,
+    params,
     options,
   );
 

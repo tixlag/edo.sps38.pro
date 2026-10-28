@@ -1,3 +1,4 @@
+import { RegionOverlay, type RegionLayerProps } from "./RegionOverlay";
 import {
   useRef,
   useState,
@@ -17,6 +18,7 @@ import {
 } from "./annotation-geometry";
 
 export interface AnnotationOverlayProps {
+  regionLayer?: RegionLayerProps;
   lines: AnnotationLineDto[];
   width: number;
   height: number;
@@ -36,7 +38,22 @@ type Drag =
       box: OrientedBox;
       id: string;
     };
-export function AnnotationOverlay({
+export function AnnotationOverlay(props: AnnotationOverlayProps) {
+  return (
+    <>
+      <LineOverlay {...props} />
+      {props.regionLayer && (
+        <RegionOverlay
+          {...props.regionLayer}
+          width={props.width}
+          height={props.height}
+          rotation={props.rotation}
+        />
+      )}
+    </>
+  );
+}
+function LineOverlay({
   lines,
   width,
   height,
@@ -44,6 +61,7 @@ export function AnnotationOverlay({
   selectedId,
   editable,
   drawing = false,
+  regionLayer,
   onSelect,
   onChange,
   onCreate,
@@ -175,7 +193,7 @@ export function AnnotationOverlay({
               stroke="var(--primary)"
               strokeWidth={selected ? 2 : 1}
               vectorEffect="non-scaling-stroke"
-              className="pointer-events-auto cursor-move focus:outline focus:outline-2 focus:outline-[var(--primary)]"
+              className={`${regionLayer?.drawing ? "pointer-events-none" : "pointer-events-auto"} cursor-move focus:outline focus:outline-2 focus:outline-[var(--primary)]`}
               onFocus={() => onSelect(line.id)}
               onClick={() => onSelect(line.id)}
               onPointerDown={(event) => start(event, "move", line)}
@@ -223,6 +241,14 @@ export function AnnotationOverlay({
                   aria-label="Повернуть рамку"
                   onPointerDown={(event) => start(event, "rotate", line)}
                 />
+                <text
+                  x={topX + Math.sin(r) * 24 + 10}
+                  y={topY - Math.cos(r) * 24}
+                  fill="var(--primary)"
+                  fontSize={Math.max(12, width / 90)}
+                >
+                  Верх
+                </text>
                 <rect
                   x={q[4] - 7}
                   y={q[5] - 7}

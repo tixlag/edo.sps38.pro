@@ -1,3 +1,4 @@
+import { DatasetAnnotationEditor } from "./DatasetAnnotationEditor";
 import { useRef, useState } from "react";
 import { Button, Badge } from "@edo/ui";
 import { ArrowDown, ArrowUp, HelpCircle, Plus, Trash2 } from "lucide-react";
@@ -31,15 +32,7 @@ const statuses = {
   ACCEPTED: "Принято",
   CHANGES_REQUESTED: "Нужны исправления",
 };
-export function AnnotationEditor({
-  annotation,
-  files,
-  liveSources,
-  sourceError = false,
-  onSaved,
-  admin = false,
-  active = true,
-}: {
+export interface AnnotationEditorProps {
   annotation: AnnotationDto;
   files?: DocumentFileDto[];
   liveSources?: AnnotationSourceDto;
@@ -47,7 +40,24 @@ export function AnnotationEditor({
   onSaved: (next: AnnotationDto) => void;
   admin?: boolean;
   active?: boolean;
-}) {
+}
+
+export function AnnotationEditor(props: AnnotationEditorProps) {
+  return props.annotation.schema.sections?.length ? (
+    <DatasetAnnotationEditor {...props} />
+  ) : (
+    <LegacyAnnotationEditor {...props} />
+  );
+}
+function LegacyAnnotationEditor({
+  annotation,
+  files,
+  liveSources,
+  sourceError = false,
+  onSaved,
+  admin = false,
+  active = true,
+}: AnnotationEditorProps) {
   const root = useRef<HTMLElement>(null);
   const me = useGetMe(),
     save = useSaveAnnotation(),

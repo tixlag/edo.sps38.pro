@@ -42,10 +42,7 @@ const emptyToNull = (value: unknown): unknown =>
   typeof value === "string" && value.trim() === "" ? null : value;
 
 const snapshotText = (max: number) =>
-  z.preprocess(
-    emptyToNull,
-    z.string().trim().min(1).max(max).nullish(),
-  );
+  z.preprocess(emptyToNull, z.string().trim().min(1).max(max).nullish());
 
 const snapshotName = (max: number) =>
   z.preprocess((value) => {
@@ -66,26 +63,32 @@ const snapshotCode = z.preprocess(
 
 const snapshotPosition = z.preprocess(
   (value) => (typeof value === "string" ? { name: value } : value),
-  z
-    .object({ name: snapshotText(512), code: snapshotCode })
-    .nullish(),
+  z.object({ name: snapshotText(512), code: snapshotCode }).nullish(),
 );
 
-const snapshotMentor = z.preprocess((value) => {
-  if (typeof value === "string") return { name: value };
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const input = value as Record<string, unknown>;
-    const code =
-      input.code1C ?? input.code1c ?? input.code_1c ?? input.code;
-    const { code1C: _a, code1c: _b, code_1c: _c, code: _d, ...rest } = input;
-    void _a;
-    void _b;
-    void _c;
-    void _d;
-    return { ...rest, code1C: code };
-  }
-  return value;
-}, z.object({ name: snapshotText(512), position: snapshotText(512), code1C: snapshotCode }).nullish());
+const snapshotMentor = z.preprocess(
+  (value) => {
+    if (typeof value === "string") return { name: value };
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const input = value as Record<string, unknown>;
+      const code = input.code1C ?? input.code1c ?? input.code_1c ?? input.code;
+      const { code1C: _a, code1c: _b, code_1c: _c, code: _d, ...rest } = input;
+      void _a;
+      void _b;
+      void _c;
+      void _d;
+      return { ...rest, code1C: code };
+    }
+    return value;
+  },
+  z
+    .object({
+      name: snapshotText(512),
+      position: snapshotText(512),
+      code1C: snapshotCode,
+    })
+    .nullish(),
+);
 
 const isCalendarDate = (value: string): boolean =>
   /^\d{4}-\d{2}-\d{2}$/.test(value) &&
@@ -104,7 +107,10 @@ const snapshotBirthDate = z.preprocess(
     .string()
     .trim()
     .max(10)
-    .refine(isCalendarDate, "Invalid birthDate (expected a real YYYY-MM-DD date)")
+    .refine(
+      isCalendarDate,
+      "Invalid birthDate (expected a real YYYY-MM-DD date)",
+    )
     .nullish(),
 );
 
@@ -126,8 +132,7 @@ const snapshotReemployment = z.preprocess((value) => {
 }, z.boolean().optional());
 
 function aliasSnapshotKeys(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const input = value as Record<string, unknown>;
   const pick = (...keys: string[]): unknown => {
     for (const key of keys) if (input[key] !== undefined) return input[key];
@@ -200,8 +205,7 @@ export const browserDocumentMetadataSchema = z
   })
   .strict();
 const metadataSnapshotAlias = (value: unknown): unknown => {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const input = { ...(value as Record<string, unknown>) };
   if (
     input.candidateSnapshot === undefined &&
@@ -267,7 +271,8 @@ export function shouldOmitPositionUid(
     value == null ||
     (typeof value === "string" &&
       (!value.trim() ||
-        (value === positionCode1c && !z.string().uuid().safeParse(value).success)))
+        (value === positionCode1c &&
+          !z.string().uuid().safeParse(value).success)))
   );
 }
 
@@ -330,10 +335,36 @@ export const erpCatalogSchema = z
   )
   .min(1)
   .max(1000)
-  .refine(
-    (v) => new Set(v.map((d) => d.УИНДокумента)).size === v.length,
-    "Repeated document UID",
-  );
+  .transform((items, ctx) => {
+    const unique = new Map<string, (typeof items)[number]>();
+    for (const item of items) {
+      const prior = unique.get(item.УИНДокумента);
+      if (!prior) {
+        unique.set(item.УИНДокумента, { ...item });
+        continue;
+      }
+      if (
+        prior.НаименованиеДокумента.trim() !==
+          item.НаименованиеДокумента.trim() ||
+        JSON.stringify(prior.requiredFields) !==
+          JSON.stringify(item.requiredFields) ||
+        JSON.stringify(prior.optionalFields) !==
+          JSON.stringify(item.optionalFields)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Conflicting document UID",
+        });
+        return z.NEVER;
+      }
+      prior.ВсемРФ ||= item.ВсемРФ;
+      prior.ВсемИГ ||= item.ВсемИГ;
+      prior.КодыДолжностей = [
+        ...new Set([...prior.КодыДолжностей, ...item.КодыДолжностей]),
+      ];
+    }
+    return [...unique.values()];
+  });
 
 export function applicable(
   type: {

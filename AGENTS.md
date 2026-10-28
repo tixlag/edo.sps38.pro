@@ -2,6 +2,17 @@
 
 This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read this before writing code.
 
+## Working across EDO and 1C ERP
+
+- EDO and 1C ERP are independent sibling checkouts. EDO is this repository; 1C is `../1c-erp` (`https://glab.sps38.pro/1cdevs/1c-erp`). Keep each repository's code, commits, branches, and merge requests separate.
+- Before editing 1C, read its applicable `AGENTS.md` files (if present), `README.md`, `.gitlab/merge_request_templates/Default.md`, and `.gitlab/review-policy.json`. EDO's stack and validation commands apply to EDO only. Start cross-repository tasks from EDO so these routing instructions are loaded.
+- Always select the checkout explicitly with `git -C <repository> ...`. Before committing or pushing, verify its root, branch, status, and all push URLs with `git remote get-url --push --all <remote>` in that checkout.
+- EDO: preserve both `origin` push URLs (`https://github.com/tixlag/edo.sps38.pro.git` and `https://glab.sps38.pro/webdevs/edo.sps38.pro.git`). Push EDO feature branches through `origin` to keep GitHub code review available, then create the MR explicitly in GitLab project `webdevs/edo.sps38.pro`, targeting `main`. The separate `gitlab` remote selects GitLab for MR operations; do not replace or remove the GitHub push URL.
+- 1C: push through its `gitlab` remote (`https://glab.sps38.pro/1cdevs/1c-erp.git`), create the MR in `1cdevs/1c-erp`, targeting `develop`. Never copy EDO's GitHub remote or push URLs into the 1C checkout.
+- Create a separate feature branch and MR in every repository changed by a task. Use the matching project's base branch, link related MRs in their descriptions, and report each repository's validation separately. Do not send 1C changes to EDO's MR or assume that 1C targets `main`.
+- When creating an MR via the GitLab API or a CLI, specify the full target project explicitly. GitLab push options can also create an MR via the selected checkout's `gitlab` remote (`git push gitlab HEAD -o merge_request.create -o merge_request.target=<base-branch>`); for EDO, push the branch through `origin` first so it also reaches GitHub. Never send GitLab push options to EDO's dual-destination `origin`.
+- To start Codex CLI with both directories writable, run `bash scripts/codex-with-erp.sh` from EDO (additional Codex arguments are forwarded). For an application-managed session, include both checkout directories in its workspace permissions; cloning alone does not expand an existing session's writable roots.
+
 ## Передача между сессиями (2026-10-20)
 
 - Ветка `feat/candidate-chat-workspace` сохранена отдельно на `e47cc7465d00bedd3a8d55e0cbabec649488468f`. Следующим этапом нужно задеплоить изменения из той сессии; текущая задача сама по себе не означает, что они уже интегрированы или развёрнуты.

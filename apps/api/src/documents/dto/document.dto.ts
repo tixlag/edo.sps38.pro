@@ -367,10 +367,28 @@ export class DocumentDto extends CandidateDocumentSummaryDto {
 export class DocumentListDto {
   @ApiProperty({ type: [DocumentDto] }) items!: DocumentDto[];
 }
+export class MissingDocumentTypeDto {
+  @ApiProperty() code!: string;
+  @ApiProperty() title!: string;
+}
+export class EmployeeDocumentListDto extends DocumentListDto {
+  @ApiProperty({
+    type: [MissingDocumentTypeDto],
+    nullable: true,
+    description: "Null when the applicable requirements cannot be determined",
+  })
+  missingDocuments!: MissingDocumentTypeDto[] | null;
+}
 export class CandidateDetailsDto {
   @ApiProperty({ type: CandidateProfileDto }) candidate!: CandidateProfileDto;
   @ApiProperty({ type: [CandidateDocumentSummaryDto] })
   documents!: CandidateDocumentSummaryDto[];
+  @ApiPropertyOptional({
+    type: [MissingDocumentTypeDto],
+    nullable: true,
+    description: "Null when the applicable requirements cannot be determined",
+  })
+  missingDocuments?: MissingDocumentTypeDto[] | null;
 }
 export class CandidateReviewQueueDto {
   @ApiProperty({ type: [CandidateDetailsDto] }) items!: CandidateDetailsDto[];

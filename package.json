@@ -21,7 +21,8 @@
     "local:status": "node scripts/local-stand.mjs status",
     "local:example": "pnpm --filter @edo/api demo:passport",
     "docker:down": "docker compose down",
-    "annotations:export": "pnpm --filter @edo/api exec ts-node --transpile-only scripts/export-annotations.ts"
+    "annotations:export": "pnpm --filter @edo/api exec ts-node --transpile-only scripts/export-annotations.ts",
+    "annotations:bootstrap": "pnpm --filter @edo/api exec ts-node --transpile-only scripts/bootstrap-annotation-catalogs.ts"
   },
   "devDependencies": {
     "@prisma/client": "6.2.1",
