@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { ReviewPage } from "./ReviewPage";
+import { ReviewDocumentPage, ReviewPage } from "./ReviewPage";
 
 const state = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -10,16 +10,21 @@ const state = vi.hoisted(() => ({
   queue: vi.fn(),
   candidates: vi.fn(),
   facets: vi.fn(),
+  documentInfo: null as unknown,
+  documentVersion: null as unknown,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
+  Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
   useNavigate: () => state.navigate,
   useSearch: () => state.search,
+  useParams: () => ({ documentId: "document-1" }),
 }));
 vi.mock("@edo/api-client", () => {
   const list = { data: { items: [] }, isLoading: false, isError: false };
   return {
     useGetMe: () => ({ data: { permissions: state.permissions } }),
+    useGetDocumentInfo: () => ({ data: state.documentInfo }),
     useListCandidateReviewQueue: (...args: unknown[]) => {
       state.queue(...args);
       return list;
@@ -51,7 +56,7 @@ vi.mock("../components/DocumentReviewWorkspace", () => ({
   DocumentReviewWorkspace: () => null,
 }));
 vi.mock("../lib/use-live-document-version", () => ({
-  useLiveDocumentVersion: () => ({}),
+  useLiveDocumentVersion: () => ({ data: state.documentVersion }),
 }));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -71,9 +76,32 @@ afterEach(async () => {
   vi.clearAllMocks();
   state.search = {};
   state.permissions = { "20011": [] };
+  state.documentInfo = null;
+  state.documentVersion = null;
 });
 
 describe("RU and IG review pages", () => {
+  it("keeps the document review page vertically scrollable on desktop", async () => {
+    state.documentInfo = {
+      title: "Паспорт",
+      currentVersion: 1,
+      pendingDeliveryVersions: [],
+      status: "IN_REVIEW",
+      candidate: { fullName: "Проверяемый", reviewGroup: "IG" },
+    };
+    state.documentVersion = {
+      documentId: "document-1",
+      version: 1,
+      status: "IN_REVIEW",
+      files: [],
+      fields: [],
+      revision: 1,
+    };
+    const view = await renderDocument();
+    expect(view.firstElementChild?.className).toContain("overflow-y-auto");
+    expect(view.firstElementChild?.className).not.toContain("lg:overflow-hidden");
+  });
+
   it("uses the IG group for every queue-specific data source", async () => {
     const view = await render("IG");
     expect(view.textContent).toContain("Проверка документов ИГ");
@@ -115,3 +143,13 @@ describe("RU and IG review pages", () => {
     }
   });
 });
+
+async function renderDocument() {
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () =>
+    root!.render(<ReviewDocumentPage reviewGroup="IG" />),
+  );
+  return container;
+}
