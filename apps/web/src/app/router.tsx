@@ -10,6 +10,7 @@ import { EmployeesPage } from "../pages/EmployeesPage";
 import { EmployeeDetailPage } from "../pages/EmployeeDetailPage";
 import { ReviewPage, ReviewDocumentPage } from "../pages/ReviewPage";
 import { HistoryPage, MyReviews } from "../pages/HistoryPage";
+import { SigningPage } from "../pages/SigningPage";
 import { useEmployeeRouteId } from "./AppShell";
 
 function Placeholder({ title }: { title: string }) {
@@ -90,7 +91,7 @@ const onboardingRoute = createRoute({
 const signingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/signing",
-  component: () => <Placeholder title="Подписание" />,
+  component: SigningPage,
 });
 
 const participantsRoute = createRoute({
