@@ -21,7 +21,7 @@ import {
   textValue,
   validateFields,
 } from "./document-contract";
-import { snapshotUpdateInput } from "./candidate-profile";
+import { changedProfileFields, snapshotUpdateInput } from "./candidate-profile";
 import type { StagedUpload } from "./document-upload.service";
 
 @Injectable()
@@ -239,24 +239,53 @@ export class ManualDocumentService {
         return await this.prisma.$transaction(
           async (tx) => {
             // LK profile snapshot: only keys actually present in the upload
-            // update the stored profile; uploads without a snapshot (or with
-            // an empty one) never clear previously stored fields.
+            // update the stored profile; empty values never clear stored fields.
             const profile = snapshotUpdateInput(metadata.candidateSnapshot);
             const owner = await tx.candidate.upsert({
               where: { identityKey },
-              update: profile ?? {},
+              update: {},
               create: {
                 identityKey,
                 chatUuid: metadata.chat_uuid ?? null,
                 code1c: metadata.code_1c ?? null,
                 locationId: locationId ?? null,
-                ...(profile ?? {}),
               },
             });
             await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${owner.id} FOR UPDATE`;
             const current = await tx.candidate.findUniqueOrThrow({
               where: { id: owner.id },
             });
+            if (profile) {
+              const keys = changedProfileFields(current, profile);
+              const changed = Object.fromEntries(
+                keys.map((key) => [
+                  key,
+                  (profile as Record<string, unknown>)[key],
+                ]),
+              );
+              await tx.candidate.update({
+                where: { id: owner.id },
+                data: profile,
+              });
+              if (Object.keys(changed).length) {
+                const before = Object.fromEntries(
+                  Object.keys(changed).map((key) => [
+                    key,
+                    (current as unknown as Record<string, unknown>)[key] ??
+                      null,
+                  ]),
+                );
+                await this.audit.logInTransaction(tx, {
+                  actorId: "system:candidate-profile",
+                  action: "DATA_IMPORTED",
+                  entityType: "Candidate",
+                  entityId: owner.id,
+                  correlationId,
+                  before: JSON.parse(JSON.stringify(before)),
+                  after: JSON.parse(JSON.stringify(changed)),
+                });
+              }
+            }
             if (
               current.code1c &&
               metadata.code_1c &&

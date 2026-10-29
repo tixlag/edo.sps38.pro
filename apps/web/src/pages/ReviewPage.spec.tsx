@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ReviewDocumentPage, ReviewPage } from "./ReviewPage";
 
@@ -15,7 +15,7 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
+  Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
   useNavigate: () => state.navigate,
   useSearch: () => state.search,
   useParams: () => ({ documentId: "document-1" }),

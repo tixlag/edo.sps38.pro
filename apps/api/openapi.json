@@ -10440,6 +10440,28 @@
       "CandidateSnapshotDto": {
         "type": "object",
         "properties": {
+          "citizenshipProvided": {
+            "type": "boolean"
+          },
+          "sex": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female"
+            ]
+          },
+          "sexKnown": {
+            "type": "boolean"
+          },
+          "photoPath": {
+            "type": "string"
+          },
+          "master": {
+            "$ref": "#/components/schemas/CandidateSnapshotPositionDto"
+          },
+          "supervisor": {
+            "$ref": "#/components/schemas/CandidateSnapshotPositionDto"
+          },
           "uuid": {
             "type": "string",
             "format": "uuid",
@@ -10684,6 +10706,33 @@
       "CandidateProfileDto": {
         "type": "object",
         "properties": {
+          "sex": {
+            "type": "string",
+            "nullable": true
+          },
+          "sexKnown": {
+            "type": "boolean"
+          },
+          "photoPath": {
+            "type": "string",
+            "nullable": true
+          },
+          "masterName": {
+            "type": "string",
+            "nullable": true
+          },
+          "masterCode1c": {
+            "type": "string",
+            "nullable": true
+          },
+          "supervisorName": {
+            "type": "string",
+            "nullable": true
+          },
+          "supervisorCode1c": {
+            "type": "string",
+            "nullable": true
+          },
           "reviewGroup": {
             "allOf": [
               {
@@ -10762,15 +10811,22 @@
           },
           "approvedDocuments": {
             "type": "number",
-            "description": "Candidate APPROVED documents under the queue access scope (all tabs)"
+            "description": "Approved applicable documents under the queue access scope (all tabs); all approved documents when position is unknown"
           },
           "requiredDocuments": {
             "type": "number",
             "nullable": true,
-            "description": "Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown"
+            "description": "Applicable catalog document types for position, citizenship and known sex; null when positionCode is unknown"
           }
         },
         "required": [
+          "sex",
+          "sexKnown",
+          "photoPath",
+          "masterName",
+          "masterCode1c",
+          "supervisorName",
+          "supervisorCode1c",
           "reviewGroup",
           "id",
           "chatUuid",

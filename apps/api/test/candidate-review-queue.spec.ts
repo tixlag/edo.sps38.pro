@@ -56,14 +56,25 @@ function setup() {
       groupBy: vi
         .fn()
         .mockResolvedValue([
-          { candidateId: "c1", status: "APPROVED", _count: { _all: 3 } },
+          {
+            candidateId: "c1",
+            documentTypeId: "passport",
+            status: "APPROVED",
+            _count: { _all: 1 },
+          },
         ]),
     },
     documentType: {
       findMany: vi
         .fn()
         .mockResolvedValue([
-          { allRu: false, allForeign: false, positions: [{ code1c: "POS1" }] },
+          {
+            id: "passport",
+            code: "PASSPORT",
+            allRu: false,
+            allForeign: false,
+            positions: [{ code1c: "POS1" }],
+          },
         ]),
     },
   };
@@ -87,7 +98,7 @@ describe("candidate review queue", () => {
     expect(page1.items).toHaveLength(1);
     expect(page1.items[0].documents).toHaveLength(80);
     expect(page1.nextCursor).toBe("c1");
-    expect(page1.items[0].candidate.approvedDocuments).toBe(3);
+    expect(page1.items[0].candidate.approvedDocuments).toBe(1);
     expect(page1.items[0].candidate.requiredDocuments).toBe(1);
     expect(page1.items[0].documents[0]).toEqual({
       id: "d0",
@@ -173,7 +184,7 @@ describe("candidate review queue", () => {
         { ...owner("c1"), documents: [document("d1")] },
       ]);
       const page = await reads.candidateReviewQueue(principal, { status });
-      expect(page.items[0].candidate.approvedDocuments).toBe(3);
+      expect(page.items[0].candidate.approvedDocuments).toBe(1);
       const where =
         prisma.candidate.findMany.mock.calls[0][0].include.documents.where;
       if (status === "ALL") expect(where).not.toHaveProperty("status");
@@ -356,7 +367,7 @@ describe("candidate details", () => {
     prisma.document.findMany.mockResolvedValue([]);
     const result = await reads.candidateDetails("c1", principal);
     expect(result).toMatchObject({
-      candidate: { id: "c1", fullName: "Иван Петров", approvedDocuments: 3 },
+      candidate: { id: "c1", fullName: "Иван Петров", approvedDocuments: 1 },
       documents: [],
     });
   });

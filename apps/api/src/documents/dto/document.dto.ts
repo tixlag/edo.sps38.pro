@@ -273,6 +273,15 @@ export class DocumentVersionDto extends DocumentReviewMetadataDto {
   delivery!: DocumentDeliveryDto | null;
 }
 export class CandidateProfileDto {
+  @ApiProperty({ type: String, nullable: true }) sex!: string | null;
+  @ApiProperty() sexKnown!: boolean;
+  @ApiProperty({ type: String, nullable: true }) photoPath!: string | null;
+  @ApiProperty({ type: String, nullable: true }) masterName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) masterCode1c!: string | null;
+  @ApiProperty({ type: String, nullable: true }) supervisorName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) supervisorCode1c!:
+    | string
+    | null;
   @ApiProperty({ enum: ["RU", "IG"], enumName: "ReviewGroup" })
   reviewGroup!: "RU" | "IG";
   @ApiProperty() id!: string;
@@ -299,14 +308,14 @@ export class CandidateProfileDto {
   profileSyncedAt!: string | null;
   @ApiProperty({
     description:
-      "Candidate APPROVED documents under the queue access scope (all tabs)",
+      "Approved applicable documents under the queue access scope (all tabs); all approved documents when position is unknown",
   })
   approvedDocuments!: number;
   @ApiProperty({
     type: Number,
     nullable: true,
     description:
-      "Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown",
+      "Applicable catalog document types for position, citizenship and known sex; null when positionCode is unknown",
   })
   requiredDocuments!: number | null;
 }
@@ -614,6 +623,22 @@ export class CandidateSnapshotMentorDto {
   code_1c?: string;
 }
 export class CandidateSnapshotDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  citizenshipProvided?: boolean;
+  @ApiPropertyOptional({ enum: ["male", "female"] })
+  @IsOptional()
+  @IsString()
+  sex?: "male" | "female";
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() sexKnown?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() photoPath?: string;
+  @ApiPropertyOptional({ type: () => CandidateSnapshotPositionDto })
+  @IsOptional()
+  master?: CandidateSnapshotPositionDto;
+  @ApiPropertyOptional({ type: () => CandidateSnapshotPositionDto })
+  @IsOptional()
+  supervisor?: CandidateSnapshotPositionDto;
   @ApiPropertyOptional({
     type: String,
     format: "uuid",

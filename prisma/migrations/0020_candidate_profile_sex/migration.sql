@@ -1,0 +1,8 @@
+ALTER TABLE `candidates`
+  ADD COLUMN `sex` VARCHAR(16) NULL,
+  ADD COLUMN `sexKnown` BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN `photoPath` VARCHAR(2048) NULL,
+  ADD COLUMN `masterName` VARCHAR(512) NULL,
+  ADD COLUMN `masterCode1c` VARCHAR(64) NULL,
+  ADD COLUMN `supervisorName` VARCHAR(512) NULL,
+  ADD COLUMN `supervisorCode1c` VARCHAR(64) NULL;

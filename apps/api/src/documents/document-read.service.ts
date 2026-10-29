@@ -24,7 +24,12 @@ import { hasAccessRule } from "../auth/access-rules";
 import { EdoAccessRule } from "../auth/edo-access-rule";
 import { StorageService } from "../storage/storage.service";
 import { DocumentAccessService } from "./document-access.service";
-import { applicable, FIELD_LABELS } from "./document-contract";
+import {
+  applicable,
+  excludedForSex,
+  FIELD_LABELS,
+  sexExceptionDocumentCodes,
+} from "./document-contract";
 import {
   normalizeRussianPassportSeries,
   resolveOcrProfile,
@@ -284,7 +289,12 @@ export class DocumentReadService {
   }
 
   private async missingDocumentTypes(
-    profile: { positionCode: string | null; citizenship: string | null } | null,
+    profile: {
+      positionCode: string | null;
+      citizenship: string | null;
+      sex?: string | null;
+      sexKnown?: boolean;
+    } | null,
     uploadedCodes: (string | null | undefined)[],
   ): Promise<MissingDocumentTypeDto[] | null> {
     if (!profile?.positionCode) return null;
@@ -300,6 +310,10 @@ export class DocumentReadService {
             type,
             profile.positionCode!,
             profile.citizenship ?? "ru",
+            profile.sexKnown &&
+              (profile.sex === "female" || profile.sex === "male")
+              ? profile.sex
+              : null,
           ) && !uploaded.has(type.code),
       )
       .map(({ code, title }) => ({ code, title }));
@@ -348,7 +362,12 @@ export class DocumentReadService {
             ],
           },
           orderBy: { updatedAt: "desc" },
-          select: { positionCode: true, citizenship: true },
+          select: {
+            positionCode: true,
+            citizenship: true,
+            sex: true,
+            sexKnown: true,
+          },
         })
       : null;
     if (!profile?.positionCode && employee.lkEmployeeCode1c) {
@@ -363,6 +382,8 @@ export class DocumentReadService {
         profile = {
           positionCode: lk.positionCode1c,
           citizenship: lk.citizenship!.trim(),
+          sex: null,
+          sexKnown: false,
         };
       }
     }
@@ -1068,7 +1089,7 @@ export class DocumentReadService {
     if (candidateIds.length === 0) return;
     const [grouped, catalog] = await Promise.all([
       this.prisma.document.groupBy({
-        by: ["candidateId", "status"],
+        by: ["candidateId", "status", "documentTypeId"],
         where: {
           candidateId: { in: candidateIds },
           ...this.access.documentWhere(principal),
@@ -1077,13 +1098,43 @@ export class DocumentReadService {
       }),
       // Catalog snapshot only: no ERP refresh inside the queue read path.
       this.prisma.documentType.findMany({
-        where: { catalogSyncedAt: { not: null } },
+        where: {
+          OR: [
+            { catalogSyncedAt: { not: null } },
+            { code: { in: sexExceptionDocumentCodes } },
+          ],
+        },
         include: { positions: true },
       }),
     ]);
     const approved = new Map<string, number>();
+    const profileById = new Map(
+      profiles.map((profile) => [profile.id, profile]),
+    );
+    const typeById = new Map(catalog.map((type) => [type.id, type]));
     for (const row of grouped) {
-      if (row.candidateId && row.status === "APPROVED")
+      const profile = row.candidateId
+        ? profileById.get(row.candidateId)
+        : undefined;
+      const type = row.documentTypeId
+        ? typeById.get(row.documentTypeId)
+        : undefined;
+      const excluded =
+        profile?.sexKnown && excludedForSex(type?.code, profile.sex);
+      const required =
+        !profile?.positionCode ||
+        (!!type &&
+          type.catalogSyncedAt !== null &&
+          applicable(
+            type,
+            profile.positionCode,
+            profile.citizenship ?? "ru",
+            profile.sexKnown &&
+              (profile.sex === "female" || profile.sex === "male")
+              ? profile.sex
+              : null,
+          ));
+      if (row.candidateId && row.status === "APPROVED" && !excluded && required)
         approved.set(
           row.candidateId,
           (approved.get(row.candidateId) ?? 0) + row._count._all,
@@ -1094,8 +1145,19 @@ export class DocumentReadService {
       const citizenship = (profile.citizenship ?? "ru").toLowerCase();
       profile.approvedDocuments = approved.get(profile.id) ?? 0;
       profile.requiredDocuments = positionCode
-        ? catalog.filter((type) => applicable(type, positionCode, citizenship))
-            .length
+        ? catalog.filter(
+            (type) =>
+              type.catalogSyncedAt !== null &&
+              applicable(
+                type,
+                positionCode,
+                citizenship,
+                profile.sexKnown &&
+                  (profile.sex === "female" || profile.sex === "male")
+                  ? profile.sex
+                  : null,
+              ),
+          ).length
         : null;
     }
   }

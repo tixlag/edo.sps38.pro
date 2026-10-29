@@ -64,7 +64,7 @@ describe.skipIf(!url)(
       expect(
         await redis.evalStrict(
           "return redis.call('HLEN', KEYS[1])",
-          ["edo:candidate-cards:v1"],
+          ["edo:candidate-cards:v2"],
           [],
         ),
       ).toBe(1000);

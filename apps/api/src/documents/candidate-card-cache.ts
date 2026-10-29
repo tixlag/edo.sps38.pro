@@ -7,7 +7,8 @@ export interface CandidateCardEntry {
   snapshot: CandidateSnapshotDto;
   freshUntil: number;
 }
-const namespace = "edo:candidate-cards:v1";
+// Earlier cached cards do not contain sex or citizenship provenance.
+const namespace = "edo:candidate-cards:v2";
 // Lua keeps the shared cache bounded and rejects writes from an expired owner.
 const readScript = `local value = redis.call('HGET', KEYS[1], ARGV[1]); if value then redis.call('ZADD', KEYS[2], ARGV[2], ARGV[1]) end; return value`;
 const writeScript = `

@@ -370,7 +370,22 @@ export interface CandidateSnapshotMentorDto {
   code_1c?: string;
 }
 
+export type CandidateSnapshotDtoSex =
+  (typeof CandidateSnapshotDtoSex)[keyof typeof CandidateSnapshotDtoSex];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateSnapshotDtoSex = {
+  male: "male",
+  female: "female",
+} as const;
+
 export interface CandidateSnapshotDto {
+  citizenshipProvided?: boolean;
+  sex?: CandidateSnapshotDtoSex;
+  sexKnown?: boolean;
+  photoPath?: string;
+  master?: CandidateSnapshotPositionDto;
+  supervisor?: CandidateSnapshotPositionDto;
   /**
    * Chat UUID, named uuid by 1C
    * @nullable
@@ -492,6 +507,19 @@ export interface ReturnedDocumentVersionDto {
 }
 
 export interface CandidateProfileDto {
+  /** @nullable */
+  sex: string | null;
+  sexKnown: boolean;
+  /** @nullable */
+  photoPath: string | null;
+  /** @nullable */
+  masterName: string | null;
+  /** @nullable */
+  masterCode1c: string | null;
+  /** @nullable */
+  supervisorName: string | null;
+  /** @nullable */
+  supervisorCode1c: string | null;
   reviewGroup: ReviewGroup;
   id: string;
   /** @nullable */
@@ -525,10 +553,10 @@ export interface CandidateProfileDto {
   isReemployment: boolean;
   /** @nullable */
   profileSyncedAt: string | null;
-  /** Candidate APPROVED documents under the queue access scope (all tabs) */
+  /** Approved applicable documents under the queue access scope (all tabs); all approved documents when position is unknown */
   approvedDocuments: number;
   /**
-   * Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown
+   * Applicable catalog document types for position, citizenship and known sex; null when positionCode is unknown
    * @nullable
    */
   requiredDocuments: number | null;

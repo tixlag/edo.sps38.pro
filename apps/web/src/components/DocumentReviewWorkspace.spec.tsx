@@ -423,6 +423,16 @@ describe("DocumentReviewWorkspace hover vs select", () => {
         revision: 4,
         ocrSource: "EXTERNAL",
         job: { ...data.job, status: "SUCCEEDED" as const },
+        ocrFields: [
+          {
+            name: "last_name",
+            documentFieldName: "last_name",
+            value: "OCR прибыл",
+            source: "PADDLE",
+            paddleText: "OCR прибыл",
+            paddleConfidence: null,
+          },
+        ],
         fields: data.fields.map((f, i) =>
           i
             ? f
@@ -480,9 +490,8 @@ describe("DocumentReviewWorkspace hover vs select", () => {
         fields: data.fields.map((field) => ({ ...field })),
       });
       expect(
-        view.container.querySelector<HTMLInputElement>(
-          "#field-doc-1-issued_at",
-        )?.value,
+        view.container.querySelector<HTMLInputElement>("#field-doc-1-issued_at")
+          ?.value,
       ).toBe("31.02.2026");
       expect(view.container.textContent).toContain(
         "Введите дату полностью в формате dd.mm.yyyy.",

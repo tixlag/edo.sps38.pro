@@ -248,7 +248,11 @@ export class DocumentCatalogService {
     const result = await this.refreshPromise;
     return { stale: !!this.refreshFailure || result === "busy" };
   }
-  async list(position: string, citizenship = "ru") {
+  async list(
+    position: string,
+    citizenship = "ru",
+    sex?: "male" | "female" | null,
+  ) {
     await this.ensure();
     const types = await this.prisma.documentType.findMany({
       where: { catalogSyncedAt: { not: null } },
@@ -260,7 +264,7 @@ export class DocumentCatalogService {
     });
     return {
       items: types
-        .filter((t) => applicable(t, position, citizenship))
+        .filter((t) => applicable(t, position, citizenship, sex))
         .map((t) => ({
           code: t.code,
           title: t.title,

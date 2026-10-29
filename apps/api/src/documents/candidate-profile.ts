@@ -25,6 +25,14 @@ type SnapshotRow = {
   fullName?: string | null;
   birthDate?: string | null;
   citizenship?: string | null;
+  citizenshipProvided?: boolean;
+  sex?: "male" | "female" | null;
+  sexKnown?: boolean;
+  photoPath?: string | null;
+  masterName?: string | null;
+  masterCode1c?: string | null;
+  supervisorName?: string | null;
+  supervisorCode1c?: string | null;
   positionCode?: string | null;
   positionName?: string | null;
   projectCode?: string | null;
@@ -39,14 +47,21 @@ type SnapshotRow = {
 
 /**
  * Prisma update for a normalized snapshot. Only keys actually present in the
- * snapshot are written (absent = undefined = untouched); a present-but-empty
- * value arrives as NULL and clears the column. Returns null when the snapshot
+ * snapshot are written; absent or empty values leave stored values untouched.
+ * Returns null when the snapshot
  * carries no fields, so uploads without a profile never touch stored data.
  */
 export interface CandidateProfileData {
   fullName?: string | null;
   birthDate?: Date | null;
   citizenship?: string | null;
+  sex?: string | null;
+  sexKnown?: boolean;
+  photoPath?: string | null;
+  masterName?: string | null;
+  masterCode1c?: string | null;
+  supervisorName?: string | null;
+  supervisorCode1c?: string | null;
   positionCode?: string | null;
   positionName?: string | null;
   projectCode?: string | null;
@@ -59,6 +74,23 @@ export interface CandidateProfileData {
   isReemployment?: boolean;
   profileSyncedAt?: Date;
 }
+
+export function changedProfileFields(current: object, next: object): string[] {
+  const before = current as Record<string, unknown>;
+  const after = next as Record<string, unknown>;
+  return Object.keys(after).filter((key) => {
+    if (key === "profileSyncedAt") return false;
+    const a =
+      before[key] instanceof Date
+        ? (before[key] as Date).toISOString()
+        : (before[key] ?? null);
+    const b =
+      after[key] instanceof Date
+        ? (after[key] as Date).toISOString()
+        : (after[key] ?? null);
+    return a !== b;
+  });
+}
 export function snapshotUpdateInput(
   snapshot: SnapshotRow | CandidateSnapshot | undefined | null,
 ): CandidateProfileData | null {
@@ -68,7 +100,7 @@ export function snapshotUpdateInput(
     key: K,
     value: CandidateProfileData[K] | undefined,
   ) => {
-    if (value !== undefined) data[key] = value;
+    if (value !== undefined && value !== null) data[key] = value;
   };
   put("fullName", snapshot.fullName);
   put(
@@ -79,7 +111,15 @@ export function snapshotUpdateInput(
         ? null
         : parseBirthDateBound(snapshot.birthDate, "birthDate"),
   );
-  put("citizenship", snapshot.citizenship);
+  if (snapshot.citizenshipProvided !== false)
+    put("citizenship", snapshot.citizenship);
+  put("sex", snapshot.sex);
+  put("sexKnown", snapshot.sexKnown);
+  put("photoPath", snapshot.photoPath);
+  put("masterName", snapshot.masterName);
+  put("masterCode1c", snapshot.masterCode1c);
+  put("supervisorName", snapshot.supervisorName);
+  put("supervisorCode1c", snapshot.supervisorCode1c);
   put("positionCode", snapshot.positionCode);
   put("positionName", snapshot.positionName);
   put("projectCode", snapshot.projectCode);
@@ -114,6 +154,13 @@ type ProfileRow = {
   fullName: string | null;
   birthDate: Date | null;
   citizenship: string | null;
+  sex?: string | null;
+  sexKnown?: boolean;
+  photoPath?: string | null;
+  masterName?: string | null;
+  masterCode1c?: string | null;
+  supervisorName?: string | null;
+  supervisorCode1c?: string | null;
   positionCode: string | null;
   positionName: string | null;
   projectCode: string | null;
@@ -151,6 +198,13 @@ export function toCandidateProfile(
     fullName: row.fullName,
     birthDate: row.birthDate ? row.birthDate.toISOString().slice(0, 10) : null,
     citizenship: row.citizenship,
+    sex: row.sex ?? null,
+    sexKnown: row.sexKnown ?? false,
+    photoPath: row.photoPath ?? null,
+    masterName: row.masterName ?? null,
+    masterCode1c: row.masterCode1c ?? null,
+    supervisorName: row.supervisorName ?? null,
+    supervisorCode1c: row.supervisorCode1c ?? null,
     positionCode: row.positionCode,
     positionName: row.positionName,
     projectCode: row.projectCode,

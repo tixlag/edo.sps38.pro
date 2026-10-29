@@ -79,6 +79,9 @@ export class CandidateDocumentsService {
       const catalog = await this.catalog.list(
         context.positionCode1c,
         context.citizenship,
+        context.candidateSnapshot?.sexKnown
+          ? context.candidateSnapshot.sex
+          : null,
       );
       return { context, catalog };
     });
@@ -108,7 +111,13 @@ export class CandidateDocumentsService {
   }
   async types(uuid: string) {
     const context = await this.contexts.context(uuid);
-    return this.catalog.list(context.positionCode1c, context.citizenship);
+    return this.catalog.list(
+      context.positionCode1c,
+      context.citizenship,
+      context.candidateSnapshot?.sexKnown
+        ? context.candidateSnapshot.sex
+        : null,
+    );
   }
   async statuses(uuid: string) {
     const chat = await this.identity.byUuid(uuid);

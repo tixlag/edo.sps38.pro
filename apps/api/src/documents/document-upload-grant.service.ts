@@ -70,7 +70,9 @@ export class DocumentUploadGrantService {
   }
   verify(token: string): DocumentUploadCapability {
     try {
-      if (token.length > 8192) throw new Error("Invalid capability");
+      // Candidate profile values are bounded individually; Cyrillic text expands
+      // in UTF-8 and base64, so a full profile can exceed the old 8 KiB limit.
+      if (token.length > 64 * 1024) throw new Error("Invalid capability");
       const grant = jwt.verify(token, this.key(), {
         algorithms: ["HS256"],
         issuer,

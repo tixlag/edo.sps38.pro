@@ -35,8 +35,7 @@ const values = z.record(
 // LK candidate profile snapshot (review queue).
 // LK sends it as `candidateSnapshot` (legacy alias `candidate_profile` is
 // accepted the same way). Unknown keys are stripped, never rejected.
-// Presence is significant: only keys actually present in the input update the
-// stored profile; a present-but-empty string clears the column (NULL).
+// Presence is significant: absent and empty values never clear stored data.
 // ---------------------------------------------------------------------------
 const emptyToNull = (value: unknown): unknown =>
   typeof value === "string" && value.trim() === "" ? null : value;
@@ -161,6 +160,16 @@ export const candidateSnapshotSchema = z.preprocess(
       fullName: snapshotName(512),
       birthDate: snapshotBirthDate,
       citizenship: snapshotCitizenship,
+      citizenshipProvided: z.boolean().optional(),
+      sex: z.enum(["male", "female"]).nullish(),
+      sexKnown: z.boolean().optional(),
+      photoPath: snapshotText(2048),
+      master: snapshotPosition,
+      supervisor: snapshotPosition,
+      masterName: snapshotText(512),
+      masterCode1c: snapshotCode,
+      supervisorName: snapshotText(512),
+      supervisorCode1c: snapshotCode,
       position: snapshotPosition,
       project: snapshotPosition,
       // Flat fields: accepted from callers and, more importantly, produced
@@ -180,11 +189,20 @@ export const candidateSnapshotSchema = z.preprocess(
       isReemployment: snapshotReemployment,
     })
     .transform((v) => ({
-      // null = arrived-but-empty (clears the column); undefined = absent
-      // (leaves the stored value untouched). Never collapse one into the other.
+      // Preserve presence for round-tripping; persistence ignores empty values.
       fullName: v.fullName,
       birthDate: v.birthDate,
       citizenship: v.citizenship,
+      ...(v.citizenshipProvided === undefined
+        ? {}
+        : { citizenshipProvided: v.citizenshipProvided }),
+      sex: v.sex,
+      sexKnown: v.sexKnown,
+      photoPath: v.photoPath,
+      masterName: pickDefined(v.master?.name, v.masterName),
+      masterCode1c: pickDefined(v.master?.code, v.masterCode1c),
+      supervisorName: pickDefined(v.supervisor?.name, v.supervisorName),
+      supervisorCode1c: pickDefined(v.supervisor?.code, v.supervisorCode1c),
       positionCode: pickDefined(v.position?.code, v.positionCode),
       positionName: pickDefined(v.position?.name, v.positionName),
       projectCode: pickDefined(v.project?.code, v.projectCode),
@@ -366,15 +384,31 @@ export const erpCatalogSchema = z
     return [...unique.values()];
   });
 
+const documentSexExceptions: Record<string, readonly string[]> = {
+  female: ["MILITARY"],
+};
+export const sexExceptionDocumentCodes = [
+  ...new Set(Object.values(documentSexExceptions).flat()),
+];
+export function excludedForSex(
+  code: string | null | undefined,
+  sex?: string | null,
+): boolean {
+  return !!(code && sex && documentSexExceptions[sex]?.includes(code));
+}
+
 export function applicable(
   type: {
+    code?: string;
     allRu: boolean;
     allForeign: boolean;
     positions: { code1c: string }[];
   },
   position: string,
   citizenship: string,
+  sex?: "male" | "female" | null,
 ): boolean {
+  if (excludedForSex(type.code, sex)) return false;
   return (
     (citizenship.toLowerCase() === "ru" ? type.allRu : type.allForeign) ||
     type.positions.some((p) => p.code1c === position)
