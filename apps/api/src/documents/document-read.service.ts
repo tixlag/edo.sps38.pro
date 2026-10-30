@@ -25,6 +25,7 @@ import { EdoAccessRule } from "../auth/edo-access-rule";
 import { StorageService } from "../storage/storage.service";
 import { DocumentAccessService } from "./document-access.service";
 import { reviewStageProgress } from "./review-stage-progress";
+import { DocumentCatalogService } from "./document-catalog.service";
 import {
   applicable,
   excludedForSex,
@@ -165,6 +166,7 @@ export class DocumentReadService {
     private readonly access: DocumentAccessService,
     private readonly storage: StorageService,
     @Optional() private readonly config?: ConfigService,
+    @Optional() private readonly catalog?: DocumentCatalogService,
   ) {}
 
   candidateDto(c: {
@@ -1088,6 +1090,9 @@ export class DocumentReadService {
   ): Promise<void> {
     const candidateIds = [...new Set(profiles.map((profile) => profile.id))];
     if (candidateIds.length === 0) return;
+    // A stale snapshot stays available while the catalog service refreshes it.
+    // A catalog outage must not block the review queue.
+    void this.catalog?.ensure().catch(() => undefined);
     const [grouped, catalog] = await Promise.all([
       this.prisma.document.groupBy({
         by: ["candidateId", "status", "documentTypeId"],
@@ -1105,7 +1110,10 @@ export class DocumentReadService {
             { code: { in: sexExceptionDocumentCodes } },
           ],
         },
-        include: { positions: true },
+        include: {
+          positions: true,
+          stageRules: { include: { positions: true } },
+        },
       }),
     ]);
     const approved = new Map<string, number>();

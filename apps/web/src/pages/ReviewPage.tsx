@@ -590,6 +590,7 @@ export function ReviewPage({
     query: {
       queryKey: getListCandidateReviewQueueQueryKey(queryParams),
       enabled: canReview,
+      refetchInterval: 30_000,
     },
   });
 

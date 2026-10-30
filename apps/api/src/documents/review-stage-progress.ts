@@ -8,6 +8,13 @@ type Type = {
   allRu: boolean;
   allForeign: boolean;
   positions: { code1c: string }[];
+  stageRules?: {
+    stage: number | null;
+    requiredForAll: boolean;
+    allRu: boolean;
+    allForeign: boolean;
+    positions: { code1c: string }[];
+  }[];
 };
 type Counts = {
   approved: number;
@@ -38,27 +45,29 @@ export function reviewStageProgress(
   const stages = new Map<number | null, StageProgress>();
   for (const type of types) {
     if (excludedForSex(type.code, profile.sex)) continue;
-    const stage = type.stage ?? null;
-    let entry = stages.get(stage);
-    if (!entry) {
-      entry = { stage, required: empty(), additional: empty() };
-      stages.set(stage, entry);
+    for (const rule of type.stageRules?.length ? type.stageRules : [type]) {
+      const stage = rule.stage ?? null;
+      let entry = stages.get(stage);
+      if (!entry) {
+        entry = { stage, required: empty(), additional: empty() };
+        stages.set(stage, entry);
+      }
+      const required =
+        stage !== null &&
+        (rule.requiredForAll ||
+          (profile.citizenship.toLowerCase() === "ru"
+            ? rule.allRu
+            : rule.allForeign) ||
+          rule.positions.some((p) => p.code1c === profile.positionCode));
+      const count = required ? entry.required : entry.additional;
+      const status = states.get(type.id);
+      if (!status || status === "DRAFT") count.missing++;
+      else if (status === "APPROVED" || status === "SIGNED") count.approved++;
+      else if (status === "IN_REVIEW") count.pending++;
+      else if (status === "OCR_PENDING" || status === "UPLOADED")
+        count.processing++;
+      else count.attention++;
     }
-    const required =
-      stage !== null &&
-      (type.requiredForAll ||
-        (profile.citizenship.toLowerCase() === "ru"
-          ? type.allRu
-          : type.allForeign) ||
-        type.positions.some((p) => p.code1c === profile.positionCode));
-    const count = required ? entry.required : entry.additional;
-    const status = states.get(type.id);
-    if (!status || status === "DRAFT") count.missing++;
-    else if (status === "APPROVED" || status === "SIGNED") count.approved++;
-    else if (status === "IN_REVIEW") count.pending++;
-    else if (status === "OCR_PENDING" || status === "UPLOADED")
-      count.processing++;
-    else count.attention++;
   }
   return [...stages.values()].sort(
     (a, b) => (a.stage ?? Infinity) - (b.stage ?? Infinity),

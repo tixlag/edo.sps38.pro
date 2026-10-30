@@ -155,6 +155,16 @@ describe("RU and IG review pages", () => {
     }
   });
 
+  it("refreshes queue data after a background catalog update", async () => {
+    await render("IG");
+    expect(state.queue).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        query: expect.objectContaining({ refetchInterval: 30000 }),
+      }),
+    );
+  });
+
   it("keeps IG navigation on its route and resets pagination when changing the tab", async () => {
     const view = await render("IG");
     const tab = [...view.querySelectorAll("button")].find(

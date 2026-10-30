@@ -102,6 +102,7 @@ model DocumentType {
   catalogSyncedAt DateTime? @db.DateTime(3)
   definitions DocumentTypeField[]
   positions DocumentTypePosition[]
+  stageRules DocumentTypeStageRule[]
 
   documents Document[]
 
@@ -464,6 +465,28 @@ model DocumentTypePosition {
   documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
   @@unique([documentTypeId, code1c])
   @@map("document_type_positions")
+}
+
+model DocumentTypeStageRule {
+  id String @id @default(cuid()) @db.VarChar(64)
+  documentTypeId String @db.VarChar(64)
+  stage Int?
+  requiredForAll Boolean @default(false)
+  allRu Boolean @default(false)
+  allForeign Boolean @default(false)
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
+  positions DocumentTypeStagePosition[]
+  @@index([documentTypeId])
+  @@map("document_type_stage_rules")
+}
+
+model DocumentTypeStagePosition {
+  id String @id @default(cuid()) @db.VarChar(64)
+  ruleId String @db.VarChar(64)
+  code1c String @db.VarChar(64)
+  rule DocumentTypeStageRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  @@unique([ruleId, code1c])
+  @@map("document_type_stage_positions")
 }
 
 model DocumentSubmission {

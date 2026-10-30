@@ -40,13 +40,16 @@ describe("review stage progress", () => {
       ОбязательныйДляВсех: false,
     });
   });
-  it("rejects conflicting stages for the same ERP document", () => {
-    expect(() =>
-      erpCatalogSchema.parse([
-        { ...item, Этап: 1 },
-        { ...item, Этап: 2 },
-      ]),
-    ).toThrow();
+  it("retains distinct stage rules for one document and ignores empty position codes", () => {
+    const result = erpCatalogSchema.parse([
+      { ...item, Этап: 1, КодыДолжностей: ["", "001"] },
+      { ...item, Этап: 2, ВсемРФ: false, КодыДолжностей: ["   "] },
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].stageRules).toEqual([
+      expect.objectContaining({ stage: 1, allRu: true, positions: ["001"] }),
+      expect.objectContaining({ stage: 2, allRu: false, positions: [] }),
+    ]);
   });
   it("counts required and additional types per stage using current document status", () => {
     const types = [
@@ -122,6 +125,48 @@ describe("review stage progress", () => {
           attention: 0,
         },
       },
+    ]);
+  });
+  it("counts the same document separately for every stage and applies that stage's rules", () => {
+    const base = {
+      id: "a",
+      code: "A",
+      stage: 1,
+      requiredForAll: false,
+      allRu: false,
+      allForeign: false,
+      positions: [],
+    };
+    const rules = [
+      {
+        stage: 1,
+        requiredForAll: true,
+        allRu: false,
+        allForeign: false,
+        positions: [],
+      },
+      {
+        stage: 2,
+        requiredForAll: false,
+        allRu: false,
+        allForeign: false,
+        positions: [],
+      },
+    ];
+    const result = reviewStageProgress(
+      [{ ...base, stageRules: rules }],
+      [{ documentTypeId: "a", status: "APPROVED" }],
+      { positionCode: "001", citizenship: "ru", sex: null },
+    );
+    expect(
+      result.map((stage) => [
+        stage.stage,
+        stage.required.approved,
+        stage.additional.approved,
+      ]),
+    ).toEqual([
+      [1, 1, 0],
+      [2, 0, 1],
     ]);
   });
   it("applies citizenship and position rules and keeps returned documents separate from missing", () => {
