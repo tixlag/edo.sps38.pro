@@ -35,7 +35,10 @@ const doc = (id: string, title: string, returnedVersions: unknown[] = []) => ({
   currentVersion: 1,
   returnedVersions,
 });
-async function render(returnedHistory = false) {
+async function render(
+  returnedHistory = false,
+  stage: string | undefined = "1",
+) {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -43,7 +46,7 @@ async function render(returnedHistory = false) {
     root!.render(
       <CandidateDrawer
         candidateId="c1"
-        stage="1"
+        stage={stage}
         profile={null}
         returnedHistory={returnedHistory}
         onClose={() => {}}
@@ -79,6 +82,32 @@ describe("stage candidate drawer", () => {
     expect(view.textContent!.indexOf("Обязательные")).toBeLessThan(
       view.textContent!.indexOf("Дополнительные"),
     );
+  });
+  it("groups all documents when opening the candidate card", async () => {
+    mock.data = {
+      candidate: {
+        id: "c1",
+        fullName: "Кандидат",
+        approvedDocuments: 0,
+        requiredDocuments: 1,
+      },
+      documents: [],
+      documentGroups: {
+        required: {
+          documents: [doc("a", "Паспорт")],
+          missingDocuments: [{ code: "c", title: "Анкета" }],
+        },
+        additional: { documents: [doc("b", "Справка")], missingDocuments: [] },
+      },
+    };
+    const view = await render(false, "");
+    expect(mock.query).toHaveBeenCalledWith("c1", undefined);
+    const sections = view.querySelectorAll("section");
+    expect(sections[0].textContent).toContain("Обязательные");
+    expect(sections[0].textContent).toContain("Паспорт");
+    expect(sections[0].textContent).toContain("Анкета");
+    expect(sections[1].textContent).toContain("Дополнительные");
+    expect(sections[1].textContent).toContain("Справка");
   });
   it("shows only returned versions of the chosen stage", async () => {
     mock.data = {

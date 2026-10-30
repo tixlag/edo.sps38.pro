@@ -325,6 +325,55 @@ export class DocumentReadService {
         }
       }
     }
+    let documentGroups: CandidateDetailsDto["documentGroups"];
+    if (stage === undefined) {
+      documentGroups = null;
+      if (candidate.positionCode) {
+        const types = await this.prisma.documentType.findMany({
+          where: { catalogSyncedAt: { not: null } },
+          include: {
+            positions: true,
+            stageRules: { include: { positions: true } },
+          },
+          orderBy: { title: "asc" },
+        });
+        if (types.length) {
+          const profile = {
+            positionCode: candidate.positionCode,
+            citizenship: candidate.citizenship ?? "ru",
+            sex: candidate.sexKnown ? candidate.sex : null,
+          };
+          documentGroups = {
+            required: { documents: [], missingDocuments: [] },
+            additional: { documents: [], missingDocuments: [] },
+          };
+          const requiredIds = new Set(
+            types
+              .filter((type) =>
+                (type.stageRules?.length ? type.stageRules : [type]).some(
+                  (rule) =>
+                    classifyStageType(type, rule.stage ?? null, profile) ===
+                    "required",
+                ),
+              )
+              .map((type) => type.id),
+          );
+          for (const row of rows) {
+            const category =
+              row.documentTypeId && requiredIds.has(row.documentTypeId)
+                ? "required"
+                : "additional";
+            documentGroups[category].documents.push(this.documentSummary(row));
+          }
+          const uploaded = new Set(rows.map((row) => row.documentTypeId));
+          documentGroups.required.missingDocuments = types
+            .filter(
+              (type) => requiredIds.has(type.id) && !uploaded.has(type.id),
+            )
+            .map(({ code, title }) => ({ code, title }));
+        }
+      }
+    }
     return {
       candidate,
       documents: rows.map((row) => this.documentSummary(row)),
@@ -332,7 +381,7 @@ export class DocumentReadService {
         owner,
         rows.map((row) => row.documentType?.code),
       ),
-      ...(stage !== undefined ? { stageDocuments } : {}),
+      ...(stage !== undefined ? { stageDocuments } : { documentGroups }),
     };
   }
 

@@ -89,30 +89,29 @@ export function CandidateDrawer({
           : [{ doc }],
       );
   const stageData = docs.data?.stageDocuments;
-  const sections = stage
-    ? stageData
-      ? [
-          {
-            label: "Обязательные",
-            items: makeItems(stageData.required.documents),
-            missing: returnedHistory ? [] : stageData.required.missingDocuments,
-          },
-          {
-            label: "Дополнительные",
-            items: makeItems(stageData.additional.documents),
-            missing: returnedHistory
-              ? []
-              : stageData.additional.missingDocuments,
-          },
-        ]
-      : []
-    : [
+  const groupData = stage ? stageData : docs.data?.documentGroups;
+  const sections = groupData
+    ? [
         {
-          label: "",
-          items: makeItems(docs.data?.documents ?? []),
-          missing: returnedHistory ? [] : (docs.data?.missingDocuments ?? []),
+          label: "Обязательные",
+          items: makeItems(groupData.required.documents),
+          missing: returnedHistory ? [] : groupData.required.missingDocuments,
         },
-      ];
+        {
+          label: "Дополнительные",
+          items: makeItems(groupData.additional.documents),
+          missing: returnedHistory ? [] : groupData.additional.missingDocuments,
+        },
+      ]
+    : stage
+      ? []
+      : [
+          {
+            label: "",
+            items: makeItems(docs.data?.documents ?? []),
+            missing: returnedHistory ? [] : (docs.data?.missingDocuments ?? []),
+          },
+        ];
   const count = sections.reduce(
     (sum, section) => sum + section.items.length + section.missing.length,
     0,
@@ -262,6 +261,15 @@ export function CandidateDrawer({
             <p role="status" className="text-sm text-[var(--muted-foreground)]">
               Не удалось определить документы выбранного этапа. Проверьте
               должность кандидата и доступность справочника.
+            </p>
+          )}
+          {!stage && docs.data && !groupData && (
+            <p
+              role="status"
+              className="mb-2 text-xs text-[var(--muted-foreground)]"
+            >
+              Не удалось разделить документы: проверьте должность кандидата и
+              доступность справочника.
             </p>
           )}
           {!stage &&
