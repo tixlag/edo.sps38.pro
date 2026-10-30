@@ -357,7 +357,8 @@ function StageRing({
     <div
       ref={anchor}
       tabIndex={0}
-      onClick={() => {
+      onClick={(event) => {
+        event.stopPropagation();
         setDismissed(true);
         onOpen();
       }}
@@ -380,11 +381,11 @@ function StageRing({
         }
       }}
       role="button"
-      className="group pointer-events-auto relative flex w-24 shrink-0 flex-col items-center gap-1 rounded text-center text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+      className="group pointer-events-auto relative flex w-[68px] shrink-0 flex-col items-center gap-0.5 rounded text-center text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
       aria-label={`Открыть документы: ${label}`}
       aria-describedby={open ? tooltipId : undefined}
     >
-      <span className="relative flex h-16 w-16 items-center justify-center">
+      <span className="relative flex h-14 w-14 items-center justify-center">
         <svg
           viewBox="0 0 64 64"
           className="absolute inset-0 h-full w-full -rotate-90"
@@ -413,7 +414,9 @@ function StageRing({
           {pending ? <AlertTriangle size={19} /> : <FileText size={19} />}
         </span>
       </span>
-      <strong>{label}</strong>
+      <strong className="flex h-8 items-center justify-center leading-tight">
+        {label}
+      </strong>
       <span className="text-[var(--muted-foreground)]">
         {progress.required.approved + progress.additional.approved}/
         {total(progress.required) + total(progress.additional)}
@@ -467,16 +470,16 @@ function CandidateRow({
         onClick={onOpen}
         className="absolute inset-0 rounded-[10px] hover:bg-[var(--border)]/30 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--primary)]"
       />
-      <div className="pointer-events-none relative flex flex-wrap items-center gap-4">
-        <span
-          aria-hidden
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] font-semibold"
-        >
-          {candidateInitials(candidate?.fullName)}
-        </span>
-        <div className="min-w-[240px] flex-1">
-          <div className="mb-1 flex flex-wrap items-center gap-2 font-semibold">
-            {heading}
+      <div className="pointer-events-none relative flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center">
+        <div className="min-w-0 w-full xl:w-[min(42%,620px)] xl:shrink-0">
+          <div className="mb-2 flex min-w-0 items-center gap-2 font-semibold">
+            <span
+              aria-hidden
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-sm font-semibold"
+            >
+              {candidateInitials(candidate?.fullName)}
+            </span>
+            <span className="min-w-0 break-words">{heading}</span>
             {candidate?.citizenship && (
               <Badge title="Гражданство">
                 {candidate.citizenship.toUpperCase()}
@@ -486,7 +489,7 @@ function CandidateRow({
               <Badge tone="warning">Повторный найм</Badge>
             )}
           </div>
-          <div className="grid gap-2 md:grid-cols-3">
+          <div className="grid min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-[minmax(112px,0.75fr)_minmax(0,1fr)_minmax(0,1.6fr)]">
             {[
               [
                 CalendarDays,
@@ -507,68 +510,80 @@ function CandidateRow({
               return (
                 <div
                   key={label as string}
-                  className="flex min-w-0 items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-1"
+                  title={value as string}
+                  onClick={onOpen}
+                  className="pointer-events-auto flex min-w-0 cursor-pointer items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1"
                 >
                   <I
-                    size={19}
+                    size={17}
                     className="shrink-0 text-[var(--muted-foreground)]"
                   />
-                  <span className="min-w-0 text-sm">
+                  <span className="min-w-0 text-sm leading-tight">
                     <span className="block text-xs text-[var(--muted-foreground)]">
                       {label as string}
                     </span>
-                    {value as string}
+                    <span className="block truncate">{value as string}</span>
                   </span>
                 </div>
               );
             })}
           </div>
-          <div className="mt-2 flex flex-wrap gap-x-8 gap-y-1 text-xs">
-            <span className="flex items-center gap-2">
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+            <span className="flex min-w-0 items-center gap-2 break-words">
               <UserRound size={18} className="text-[var(--primary)]" />
               <span>
-                <span className="block text-[var(--muted-foreground)]">
-                  Менеджер
+                <span className="text-[var(--muted-foreground)]">
+                  Менеджер:{" "}
                 </span>
                 {person(candidate?.managerName, candidate?.managerCode1c)}
               </span>
             </span>
-            <span className="flex items-center gap-2">
+            <span className="flex min-w-0 items-center gap-2 break-words">
               <GraduationCap
                 size={18}
                 className="text-[var(--muted-foreground)]"
               />
               <span>
-                <span className="block text-[var(--muted-foreground)]">
-                  Наставник
+                <span className="text-[var(--muted-foreground)]">
+                  Наставник:{" "}
                 </span>
                 {person(candidate?.mentorName, candidate?.mentorCode1c)}
               </span>
             </span>
           </div>
         </div>
-        <div className="flex max-w-full flex-wrap items-center gap-2 border-l border-[var(--border)] pl-3">
-          {candidate?.stageProgress ? (
-            candidate.stageProgress.map((progress) => (
-              <StageRing
-                key={progress.stage ?? "additional"}
-                progress={progress}
-                onOpen={() => onOpenStage(progress.stage)}
-              />
-            ))
-          ) : (
-            <span className="w-24 text-center text-xs text-[var(--muted-foreground)]">
-              Этапы неизвестны
-            </span>
-          )}
-          <span className="pointer-events-auto flex w-20 flex-col items-center gap-1 text-xs">
+        <div
+          onClick={onOpen}
+          className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2 border-t border-[var(--border)] pt-2 xl:border-l xl:border-t-0 xl:pl-3 xl:pt-0"
+        >
+          <div className="flex min-w-0 flex-1 items-center overflow-x-auto pb-1">
+            {candidate?.stageProgress ? (
+              candidate.stageProgress.map((progress) => (
+                <StageRing
+                  key={progress.stage ?? "additional"}
+                  progress={progress}
+                  onOpen={() => onOpenStage(progress.stage)}
+                />
+              ))
+            ) : (
+              <span className="w-24 text-center text-xs text-[var(--muted-foreground)]">
+                Этапы неизвестны
+              </span>
+            )}
+          </div>
+          <span className="flex w-[68px] shrink-0 flex-col items-center gap-0.5 border-l border-[var(--border)] pl-2 text-xs">
             <span className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]">
               <FileSignature size={22} />
             </span>
-            <strong>Договор</strong>
+            <strong className="flex h-8 items-center justify-center leading-tight">
+              Договор
+            </strong>
             <span>—</span>
           </span>
-          <ChevronRight size={18} className="text-[var(--muted-foreground)]" />
+          <ChevronRight
+            size={18}
+            className="shrink-0 text-[var(--muted-foreground)]"
+          />
         </div>
       </div>
     </section>
