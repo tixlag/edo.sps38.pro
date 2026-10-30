@@ -42,3 +42,10 @@ it("allows group-independent readonly history details while keeping audit out of
     false,
   );
 });
+
+it("allows own documents to an authenticated employee without administrative grants", () => {
+  expect(canAccessPath({}, "/my-documents")).toBe(true);
+  expect(canAccessPath({}, "/my-documents/document")).toBe(true);
+  expect(canAccessPath(undefined, "/my-documents")).toBe(false);
+  expect(canAccessPath({}, "/signing")).toBe(false);
+});

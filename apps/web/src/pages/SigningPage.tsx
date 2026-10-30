@@ -1,201 +1,1022 @@
 import * as React from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, ArrowRight, Check, CheckCircle2, Clock3, FilePlus2, FileText,
-  Inbox, Plus, Search, Send, Upload, UserRound, ChevronRight, LockKeyhole,
-} from "lucide-react";
+  useListSigningDocumentTypes,
+  useGetSigningCandidate,
+  useListSigningContracts,
+  useCreateSigningContract,
+  useGetSigningContract,
+  useUploadSigningContractFile,
+  useSendSigningContract,
+  useListMySigningContracts,
+  useGetMySigningContract,
+  useConfirmMySigningContract,
+  useDeclineMySigningContract,
+  useGetMe,
+  getListSigningContractsQueryKey,
+  getGetSigningContractQueryKey,
+  getListMySigningContractsQueryKey,
+  getGetMySigningContractQueryKey,
+  type ContractDto,
+  type ContractDetailDto,
+  type ContractState,
+  type ContractBank,
+} from "@edo/api-client";
 import { Button, Card, EmptyState, PageHeader } from "@edo/ui";
+import {
+  ArrowLeft,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  Download,
+  FileSignature,
+  FileText,
+  KeyRound,
+  LoaderCircle,
+  LockKeyhole,
+  Search,
+  Send,
+  Upload,
+  X,
+} from "lucide-react";
+import { formatDateRu, formatDateTimeRu } from "../lib/date-format";
 
-type Status = "draft" | "waiting" | "signed" | "attention" | "declined" | "accepted";
-type Role = "hr" | "employee";
-type Tab = "incoming" | "signed" | "requests";
-type DemoEvent = { label: string; date: string };
-type DemoDocument = {
-  id: string;
-  title: string;
-  person: string;
-  number: string;
-  date: string;
-  status: Status;
-  kind: "contract" | "vacation";
-  description: string;
-  events: DemoEvent[];
-  file?: File;
+type SigningSearch = { candidateId?: string; contractId?: string };
+export const signingSearch = (
+  search: Record<string, unknown>,
+): SigningSearch => ({
+  candidateId:
+    typeof search.candidateId === "string" ? search.candidateId : undefined,
+  contractId:
+    typeof search.contractId === "string" ? search.contractId : undefined,
+});
+const POLL = {
+  refetchInterval: 10_000,
+  refetchOnWindowFocus: "always" as const,
 };
-
-const PEOPLE = ["Иванов Алексей Сергеевич", "Петрова Мария Андреевна", "Ким Александр Викторович"];
-const SEED: DemoDocument[] = [
-  { id: "demo-1", title: "Трудовой договор", person: PEOPLE[0], number: "ТД-2026-014", date: "29.10.2026", status: "waiting", kind: "contract", description: "Договор подготовлен и ожидает подписи сотрудника.", events: [{ label: "Отправлен сотруднику на подпись", date: "29.10.2026" }, { label: "Договор подготовлен кадровиком", date: "28.10.2026" }] },
-  { id: "demo-2", title: "Трудовой договор", person: PEOPLE[1], number: "ТД-2026-013", date: "27.10.2026", status: "signed", kind: "contract", description: "Договор подписан обеими сторонами в демонстрации.", events: [{ label: "Подписан сотрудником и работодателем", date: "27.10.2026" }, { label: "Отправлен сотруднику на подпись", date: "26.10.2026" }] },
-  { id: "demo-3", title: "Трудовой договор", person: PEOPLE[2], number: "ТД-2026-012", date: "26.10.2026", status: "attention", kind: "contract", description: "Требуется уточнить данные перед отправкой.", events: [{ label: "Договор требует внимания", date: "26.10.2026" }] },
-  { id: "demo-4", title: "Трудовой договор", person: PEOPLE[0], number: "ТД-2026-015", date: "29.10.2026", status: "draft", kind: "contract", description: "Черновик договора готов к проверке.", events: [{ label: "Черновик создан", date: "29.10.2026" }] },
+const control =
+  "min-h-10 w-full rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]";
+const stateLabels: Record<ContractState, string> = {
+  PREPARING: "Формируется",
+  DRAFT: "Черновик",
+  WAITING_EMPLOYEE: "Ожидает подписи сотрудника",
+  COMPLETED: "Подписан обеими сторонами",
+  DECLINED: "Сотрудник отказался",
+  FAILED: "Не удалось сформировать",
+};
+const banks: { code: ContractBank; name: string; icon: string }[] = [
+  { code: "sber", name: "Сбер ID", icon: "/banks/sber.ico" },
+  { code: "t", name: "Т-ID", icon: "/banks/t.ico" },
+  { code: "alfa", name: "Альфа ID", icon: "/banks/alfa.ico" },
 ];
-// Shared across route changes in this tab; reloading the page restores the examples.
-let sessionDocuments: DemoDocument[] = SEED.map((doc) => ({ ...doc, events: [...doc.events] }));
-const STATUS: Record<Status, { text: string; classes: string }> = {
-  draft: { text: "Черновик", classes: "bg-[var(--muted)] text-[var(--muted-foreground)]" },
-  waiting: { text: "Ожидает подписи", classes: "bg-[var(--warning-soft)] text-[var(--foreground)]" },
-  signed: { text: "Подписан", classes: "bg-[var(--success-soft)] text-[var(--foreground)]" },
-  attention: { text: "Требует внимания", classes: "bg-[var(--primary-soft)] text-[var(--primary)]" },
-  declined: { text: "Отказ от подписи", classes: "bg-[var(--primary-soft)] text-[var(--primary)]" },
-  accepted: { text: "Принято", classes: "bg-[var(--success-soft)] text-[var(--foreground)]" },
-};
-const control = "h-10 w-full rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]";
-
-function StatusLabel({ status, kind }: { status: Status; kind: DemoDocument["kind"] }) {
-  const { text, classes } = STATUS[status];
-  const label = kind === "vacation" && status === "waiting" ? "Отправлено кадровику" : text;
-  return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${classes}`}><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />{label}</span>;
+export function contractError(error: unknown): string {
+  const response = (error as { response?: { data?: { message?: unknown } } })
+    ?.response?.data?.message;
+  return typeof response === "string"
+    ? response
+    : "Не удалось выполнить действие. Проверьте соединение и повторите попытку.";
 }
-function today() { return new Intl.DateTimeFormat("ru-RU").format(new Date()); }
-
-function DocumentPreview({ doc }: { doc: DemoDocument }) {
-  const [url, setUrl] = React.useState<string>();
-  React.useEffect(() => {
-    if (!doc.file) { setUrl(undefined); return; }
-    const next = URL.createObjectURL(doc.file);
-    setUrl(next);
-    return () => URL.revokeObjectURL(next);
-  }, [doc.file]);
-  if (doc.file && url) return <iframe title={`Просмотр: ${doc.title}`} src={url} className="min-h-[480px] w-full rounded-lg border border-[var(--border)] bg-[var(--card)]" />;
+function Status({ status }: { status: ContractState }) {
+  const tone =
+    status === "COMPLETED"
+      ? "bg-[var(--success-soft)]"
+      : status === "WAITING_EMPLOYEE"
+        ? "bg-[var(--warning-soft)]"
+        : "bg-[var(--muted)]";
   return (
-    <div className="mx-auto min-h-[420px] max-w-[570px] rounded-sm border border-[var(--border)] bg-[var(--card)] px-8 py-10 text-sm leading-7 shadow-sm sm:px-12">
-      <p className="text-center text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Демонстрационный образец</p>
-      <h3 className="mt-8 text-center text-lg font-bold">{doc.title} № {doc.number}</h3>
-      {doc.kind === "contract" ? <>
-        <div className="mt-5 flex justify-between gap-3 text-xs text-[var(--muted-foreground)]"><span>г. Иркутск</span><span>{doc.date}</span></div>
-        <p className="mt-7">Работодатель и <strong>{doc.person}</strong> заключили настоящий трудовой договор на следующих условиях.</p>
-        <p className="mt-5 font-semibold">1. Общие положения</p>
-        <p>Работник принимается на работу в соответствии с условиями, согласованными сторонами.</p>
-        <p className="mt-5 font-semibold">2. Права и обязанности сторон</p>
-        <p>Стороны исполняют обязанности в соответствии с трудовым законодательством и условиями договора.</p>
-        <p className="mt-7 text-xs text-[var(--muted-foreground)]">Текст приведён для демонстрации интерфейса и не является трудовым договором.</p>
-      </> : <><p className="mt-8">От: {doc.person}</p><p className="mt-5 whitespace-pre-wrap">{doc.description}</p><p className="mt-8">{doc.date}</p></>}
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${tone}`}
+    >
+      {stateLabels[status]}
+    </span>
+  );
+}
+function Message({ children }: { children: React.ReactNode }) {
+  return (
+    <p
+      role="alert"
+      className="rounded-[10px] border border-[var(--border)] bg-[var(--primary-soft)] p-3 text-sm"
+    >
+      {children}
+    </p>
+  );
+}
+function useContractRefresh() {
+  const client = useQueryClient();
+  return () =>
+    client.invalidateQueries({
+      predicate: (query) =>
+        /\/contracts(?:\/|$)/.test(String(query.queryKey[0])),
+    });
+}
+/** A retry keeps its key; a new revision, file or action receives another key. */
+function useRequestId() {
+  const requests = React.useRef(new Map<string, string>());
+  return (key: string) => {
+    let id = requests.current.get(key);
+    if (!id) {
+      id = crypto.randomUUID();
+      requests.current.set(key, id);
+    }
+    return id;
+  };
+}
+function ContractList({
+  docs,
+  open,
+  own,
+}: {
+  docs: ContractDto[];
+  open: (id: string) => void;
+  own: boolean;
+}) {
+  return (
+    <div className="divide-y divide-[var(--border)]">
+      {docs.map((doc) => (
+        <button
+          type="button"
+          key={doc.id}
+          onClick={() => open(doc.id)}
+          className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] sm:px-5"
+        >
+          <FileText size={22} className="shrink-0 text-[var(--primary)]" />
+          <span className="min-w-0 flex-1">
+            <strong className="block break-words text-sm">
+              {doc.documentTypeName}
+            </strong>
+            {!own && (
+              <span className="mt-1 block text-sm">
+                {doc.fullName || "Имя не указано"}
+              </span>
+            )}
+            <span className="mt-1 block text-xs text-[var(--muted-foreground)]">
+              {formatDateTimeRu(doc.createdAt)} · Версия {doc.version}
+            </span>
+          </span>
+          <span className="hidden sm:inline">
+            <Status status={doc.status} />
+          </span>
+          <ChevronRight size={18} className="shrink-0" />
+          <span className="sr-only">{stateLabels[doc.status]}</span>
+        </button>
+      ))}
     </div>
   );
 }
-
-function EmployeeJourney({ docs, person, selected, setSelected, update, onVacation }: {
-  docs: DemoDocument[]; person: string; selected: string | null;
-  setSelected: (id: string | null) => void;
-  update: (id: string, status: Status, label: string) => void;
-  onVacation: () => void;
+function SignatureDialog({
+  role,
+  name,
+  pending,
+  error,
+  close,
+  confirm,
+}: {
+  role: "employer" | "employee";
+  name: string;
+  pending: boolean;
+  error: string;
+  close: () => void;
+  confirm: (bank?: ContractBank) => void;
 }) {
-  const [screen, setScreen] = React.useState<"profile" | "documents" | "document" | "identity" | "result">("profile");
-  const [all, setAll] = React.useState(false);
-  const own = docs.filter((doc) => doc.person === person && (doc.kind === "vacation" || ["waiting", "signed", "declined"].includes(doc.status)));
-  const waiting = own.filter((doc) => doc.kind === "contract" && doc.status === "waiting");
-  const doc = own.find((item) => item.id === selected);
-  const openDocument = (id: string) => { setSelected(id); setScreen("document"); };
-  const back = () => {
-    if (screen === "identity") setScreen("document");
-    else if (screen === "document" || screen === "result") setScreen("documents");
-    else setScreen("profile");
-  };
-  const row = "flex w-full items-center gap-3 rounded-xl bg-[var(--card)] p-4 text-left shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]";
-  const icon = "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-[var(--primary)]";
-  return <div className="mx-auto w-full max-w-[390px] overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-sm">
-    <div className="min-h-[560px] p-4">
-      {screen !== "profile" && <div className="mb-5 flex items-center gap-3"><button type="button" onClick={back} aria-label="Назад" className="rounded-lg p-2 text-[var(--primary)] hover:bg-[var(--muted)]"><ArrowLeft size={20} /></button><h2 className="flex-1 pr-10 text-center font-bold">{screen === "documents" ? "Мои документы" : screen === "document" ? doc?.title : screen === "identity" ? "Подписание документа" : "Результат"}</h2></div>}
-      {screen === "profile" && <div className="space-y-4">
-        <div className="rounded-xl bg-[var(--card)] p-5 shadow-sm"><div className="flex items-center gap-4"><span className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--muted)] text-[var(--muted-foreground)]"><UserRound size={32} /></span><div><h2 className="font-bold">{person}</h2><p className="mt-1 text-sm text-[var(--muted-foreground)]">Профиль сотрудника</p></div></div></div>
-        {waiting.length > 0 && <button type="button" onClick={() => setScreen("documents")} className={`${row} bg-[var(--primary-soft)]`}><span className={icon}><FileText size={22} /></span><span className="flex-1"><strong className="block">Вам поступил трудовой договор</strong><span className="text-sm">Требуется ваше подписание</span></span><ChevronRight size={20} /></button>}
-        <button type="button" className={row} onClick={() => setScreen("documents")}><span className={icon}><FileText size={21} /></span><strong className="flex-1">Мои документы</strong><ChevronRight size={20} /></button>
-        <button type="button" className={row} onClick={onVacation}><span className={icon}><FilePlus2 size={21} /></span><strong className="flex-1">Заявление на отпуск</strong><ChevronRight size={20} /></button>
-      </div>}
-      {screen === "documents" && <div className="space-y-4"><div className="grid grid-cols-2 gap-2"><button type="button" aria-pressed={!all} onClick={() => setAll(false)} className={`rounded-xl p-3 text-sm font-semibold ${!all ? "bg-[var(--primary-soft)] text-[var(--primary)]" : "bg-[var(--card)]"}`}>Требуют действия {waiting.length}</button><button type="button" aria-pressed={all} onClick={() => setAll(true)} className={`rounded-xl p-3 text-sm font-semibold ${all ? "bg-[var(--primary-soft)] text-[var(--primary)]" : "bg-[var(--card)]"}`}>Все документы</button></div><h3 className="font-bold">Документы сотрудника</h3>{(all ? own : waiting).length === 0 ? <EmptyState title="Здесь пока нет документов" description="Когда документ появится, вы увидите его здесь." /> : <div className="space-y-2">{(all ? own : waiting).map((item) => <button key={item.id} type="button" onClick={() => openDocument(item.id)} className={row}><span className={icon}><FileText size={21} /></span><span className="min-w-0 flex-1"><strong className="block">{item.title} № {item.number}</strong><span className="block text-sm text-[var(--muted-foreground)]">{item.date}</span><span className="block text-sm">{item.status === "waiting" && item.kind === "contract" ? "Требуется ваше подписание" : STATUS[item.status].text}</span></span><ChevronRight size={20} /></button>)}</div>}<Button variant="outline" onClick={onVacation} className="w-full"><FilePlus2 size={16} /> Заявление на отпуск</Button></div>}
-      {screen === "document" && doc && <div className="space-y-4"><div className="overflow-hidden rounded-xl bg-[var(--card)]"><DocumentPreview doc={doc} /></div>{doc.kind === "contract" && doc.status === "waiting" ? <><div className="rounded-xl bg-[var(--info-soft)] p-4 text-sm">Перед подписанием ознакомьтесь с документом полностью.</div><Button className="w-full" onClick={() => setScreen("identity")}>Подписать</Button><Button variant="outline" className="w-full" onClick={() => { update(doc.id, "declined", "Сотрудник отказался от подписи"); setAll(true); }}>Отказаться от подписи</Button></> : <StatusLabel status={doc.status} kind={doc.kind} />}</div>}
-      {screen === "identity" && doc && <div className="space-y-5"><div className={row}><span className={icon}><FileText size={21} /></span><span><strong className="block">{doc.title} № {doc.number}</strong><span className="text-sm text-[var(--muted-foreground)]">{doc.date}</span></span></div><div><h3 className="text-lg font-bold">Подтвердите личность</h3><p className="mt-2 text-sm text-[var(--muted-foreground)]">Для демонстрации выберите способ авторизации через банк.</p></div><div className="space-y-2">{["Сбер ID", "Т-ID", "Альфа ID"].map((bank) => <button type="button" key={bank} className={row} onClick={() => { update(doc.id, "signed", "Договор подписан сотрудником"); setScreen("result"); }}><span className={icon}><LockKeyhole size={20} /></span><strong className="flex-1">Войти по {bank}</strong><ChevronRight size={20} /></button>)}</div><p className="rounded-xl bg-[var(--info-soft)] p-4 text-sm">Демонстрация Sign.Me: банковская авторизация и электронная подпись не выполняются.</p></div>}
-      {screen === "result" && doc && <div className="space-y-3"><div className="rounded-xl bg-[var(--card)] px-5 py-10 text-center shadow-sm"><CheckCircle2 className="mx-auto text-[var(--success)]" size={80} /><h3 className="mt-7 text-xl font-bold">Трудовой договор успешно подписан</h3><p className="mt-6 text-sm">Документ № {doc.number} подписан в демонстрации.</p></div><Button className="w-full" onClick={() => setScreen("document")}>Перейти к документу</Button><Button variant="outline" className="w-full" onClick={() => { setSelected(null); setScreen("profile"); }}>На главную</Button></div>}
-    </div>
-    <div className="border-t border-[var(--border)] bg-[var(--card)] px-4 py-3 text-center text-xs font-semibold text-[var(--primary)]">Профиль сотрудника · демонстрация</div>
-  </div>;
-}
-
-export function SigningPage() {
-  const [docs, setDocs] = React.useState<DemoDocument[]>(() => sessionDocuments);
-  React.useEffect(() => { sessionDocuments = docs; }, [docs]);
-  const [role, setRole] = React.useState<Role>("hr");
-  const [person, setPerson] = React.useState(PEOPLE[0]);
-  const [tab, setTab] = React.useState<Tab>("incoming");
-  const [selected, setSelected] = React.useState<string | null>(null);
-  const [search, setSearch] = React.useState("");
-  const [filter, setFilter] = React.useState("all");
-  const [form, setForm] = React.useState<"upload" | "vacation" | null>(null);
-  const [notice, setNotice] = React.useState("");
-  const [uploadPerson, setUploadPerson] = React.useState(PEOPLE[0]);
-  const [file, setFile] = React.useState<File | null>(null);
-  const [start, setStart] = React.useState("");
-  const [end, setEnd] = React.useState("");
-  const [comment, setComment] = React.useState("");
-  const [error, setError] = React.useState("");
-  const selectedDoc = docs.find((doc) => doc.id === selected);
-  const own = docs.filter((doc) => doc.person === person);
-  const incoming = own.filter((doc) => doc.kind === "contract" && doc.status === "waiting").length;
-  const signed = own.filter((doc) => doc.kind === "contract" && doc.status === "signed").length;
-  const requests = own.filter((doc) => doc.kind === "vacation").length;
-  const visible = docs.filter((doc) => {
-    if (role === "employee") {
-      if (doc.person !== person) return false;
-      if (tab === "incoming") return doc.kind === "contract" && doc.status === "waiting";
-      if (tab === "signed") return doc.kind === "contract" && doc.status === "signed";
-      return doc.kind === "vacation";
-    }
-    return (filter === "all" || (doc.kind === "contract" && doc.status === filter) || (filter === "requests" && doc.kind === "vacation")) && `${doc.title} ${doc.person} ${doc.number}`.toLocaleLowerCase("ru").includes(search.toLocaleLowerCase("ru").trim());
-  });
-  function switchRole(next: Role) { setRole(next); setSelected(null); setForm(null); setError(""); setNotice(""); }
-  function update(id: string, status: Status, label: string) {
-    setDocs((current) => current.map((doc) => doc.id === id ? { ...doc, status, description: doc.kind === "vacation" ? doc.description : `${label} в демонстрации.`, events: [{ label, date: today() }, ...doc.events] } : doc));
-    setNotice(label + " — демонстрация.");
-  }
-  function createContract(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!file || file.type !== "application/pdf") { setError("Выберите файл в формате PDF."); return; }
-    const doc: DemoDocument = { id: `demo-${Date.now()}`, title: "Трудовой договор", person: uploadPerson, number: `ДЕМО-${docs.length + 1}`, date: today(), status: "draft", kind: "contract", description: "Договор загружен кадровиком для демонстрации.", file, events: [{ label: "Договор загружен кадровиком", date: today() }] };
-    setDocs((current) => [doc, ...current]); setSelected(doc.id); setForm(null); setFile(null); setError(""); setNotice("Черновик создан. Проверьте документ перед отправкой.");
-  }
-  function createVacation(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!start || !end || end < start) { setError("Укажите даты отпуска: дата окончания не может быть раньше даты начала."); return; }
-    const fmt = (value: string) => value.split("-").reverse().join(".");
-    const doc: DemoDocument = { id: `demo-${Date.now()}`, title: "Заявление на отпуск", person, number: `ЗАЯВ-${docs.length + 1}`, date: today(), status: "waiting", kind: "vacation", description: `Прошу предоставить отпуск с ${fmt(start)} по ${fmt(end)}.${comment.trim() ? `\n\nКомментарий: ${comment.trim()}` : ""}`, events: [{ label: "Заявление отправлено кадровику", date: today() }] };
-    setDocs((current) => [doc, ...current]); setForm(null); setTab("requests"); setSelected(doc.id); setStart(""); setEnd(""); setComment(""); setError(""); setNotice("Заявление отправлено кадровику в демонстрации.");
-  }
+  const dialog = React.useRef<HTMLDialogElement>(null);
+  const [bank, setBank] = React.useState<ContractBank>();
+  React.useEffect(() => {
+    const element = dialog.current;
+    element?.showModal();
+    return () => element?.close();
+  }, []);
   return (
-    <div className="h-full overflow-y-auto p-4 sm:p-7">
-      <div className="mx-auto flex max-w-[1440px] flex-col gap-6 pb-8">
-        <PageHeader title="Подписание документов" subtitle="Документы сотрудников и кадровые заявления" />
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-3">
-          <div className="flex items-start gap-3"><span className="mt-0.5 rounded-lg bg-[var(--info-soft)] p-2 text-[var(--info)]"><FileText size={18} /></span><div><p className="text-sm font-semibold">Демонстрационный режим</p><p className="mt-0.5 text-xs text-[var(--muted-foreground)]">Данные вымышлены. Подписание и отправка имитируются; изменения исчезнут после перезагрузки.</p></div></div>
-          <div className="flex rounded-lg bg-[var(--muted)] p-1" aria-label="Выбрать роль">
-            <button type="button" onClick={() => switchRole("hr")} aria-pressed={role === "hr"} className={`rounded-md px-3 py-2 text-sm font-semibold ${role === "hr" ? "bg-[var(--card)] shadow-sm" : "text-[var(--muted-foreground)]"}`}>Кадровик</button>
-            <button type="button" onClick={() => switchRole("employee")} aria-pressed={role === "employee"} className={`rounded-md px-3 py-2 text-sm font-semibold ${role === "employee" ? "bg-[var(--card)] shadow-sm" : "text-[var(--muted-foreground)]"}`}>Сотрудник</button>
-          </div>
-        </div>
-        {notice && <div role="status" className="rounded-lg bg-[var(--success-soft)] px-4 py-3 text-sm text-[var(--foreground)]">{notice}</div>}
-        {role === "employee" && <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold">Мои документы</h2><p className="mt-1 text-sm text-[var(--muted-foreground)]">Документы для подписания и ваши заявления</p></div><label className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]"><UserRound size={16} /><span className="sr-only">Сотрудник для демонстрации</span><select value={person} onChange={(e) => { setPerson(e.target.value); setSelected(null); setForm(null); setNotice(""); }} className={`${control} max-w-[290px]`}>{PEOPLE.map((p) => <option key={p}>{p}</option>)}</select></label></div>}
-        {role === "employee" && !form ? <EmployeeJourney key={person} docs={docs} person={person} selected={selected} setSelected={setSelected} update={update} onVacation={() => { setForm("vacation"); setNotice(""); }} /> : form ? (
-          <Card className="max-w-2xl p-5 sm:p-7">
-            <button type="button" onClick={() => { setForm(null); setError(""); }} className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><ArrowLeft size={16} /> Назад к документам</button>
-            {form === "upload" ? <form onSubmit={createContract} className="space-y-5"><div><h2 className="text-lg font-bold">Новый договор</h2><p className="mt-1 text-sm text-[var(--muted-foreground)]">Выберите сотрудника и готовый PDF-файл договора.</p></div><label className="block space-y-2 text-sm font-medium">Получатель<select className={control} value={uploadPerson} onChange={(e) => setUploadPerson(e.target.value)}>{PEOPLE.map((p) => <option key={p}>{p}</option>)}</select></label><label className="block space-y-2 text-sm font-medium">Файл договора<input type="file" accept="application/pdf,.pdf" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(""); }} className="block w-full rounded-lg border border-[var(--border)] p-3 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-[var(--muted)] file:px-3 file:py-2 file:font-semibold" /></label><p className="text-xs text-[var(--muted-foreground)]">Файл остаётся в памяти этой страницы. Для демонстрации используйте обезличенный документ.</p>{error && <p role="alert" className="text-sm text-[var(--danger)]">{error}</p>}<Button type="submit"><Upload size={16} /> Создать черновик</Button></form> : <form onSubmit={createVacation} className="space-y-5"><div><h2 className="text-lg font-bold">Заявление на отпуск</h2><p className="mt-1 text-sm text-[var(--muted-foreground)]">Укажите даты, чтобы отправить заявление кадровику.</p></div><div className="grid gap-4 sm:grid-cols-2"><label className="space-y-2 text-sm font-medium">Дата начала<input className={control} type="date" value={start} onChange={(e) => setStart(e.target.value)} required /></label><label className="space-y-2 text-sm font-medium">Дата окончания<input className={control} type="date" value={end} onChange={(e) => setEnd(e.target.value)} required /></label></div><label className="block space-y-2 text-sm font-medium">Комментарий <span className="font-normal text-[var(--muted-foreground)]">необязательно</span><textarea className={`${control} min-h-[96px] py-3`} value={comment} onChange={(e) => setComment(e.target.value)} /></label>{error && <p role="alert" className="text-sm text-[var(--danger)]">{error}</p>}<Button type="submit"><Send size={16} /> Отправить заявление</Button></form>}
-          </Card>
-        ) : selectedDoc ? (
+    <dialog
+      ref={dialog}
+      aria-labelledby="signing-dialog-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!pending) close();
+      }}
+      className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-[460px] overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--card)] p-0 text-[var(--foreground)] shadow-lg backdrop:bg-black/40"
+    >
+      <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+        <span className="flex items-center gap-2 font-semibold">
+          <LockKeyhole size={18} className="text-[var(--primary)]" /> Sign.Me
+        </span>
+        <button
+          type="button"
+          aria-label="Закрыть подписание"
+          disabled={pending}
+          onClick={close}
+          className="rounded-lg p-2 hover:bg-[var(--muted)] disabled:opacity-50"
+        >
+          <X size={18} />
+        </button>
+      </div>
+      <div className="space-y-5 p-5 sm:p-7">
+        <h2 id="signing-dialog-title" className="text-xl font-bold">
+          {role === "employer"
+            ? "Подписание УКЭП"
+            : bank
+              ? "Подтверждение подписи"
+              : "Подтвердите личность"}
+        </h2>
+        <p className="text-sm text-[var(--muted-foreground)]">{name}</p>
+        {role === "employer" ? (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3"><button type="button" onClick={() => { setSelected(null); setNotice(""); }} className="inline-flex items-center gap-2 text-sm font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><ArrowLeft size={16} /> К списку документов</button><StatusLabel status={selectedDoc.status} kind={selectedDoc.kind} /></div>
-            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-              <Card className="min-w-0 overflow-hidden"><div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border)] p-5"><div><h2 className="text-lg font-bold">{selectedDoc.title}</h2><p className="mt-1 text-sm text-[var(--muted-foreground)]">№ {selectedDoc.number} · {selectedDoc.date}</p></div><span className="text-xs font-medium text-[var(--muted-foreground)]">Предпросмотр документа</span></div><div className="bg-[var(--background)] p-4 sm:p-6"><DocumentPreview doc={selectedDoc} /></div></Card>
-              <div className="space-y-5"><Card className="p-5"><h3 className="font-semibold">Информация</h3><dl className="mt-4 space-y-4 text-sm"><div><dt className="text-[var(--muted-foreground)]">Сотрудник</dt><dd className="mt-1 font-medium">{selectedDoc.person}</dd></div><div><dt className="text-[var(--muted-foreground)]">Состояние</dt><dd className="mt-1">{selectedDoc.description}</dd></div></dl><div className="mt-5 flex flex-col gap-2">
-                {role === "hr" && selectedDoc.kind === "contract" && (selectedDoc.status === "draft" || selectedDoc.status === "attention") && <Button onClick={() => update(selectedDoc.id, "waiting", "Договор отправлен сотруднику на подпись")}><Send size={16} /> Отправить на подпись</Button>}
-                {role === "hr" && selectedDoc.kind === "vacation" && selectedDoc.status === "waiting" && <Button onClick={() => update(selectedDoc.id, "accepted", "Заявление принято кадровиком")}><Check size={16} /> Принять заявление</Button>}
-              </div></Card><Card className="p-5"><h3 className="font-semibold">История документа</h3><ol className="mt-4 space-y-4">{selectedDoc.events.map((event, index) => <li key={`${event.label}-${index}`} className="flex gap-3 text-sm"><span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--primary)]" /><div><p>{event.label}</p><p className="mt-1 text-xs text-[var(--muted-foreground)]">{event.date}</p></div></li>)}</ol></Card></div>
+            <div className="flex items-start gap-3 rounded-xl border border-[var(--border)] p-4">
+              <KeyRound size={24} className="shrink-0 text-[var(--primary)]" />
+              <div>
+                <strong className="block text-sm">
+                  Усиленная квалифицированная подпись
+                </strong>
+                <span className="mt-1 block text-sm text-[var(--muted-foreground)]">
+                  Сертификат уполномоченного сотрудника работодателя
+                </span>
+              </div>
+            </div>
+            <p className="text-sm">
+              Подтвердите подписание проверенного договора. После этого он будет
+              отправлен сотруднику.
+            </p>
+            <Button
+              className="w-full"
+              disabled={pending}
+              onClick={() => confirm()}
+            >
+              {pending ? (
+                <LoaderCircle size={17} className="animate-spin" />
+              ) : (
+                <FileSignature size={17} />
+              )}{" "}
+              Подписать и отправить
+            </Button>
+          </>
+        ) : bank ? (
+          <>
+            <div className="flex items-center gap-3 rounded-xl bg-[var(--muted)] p-4">
+              <img
+                src={banks.find((item) => item.code === bank)!.icon}
+                alt=""
+                className="h-10 w-10 object-contain"
+              />
+              <strong>{banks.find((item) => item.code === bank)!.name}</strong>
+              <Check className="ml-auto text-[var(--success)]" size={22} />
+            </div>
+            <p className="text-sm">
+              Подтвердите подписание договора, с которым вы ознакомились.
+            </p>
+            <Button
+              className="w-full"
+              disabled={pending}
+              onClick={() => confirm(bank)}
+            >
+              {pending ? (
+                <LoaderCircle size={17} className="animate-spin" />
+              ) : (
+                <FileSignature size={17} />
+              )}{" "}
+              Подписать документ
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={pending}
+              onClick={() => setBank(undefined)}
+            >
+              Выбрать другой банк
+            </Button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm">
+              Выберите банк для подтверждения личности и подписания документа.
+            </p>
+            <div className="space-y-2">
+              {banks.map((item) => (
+                <button
+                  type="button"
+                  key={item.code}
+                  onClick={() => setBank(item.code)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] p-4 text-left hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+                >
+                  <img
+                    src={item.icon}
+                    alt=""
+                    className="h-9 w-9 object-contain"
+                  />
+                  <strong className="flex-1 text-sm">
+                    Войти по {item.name}
+                  </strong>
+                  <ChevronRight size={18} />
+                </button>
+              ))}
             </div>
           </>
-        ) : <>
-          {role === "hr" ? <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-bold">Документы на подписание</h2><p className="mt-1 text-sm text-[var(--muted-foreground)]">Следите за договорами и заявлениями сотрудников</p></div><Button onClick={() => { setForm("upload"); setNotice(""); }}><Plus size={17} /> Новый договор</Button></div> : <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-1 rounded-lg bg-[var(--muted)] p-1">{([ ["incoming", `На подпись ${incoming}`], ["signed", `Подписанные ${signed}`], ["requests", `Мои заявления ${requests}`] ] as [Tab, string][]).map(([value, label]) => <button type="button" key={value} aria-pressed={tab === value} onClick={() => { setTab(value); setNotice(""); }} className={`rounded-md px-3 py-2 text-sm font-semibold ${tab === value ? "bg-[var(--card)] shadow-sm" : "text-[var(--muted-foreground)]"}`}>{label}</button>)}</div><Button variant="outline" onClick={() => { setForm("vacation"); setNotice(""); }}><FilePlus2 size={16} /> Заявление на отпуск</Button></div>}
-          {role === "hr" && <div className="grid gap-3 sm:grid-cols-3"><Card className="flex items-center gap-3 p-4"><Clock3 className="text-[var(--warning)]" size={21} /><div><p className="text-xs text-[var(--muted-foreground)]">Ожидают подписи</p><p className="mt-1 text-xl font-bold">{docs.filter((d) => d.kind === "contract" && d.status === "waiting").length}</p></div></Card><Card className="flex items-center gap-3 p-4"><CheckCircle2 className="text-[var(--success)]" size={21} /><div><p className="text-xs text-[var(--muted-foreground)]">Подписаны</p><p className="mt-1 text-xl font-bold">{docs.filter((d) => d.kind === "contract" && d.status === "signed").length}</p></div></Card><Card className="flex items-center gap-3 p-4"><Inbox className="text-[var(--info)]" size={21} /><div><p className="text-xs text-[var(--muted-foreground)]">Новые заявления</p><p className="mt-1 text-xl font-bold">{docs.filter((d) => d.kind === "vacation" && d.status === "waiting").length}</p></div></Card></div>}
-          <Card className="overflow-hidden">{role === "hr" && <div className="flex flex-wrap gap-3 border-b border-[var(--border)] p-4"><label className="relative min-w-[220px] flex-1"><Search size={17} className="absolute left-3 top-3 text-[var(--muted-foreground)]" /><span className="sr-only">Поиск документов</span><input className={`${control} pl-10`} placeholder="Поиск по сотруднику или номеру" value={search} onChange={(e) => setSearch(e.target.value)} /></label><label><span className="sr-only">Фильтр по статусу</span><select className={control} value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Все документы</option><option value="draft">Черновики</option><option value="waiting">Ожидают подписи</option><option value="signed">Подписанные</option><option value="attention">Требуют внимания</option><option value="declined">Отказ от подписи</option><option value="requests">Заявления</option></select></label></div>}
-            {visible.length === 0 ? <div className="p-8"><EmptyState title={role === "employee" ? "Здесь пока нет документов" : "Документы не найдены"} description={role === "hr" ? "Измените параметры поиска или создайте договор." : "Когда документ появится, вы увидите его здесь."} /></div> : <div className="divide-y divide-[var(--border)]">{visible.map((doc) => <button type="button" key={doc.id} onClick={() => { setSelected(doc.id); setNotice(""); }} className="group flex w-full flex-wrap items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"><span className="rounded-lg bg-[var(--primary-soft)] p-2.5 text-[var(--primary)]"><FileText size={20} /></span><span className="min-w-[160px] flex-1"><span className="block font-semibold">{doc.title}</span><span className="mt-1 block text-xs text-[var(--muted-foreground)]">{role === "hr" ? `${doc.person} · ` : ""}№ {doc.number} · {doc.date}</span></span><StatusLabel status={doc.status} kind={doc.kind} /><ArrowRight size={17} className="text-[var(--muted-foreground)] group-hover:text-[var(--primary)]" /></button>)}</div>}
-          </Card>
-        </>}
+        )}
+        {error && <Message>{error}</Message>}
+        <p className="text-xs text-[var(--muted-foreground)]">
+          Тестовый режим: подключение к сервису электронной подписи пока не
+          выполняется.
+        </p>
+      </div>
+    </dialog>
+  );
+}
+function ContractDetails({
+  doc,
+  own,
+}: {
+  doc: ContractDetailDto;
+  own: boolean;
+}) {
+  const refresh = useContractRefresh();
+  const requestId = useRequestId();
+  const send = useSendSigningContract();
+  const confirm = useConfirmMySigningContract();
+  const decline = useDeclineMySigningContract();
+  const upload = useUploadSigningContractFile();
+  const [signing, setSigning] = React.useState(false);
+  const [declining, setDeclining] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [file, setFile] = React.useState<File | null>(null);
+  const [fileKey, setFileKey] = React.useState("");
+  const [notice, setNotice] = React.useState("");
+  const previewKey = `${doc.id}:${doc.version}`;
+  const [preview, setPreview] = React.useState({
+    key: previewKey,
+    url: doc.previewUrl,
+  });
+  React.useEffect(() => {
+    // Polling renews signed URLs; keep the loaded reader on the same bytes so
+    // a status update never resets its scroll position.
+    setPreview((current) =>
+      current.key !== previewKey || !current.url
+        ? { key: previewKey, url: doc.previewUrl }
+        : current,
+    );
+  }, [previewKey, doc.previewUrl]);
+  const pending =
+    send.isPending ||
+    confirm.isPending ||
+    decline.isPending ||
+    upload.isPending;
+  const editable = !own && ["DRAFT", "FAILED"].includes(doc.status);
+  const base = () => ({
+    revision: doc.revision,
+    requestId: requestId(
+      `${doc.id}:${doc.revision}:${own ? "confirm" : "send"}`,
+    ),
+  });
+  async function sign(bank?: ContractBank) {
+    setError("");
+    try {
+      if (own && bank)
+        await confirm.mutateAsync({ id: doc.id, data: { ...base(), bank } });
+      else if (!own) await send.mutateAsync({ id: doc.id, data: base() });
+      else return;
+      setSigning(false);
+      setNotice(
+        own
+          ? "Договор подписан. Кадровик получит уведомление."
+          : "Договор подписан вами и отправлен сотруднику.",
+      );
+      await refresh();
+    } catch (failure) {
+      setError(contractError(failure));
+      await refresh();
+    }
+  }
+  async function replaceFile(event: React.FormEvent) {
+    event.preventDefault();
+    if (!file) return;
+    setError("");
+    setNotice("");
+    try {
+      await upload.mutateAsync({
+        id: doc.id,
+        data: {
+          file,
+          revision: doc.revision,
+          requestId: requestId(`${doc.id}:${doc.revision}:file:${fileKey}`),
+        },
+      });
+      setFile(null);
+      setNotice("Новая версия сохранена. Проверьте PDF перед отправкой.");
+      await refresh();
+    } catch (failure) {
+      setError(contractError(failure));
+      await refresh();
+    }
+  }
+  async function refuse() {
+    setError("");
+    try {
+      await decline.mutateAsync({
+        id: doc.id,
+        data: {
+          revision: doc.revision,
+          requestId: requestId(`${doc.id}:${doc.revision}:decline`),
+        },
+      });
+      setDeclining(false);
+      await refresh();
+    } catch (failure) {
+      setError(contractError(failure));
+    }
+  }
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold">{doc.documentTypeName}</h2>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            {doc.fullName || "Имя не указано"} · Версия {doc.version}
+          </p>
+        </div>
+        <Status status={doc.status} />
+      </div>
+      {notice && (
+        <p
+          role="status"
+          className="flex items-start gap-2 rounded-xl bg-[var(--success-soft)] p-4 text-sm"
+        >
+          <CheckCircle2 className="shrink-0" size={18} />
+          {notice}
+        </p>
+      )}
+      {error && !signing && <Message>{error}</Message>}
+      {doc.errorMessage && <Message>{doc.errorMessage}</Message>}
+      <div className="flex flex-wrap gap-2">
+        {doc.previewUrl && (
+          <button
+            type="button"
+            onClick={() => setPreview({ key: previewKey, url: doc.previewUrl })}
+            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+          >
+            Обновить просмотр
+          </button>
+        )}
+        {doc.downloadUrl && (
+          <a
+            href={doc.downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+          >
+            <Download size={16} />
+            Скачать PDF
+          </a>
+        )}
+        {doc.originalDownloadUrl && (
+          <a
+            href={doc.originalDownloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+          >
+            Исходный DOCX
+          </a>
+        )}
+        {doc.journalDownloadUrl && (
+          <a
+            href={doc.journalDownloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+          >
+            Журнал подтверждений
+          </a>
+        )}
+      </div>
+      {preview.url ? (
+        <iframe
+          title={`Просмотр: ${doc.documentTypeName}`}
+          src={preview.url}
+          className="h-[65dvh] min-h-[420px] w-full rounded-xl border border-[var(--border)] bg-[var(--card)]"
+        />
+      ) : (
+        <div className="rounded-xl border border-dashed border-[var(--border)] px-5 py-12 text-center text-sm text-[var(--muted-foreground)]">
+          {doc.status === "PREPARING"
+            ? "Формируем договор. Страница обновится автоматически."
+            : "Загрузите PDF или DOCX для подготовки договора."}
+        </div>
+      )}
+      {editable && (
+        <form
+          onSubmit={(event) => void replaceFile(event)}
+          className="space-y-3 rounded-xl border border-[var(--border)] p-4"
+        >
+          <label
+            htmlFor="contract-file"
+            className="block text-sm font-semibold"
+          >
+            {doc.hasFile ? "Заменить файл договора" : "Загрузить договор"}
+          </label>
+          <input
+            id="contract-file"
+            key={doc.version}
+            type="file"
+            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            disabled={pending}
+            onChange={(event) => {
+              setFile(event.target.files?.[0] ?? null);
+              setFileKey(crypto.randomUUID());
+            }}
+            className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:border-[var(--border)] file:bg-[var(--muted)] file:px-3 file:py-2 file:text-[var(--foreground)]"
+          />
+          <p className="text-xs text-[var(--muted-foreground)]">
+            PDF или DOCX, до 50 МБ. DOCX будет преобразован в PDF. Предыдущие
+            версии сохранятся.
+          </p>
+          <Button type="submit" variant="outline" disabled={!file || pending}>
+            {upload.isPending ? (
+              <LoaderCircle size={16} className="animate-spin" />
+            ) : (
+              <Upload size={16} />
+            )}{" "}
+            Сохранить файл
+          </Button>
+        </form>
+      )}
+      {editable && !doc.code1c && (
+        <p className="rounded-xl bg-[var(--warning-soft)] p-4 text-sm">
+          Договор сохранён как черновик. Чтобы отправить его сотруднику, сначала
+          привяжите к карточке код сотрудника ЛК (code1c).
+        </p>
+      )}
+      {editable && (
+        <Button
+          disabled={!doc.hasFile || !doc.code1c || pending}
+          onClick={() => {
+            setError("");
+            setSigning(true);
+          }}
+        >
+          <Send size={17} /> Подписать и отправить сотруднику
+        </Button>
+      )}
+      {own && doc.status === "WAITING_EMPLOYEE" && (
+        <div className="space-y-3">
+          <p className="rounded-xl bg-[var(--info-soft)] p-4 text-sm">
+            Работодатель подписал договор. Перед подписанием ознакомьтесь с
+            документом полностью.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              disabled={pending || !doc.previewUrl}
+              onClick={() => {
+                setError("");
+                setSigning(true);
+              }}
+            >
+              <FileSignature size={17} /> Подписать
+            </Button>
+            <Button
+              variant="outline"
+              disabled={pending}
+              onClick={() => setDeclining(true)}
+            >
+              Отказаться от подписи
+            </Button>
+          </div>
+          {declining && (
+            <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
+              <p className="text-sm">
+                Отказаться от подписания этого договора? Кадровик получит
+                уведомление.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={pending} onClick={() => void refuse()}>
+                  Подтвердить отказ
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => setDeclining(false)}
+                >
+                  Вернуться к договору
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {!!doc.confirmations.length && (
+        <section
+          aria-label="История подписания"
+          className="space-y-3 border-t border-[var(--border)] pt-5"
+        >
+          <h3 className="font-semibold">История подписания</h3>
+          {doc.confirmations.map((item) => (
+            <div key={item.role} className="flex items-start gap-3 text-sm">
+              <CheckCircle2
+                className="mt-0.5 shrink-0 text-[var(--success)]"
+                size={18}
+              />
+              <div>
+                <strong>
+                  {item.role === "employer" ? "Работодатель" : "Сотрудник"}:{" "}
+                  {item.actorLabel}
+                </strong>
+                <p className="mt-1 text-[var(--muted-foreground)]">
+                  {formatDateTimeRu(item.confirmedAt)}
+                  {item.bank
+                    ? ` · ${banks.find((bank) => bank.code === item.bank)?.name ?? item.bank}`
+                    : " · УКЭП"}
+                </p>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+      {signing && (
+        <SignatureDialog
+          role={own ? "employee" : "employer"}
+          name={doc.fullName ?? doc.documentTypeName}
+          pending={pending}
+          error={error}
+          close={() => setSigning(false)}
+          confirm={(bank) => void sign(bank)}
+        />
+      )}
+    </div>
+  );
+}
+function ContractComposer({
+  candidateId,
+  open,
+}: {
+  candidateId: string;
+  open: (id: string) => void;
+}) {
+  const person = useGetSigningCandidate(candidateId);
+  const types = useListSigningDocumentTypes();
+  const create = useCreateSigningContract();
+  const [type, setType] = React.useState("");
+  const [manual, setManual] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const requestId = useRequestId();
+  const refresh = useContractRefresh();
+  const items = types.data?.items ?? [];
+  const selected = type || items[0]?.code || (manual ? "manual" : "");
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      const doc = await create.mutateAsync({
+        data: {
+          candidateId,
+          documentType: selected,
+          manual,
+          requestId: requestId(`${candidateId}:${selected}:${manual}`),
+        },
+      });
+      await refresh();
+      open(doc.id);
+    } catch (failure) {
+      setError(contractError(failure));
+      await refresh();
+    }
+  }
+  return (
+    <Card className="p-4 sm:p-5">
+      <form onSubmit={(event) => void submit(event)} className="space-y-4">
+        <h2 className="text-lg font-semibold">Подготовить договор</h2>
+        {person.isPending ? (
+          <p role="status" className="text-sm">
+            Загрузка карточки сотрудника…
+          </p>
+        ) : person.isError ? (
+          <Message>{contractError(person.error)}</Message>
+        ) : (
+          <div>
+            <p className="font-semibold">
+              {person.data?.fullName || "Имя не указано"}
+            </p>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              Дата рождения: {formatDateRu(person.data?.birthDate)}
+            </p>
+          </div>
+        )}
+        {types.isError && (
+          <div className="space-y-2">
+            <Message>
+              Не удалось получить типы договоров из ЗУП. Повторите загрузку или
+              подготовьте договор из своего файла.
+            </Message>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={types.isFetching}
+              onClick={() => void types.refetch()}
+            >
+              Повторить загрузку типов
+            </Button>
+          </div>
+        )}
+        {types.isPending && (
+          <p role="status" className="text-sm">
+            Загрузка типов договоров из ЗУП…
+          </p>
+        )}
+        {!!items.length && (
+          <label className="block space-y-2 text-sm font-semibold">
+            <span>Тип договора</span>
+            <select
+              value={selected}
+              onChange={(event) => setType(event.target.value)}
+              disabled={create.isPending}
+              className={control}
+            >
+              {items.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={manual}
+            disabled={create.isPending}
+            onChange={(event) => setManual(event.target.checked)}
+            className="h-4 w-4 accent-[var(--primary)]"
+          />
+          Загрузить свой PDF или DOCX
+        </label>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          {manual
+            ? "Создадим черновик, в который вы сможете загрузить файл."
+            : "Получим печатную форму из ЗУП и сохраним черновик. Перед отправкой вы сможете проверить или заменить файл."}
+        </p>
+        {error && <Message>{error}</Message>}
+        <Button
+          type="submit"
+          disabled={
+            create.isPending ||
+            !person.data ||
+            !selected ||
+            (!manual && (!person.data.fullName || !person.data.birthDate))
+          }
+        >
+          {create.isPending ? (
+            <LoaderCircle size={17} className="animate-spin" />
+          ) : manual ? (
+            <Upload size={17} />
+          ) : (
+            <FileText size={17} />
+          )}
+          {create.isPending
+            ? "Подготавливаем договор…"
+            : manual
+              ? "Создать черновик"
+              : "Сформировать договор"}
+        </Button>
+      </form>
+    </Card>
+  );
+}
+export function SigningPage() {
+  const search = useSearch({ strict: false }) as ReturnType<
+    typeof signingSearch
+  >;
+  const navigate = useNavigate();
+  const [filter, setFilter] = React.useState("");
+  const params = { candidateId: search.candidateId };
+  const list = useListSigningContracts(params, {
+    query: { ...POLL, queryKey: getListSigningContractsQueryKey(params) },
+  });
+  const selected = useGetSigningContract(search.contractId ?? "", {
+    query: {
+      ...POLL,
+      queryKey: getGetSigningContractQueryKey(search.contractId ?? ""),
+      enabled: !!search.contractId,
+    },
+  });
+  const open = (id: string) =>
+    void navigate({
+      to: "/signing",
+      search: { candidateId: search.candidateId, contractId: id },
+    });
+  const docs = (list.data?.items ?? []).filter((item) =>
+    `${item.documentTypeName} ${item.fullName ?? ""}`
+      .toLocaleLowerCase("ru")
+      .includes(filter.toLocaleLowerCase("ru")),
+  );
+  return (
+    <div className="h-full overflow-y-auto p-4 sm:p-7">
+      <div className="mx-auto max-w-[1440px] space-y-6 pb-8">
+        <PageHeader
+          title="Подписание документов"
+          subtitle="Договоры сотрудников и состояние подписания"
+        />
+        {search.contractId ? (
+          <>
+            <Button
+              variant="outline"
+              onClick={() =>
+                void navigate({
+                  to: "/signing",
+                  search: { candidateId: search.candidateId },
+                })
+              }
+            >
+              <ArrowLeft size={17} />К договорам
+            </Button>
+            <Card className="p-4 sm:p-6">
+              {selected.isPending ? (
+                <p role="status">Загрузка договора…</p>
+              ) : selected.isError ? (
+                <div className="space-y-3">
+                  <Message>{contractError(selected.error)}</Message>
+                  <Button
+                    variant="outline"
+                    onClick={() => void selected.refetch()}
+                  >
+                    Повторить
+                  </Button>
+                </div>
+              ) : (
+                selected.data && (
+                  <ContractDetails
+                    key={selected.data.id}
+                    doc={selected.data}
+                    own={false}
+                  />
+                )
+              )}
+            </Card>
+          </>
+        ) : (
+          <>
+            {search.candidateId && (
+              <ContractComposer candidateId={search.candidateId} open={open} />
+            )}
+            <Card>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] p-4 sm:p-5">
+                <h2 className="font-semibold">
+                  {search.candidateId ? "Договоры сотрудника" : "Все договоры"}
+                </h2>
+                <label className="flex w-full items-center gap-2 rounded-[10px] border border-[var(--border)] px-3 sm:max-w-[360px]">
+                  <Search
+                    size={16}
+                    className="shrink-0 text-[var(--muted-foreground)]"
+                  />
+                  <input
+                    aria-label="Поиск договоров"
+                    placeholder="Сотрудник или тип договора"
+                    value={filter}
+                    onChange={(event) => setFilter(event.target.value)}
+                    className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none"
+                  />
+                </label>
+              </div>
+              {list.isPending ? (
+                <p role="status" className="p-5 text-sm">
+                  Загрузка договоров…
+                </p>
+              ) : list.isError ? (
+                <div className="space-y-3 p-5">
+                  <Message>{contractError(list.error)}</Message>
+                  <Button variant="outline" onClick={() => void list.refetch()}>
+                    Повторить
+                  </Button>
+                </div>
+              ) : !docs.length ? (
+                <EmptyState
+                  title="Договоров пока нет"
+                  description={
+                    search.candidateId
+                      ? "Подготовьте договор из ЗУП или загрузите свой файл."
+                      : "Откройте сотрудника в проверке документов и нажмите «Договор»."
+                  }
+                />
+              ) : (
+                <ContractList docs={docs} open={open} own={false} />
+              )}
+            </Card>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+export function MyDocumentsPage() {
+  const search = useSearch({ strict: false }) as ReturnType<
+    typeof signingSearch
+  >;
+  const navigate = useNavigate();
+  const profile = useGetMe();
+  const [all, setAll] = React.useState(false);
+  const list = useListMySigningContracts({
+    query: {
+      ...POLL,
+      queryKey: getListMySigningContractsQueryKey(),
+      enabled: !!profile.data?.code1c,
+    },
+  });
+  const selected = useGetMySigningContract(search.contractId ?? "", {
+    query: {
+      ...POLL,
+      queryKey: getGetMySigningContractQueryKey(search.contractId ?? ""),
+      enabled: !!search.contractId && !!profile.data?.code1c,
+    },
+  });
+  const open = (id: string) =>
+    void navigate({ to: "/my-documents", search: { contractId: id } });
+  const docs = (list.data?.items ?? []).filter(
+    (doc) => all || doc.status === "WAITING_EMPLOYEE",
+  );
+  return (
+    <div className="h-full overflow-y-auto p-4 sm:p-7">
+      <div className="mx-auto max-w-[1100px] space-y-5 pb-8">
+        <PageHeader
+          title="Мои документы"
+          subtitle="Документы от работодателя для ознакомления и подписания"
+        />
+        {!profile.data?.code1c ? (
+          <EmptyState
+            title="Не найдена привязка сотрудника"
+            description="В вашей сессии ЛК отсутствует код сотрудника. Обратитесь к кадровику для проверки привязки учётной записи."
+          />
+        ) : search.contractId ? (
+          <>
+            <Button
+              variant="outline"
+              onClick={() => void navigate({ to: "/my-documents", search: {} })}
+            >
+              <ArrowLeft size={17} />
+              Мои документы
+            </Button>
+            <Card className="p-4 sm:p-6">
+              {selected.isPending ? (
+                <p role="status">Загрузка договора…</p>
+              ) : selected.isError ? (
+                <div className="space-y-3">
+                  <Message>{contractError(selected.error)}</Message>
+                  <Button
+                    variant="outline"
+                    onClick={() => void selected.refetch()}
+                  >
+                    Повторить
+                  </Button>
+                </div>
+              ) : (
+                selected.data && (
+                  <ContractDetails
+                    key={selected.data.id}
+                    doc={selected.data}
+                    own
+                  />
+                )
+              )}
+            </Card>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={!all ? "default" : "outline"}
+                aria-pressed={!all}
+                onClick={() => setAll(false)}
+              >
+                Требуют подписи
+              </Button>
+              <Button
+                variant={all ? "default" : "outline"}
+                aria-pressed={all}
+                onClick={() => setAll(true)}
+              >
+                Все документы
+              </Button>
+            </div>
+            <Card>
+              {list.isPending ? (
+                <p role="status" className="p-5 text-sm">
+                  Загрузка документов…
+                </p>
+              ) : list.isError ? (
+                <div className="space-y-3 p-5">
+                  <Message>{contractError(list.error)}</Message>
+                  <Button variant="outline" onClick={() => void list.refetch()}>
+                    Повторить
+                  </Button>
+                </div>
+              ) : !docs.length ? (
+                <EmptyState
+                  title={
+                    all
+                      ? "Документов пока нет"
+                      : "Нет документов, требующих подписи"
+                  }
+                  description="Когда работодатель отправит договор, он появится здесь."
+                />
+              ) : (
+                <ContractList docs={docs} open={open} own />
+              )}
+            </Card>
+          </>
+        )}
       </div>
     </div>
   );

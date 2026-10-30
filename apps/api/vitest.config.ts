@@ -9,6 +9,7 @@ export default defineConfig({
       transform(code, id) {
         const needsMetadata = [
           "/src/documents/",
+          "/src/contracts/",
           "/src/annotations/",
           "/src/ocr/",
           "/src/storage/",

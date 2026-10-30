@@ -205,6 +205,31 @@ describe("RU and IG review pages", () => {
       openAll.search({ candidateStage: "1", status: "IN_REVIEW" }),
     ).toEqual({ candidate: "1", status: "IN_REVIEW" });
   });
+  it("opens contract preparation independently of the review row", async () => {
+    state.permissions = { "20011": [], "20003": [] };
+    state.queueItems = [
+      {
+        candidate: {
+          id: "candidate-1",
+          fullName: "Иван Иванов",
+          stageProgress: [],
+        },
+        documents: [],
+      },
+    ];
+    const view = await render("IG");
+    const button = view.querySelector(
+      '[aria-label="Подготовить договор"]',
+    ) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    await act(async () => button.click());
+    expect(state.navigate).toHaveBeenCalledOnce();
+    expect(state.navigate).toHaveBeenCalledWith({
+      to: "/signing",
+      search: { candidateId: "candidate-1" },
+    });
+  });
+
   it("keeps the document review page vertically scrollable on desktop", async () => {
     state.documentInfo = {
       title: "Паспорт",

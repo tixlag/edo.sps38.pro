@@ -10,7 +10,11 @@ import { EmployeesPage } from "../pages/EmployeesPage";
 import { EmployeeDetailPage } from "../pages/EmployeeDetailPage";
 import { ReviewPage, ReviewDocumentPage } from "../pages/ReviewPage";
 import { HistoryPage, MyReviews } from "../pages/HistoryPage";
-import { SigningPage } from "../pages/SigningPage";
+import {
+  SigningPage,
+  MyDocumentsPage,
+  signingSearch,
+} from "../pages/SigningPage";
 import { useEmployeeRouteId } from "./AppShell";
 
 function Placeholder({ title }: { title: string }) {
@@ -92,6 +96,14 @@ const signingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/signing",
   component: SigningPage,
+  validateSearch: signingSearch,
+});
+
+const myDocumentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/my-documents",
+  component: MyDocumentsPage,
+  validateSearch: signingSearch,
 });
 
 const participantsRoute = createRoute({
@@ -145,6 +157,7 @@ const routeTree = rootRoute.addChildren([
   myReviewsRoute,
   onboardingRoute,
   signingRoute,
+  myDocumentsRoute,
   participantsRoute,
   settingsRoute,
 ]);

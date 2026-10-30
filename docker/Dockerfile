@@ -36,7 +36,7 @@ RUN --mount=type=cache,id=edo-pnpm,target=/pnpm/store \
 # ---------------------------------------------------------------------------
 FROM source AS api-build
 # Native HEVC decoder; sharp prebuilt binaries decode AVIF, not HEIC/HEVC.
-RUN apk add --no-cache libheif-tools
+RUN apk add --no-cache libheif-tools libreoffice-writer font-liberation font-dejavu
 RUN pnpm --filter @edo/api prisma:generate \
  && pnpm turbo build --filter=@edo/api...
 
@@ -45,9 +45,9 @@ ENV NODE_ENV=production \
     API_PORT=3001
 COPY docker/api-entrypoint.sh /usr/local/bin/edo-entrypoint
 RUN chmod +x /usr/local/bin/edo-entrypoint \
- && mkdir -p /app/.cache/document-uploads \
+ && mkdir -p /app/.cache/document-uploads /app/.cache/contracts \
  && chown -R node:node /app/.cache \
- && chmod 700 /app/.cache /app/.cache/document-uploads
+ && chmod 700 /app/.cache /app/.cache/document-uploads /app/.cache/contracts
 USER node
 EXPOSE 3001
 # live — процесс жив; ready (MariaDB + RabbitMQ) проверяет деплой, а не docker:

@@ -1,10 +1,24 @@
-import * as React from 'react';
-import { Bell, Search } from 'lucide-react';
-import { formatDateRu } from '../lib/date-format';
-import type { MeResponseDto } from '@edo/api-client';
-import { profileAvatar, profileLabel, profileInitials, profileShortName } from '../lib/profile';
+import * as React from "react";
+import { Search } from "lucide-react";
+import { ContractNotifications } from "./ContractNotifications";
+import { formatDateRu } from "../lib/date-format";
+import type { MeResponseDto } from "@edo/api-client";
+import {
+  profileAvatar,
+  profileLabel,
+  profileInitials,
+  profileShortName,
+} from "../lib/profile";
 
-function HeaderAvatar({ avatarUrl, label, initials }: { avatarUrl: string | null; label: string; initials: string }) {
+function HeaderAvatar({
+  avatarUrl,
+  label,
+  initials,
+}: {
+  avatarUrl: string | null;
+  label: string;
+  initials: string;
+}) {
   const [broken, setBroken] = React.useState(false);
   React.useEffect(() => {
     setBroken(false);
@@ -22,22 +36,38 @@ function HeaderAvatar({ avatarUrl, label, initials }: { avatarUrl: string | null
     );
   }
   return (
-    <div title={label} aria-label={label} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-xs font-bold text-white">
+    <div
+      title={label}
+      aria-label={label}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-xs font-bold text-white"
+    >
       {initials}
     </div>
   );
 }
 
-export function AppHeader({ crumb, profile }: { crumb: string; profile?: MeResponseDto }) {
+export function AppHeader({
+  crumb,
+  profile,
+}: {
+  crumb: string;
+  profile?: MeResponseDto;
+}) {
   const fullName = profileLabel(profile);
   const shortName = profileShortName(profile);
   const avatarUrl = profileAvatar(profile);
   const scope = profile?.locationScope;
-  const locationLabel = !scope ? 'Область доступа…' : scope.all ? 'Все объекты' : `Доступно объектов: ${scope.locationIds.length}`;
+  const locationLabel = !scope
+    ? "Область доступа…"
+    : scope.all
+      ? "Все объекты"
+      : `Доступно объектов: ${scope.locationIds.length}`;
   return (
     <header className="flex h-[72px] w-full items-center justify-between border-b border-[var(--border)] bg-white px-7">
       <nav className="flex min-w-0 items-center gap-[9px] text-sm">
-        <span className="hidden text-[var(--muted-foreground)] md:inline">Личный кабинет</span>
+        <span className="hidden text-[var(--muted-foreground)] md:inline">
+          Личный кабинет
+        </span>
         <span className="hidden text-[var(--crumb)] md:inline">/</span>
         <span className="truncate font-semibold">{crumb}</span>
       </nav>
@@ -47,25 +77,36 @@ export function AppHeader({ crumb, profile }: { crumb: string; profile?: MeRespo
         </span>
         <span className="hidden rounded-[10px] bg-[var(--muted)] px-[14px] py-[10px] text-[13px] md:inline">
           {formatDateRu(
-            `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`,
+            `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`,
           )}
         </span>
         <button
           aria-label="Поиск"
-          disabled title="Поиск пока недоступен"
+          disabled
+          title="Поиск пока недоступен"
           className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-[var(--muted)]"
         >
           <Search size={18} />
         </button>
-        <button
-          aria-label="Уведомления"
-          disabled title="Уведомления пока недоступны"
-          className="relative flex h-10 w-10 items-center justify-center rounded-[10px] bg-[var(--muted)]"
+        {(Object.prototype.hasOwnProperty.call(
+          profile?.permissions ?? {},
+          "20003",
+        ) ||
+          Object.prototype.hasOwnProperty.call(
+            profile?.permissions ?? {},
+            "20009",
+          )) && <ContractNotifications />}
+        <span
+          className="hidden max-w-[140px] truncate text-sm font-semibold sm:inline"
+          title={fullName}
         >
-          <Bell size={18} />
-        </button>
-        <span className="hidden max-w-[140px] truncate text-sm font-semibold sm:inline" title={fullName}>{shortName}</span>
-        <HeaderAvatar avatarUrl={avatarUrl} label={fullName} initials={profileInitials(profile)} />
+          {shortName}
+        </span>
+        <HeaderAvatar
+          avatarUrl={avatarUrl}
+          label={fullName}
+          initials={profileInitials(profile)}
+        />
       </div>
     </header>
   );

@@ -48,6 +48,7 @@ export const WORK_NAV: NavItem[] = [
   },
   { key: "onboarding", label: "Оформление", icon: Route, to: "/onboarding" },
   { key: "signing", label: "Подписание", icon: PenLine, to: "/signing" },
+  { key: "my-documents", label: "Мои документы", icon: FileCheck2, to: "/my-documents" },
   { key: "employees", label: "Работники", icon: Users, to: "/employees" },
 ];
 

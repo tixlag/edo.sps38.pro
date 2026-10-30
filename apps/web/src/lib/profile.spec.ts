@@ -87,7 +87,7 @@ describe('avatar onError fallback (broken img -> initials)', () => {
       expect(src).toMatch(/title=\{fullName\}|title=\{avatarTitle\}/);
     }
     const headerSrc = readFileSync(join(here, '../components/AppHeader.tsx'), 'utf8');
-    expect(headerSrc).toMatch(/title=\{fullName\}>\{shortName\}/);
+    expect(headerSrc).toMatch(/title=\{fullName\}\s*>\s*\{shortName\}/);
   });
 
   it('AppHeader shows initials after the avatar errors', () => {
