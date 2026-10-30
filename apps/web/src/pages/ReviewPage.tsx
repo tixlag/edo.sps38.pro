@@ -567,29 +567,31 @@ function CandidateRow({
           onClick={onOpen}
           className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2 border-t border-[var(--border)] pt-2 xl:border-l xl:border-t-0 xl:pl-3 xl:pt-0"
         >
-          <div className="flex min-w-0 flex-1 items-center overflow-x-auto pb-1">
-            {candidate?.stageProgress ? (
-              candidate.stageProgress.map((progress) => (
-                <StageRing
-                  key={progress.stage ?? "additional"}
-                  progress={progress}
-                  onOpen={() => onOpenStage(progress.stage)}
-                />
-              ))
-            ) : (
-              <span className="w-24 text-center text-xs text-[var(--muted-foreground)]">
-                Этапы неизвестны
+          <div className="min-w-0 flex-1 overflow-x-auto pb-1">
+            <div className="flex w-max min-w-full items-center justify-end gap-1">
+              {candidate?.stageProgress ? (
+                candidate.stageProgress.map((progress) => (
+                  <StageRing
+                    key={progress.stage ?? "additional"}
+                    progress={progress}
+                    onOpen={() => onOpenStage(progress.stage)}
+                  />
+                ))
+              ) : (
+                <span className="w-24 text-center text-xs text-[var(--muted-foreground)]">
+                  Этапы неизвестны
+                </span>
+              )}
+              <span className="ml-2 flex w-[76px] shrink-0 flex-col items-center gap-0.5 border-l border-[var(--border)] pl-2 text-xs">
+                <span className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]">
+                  <FileSignature size={22} />
+                </span>
+                <strong className="flex h-8 items-center justify-center leading-tight">
+                  Договор
+                </strong>
+                <span>—</span>
               </span>
-            )}
-            <span className="ml-2 flex w-[76px] shrink-0 flex-col items-center gap-0.5 border-l border-[var(--border)] pl-2 text-xs">
-              <span className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]">
-                <FileSignature size={22} />
-              </span>
-              <strong className="flex h-8 items-center justify-center leading-tight">
-                Договор
-              </strong>
-              <span>—</span>
-            </span>
+            </div>
           </div>
           <ChevronRight
             size={18}
