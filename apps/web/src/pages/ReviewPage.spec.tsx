@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   documentInfo: null as unknown,
   documentVersion: null as unknown,
   queueItems: [] as unknown[],
+  drawer: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -51,7 +52,10 @@ vi.mock("@edo/api-client", () => {
   };
 });
 vi.mock("../components/CandidateDrawer", () => ({
-  CandidateDrawer: () => null,
+  CandidateDrawer: (props: unknown) => {
+    state.drawer(props);
+    return null;
+  },
 }));
 vi.mock("../components/DocumentReviewWorkspace", () => ({
   DocumentReviewWorkspace: () => null,
@@ -186,6 +190,20 @@ describe("RU and IG review pages", () => {
     await act(async () => ring.click());
     expect(document.querySelector('[role="tooltip"]')).toBeNull();
     expect(state.navigate).toHaveBeenCalled();
+    const navigation = state.navigate.mock.calls.at(-1)![0];
+    expect(navigation.search({ status: "IN_REVIEW" })).toEqual({
+      status: "IN_REVIEW",
+      candidate: "1",
+      candidateStage: "1",
+    });
+    const row = view.querySelector(
+      '[aria-label="Открыть документы: Иван Иванов"]',
+    ) as HTMLButtonElement;
+    await act(async () => row.click());
+    const openAll = state.navigate.mock.calls.at(-1)![0];
+    expect(
+      openAll.search({ candidateStage: "1", status: "IN_REVIEW" }),
+    ).toEqual({ candidate: "1", status: "IN_REVIEW" });
   });
   it("keeps the document review page vertically scrollable on desktop", async () => {
     state.documentInfo = {
@@ -231,6 +249,30 @@ describe("RU and IG review pages", () => {
         query: expect.objectContaining({ refetchInterval: 30000 }),
       }),
     );
+  });
+
+  it("restores stage selection from the URL and clears it on close", async () => {
+    state.search = {
+      candidate: "c1",
+      candidateStage: "none",
+      status: "RETURNED",
+    };
+    await render("IG");
+    const props = state.drawer.mock.calls.at(-1)![0];
+    expect(props).toMatchObject({
+      candidateId: "c1",
+      stage: "none",
+      returnedHistory: true,
+    });
+    await act(async () => props.onClose());
+    const navigation = state.navigate.mock.calls.at(-1)![0];
+    expect(
+      navigation.search({
+        candidate: "c1",
+        candidateStage: "none",
+        status: "RETURNED",
+      }),
+    ).toEqual({ status: "RETURNED" });
   });
 
   it("keeps IG navigation on its route and resets pagination when changing the tab", async () => {

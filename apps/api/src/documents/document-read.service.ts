@@ -24,7 +24,10 @@ import { hasAccessRule } from "../auth/access-rules";
 import { EdoAccessRule } from "../auth/edo-access-rule";
 import { StorageService } from "../storage/storage.service";
 import { DocumentAccessService } from "./document-access.service";
-import { reviewStageProgress } from "./review-stage-progress";
+import {
+  classifyStageType,
+  reviewStageProgress,
+} from "./review-stage-progress";
 import { DocumentCatalogService } from "./document-catalog.service";
 import {
   applicable,
@@ -268,6 +271,7 @@ export class DocumentReadService {
   async candidateDetails(
     id: string,
     principal: AuthPrincipal,
+    stage?: string,
   ): Promise<CandidateDetailsDto> {
     const owner = await this.access.candidate(id, principal);
     const rows = await this.prisma.document.findMany({
@@ -281,6 +285,46 @@ export class DocumentReadService {
     });
     const candidate = toCandidateProfile(owner)!;
     await this.enrichReviewCandidates(principal, [candidate]);
+    let stageDocuments: CandidateDetailsDto["stageDocuments"];
+    if (stage !== undefined) {
+      stageDocuments = null;
+      if (candidate.positionCode) {
+        const types = await this.prisma.documentType.findMany({
+          where: { catalogSyncedAt: { not: null } },
+          include: {
+            positions: true,
+            stageRules: { include: { positions: true } },
+          },
+          orderBy: { title: "asc" },
+        });
+        if (types.length) {
+          const selectedStage = stage === "none" ? null : Number(stage);
+          const profile = {
+            positionCode: candidate.positionCode,
+            citizenship: candidate.citizenship ?? "ru",
+            sex: candidate.sexKnown ? candidate.sex : null,
+          };
+          stageDocuments = {
+            required: { documents: [], missingDocuments: [] },
+            additional: { documents: [], missingDocuments: [] },
+          };
+          for (const type of types) {
+            const category = classifyStageType(type, selectedStage, profile);
+            if (!category) continue;
+            const doc = rows.find((row) => row.documentTypeId === type.id);
+            if (doc)
+              stageDocuments[category].documents.push(
+                this.documentSummary(doc),
+              );
+            if (!doc || doc.status === "DRAFT")
+              stageDocuments[category].missingDocuments.push({
+                code: type.code,
+                title: type.title,
+              });
+          }
+        }
+      }
+    }
     return {
       candidate,
       documents: rows.map((row) => this.documentSummary(row)),
@@ -288,6 +332,7 @@ export class DocumentReadService {
         owner,
         rows.map((row) => row.documentType?.code),
       ),
+      ...(stage !== undefined ? { stageDocuments } : {}),
     };
   }
 

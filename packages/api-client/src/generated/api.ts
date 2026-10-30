@@ -1079,6 +1079,22 @@ export interface MissingDocumentTypeDto {
   title: string;
 }
 
+export interface StageDocumentGroupDto {
+  documents: CandidateDocumentSummaryDto[];
+  missingDocuments: MissingDocumentTypeDto[];
+}
+
+export interface CandidateStageDocumentsDto {
+  required: StageDocumentGroupDto;
+  additional: StageDocumentGroupDto;
+}
+
+/**
+ * @nullable
+ */
+export type CandidateDetailsDtoStageDocuments =
+  CandidateStageDocumentsDto | null;
+
 export interface CandidateDetailsDto {
   candidate: CandidateProfileDto;
   documents: CandidateDocumentSummaryDto[];
@@ -1087,6 +1103,8 @@ export interface CandidateDetailsDto {
    * @nullable
    */
   missingDocuments?: MissingDocumentTypeDto[] | null;
+  /** @nullable */
+  stageDocuments?: CandidateDetailsDtoStageDocuments;
 }
 
 export interface EmployeeDocumentListDto {
@@ -1658,6 +1676,13 @@ export type ListDocumentTypesParams = {
 export type ListCandidatesParams = {
   limit?: number;
   cursor?: string;
+};
+
+export type GetCandidateDetailsParams = {
+  /**
+   * Stage number or "none" for documents without a stage
+   */
+  stage?: string;
 };
 
 export type GetCandidateDocumentCatalogParams = {
@@ -4140,17 +4165,25 @@ export function useListCandidates<
  */
 export const getCandidateDetails = (
   candidateId: string,
+  params?: GetCandidateDetailsParams,
   signal?: AbortSignal,
 ) => {
   return customInstance<CandidateDetailsDto>({
     url: `/api/v1/candidates/${candidateId}`,
     method: "GET",
+    params,
     signal,
   });
 };
 
-export const getGetCandidateDetailsQueryKey = (candidateId: string) => {
-  return [`/api/v1/candidates/${candidateId}`] as const;
+export const getGetCandidateDetailsQueryKey = (
+  candidateId: string,
+  params?: GetCandidateDetailsParams,
+) => {
+  return [
+    `/api/v1/candidates/${candidateId}`,
+    ...(params ? [params] : []),
+  ] as const;
 };
 
 export const getGetCandidateDetailsQueryOptions = <
@@ -4158,6 +4191,7 @@ export const getGetCandidateDetailsQueryOptions = <
   TError = ApiErrorDto,
 >(
   candidateId: string,
+  params?: GetCandidateDetailsParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof getCandidateDetails>>,
@@ -4169,11 +4203,12 @@ export const getGetCandidateDetailsQueryOptions = <
   const { query: queryOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ?? getGetCandidateDetailsQueryKey(candidateId);
+    queryOptions?.queryKey ??
+    getGetCandidateDetailsQueryKey(candidateId, params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof getCandidateDetails>>
-  > = ({ signal }) => getCandidateDetails(candidateId, signal);
+  > = ({ signal }) => getCandidateDetails(candidateId, params, signal);
 
   return {
     queryKey,
@@ -4201,6 +4236,7 @@ export function useGetCandidateDetails<
   TError = ApiErrorDto,
 >(
   candidateId: string,
+  params?: GetCandidateDetailsParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof getCandidateDetails>>,
@@ -4209,7 +4245,11 @@ export function useGetCandidateDetails<
     >;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetCandidateDetailsQueryOptions(candidateId, options);
+  const queryOptions = getGetCandidateDetailsQueryOptions(
+    candidateId,
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -2988,6 +2988,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "stage",
+            "required": false,
+            "in": "query",
+            "description": "Stage number or \"none\" for documents without a stage",
+            "schema": {
+              "example": "1",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11949,6 +11959,42 @@
           "title"
         ]
       },
+      "StageDocumentGroupDto": {
+        "type": "object",
+        "properties": {
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateDocumentSummaryDto"
+            }
+          },
+          "missingDocuments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDocumentTypeDto"
+            }
+          }
+        },
+        "required": [
+          "documents",
+          "missingDocuments"
+        ]
+      },
+      "CandidateStageDocumentsDto": {
+        "type": "object",
+        "properties": {
+          "required": {
+            "$ref": "#/components/schemas/StageDocumentGroupDto"
+          },
+          "additional": {
+            "$ref": "#/components/schemas/StageDocumentGroupDto"
+          }
+        },
+        "required": [
+          "required",
+          "additional"
+        ]
+      },
       "CandidateDetailsDto": {
         "type": "object",
         "properties": {
@@ -11968,6 +12014,14 @@
             "items": {
               "$ref": "#/components/schemas/MissingDocumentTypeDto"
             }
+          },
+          "stageDocuments": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateStageDocumentsDto"
+              }
+            ]
           }
         },
         "required": [

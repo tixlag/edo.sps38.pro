@@ -395,6 +395,28 @@ export class MissingDocumentTypeDto {
   @ApiProperty() code!: string;
   @ApiProperty() title!: string;
 }
+export class CandidateDetailsQueryDto {
+  @ApiPropertyOptional({
+    description: 'Stage number or "none" for documents without a stage',
+    example: "1",
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^(none|[1-9]\d{0,14})$/)
+  stage?: string;
+}
+export class StageDocumentGroupDto {
+  @ApiProperty({ type: [CandidateDocumentSummaryDto] })
+  documents!: CandidateDocumentSummaryDto[];
+  @ApiProperty({ type: [MissingDocumentTypeDto] })
+  missingDocuments!: MissingDocumentTypeDto[];
+}
+export class CandidateStageDocumentsDto {
+  @ApiProperty({ type: StageDocumentGroupDto })
+  required!: StageDocumentGroupDto;
+  @ApiProperty({ type: StageDocumentGroupDto })
+  additional!: StageDocumentGroupDto;
+}
 export class EmployeeDocumentListDto extends DocumentListDto {
   @ApiProperty({
     type: [MissingDocumentTypeDto],
@@ -413,6 +435,8 @@ export class CandidateDetailsDto {
     description: "Null when the applicable requirements cannot be determined",
   })
   missingDocuments?: MissingDocumentTypeDto[] | null;
+  @ApiPropertyOptional({ type: CandidateStageDocumentsDto, nullable: true })
+  stageDocuments?: CandidateStageDocumentsDto | null;
 }
 export class CandidateReviewQueueDto {
   @ApiProperty({ type: [CandidateDetailsDto] }) items!: CandidateDetailsDto[];

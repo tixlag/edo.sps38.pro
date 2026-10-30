@@ -32,15 +32,20 @@ export function CandidateDrawer({
   profile: queueProfile,
   onClose,
   returnedHistory = false,
+  stage,
 }: {
   candidateId: string;
   profile: CandidateProfileDto | null;
   onClose: () => void;
   returnedHistory?: boolean;
+  stage?: string;
 }) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as Record<string, unknown>;
-  const docs = useGetCandidateDetails(candidateId);
+  const docs = useGetCandidateDetails(
+    candidateId,
+    stage ? { stage } : undefined,
+  );
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -68,19 +73,49 @@ export function CandidateDrawer({
         profile.requiredDocuments,
       )
     : null;
-  const documents = [...(docs.data?.documents ?? [])].sort((a, b) =>
-    a.title.localeCompare(b.title, "ru"),
-  );
-  const items = documents.flatMap<{
-    doc: CandidateDocumentSummaryDto;
-    returnedVersion?: ReturnedDocumentVersionDto;
-  }>((doc) =>
-    returnedHistory
-      ? (doc.returnedVersions ?? []).map((returnedVersion) => ({
-          doc,
-          returnedVersion,
-        }))
-      : [{ doc }],
+  const makeItems = (documents: CandidateDocumentSummaryDto[]) =>
+    [...documents]
+      .filter((doc) => !stage || returnedHistory || doc.status !== "DRAFT")
+      .sort((a, b) => a.title.localeCompare(b.title, "ru"))
+      .flatMap<{
+        doc: CandidateDocumentSummaryDto;
+        returnedVersion?: ReturnedDocumentVersionDto;
+      }>((doc) =>
+        returnedHistory
+          ? (doc.returnedVersions ?? []).map((returnedVersion) => ({
+              doc,
+              returnedVersion,
+            }))
+          : [{ doc }],
+      );
+  const stageData = docs.data?.stageDocuments;
+  const sections = stage
+    ? stageData
+      ? [
+          {
+            label: "Обязательные",
+            items: makeItems(stageData.required.documents),
+            missing: returnedHistory ? [] : stageData.required.missingDocuments,
+          },
+          {
+            label: "Дополнительные",
+            items: makeItems(stageData.additional.documents),
+            missing: returnedHistory
+              ? []
+              : stageData.additional.missingDocuments,
+          },
+        ]
+      : []
+    : [
+        {
+          label: "",
+          items: makeItems(docs.data?.documents ?? []),
+          missing: returnedHistory ? [] : (docs.data?.missingDocuments ?? []),
+        },
+      ];
+  const count = sections.reduce(
+    (sum, section) => sum + section.items.length + section.missing.length,
+    0,
   );
 
   return (
@@ -207,9 +242,8 @@ export function CandidateDrawer({
         <div className="min-h-0 flex-1 overflow-auto p-4">
           <h3 className="mb-2 text-[13px] font-semibold">
             {returnedHistory ? "Возвращённые версии" : "Документы"}
-            {docs.data
-              ? ` (${items.length + (returnedHistory ? 0 : (docs.data.missingDocuments?.length ?? 0))})`
-              : ""}
+            {stage && ` · ${stage === "none" ? "Без этапа" : `Этап ${stage}`}`}
+            {docs.data && (!stage || stageData) ? ` (${count})` : ""}
           </h3>
           {docs.isLoading && <p role="status">Загрузка документов…</p>}
           {docs.isError && (
@@ -224,16 +258,14 @@ export function CandidateDrawer({
               </Button>
             </div>
           )}
-          {docs.data &&
-            items.length === 0 &&
-            (returnedHistory || !docs.data.missingDocuments?.length) && (
-              <p className="text-[13px] text-[var(--muted-foreground)]">
-                {returnedHistory
-                  ? "У кандидата нет возвращённых версий."
-                  : "У кандидата нет документов."}
-              </p>
-            )}
-          {!returnedHistory &&
+          {docs.data && stage && !stageData && (
+            <p role="status" className="text-sm text-[var(--muted-foreground)]">
+              Не удалось определить документы выбранного этапа. Проверьте
+              должность кандидата и доступность справочника.
+            </p>
+          )}
+          {!stage &&
+            !returnedHistory &&
             docs.data?.missingDocuments == null &&
             docs.data && (
               <p className="mb-2 text-xs text-[var(--muted-foreground)]">
@@ -241,83 +273,104 @@ export function CandidateDrawer({
                 должность кандидата.
               </p>
             )}
-          {!returnedHistory &&
-            (docs.data?.missingDocuments?.length ?? 0) > 0 && (
-              <ul className="mb-2 flex flex-col gap-2">
-                {docs.data?.missingDocuments?.map((type) => (
-                  <li
-                    key={type.code}
-                    className="flex items-center justify-between gap-3 rounded-[8px] border border-[var(--border)] px-3 py-2.5"
-                  >
-                    <span className="break-words text-[13px] font-semibold">
-                      {type.title}
-                    </span>
-                    <Badge>Не загружен</Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
-          {items.length > 0 && (
-            <ul className="flex flex-col gap-2">
-              {items.map(({ doc, returnedVersion }) => (
-                <li
-                  key={`${doc.id}:${returnedVersion?.version ?? doc.currentVersion}`}
-                  className="overflow-hidden rounded-[8px] border border-[var(--border)]"
-                >
-                  <button
-                    type="button"
-                    aria-label={`${doc.title}, ${returnedVersion ? "возвращённая " : ""}версия ${returnedVersion?.version ?? doc.currentVersion}`}
-                    onClick={() =>
-                      void navigate({
-                        to:
-                          docs.data?.candidate?.reviewGroup === "IG"
-                            ? "/review-ig/$documentId"
-                            : "/review/$documentId",
-                        params: { documentId: doc.id },
-                        search: {
-                          ...search,
-                          version:
-                            returnedVersion?.version ?? doc.currentVersion,
-                        },
-                      })
-                    }
-                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-[var(--muted)]/40"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block break-words text-[13px] font-semibold">
-                        {doc.title}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">
-                        Версия {returnedVersion?.version ?? doc.currentVersion}
-                      </span>
-                      {returnedVersion && (
-                        <>
-                          <span className="mt-1 block break-words text-[13px] font-normal">
-                            Причина возврата:{" "}
-                            {returnedVersion.rejectionReason || "не указана"}
+          {docs.data &&
+            (!stage || stageData) &&
+            sections.map((section) => (
+              <section key={section.label || "all"} className="mb-4">
+                {section.label && (
+                  <h4 className="mb-2 text-sm font-semibold">
+                    {section.label} (
+                    {section.items.length + section.missing.length})
+                  </h4>
+                )}
+                {section.items.length === 0 && section.missing.length === 0 && (
+                  <p className="mb-2 text-[13px] text-[var(--muted-foreground)]">
+                    {returnedHistory
+                      ? "Возвращённых версий нет."
+                      : "Документов нет."}
+                  </p>
+                )}
+                {!returnedHistory && section.missing.length > 0 && (
+                  <ul className="mb-2 flex flex-col gap-2">
+                    {section.missing.map((type) => (
+                      <li
+                        key={type.code}
+                        className="flex items-center justify-between gap-3 rounded-[8px] border border-[var(--border)] px-3 py-2.5"
+                      >
+                        <span className="break-words text-[13px] font-semibold">
+                          {type.title}
+                        </span>
+                        <Badge>Не загружен</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {section.items.length > 0 && (
+                  <ul className="flex flex-col gap-2">
+                    {section.items.map(({ doc, returnedVersion }) => (
+                      <li
+                        key={`${doc.id}:${returnedVersion?.version ?? doc.currentVersion}`}
+                        className="overflow-hidden rounded-[8px] border border-[var(--border)]"
+                      >
+                        <button
+                          type="button"
+                          aria-label={`${doc.title}, ${returnedVersion ? "возвращённая " : ""}версия ${returnedVersion?.version ?? doc.currentVersion}`}
+                          onClick={() =>
+                            void navigate({
+                              to:
+                                docs.data?.candidate?.reviewGroup === "IG"
+                                  ? "/review-ig/$documentId"
+                                  : "/review/$documentId",
+                              params: { documentId: doc.id },
+                              search: {
+                                ...search,
+                                version:
+                                  returnedVersion?.version ??
+                                  doc.currentVersion,
+                              },
+                            })
+                          }
+                          className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-[var(--muted)]/40"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block break-words text-[13px] font-semibold">
+                              {doc.title}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">
+                              Версия{" "}
+                              {returnedVersion?.version ?? doc.currentVersion}
+                            </span>
+                            {returnedVersion && (
+                              <>
+                                <span className="mt-1 block break-words text-[13px] font-normal">
+                                  Причина возврата:{" "}
+                                  {returnedVersion.rejectionReason ||
+                                    "не указана"}
+                                </span>
+                                <span className="mt-1 block text-xs text-[var(--muted-foreground)]">
+                                  {returnedVersion.supersededByVersion != null
+                                    ? `Уже загружена новая версия №${returnedVersion.supersededByVersion}`
+                                    : "Ожидается повторная загрузка"}
+                                </span>
+                              </>
+                            )}
                           </span>
-                          <span className="mt-1 block text-xs text-[var(--muted-foreground)]">
-                            {returnedVersion.supersededByVersion != null
-                              ? `Уже загружена новая версия №${returnedVersion.supersededByVersion}`
-                              : "Ожидается повторная загрузка"}
-                          </span>
-                        </>
-                      )}
-                    </span>
-                    <StatusBadge
-                      status={returnedVersion ? "RETURNED" : doc.status}
-                      document
-                    />
-                    <ChevronRight
-                      size={16}
-                      aria-hidden
-                      className="shrink-0 text-[var(--muted-foreground)]"
-                    />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+                          <StatusBadge
+                            status={returnedVersion ? "RETURNED" : doc.status}
+                            document
+                          />
+                          <ChevronRight
+                            size={16}
+                            aria-hidden
+                            className="shrink-0 text-[var(--muted-foreground)]"
+                          />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            ))}
         </div>
       </div>
     </dialog>

@@ -374,6 +374,138 @@ describe("candidate review queue", () => {
 });
 
 describe("candidate details", () => {
+  it("returns the selected stage in required and additional groups, including missing types", async () => {
+    const { reads, prisma } = setup();
+    prisma.candidate.findFirst.mockResolvedValue(owner("c1"));
+    prisma.document.findMany.mockResolvedValue([
+      { ...document("d1"), documentTypeId: "a" },
+    ]);
+    const types = [
+      {
+        id: "a",
+        code: "A",
+        title: "Паспорт",
+        stage: 1,
+        requiredForAll: true,
+        allRu: false,
+        allForeign: false,
+        positions: [],
+        stageRules: [
+          {
+            stage: 1,
+            requiredForAll: true,
+            allRu: false,
+            allForeign: false,
+            positions: [],
+          },
+        ],
+        catalogSyncedAt: new Date(),
+      },
+      {
+        id: "b",
+        code: "B",
+        title: "Справка",
+        stage: 1,
+        requiredForAll: false,
+        allRu: false,
+        allForeign: false,
+        positions: [],
+        stageRules: [
+          {
+            stage: 1,
+            requiredForAll: false,
+            allRu: false,
+            allForeign: false,
+            positions: [],
+          },
+          {
+            stage: 2,
+            requiredForAll: true,
+            allRu: false,
+            allForeign: false,
+            positions: [],
+          },
+        ],
+        catalogSyncedAt: new Date(),
+      },
+      {
+        id: "c",
+        code: "C",
+        title: "Другой этап",
+        stage: 2,
+        requiredForAll: true,
+        allRu: false,
+        allForeign: false,
+        positions: [],
+        stageRules: [],
+        catalogSyncedAt: new Date(),
+      },
+    ];
+    prisma.documentType.findMany.mockResolvedValue(types);
+    const result = await reads.candidateDetails("c1", principal, "1");
+    expect(
+      result.stageDocuments?.required.documents.map((doc) => doc.id),
+    ).toEqual(["d1"]);
+    expect(result.stageDocuments?.additional.missingDocuments).toEqual([
+      { code: "B", title: "Справка" },
+    ]);
+    expect(result.stageDocuments?.required.missingDocuments).toEqual([]);
+    const other = await reads.candidateDetails("c1", principal, "2");
+    expect(
+      other.stageDocuments?.required.missingDocuments.map((d) => d.code),
+    ).toEqual(["B", "C"]);
+  });
+  it("keeps returned history of a draft and places unstaged types in additional", async () => {
+    const { reads, prisma } = setup();
+    prisma.candidate.findFirst.mockResolvedValue(owner("c1"));
+    prisma.document.findMany.mockResolvedValue([
+      {
+        ...document("d1"),
+        documentTypeId: "a",
+        status: "DRAFT",
+        versions: [
+          {
+            version: 1,
+            revision: 1,
+            status: "RETURNED",
+            rejectionReason: "Фото",
+            delivery: null,
+          },
+        ],
+      },
+    ]);
+    prisma.documentType.findMany.mockResolvedValue([
+      {
+        id: "a",
+        code: "A",
+        title: "Документ",
+        stage: null,
+        requiredForAll: true,
+        allRu: true,
+        allForeign: true,
+        positions: [],
+        stageRules: [
+          {
+            stage: null,
+            requiredForAll: true,
+            allRu: true,
+            allForeign: true,
+            positions: [],
+          },
+        ],
+        catalogSyncedAt: new Date(),
+      },
+    ]);
+    const result = await reads.candidateDetails("c1", principal, "none");
+    expect(result.stageDocuments?.required.documents).toEqual([]);
+    expect(
+      result.stageDocuments?.additional.documents[0].returnedVersions?.[0]
+        .rejectionReason,
+    ).toBe("Фото");
+    expect(result.stageDocuments?.additional.missingDocuments).toEqual([
+      { code: "A", title: "Документ" },
+    ]);
+  });
   it("returns the profile even when there are no documents", async () => {
     const { reads, prisma } = setup();
     prisma.candidate.findFirst.mockResolvedValue(owner("c1"));

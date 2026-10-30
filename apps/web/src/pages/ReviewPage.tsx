@@ -435,9 +435,11 @@ function StageRing({
 function CandidateRow({
   group,
   onOpen,
+  onOpenStage,
 }: {
   group: CandidateDetailsDto;
   onOpen: () => void;
+  onOpenStage: (stage: number | null) => void;
   returnedHistory?: boolean;
 }) {
   const candidate = group.candidate;
@@ -551,7 +553,7 @@ function CandidateRow({
               <StageRing
                 key={progress.stage ?? "additional"}
                 progress={progress}
-                onOpen={onOpen}
+                onOpen={() => onOpenStage(progress.stage)}
               />
             ))
           ) : (
@@ -657,6 +659,7 @@ export function ReviewPage({
       positionCode: undefined,
       projectCode: undefined,
       candidate: undefined,
+      candidateStage: undefined,
       q: undefined,
       manager: undefined,
       mentor: undefined,
@@ -664,10 +667,15 @@ export function ReviewPage({
   };
 
   const openCandidate = useCallback(
-    (id: string) => {
+    (id: string, stage?: number | null) => {
       void navigate({
         to: base,
-        search: (prev: Record<string, unknown>) => ({ ...prev, candidate: id }),
+        search: (prev: Record<string, unknown>) => {
+          const next: Record<string, unknown> = { ...prev, candidate: id };
+          if (stage === undefined) delete next.candidateStage;
+          else next.candidateStage = stage === null ? "none" : String(stage);
+          return next;
+        },
       });
     },
     [navigate, base],
@@ -680,6 +688,7 @@ export function ReviewPage({
       search: (prev: Record<string, unknown>) => {
         const next: Record<string, unknown> = { ...prev };
         delete next.candidate;
+        delete next.candidateStage;
         return next;
       },
     });
@@ -1109,6 +1118,9 @@ export function ReviewPage({
                   group={group}
                   returnedHistory={filters.status === "RETURNED"}
                   onOpen={() => openCandidate(group.candidate.id)}
+                  onOpenStage={(stage) =>
+                    openCandidate(group.candidate.id, stage)
+                  }
                 />
               ))}
             </div>
@@ -1148,6 +1160,7 @@ export function ReviewPage({
         <CandidateDrawer
           key={drawerCandidateId}
           candidateId={drawerCandidateId}
+          stage={filters.candidateStage}
           profile={drawerGroup?.candidate ?? null}
           returnedHistory={filters.status === "RETURNED"}
           onClose={closeCandidate}
