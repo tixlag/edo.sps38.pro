@@ -392,7 +392,7 @@ function StageRing({
         }
       }}
       role="button"
-      className="group pointer-events-auto relative flex w-[68px] shrink-0 flex-col items-center gap-0.5 rounded text-center text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+      className="group pointer-events-auto relative flex w-16 shrink-0 flex-col items-center gap-0.5 rounded text-center text-xs min-[1400px]:w-[68px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
       aria-label={`Открыть документы: ${label}`}
       aria-describedby={open ? tooltipId : undefined}
     >
@@ -481,8 +481,8 @@ function CandidateRow({
         onClick={onOpen}
         className="absolute inset-0 rounded-[10px] hover:bg-[var(--border)]/30 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--primary)]"
       />
-      <div className="pointer-events-none relative flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center">
-        <div className="min-w-0 w-full xl:w-[min(42%,620px)] xl:shrink-0">
+      <div className="pointer-events-none relative flex min-w-0 flex-col gap-3 min-[1400px]:flex-row min-[1400px]:items-center">
+        <div className="min-w-0 w-full min-[1400px]:w-[min(42%,620px,calc(100%-783px))] min-[1400px]:shrink-0">
           <div className="mb-2 flex min-w-0 items-center gap-2 font-semibold">
             <span
               aria-hidden
@@ -565,7 +565,7 @@ function CandidateRow({
         </div>
         <div
           onClick={onOpen}
-          className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2 border-t border-[var(--border)] pt-2 xl:border-l xl:border-t-0 xl:pl-3 xl:pt-0"
+          className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2 border-t border-[var(--border)] pt-2 min-[1400px]:border-l min-[1400px]:border-t-0 min-[1400px]:pl-3 min-[1400px]:pt-0"
         >
           <div className="min-w-0 flex-1 overflow-x-auto pb-1">
             <div className="flex w-max min-w-full items-center justify-end gap-1">
@@ -582,7 +582,7 @@ function CandidateRow({
                   Этапы неизвестны
                 </span>
               )}
-              <span className="ml-2 flex w-[76px] shrink-0 flex-col items-center gap-0.5 border-l border-[var(--border)] pl-2 text-xs">
+              <span className="ml-2 flex w-[72px] shrink-0 flex-col items-center gap-0.5 border-l border-[var(--border)] pl-2 text-xs min-[1400px]:w-[76px]">
                 <span className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]">
                   <FileSignature size={22} />
                 </span>

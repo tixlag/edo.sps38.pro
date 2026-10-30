@@ -366,11 +366,24 @@ export class DocumentReadService {
             documentGroups[category].documents.push(this.documentSummary(row));
           }
           const uploaded = new Set(rows.map((row) => row.documentTypeId));
-          documentGroups.required.missingDocuments = types
-            .filter(
-              (type) => requiredIds.has(type.id) && !uploaded.has(type.id),
-            )
-            .map(({ code, title }) => ({ code, title }));
+          for (const type of types) {
+            if (uploaded.has(type.id)) continue;
+            const rules = type.stageRules?.length ? type.stageRules : [type];
+            const category = requiredIds.has(type.id)
+              ? "required"
+              : rules.some(
+                    (rule) =>
+                      classifyStageType(type, rule.stage ?? null, profile) ===
+                      "additional",
+                  )
+                ? "additional"
+                : null;
+            if (category)
+              documentGroups[category].missingDocuments.push({
+                code: type.code,
+                title: type.title,
+              });
+          }
         }
       }
     }
