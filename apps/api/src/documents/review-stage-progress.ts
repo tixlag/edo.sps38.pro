@@ -36,6 +36,31 @@ const empty = (): Counts => ({
   attention: 0,
 });
 
+type Profile = {
+  positionCode: string;
+  citizenship: string;
+  sex: string | null;
+};
+export function classifyStageType(
+  type: Type,
+  stage: number | null,
+  profile: Profile,
+): "required" | "additional" | null {
+  if (excludedForSex(type.code, profile.sex)) return null;
+  const rule = (type.stageRules?.length ? type.stageRules : [type]).find(
+    (item) => (item.stage ?? null) === stage,
+  );
+  if (!rule) return null;
+  return stage !== null &&
+    (rule.requiredForAll ||
+      (profile.citizenship.toLowerCase() === "ru"
+        ? rule.allRu
+        : rule.allForeign) ||
+      rule.positions.some((p) => p.code1c === profile.positionCode))
+    ? "required"
+    : "additional";
+}
+
 export function reviewStageProgress(
   types: Type[],
   documents: { documentTypeId: string | null; status: string }[],
@@ -52,14 +77,8 @@ export function reviewStageProgress(
         entry = { stage, required: empty(), additional: empty() };
         stages.set(stage, entry);
       }
-      const required =
-        stage !== null &&
-        (rule.requiredForAll ||
-          (profile.citizenship.toLowerCase() === "ru"
-            ? rule.allRu
-            : rule.allForeign) ||
-          rule.positions.some((p) => p.code1c === profile.positionCode));
-      const count = required ? entry.required : entry.additional;
+      const category = classifyStageType(type, stage, profile);
+      const count = category === "required" ? entry.required : entry.additional;
       const status = states.get(type.id);
       if (!status || status === "DRAFT") count.missing++;
       else if (status === "APPROVED" || status === "SIGNED") count.approved++;

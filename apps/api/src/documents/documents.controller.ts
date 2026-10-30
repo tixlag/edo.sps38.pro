@@ -41,6 +41,7 @@ import {
   ApiErrorDto,
   CandidateDto,
   CandidateDetailsDto,
+  CandidateDetailsQueryDto,
   CandidateListDto,
   CandidateQueryDto,
   DocumentListDto,
@@ -282,8 +283,9 @@ export class DocumentsController {
   candidateDetails(
     @Param("candidateId") id: string,
     @CurrentPrincipal() principal: AuthPrincipal,
+    @Query() query: CandidateDetailsQueryDto,
   ): Promise<CandidateDetailsDto> {
-    return this.reads.candidateDetails(id, principal);
+    return this.reads.candidateDetails(id, principal, query.stage);
   }
 
   @Get("candidates/:candidateId/documents")

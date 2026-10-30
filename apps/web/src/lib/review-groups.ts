@@ -116,6 +116,7 @@ export interface ReviewQueueFilters {
    * filter, ignored by {@link hasActiveReviewFilters}).
    */
   candidate?: string;
+  candidateStage?: string;
 }
 
 function textParam(value: unknown): string | undefined {
@@ -171,6 +172,11 @@ export function parseReviewSearchParams(
     projectCode: textParam(raw.projectCode),
     cursor: textParam(raw.cursor),
     candidate: textParam(raw.candidate),
+    candidateStage: /^(none|[1-9]\d{0,14})$/.test(
+      String(raw.candidateStage ?? ""),
+    )
+      ? String(raw.candidateStage)
+      : undefined,
   };
 }
 

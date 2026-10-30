@@ -3,7 +3,10 @@ import {
   applicable,
   erpCatalogSchema,
 } from "../src/documents/document-contract";
-import { reviewStageProgress } from "../src/documents/review-stage-progress";
+import {
+  reviewStageProgress,
+  classifyStageType,
+} from "../src/documents/review-stage-progress";
 
 const item = {
   УИНДокумента: "6ffb1fd5-8341-11eb-ba8b-00259002db81",
@@ -15,6 +18,37 @@ const item = {
   optionalFields: [],
 };
 describe("review stage progress", () => {
+  it("selects and classifies a type using the rule for the chosen stage", () => {
+    const type = {
+      id: "a",
+      code: "A",
+      stage: 1,
+      requiredForAll: true,
+      allRu: false,
+      allForeign: false,
+      positions: [],
+      stageRules: [
+        {
+          stage: 1,
+          requiredForAll: true,
+          allRu: false,
+          allForeign: false,
+          positions: [],
+        },
+        {
+          stage: 2,
+          requiredForAll: false,
+          allRu: false,
+          allForeign: false,
+          positions: [],
+        },
+      ],
+    };
+    const profile = { positionCode: "001", citizenship: "ru", sex: null };
+    expect(classifyStageType(type, 1, profile)).toBe("required");
+    expect(classifyStageType(type, 2, profile)).toBe("additional");
+    expect(classifyStageType(type, 3, profile)).toBeNull();
+  });
   it("makes universally required documents available to candidates", () => {
     expect(
       applicable(
