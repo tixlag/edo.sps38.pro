@@ -23,6 +23,7 @@ const CRUMBS: Record<string, string> = {
   "/my-reviews": "Мои проверки",
   "/onboarding": "Оформление",
   "/signing": "Подписание",
+  "/my-documents": "Мои документы",
   "/participants": "Участники",
   "/settings": "Настройки",
   "/annotation-settings": "Разметка документов",
@@ -48,7 +49,7 @@ function activeFor(pathname: string): string {
 /** Layout shell: real URL routing via TanStack Router (back/forward + deep links work). */
 export function AppShell() {
   const profile = useGetMe();
-  useDocumentEvents(!!profile.data);
+  useDocumentEvents(canAccessPath(profile.data?.permissions, "/"));
   const [collapsed, setCollapsed] = React.useState(true);
   const navigate = useNavigate();
   const location = useLocation();

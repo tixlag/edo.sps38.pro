@@ -61,6 +61,12 @@ enum AuditAction {
   ANNOTATION_ACCEPTED
   ANNOTATION_CHANGES_REQUESTED
   ANNOTATION_REASSIGNED
+  CONTRACT_CREATED
+  CONTRACT_FILE_REPLACED
+  CONTRACT_SENT
+  CONTRACT_CONFIRMED
+  CONTRACT_DECLINED
+  CONTRACT_PREPARATION_FAILED
 }
 
 model Employee {
@@ -397,10 +403,109 @@ model Candidate {
   updatedAt  DateTime   @updatedAt @db.DateTime(3)
   documents  Document[]
   jobs       OcrJob[]
+  signingContracts SigningContract[]
 
   @@index([locationId])
   @@index([code1c])
   @@map("candidates")
+}
+
+enum SigningContractState {
+  PREPARING
+  DRAFT
+  WAITING_EMPLOYEE
+  COMPLETED
+  DECLINED
+  FAILED
+}
+
+model SigningContract {
+  id String @id @default(cuid()) @db.VarChar(64)
+  candidateId String @db.VarChar(64)
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+  requestKey String @unique @db.VarChar(128)
+  documentType String @db.VarChar(128)
+  documentTypeName String @db.VarChar(512)
+  fullName String? @db.VarChar(512)
+  birthDate DateTime? @db.Date
+  recipientCode1c String? @db.VarChar(64)
+  createdBy String @db.VarChar(64)
+  sentBy String? @db.VarChar(64)
+  status SigningContractState @default(PREPARING)
+  revision Int @default(0)
+  currentVersion Int @default(0)
+  errorMessage String? @db.VarChar(512)
+  journalKey String? @db.VarChar(1024)
+  declineRequestKey String? @unique @db.VarChar(128)
+  sentAt DateTime? @db.DateTime(3)
+  completedAt DateTime? @db.DateTime(3)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  versions SigningContractVersion[]
+  confirmations SigningContractConfirmation[]
+  notifications SigningContractNotification[]
+  @@index([candidateId, createdAt])
+  @@index([recipientCode1c, status])
+  @@index([sentBy, status])
+  @@map("signing_contracts")
+}
+
+model SigningContractVersion {
+  id String @id @default(cuid()) @db.VarChar(64)
+  contractId String @db.VarChar(64)
+  contract SigningContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  version Int
+  requestKey String @unique @db.VarChar(128)
+  storageKey String @unique @db.VarChar(512)
+  originalKey String? @db.VarChar(1024)
+  originalFilename String? @db.VarChar(255)
+  filename String @db.VarChar(255)
+  sizeBytes Int
+  sha256 String @db.VarChar(64)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  @@unique([contractId, version])
+  @@map("signing_contract_versions")
+}
+
+model SigningContractConfirmation {
+  id String @id @default(cuid()) @db.VarChar(64)
+  contractId String @db.VarChar(64)
+  contract SigningContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  version Int
+  role String @db.VarChar(16)
+  actorId String @db.VarChar(64)
+  actorLabel String @db.VarChar(512)
+  mode String @default("demo") @db.VarChar(16)
+  bank String? @db.VarChar(16)
+  sha256 String @db.VarChar(64)
+  requestKey String @unique @db.VarChar(128)
+  confirmedAt DateTime @db.DateTime(3)
+  @@unique([contractId, role])
+  @@map("signing_contract_confirmations")
+}
+
+model SigningContractNotification {
+  id String @id @default(cuid()) @db.VarChar(64)
+  contractId String @db.VarChar(64)
+  contract SigningContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  recipientId String @db.VarChar(64)
+  kind String @db.VarChar(32)
+  message String @db.VarChar(512)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  readAt DateTime? @db.DateTime(3)
+  @@unique([contractId, kind])
+  @@index([recipientId, createdAt])
+  @@map("signing_contract_notifications")
+}
+
+/// Failed S3 writes and abandoned uploads are retried independently of domain transactions.
+model SigningContractObject {
+  key String @id @db.VarChar(512)
+  retained Boolean @default(false)
+  cleanupClaimed Boolean @default(false)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  @@index([retained, createdAt])
+  @@map("signing_contract_objects")
 }
 
 model DocumentVersionFile {

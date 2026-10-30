@@ -20,6 +20,12 @@ export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const AuditAction = {
+  CONTRACT_CREATED: "CONTRACT_CREATED",
+  CONTRACT_FILE_REPLACED: "CONTRACT_FILE_REPLACED",
+  CONTRACT_SENT: "CONTRACT_SENT",
+  CONTRACT_CONFIRMED: "CONTRACT_CONFIRMED",
+  CONTRACT_DECLINED: "CONTRACT_DECLINED",
+  CONTRACT_PREPARATION_FAILED: "CONTRACT_PREPARATION_FAILED",
   EMPLOYEE_CREATED: "EMPLOYEE_CREATED",
   DOCUMENT_UPLOADED: "DOCUMENT_UPLOADED",
   DOCUMENT_UPLOAD_STARTED: "DOCUMENT_UPLOAD_STARTED",
@@ -1608,6 +1614,191 @@ export interface ResolveAnnotationCatalogSuggestionDto {
   status: ResolveAnnotationCatalogSuggestionDtoStatus;
 }
 
+export interface ContractErrorDto {
+  statusCode: number;
+  message: string;
+  /** @nullable */
+  correlationId: string | null;
+}
+
+export interface ContractTypeDto {
+  code: string;
+  name: string;
+  source_object: string;
+}
+
+export interface ContractTypesDto {
+  items: ContractTypeDto[];
+}
+
+export interface SigningCandidateDto {
+  id: string;
+  /** @nullable */
+  fullName: string | null;
+  /** @nullable */
+  birthDate: string | null;
+  /** @nullable */
+  code1c: string | null;
+}
+
+export interface ContractNotificationDto {
+  id: string;
+  contractId: string;
+  message: string;
+  createdAt: string;
+  /** @nullable */
+  readAt: string | null;
+}
+
+export interface ContractNotificationsDto {
+  items: ContractNotificationDto[];
+}
+
+export type ContractState = (typeof ContractState)[keyof typeof ContractState];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ContractState = {
+  PREPARING: "PREPARING",
+  DRAFT: "DRAFT",
+  WAITING_EMPLOYEE: "WAITING_EMPLOYEE",
+  COMPLETED: "COMPLETED",
+  DECLINED: "DECLINED",
+  FAILED: "FAILED",
+} as const;
+
+export type ConfirmationRole =
+  (typeof ConfirmationRole)[keyof typeof ConfirmationRole];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ConfirmationRole = {
+  employer: "employer",
+  employee: "employee",
+} as const;
+
+export type ContractBank = (typeof ContractBank)[keyof typeof ContractBank];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ContractBank = {
+  sber: "sber",
+  t: "t",
+  alfa: "alfa",
+} as const;
+
+export type ContractConfirmationDtoMode =
+  (typeof ContractConfirmationDtoMode)[keyof typeof ContractConfirmationDtoMode];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ContractConfirmationDtoMode = {
+  demo: "demo",
+} as const;
+
+/**
+ * @nullable
+ */
+export type ContractConfirmationDtoBank = ContractBank | null;
+
+export interface ContractConfirmationDto {
+  role: ConfirmationRole;
+  actorId: string;
+  actorLabel: string;
+  confirmedAt: string;
+  mode: ContractConfirmationDtoMode;
+  /** @nullable */
+  bank: ContractConfirmationDtoBank;
+  sha256: string;
+}
+
+export interface ContractDto {
+  id: string;
+  candidateId: string;
+  /** @nullable */
+  fullName: string | null;
+  /** @nullable */
+  birthDate: string | null;
+  /** @nullable */
+  code1c: string | null;
+  documentType: string;
+  documentTypeName: string;
+  status: ContractState;
+  revision: number;
+  version: number;
+  hasFile: boolean;
+  /** @nullable */
+  filename: string | null;
+  createdBy: string;
+  /** @nullable */
+  sentBy: string | null;
+  createdAt: string;
+  /** @nullable */
+  sentAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  errorMessage: string | null;
+  confirmations: ContractConfirmationDto[];
+}
+
+export interface ContractsDto {
+  items: ContractDto[];
+}
+
+export interface CreateContractDto {
+  candidateId: string;
+  documentType: string;
+  requestId: string;
+  /** Create a draft for manual PDF/DOCX upload without requesting ZUP generation */
+  manual?: boolean;
+}
+
+export interface ContractDetailDto {
+  id: string;
+  candidateId: string;
+  /** @nullable */
+  fullName: string | null;
+  /** @nullable */
+  birthDate: string | null;
+  /** @nullable */
+  code1c: string | null;
+  documentType: string;
+  documentTypeName: string;
+  status: ContractState;
+  revision: number;
+  version: number;
+  hasFile: boolean;
+  /** @nullable */
+  filename: string | null;
+  createdBy: string;
+  /** @nullable */
+  sentBy: string | null;
+  createdAt: string;
+  /** @nullable */
+  sentAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  errorMessage: string | null;
+  confirmations: ContractConfirmationDto[];
+  /** @nullable */
+  previewUrl: string | null;
+  /** @nullable */
+  downloadUrl: string | null;
+  /** @nullable */
+  originalDownloadUrl: string | null;
+  /** @nullable */
+  journalDownloadUrl: string | null;
+}
+
+export interface ContractActionDto {
+  revision: number;
+  requestId: string;
+}
+
+export interface ConfirmContractDto {
+  revision: number;
+  requestId: string;
+  bank: ContractBank;
+}
+
 export type ListAuditLogsParams = {
   /**
    * Filter by author uuid; the literal "me" means the caller
@@ -1899,6 +2090,17 @@ export type GetAnnotationCatalogDefaultsParams = {
 
 export type DeleteAnnotationCatalogParams = {
   revision: number;
+};
+
+export type ListSigningContractsParams = {
+  candidateId?: string;
+};
+
+export type UploadSigningContractFileBody = {
+  file: Blob;
+  /** @minimum 0 */
+  revision: number;
+  requestId: string;
 };
 
 /**
@@ -8193,6 +8395,1056 @@ export const useResolveAnnotationCatalogSuggestion = <
 > => {
   const mutationOptions =
     getResolveAnnotationCatalogSuggestionMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Document types from ZUP
+ */
+export const listSigningDocumentTypes = (signal?: AbortSignal) => {
+  return customInstance<ContractTypesDto>({
+    url: `/api/contracts/types`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListSigningDocumentTypesQueryKey = () => {
+  return [`/api/contracts/types`] as const;
+};
+
+export const getListSigningDocumentTypesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSigningDocumentTypes>>,
+  TError = ContractErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSigningDocumentTypes>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListSigningDocumentTypesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listSigningDocumentTypes>>
+  > = ({ signal }) => listSigningDocumentTypes(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSigningDocumentTypes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSigningDocumentTypesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSigningDocumentTypes>>
+>;
+export type ListSigningDocumentTypesQueryError = ContractErrorDto;
+
+/**
+ * @summary Document types from ZUP
+ */
+
+export function useListSigningDocumentTypes<
+  TData = Awaited<ReturnType<typeof listSigningDocumentTypes>>,
+  TError = ContractErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSigningDocumentTypes>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSigningDocumentTypesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Recipient context for a contract draft
+ */
+export const getSigningCandidate = (
+  candidateId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<SigningCandidateDto>({
+    url: `/api/contracts/candidates/${candidateId}`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetSigningCandidateQueryKey = (candidateId: string) => {
+  return [`/api/contracts/candidates/${candidateId}`] as const;
+};
+
+export const getGetSigningCandidateQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSigningCandidate>>,
+  TError = ContractErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSigningCandidate>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetSigningCandidateQueryKey(candidateId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSigningCandidate>>
+  > = ({ signal }) => getSigningCandidate(candidateId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSigningCandidate>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSigningCandidateQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSigningCandidate>>
+>;
+export type GetSigningCandidateQueryError = ContractErrorDto;
+
+/**
+ * @summary Recipient context for a contract draft
+ */
+
+export function useGetSigningCandidate<
+  TData = Awaited<ReturnType<typeof getSigningCandidate>>,
+  TError = ContractErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSigningCandidate>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSigningCandidateQueryOptions(candidateId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Own contract notifications
+ */
+export const listSigningNotifications = (signal?: AbortSignal) => {
+  return customInstance<ContractNotificationsDto>({
+    url: `/api/contracts/notifications`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListSigningNotificationsQueryKey = () => {
+  return [`/api/contracts/notifications`] as const;
+};
+
+export const getListSigningNotificationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSigningNotifications>>,
+  TError = ContractErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSigningNotifications>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListSigningNotificationsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listSigningNotifications>>
+  > = ({ signal }) => listSigningNotifications(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSigningNotifications>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSigningNotificationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSigningNotifications>>
+>;
+export type ListSigningNotificationsQueryError = ContractErrorDto;
+
+/**
+ * @summary Own contract notifications
+ */
+
+export function useListSigningNotifications<
+  TData = Awaited<ReturnType<typeof listSigningNotifications>>,
+  TError = ContractErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSigningNotifications>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSigningNotificationsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Mark own notification read
+ */
+export const readSigningNotification = (id: string, signal?: AbortSignal) => {
+  return customInstance<ContractNotificationDto>({
+    url: `/api/contracts/notifications/${id}/read`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getReadSigningNotificationMutationOptions = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof readSigningNotification>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof readSigningNotification>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["readSigningNotification"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof readSigningNotification>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return readSigningNotification(id);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReadSigningNotificationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof readSigningNotification>>
+>;
+
+export type ReadSigningNotificationMutationError = ContractErrorDto;
+
+/**
+ * @summary Mark own notification read
+ */
+export const useReadSigningNotification = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof readSigningNotification>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof readSigningNotification>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationOptions = getReadSigningNotificationMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Contracts within recipient access scope
+ */
+export const listSigningContracts = (
+  params?: ListSigningContractsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ContractsDto>({
+    url: `/api/contracts`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListSigningContractsQueryKey = (
+  params?: ListSigningContractsParams,
+) => {
+  return [`/api/contracts`, ...(params ? [params] : [])] as const;
+};
+
+export const getListSigningContractsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSigningContracts>>,
+  TError = ContractErrorDto,
+>(
+  params?: ListSigningContractsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSigningContracts>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListSigningContractsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listSigningContracts>>
+  > = ({ signal }) => listSigningContracts(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSigningContracts>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSigningContractsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSigningContracts>>
+>;
+export type ListSigningContractsQueryError = ContractErrorDto;
+
+/**
+ * @summary Contracts within recipient access scope
+ */
+
+export function useListSigningContracts<
+  TData = Awaited<ReturnType<typeof listSigningContracts>>,
+  TError = ContractErrorDto,
+>(
+  params?: ListSigningContractsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSigningContracts>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSigningContractsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Generate PDF from ZUP or create a manual draft
+ */
+export const createSigningContract = (
+  createContractDto: CreateContractDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ContractDetailDto>({
+    url: `/api/contracts`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: createContractDto,
+    signal,
+  });
+};
+
+export const getCreateSigningContractMutationOptions = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSigningContract>>,
+    TError,
+    { data: CreateContractDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createSigningContract>>,
+  TError,
+  { data: CreateContractDto },
+  TContext
+> => {
+  const mutationKey = ["createSigningContract"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createSigningContract>>,
+    { data: CreateContractDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createSigningContract(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateSigningContractMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createSigningContract>>
+>;
+export type CreateSigningContractMutationBody = CreateContractDto;
+export type CreateSigningContractMutationError = ContractErrorDto;
+
+/**
+ * @summary Generate PDF from ZUP or create a manual draft
+ */
+export const useCreateSigningContract = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSigningContract>>,
+    TError,
+    { data: CreateContractDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createSigningContract>>,
+  TError,
+  { data: CreateContractDto },
+  TContext
+> => {
+  const mutationOptions = getCreateSigningContractMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Contract details and private file URLs
+ */
+export const getSigningContract = (id: string, signal?: AbortSignal) => {
+  return customInstance<ContractDetailDto>({
+    url: `/api/contracts/${id}`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetSigningContractQueryKey = (id: string) => {
+  return [`/api/contracts/${id}`] as const;
+};
+
+export const getGetSigningContractQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSigningContract>>,
+  TError = ContractErrorDto,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSigningContract>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSigningContractQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSigningContract>>
+  > = ({ signal }) => getSigningContract(id, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSigningContract>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSigningContractQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSigningContract>>
+>;
+export type GetSigningContractQueryError = ContractErrorDto;
+
+/**
+ * @summary Contract details and private file URLs
+ */
+
+export function useGetSigningContract<
+  TData = Awaited<ReturnType<typeof getSigningContract>>,
+  TError = ContractErrorDto,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSigningContract>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSigningContractQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Replace an unsent contract with PDF or DOCX
+ */
+export const uploadSigningContractFile = (
+  id: string,
+  uploadSigningContractFileBody: UploadSigningContractFileBody,
+  signal?: AbortSignal,
+) => {
+  const formData = new FormData();
+  formData.append("file", uploadSigningContractFileBody.file);
+  formData.append(
+    "revision",
+    uploadSigningContractFileBody.revision.toString(),
+  );
+  formData.append("requestId", uploadSigningContractFileBody.requestId);
+
+  return customInstance<ContractDetailDto>({
+    url: `/api/contracts/${id}/file`,
+    method: "POST",
+    headers: { "Content-Type": "multipart/form-data" },
+    data: formData,
+    signal,
+  });
+};
+
+export const getUploadSigningContractFileMutationOptions = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadSigningContractFile>>,
+    TError,
+    { id: string; data: UploadSigningContractFileBody },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadSigningContractFile>>,
+  TError,
+  { id: string; data: UploadSigningContractFileBody },
+  TContext
+> => {
+  const mutationKey = ["uploadSigningContractFile"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadSigningContractFile>>,
+    { id: string; data: UploadSigningContractFileBody }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return uploadSigningContractFile(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadSigningContractFileMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadSigningContractFile>>
+>;
+export type UploadSigningContractFileMutationBody =
+  UploadSigningContractFileBody;
+export type UploadSigningContractFileMutationError = ContractErrorDto;
+
+/**
+ * @summary Replace an unsent contract with PDF or DOCX
+ */
+export const useUploadSigningContractFile = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadSigningContractFile>>,
+    TError,
+    { id: string; data: UploadSigningContractFileBody },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadSigningContractFile>>,
+  TError,
+  { id: string; data: UploadSigningContractFileBody },
+  TContext
+> => {
+  const mutationOptions = getUploadSigningContractFileMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Simulate employer UKЕP confirmation and send immutable PDF
+ */
+export const sendSigningContract = (
+  id: string,
+  contractActionDto: ContractActionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ContractDetailDto>({
+    url: `/api/contracts/${id}/send`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: contractActionDto,
+    signal,
+  });
+};
+
+export const getSendSigningContractMutationOptions = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof sendSigningContract>>,
+    TError,
+    { id: string; data: ContractActionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof sendSigningContract>>,
+  TError,
+  { id: string; data: ContractActionDto },
+  TContext
+> => {
+  const mutationKey = ["sendSigningContract"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof sendSigningContract>>,
+    { id: string; data: ContractActionDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return sendSigningContract(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SendSigningContractMutationResult = NonNullable<
+  Awaited<ReturnType<typeof sendSigningContract>>
+>;
+export type SendSigningContractMutationBody = ContractActionDto;
+export type SendSigningContractMutationError = ContractErrorDto;
+
+/**
+ * @summary Simulate employer UKЕP confirmation and send immutable PDF
+ */
+export const useSendSigningContract = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof sendSigningContract>>,
+    TError,
+    { id: string; data: ContractActionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof sendSigningContract>>,
+  TError,
+  { id: string; data: ContractActionDto },
+  TContext
+> => {
+  const mutationOptions = getSendSigningContractMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Own received contracts from verified LK session
+ */
+export const listMySigningContracts = (signal?: AbortSignal) => {
+  return customInstance<ContractsDto>({
+    url: `/api/my/contracts`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListMySigningContractsQueryKey = () => {
+  return [`/api/my/contracts`] as const;
+};
+
+export const getListMySigningContractsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listMySigningContracts>>,
+  TError = ContractErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listMySigningContracts>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListMySigningContractsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listMySigningContracts>>
+  > = ({ signal }) => listMySigningContracts(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listMySigningContracts>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListMySigningContractsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listMySigningContracts>>
+>;
+export type ListMySigningContractsQueryError = ContractErrorDto;
+
+/**
+ * @summary Own received contracts from verified LK session
+ */
+
+export function useListMySigningContracts<
+  TData = Awaited<ReturnType<typeof listMySigningContracts>>,
+  TError = ContractErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listMySigningContracts>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListMySigningContractsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Own contract and private files
+ */
+export const getMySigningContract = (id: string, signal?: AbortSignal) => {
+  return customInstance<ContractDetailDto>({
+    url: `/api/my/contracts/${id}`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetMySigningContractQueryKey = (id: string) => {
+  return [`/api/my/contracts/${id}`] as const;
+};
+
+export const getGetMySigningContractQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMySigningContract>>,
+  TError = ContractErrorDto,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMySigningContract>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMySigningContractQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMySigningContract>>
+  > = ({ signal }) => getMySigningContract(id, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMySigningContract>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMySigningContractQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMySigningContract>>
+>;
+export type GetMySigningContractQueryError = ContractErrorDto;
+
+/**
+ * @summary Own contract and private files
+ */
+
+export function useGetMySigningContract<
+  TData = Awaited<ReturnType<typeof getMySigningContract>>,
+  TError = ContractErrorDto,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMySigningContract>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMySigningContractQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Simulate employee bank signing and archive confirmations
+ */
+export const confirmMySigningContract = (
+  id: string,
+  confirmContractDto: ConfirmContractDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ContractDetailDto>({
+    url: `/api/my/contracts/${id}/confirm`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: confirmContractDto,
+    signal,
+  });
+};
+
+export const getConfirmMySigningContractMutationOptions = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmMySigningContract>>,
+    TError,
+    { id: string; data: ConfirmContractDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof confirmMySigningContract>>,
+  TError,
+  { id: string; data: ConfirmContractDto },
+  TContext
+> => {
+  const mutationKey = ["confirmMySigningContract"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof confirmMySigningContract>>,
+    { id: string; data: ConfirmContractDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return confirmMySigningContract(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ConfirmMySigningContractMutationResult = NonNullable<
+  Awaited<ReturnType<typeof confirmMySigningContract>>
+>;
+export type ConfirmMySigningContractMutationBody = ConfirmContractDto;
+export type ConfirmMySigningContractMutationError = ContractErrorDto;
+
+/**
+ * @summary Simulate employee bank signing and archive confirmations
+ */
+export const useConfirmMySigningContract = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmMySigningContract>>,
+    TError,
+    { id: string; data: ConfirmContractDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof confirmMySigningContract>>,
+  TError,
+  { id: string; data: ConfirmContractDto },
+  TContext
+> => {
+  const mutationOptions = getConfirmMySigningContractMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Decline an own pending contract
+ */
+export const declineMySigningContract = (
+  id: string,
+  contractActionDto: ContractActionDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ContractDetailDto>({
+    url: `/api/my/contracts/${id}/decline`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: contractActionDto,
+    signal,
+  });
+};
+
+export const getDeclineMySigningContractMutationOptions = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof declineMySigningContract>>,
+    TError,
+    { id: string; data: ContractActionDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof declineMySigningContract>>,
+  TError,
+  { id: string; data: ContractActionDto },
+  TContext
+> => {
+  const mutationKey = ["declineMySigningContract"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof declineMySigningContract>>,
+    { id: string; data: ContractActionDto }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return declineMySigningContract(id, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeclineMySigningContractMutationResult = NonNullable<
+  Awaited<ReturnType<typeof declineMySigningContract>>
+>;
+export type DeclineMySigningContractMutationBody = ContractActionDto;
+export type DeclineMySigningContractMutationError = ContractErrorDto;
+
+/**
+ * @summary Decline an own pending contract
+ */
+export const useDeclineMySigningContract = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof declineMySigningContract>>,
+    TError,
+    { id: string; data: ContractActionDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof declineMySigningContract>>,
+  TError,
+  { id: string; data: ContractActionDto },
+  TContext
+> => {
+  const mutationOptions = getDeclineMySigningContractMutationOptions(options);
 
   return useMutation(mutationOptions);
 };

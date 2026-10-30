@@ -9,6 +9,8 @@ export function canAccessPath(
       Object.prototype.hasOwnProperty.call(permissions, String(rule)),
     );
   const segment = "/" + (pathname.split("/")[1] ?? "");
+  // The app shell already requires a verified session. Own documents need no administrative rule.
+  if (segment === "/my-documents") return !!permissions;
   const required: Record<string, number[]> = {
     "/": [20000],
     "/review": [20002],

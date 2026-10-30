@@ -450,10 +450,12 @@ function CandidateRow({
   group,
   onOpen,
   onOpenStage,
+  onContract,
 }: {
   group: CandidateDetailsDto;
   onOpen: () => void;
   onOpenStage: (stage: number | null) => void;
+  onContract?: () => void;
   returnedHistory?: boolean;
 }) {
   const candidate = group.candidate;
@@ -590,7 +592,21 @@ function CandidateRow({
                   Этапы неизвестны
                 </span>
               )}
-              <span className="ml-2 flex w-[72px] shrink-0 flex-col items-center gap-0.5 border-l border-[var(--border)] pl-2 text-xs min-[1400px]:w-[76px]">
+              <button
+                type="button"
+                disabled={!onContract}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onContract?.();
+                }}
+                aria-label="Подготовить договор"
+                title={
+                  onContract
+                    ? "Подготовить договор"
+                    : "Для подготовки договора необходимо право 20003"
+                }
+                className="ml-2 flex w-[72px] shrink-0 flex-col items-center gap-0.5 rounded border-l border-[var(--border)] pl-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] disabled:opacity-60 min-[1400px]:w-[76px]"
+              >
                 <span className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]">
                   <FileSignature size={22} />
                 </span>
@@ -598,7 +614,7 @@ function CandidateRow({
                   Договор
                 </strong>
                 <span>—</span>
-              </span>
+              </button>
             </div>
           </div>
           <ChevronRight
@@ -1153,6 +1169,23 @@ export function ReviewPage({
                   key={group.candidate.id}
                   group={group}
                   returnedHistory={filters.status === "RETURNED"}
+                  onContract={
+                    reviewGroup === "IG" &&
+                    (Object.prototype.hasOwnProperty.call(
+                      profile.data?.permissions ?? {},
+                      "20003",
+                    ) ||
+                      Object.prototype.hasOwnProperty.call(
+                        profile.data?.permissions ?? {},
+                        "20009",
+                      ))
+                      ? () =>
+                          void navigate({
+                            to: "/signing",
+                            search: { candidateId: group.candidate.id },
+                          })
+                      : undefined
+                  }
                   onOpen={() => openCandidate(group.candidate.id)}
                   onOpenStage={(stage) =>
                     openCandidate(group.candidate.id, stage)
