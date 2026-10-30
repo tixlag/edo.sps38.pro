@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
   facets: vi.fn(),
   documentInfo: null as unknown,
   documentVersion: null as unknown,
+  queueItems: [] as unknown[],
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -27,7 +28,7 @@ vi.mock("@edo/api-client", () => {
     useGetDocumentInfo: () => ({ data: state.documentInfo }),
     useListCandidateReviewQueue: (...args: unknown[]) => {
       state.queue(...args);
-      return list;
+      return { ...list, data: { items: state.queueItems } };
     },
     useListReviewCandidates: (...args: unknown[]) => {
       state.candidates(...args);
@@ -78,9 +79,46 @@ afterEach(async () => {
   state.permissions = { "20011": [] };
   state.documentInfo = null;
   state.documentVersion = null;
+  state.queueItems = [];
 });
 
 describe("RU and IG review pages", () => {
+  it("shows stage progress and highlights documents awaiting review", async () => {
+    state.queueItems = [
+      {
+        candidate: {
+          id: "1",
+          fullName: "Иван Иванов",
+          stageProgress: [
+            {
+              stage: 1,
+              required: {
+                approved: 1,
+                pending: 1,
+                processing: 0,
+                missing: 0,
+                attention: 0,
+              },
+              additional: {
+                approved: 0,
+                pending: 0,
+                processing: 0,
+                missing: 1,
+                attention: 0,
+              },
+            },
+          ],
+        },
+        documents: [],
+      },
+    ];
+    const view = await render("IG");
+    expect(view.textContent).toContain("Этап 1");
+    expect(view.textContent).toContain("Договор");
+    expect(
+      view.querySelector('[aria-label*="ожидают проверки: 1"]'),
+    ).not.toBeNull();
+  });
   it("keeps the document review page vertically scrollable on desktop", async () => {
     state.documentInfo = {
       title: "Паспорт",
@@ -99,7 +137,9 @@ describe("RU and IG review pages", () => {
     };
     const view = await renderDocument();
     expect(view.firstElementChild?.className).toContain("overflow-y-auto");
-    expect(view.firstElementChild?.className).not.toContain("lg:overflow-hidden");
+    expect(view.firstElementChild?.className).not.toContain(
+      "lg:overflow-hidden",
+    );
   });
 
   it("uses the IG group for every queue-specific data source", async () => {
@@ -148,8 +188,6 @@ async function renderDocument() {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  await act(async () =>
-    root!.render(<ReviewDocumentPage reviewGroup="IG" />),
-  );
+  await act(async () => root!.render(<ReviewDocumentPage reviewGroup="IG" />));
   return container;
 }

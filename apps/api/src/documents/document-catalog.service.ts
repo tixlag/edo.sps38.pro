@@ -168,6 +168,8 @@ export class DocumentCatalogService {
                 erpUid: item.УИНДокумента,
                 allRu: item.ВсемРФ,
                 allForeign: item.ВсемИГ,
+                requiredForAll: item.ОбязательныйДляВсех,
+                stage: item.Этап,
                 catalogSyncedAt: now,
               },
               update: {
@@ -175,6 +177,8 @@ export class DocumentCatalogService {
                 erpUid: item.УИНДокумента,
                 allRu: item.ВсемРФ,
                 allForeign: item.ВсемИГ,
+                requiredForAll: item.ОбязательныйДляВсех,
+                stage: item.Этап,
                 catalogSyncedAt: now,
               },
             });

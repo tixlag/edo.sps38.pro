@@ -272,6 +272,19 @@ export class DocumentVersionDto extends DocumentReviewMetadataDto {
   @ApiProperty({ type: () => DocumentDeliveryDto, nullable: true })
   delivery!: DocumentDeliveryDto | null;
 }
+export class ReviewStageCountsDto {
+  @ApiProperty() approved!: number;
+  @ApiProperty() pending!: number;
+  @ApiProperty() processing!: number;
+  @ApiProperty() missing!: number;
+  @ApiProperty() attention!: number;
+}
+export class ReviewStageProgressDto {
+  @ApiProperty({ type: Number, nullable: true }) stage!: number | null;
+  @ApiProperty({ type: ReviewStageCountsDto }) required!: ReviewStageCountsDto;
+  @ApiProperty({ type: ReviewStageCountsDto })
+  additional!: ReviewStageCountsDto;
+}
 export class CandidateProfileDto {
   @ApiProperty({ type: String, nullable: true }) sex!: string | null;
   @ApiProperty() sexKnown!: boolean;
@@ -318,6 +331,8 @@ export class CandidateProfileDto {
       "Applicable catalog document types for position, citizenship and known sex; null when positionCode is unknown",
   })
   requiredDocuments!: number | null;
+  @ApiPropertyOptional({ type: [ReviewStageProgressDto], nullable: true })
+  stageProgress?: ReviewStageProgressDto[] | null;
 }
 /** Returned versions retained after a newer document upload. */
 export class ReturnedDocumentVersionDto extends DocumentReviewMetadataDto {

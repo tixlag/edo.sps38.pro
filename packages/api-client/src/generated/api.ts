@@ -506,6 +506,21 @@ export interface ReturnedDocumentVersionDto {
   supersededByVersion: number | null;
 }
 
+export interface ReviewStageCountsDto {
+  approved: number;
+  pending: number;
+  processing: number;
+  missing: number;
+  attention: number;
+}
+
+export interface ReviewStageProgressDto {
+  /** @nullable */
+  stage: number | null;
+  required: ReviewStageCountsDto;
+  additional: ReviewStageCountsDto;
+}
+
 export interface CandidateProfileDto {
   /** @nullable */
   sex: string | null;
@@ -560,6 +575,8 @@ export interface CandidateProfileDto {
    * @nullable
    */
   requiredDocuments: number | null;
+  /** @nullable */
+  stageProgress?: ReviewStageProgressDto[] | null;
 }
 
 /**

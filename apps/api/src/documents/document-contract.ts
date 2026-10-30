@@ -337,6 +337,14 @@ export const erpCatalogSchema = z
         КодыДолжностей: z.array(code).max(10000),
         ВсемРФ: z.boolean(),
         ВсемИГ: z.boolean(),
+        ОбязательныйДляВсех: z.boolean().default(false),
+        Этап: z
+          .number()
+          .int()
+          .positive()
+          .nullable()
+          .optional()
+          .transform((v) => v ?? null),
         requiredFields: z
           .array(z.enum(Object.keys(FIELD_LABELS) as [string, ...string[]]))
           .max(30),
@@ -367,7 +375,8 @@ export const erpCatalogSchema = z
         JSON.stringify(prior.requiredFields) !==
           JSON.stringify(item.requiredFields) ||
         JSON.stringify(prior.optionalFields) !==
-          JSON.stringify(item.optionalFields)
+          JSON.stringify(item.optionalFields) ||
+        prior.Этап !== item.Этап
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -377,6 +386,7 @@ export const erpCatalogSchema = z
       }
       prior.ВсемРФ ||= item.ВсемРФ;
       prior.ВсемИГ ||= item.ВсемИГ;
+      prior.ОбязательныйДляВсех ||= item.ОбязательныйДляВсех;
       prior.КодыДолжностей = [
         ...new Set([...prior.КодыДолжностей, ...item.КодыДолжностей]),
       ];
@@ -402,6 +412,7 @@ export function applicable(
     code?: string;
     allRu: boolean;
     allForeign: boolean;
+    requiredForAll?: boolean;
     positions: { code1c: string }[];
   },
   position: string,
@@ -410,6 +421,7 @@ export function applicable(
 ): boolean {
   if (excludedForSex(type.code, sex)) return false;
   return (
+    type.requiredForAll === true ||
     (citizenship.toLowerCase() === "ru" ? type.allRu : type.allForeign) ||
     type.positions.some((p) => p.code1c === position)
   );

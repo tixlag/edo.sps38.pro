@@ -1,0 +1,1 @@
+ALTER TABLE `document_types` ADD COLUMN `requiredForAll` BOOLEAN NOT NULL DEFAULT false, ADD COLUMN `stage` INTEGER NULL;

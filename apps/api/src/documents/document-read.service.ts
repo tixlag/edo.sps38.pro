@@ -24,6 +24,7 @@ import { hasAccessRule } from "../auth/access-rules";
 import { EdoAccessRule } from "../auth/edo-access-rule";
 import { StorageService } from "../storage/storage.service";
 import { DocumentAccessService } from "./document-access.service";
+import { reviewStageProgress } from "./review-stage-progress";
 import {
   applicable,
   excludedForSex,
@@ -1143,6 +1144,18 @@ export class DocumentReadService {
     for (const profile of profiles) {
       const positionCode = profile.positionCode;
       const citizenship = (profile.citizenship ?? "ru").toLowerCase();
+      profile.stageProgress =
+        positionCode && catalog.some((type) => type.catalogSyncedAt !== null)
+          ? reviewStageProgress(
+              catalog.filter((type) => type.catalogSyncedAt !== null),
+              grouped.filter((row) => row.candidateId === profile.id),
+              {
+                positionCode,
+                citizenship,
+                sex: profile.sexKnown ? profile.sex : null,
+              },
+            )
+          : null;
       profile.approvedDocuments = approved.get(profile.id) ?? 0;
       profile.requiredDocuments = positionCode
         ? catalog.filter(

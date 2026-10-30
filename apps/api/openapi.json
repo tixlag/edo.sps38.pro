@@ -10703,6 +10703,53 @@
           "supersededByVersion"
         ]
       },
+      "ReviewStageCountsDto": {
+        "type": "object",
+        "properties": {
+          "approved": {
+            "type": "number"
+          },
+          "pending": {
+            "type": "number"
+          },
+          "processing": {
+            "type": "number"
+          },
+          "missing": {
+            "type": "number"
+          },
+          "attention": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "approved",
+          "pending",
+          "processing",
+          "missing",
+          "attention"
+        ]
+      },
+      "ReviewStageProgressDto": {
+        "type": "object",
+        "properties": {
+          "stage": {
+            "type": "number",
+            "nullable": true
+          },
+          "required": {
+            "$ref": "#/components/schemas/ReviewStageCountsDto"
+          },
+          "additional": {
+            "$ref": "#/components/schemas/ReviewStageCountsDto"
+          }
+        },
+        "required": [
+          "stage",
+          "required",
+          "additional"
+        ]
+      },
       "CandidateProfileDto": {
         "type": "object",
         "properties": {
@@ -10817,6 +10864,13 @@
             "type": "number",
             "nullable": true,
             "description": "Applicable catalog document types for position, citizenship and known sex; null when positionCode is unknown"
+          },
+          "stageProgress": {
+            "nullable": true,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewStageProgressDto"
+            }
           }
         },
         "required": [

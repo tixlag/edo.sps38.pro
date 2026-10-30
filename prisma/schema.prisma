@@ -97,6 +97,8 @@ model DocumentType {
   erpUid String? @unique @db.VarChar(36)
   allRu Boolean @default(false)
   allForeign Boolean @default(false)
+  requiredForAll Boolean @default(false)
+  stage Int?
   catalogSyncedAt DateTime? @db.DateTime(3)
   definitions DocumentTypeField[]
   positions DocumentTypePosition[]
