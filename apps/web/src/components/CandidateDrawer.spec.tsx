@@ -83,6 +83,43 @@ describe("stage candidate drawer", () => {
       view.textContent!.indexOf("Дополнительные"),
     );
   });
+  it("keeps the complete object and profile values visible in the header", async () => {
+    const objectName = "Логистический складской комплекс Восток-Ойл";
+    const objectCode = "38/СУ112/ВОН/СПС/0701/ОР";
+    mock.data = {
+      candidate: {
+        id: "c1",
+        fullName: "Кандидат",
+        birthDate: "2000-03-11",
+        citizenship: "ru",
+        positionName: "Электромонтажник",
+        projectName: objectName,
+        projectCode: objectCode,
+        managerName: "Менеджер",
+        mentorName: null,
+        approvedDocuments: 1,
+        requiredDocuments: 3,
+      },
+      documents: [],
+      documentGroups: {
+        required: { documents: [], missingDocuments: [] },
+        additional: { documents: [], missingDocuments: [] },
+      },
+    };
+    const view = await render(false, "");
+    const fields = [...view.querySelectorAll("dt")];
+    const object = fields.find((field) => field.textContent === "Объект");
+    expect(object?.nextElementSibling?.textContent).toBe(
+      `${objectName} (${objectCode})`,
+    );
+    expect(
+      fields.find((field) => field.textContent === "Наставник")
+        ?.nextElementSibling?.textContent,
+    ).toBe("—");
+    expect(
+      view.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow"),
+    ).toBe("33");
+  });
   it("groups all documents when opening the candidate card", async () => {
     mock.data = {
       candidate: {
