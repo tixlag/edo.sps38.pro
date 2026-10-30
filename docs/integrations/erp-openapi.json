@@ -1,0 +1,893 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ERP 1С: текущий обмен документами с ЭДО",
+    "version": "1.0.0",
+    "description": "Описание исходных HTTP-ответов и запросов, используемых текущим checkout ЭДО. Сверено с локальным checkout 1С feature/1C-452367-edo-candidate-integration (f838b844); наличие и совпадение развёрнутой версии не подтверждено. Фактический адрес Candidate задаётся ERP_CANDIDATE_URL, адрес остальных методов — ERP_DOCUMENTS_BASE_URL. Каталог может содержать данные, которые ЭДО отклоняет при дополнительной проверке."
+  },
+  "servers": [
+    {
+      "url": "/ERP/hs/api",
+      "description": "Типовой путь; фактический URL задаётся настройками ЭДО."
+    }
+  ],
+  "security": [
+    {
+      "basicAuth": [],
+      "token": []
+    }
+  ],
+  "paths": {
+    "/Candidate": {
+      "get": {
+        "operationId": "getCandidate",
+        "summary": "Карточка кандидата или физлица",
+        "description": "ЭДО передаёт один из параметров uuid (UUID чата ЛК) или code1c (код физлица); code_1c не используется. Ветка по code1c в 1С выбирается при отсутствии uuid.",
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "UUID чата ЛК."
+          },
+          {
+            "name": "code1c",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Код физлица 1С."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Карточка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некорректный запрос",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Неверный или отсутствующий токен",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Недостаточно прав",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Запись не найдена",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт данных или неоднозначная идентификация",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка 1С",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents-by-positions": {
+      "get": {
+        "operationId": "getDocumentsByPositions",
+        "summary": "Каталог видов документов по должностям",
+        "responses": {
+          "200": {
+            "description": "Каталог",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogItem"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некорректный запрос",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Неверный или отсутствующий токен",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Недостаточно прав",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Запись не найдена",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт данных или неоднозначная идентификация",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка 1С",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/candidate-documents": {
+      "post": {
+        "operationId": "postCandidateDocument",
+        "summary": "Передача документа в формате base64 (v1)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "documentUid",
+                  "chatUid",
+                  "fileExtension",
+                  "fileBase64"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "documentUid": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "chatUid": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "fileExtension": {
+                    "type": "string",
+                    "maxLength": 16
+                  },
+                  "fileBase64": {
+                    "type": "string",
+                    "format": "byte"
+                  },
+                  "documentFields": {
+                    "$ref": "#/components/schemas/DocumentFields"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Документ создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некорректный запрос",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Неверный или отсутствующий токен",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Недостаточно прав",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Запись не найдена",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт данных или неоднозначная идентификация",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка 1С",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/candidate-documents-v2": {
+      "post": {
+        "operationId": "postCandidateDocumentV2",
+        "summary": "Передача документа через multipart (v2)",
+        "description": "Текущий клиент ЭДО передаёт chatUid. Повтор с тем же ключом и содержимым возвращает 200 и duplicate=true. Поддерживаемые типы файла: PDF, JPEG, PNG и WebP; предел файла 100 МиБ.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Ключ доставки.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-File-SHA256",
+            "in": "header",
+            "required": true,
+            "description": "SHA-256 файла в нижнем регистре.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          {
+            "name": "X-File-Size",
+            "in": "header",
+            "required": true,
+            "description": "Размер файла в байтах.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 104857600
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "metadata",
+                  "file"
+                ],
+                "properties": {
+                  "metadata": {
+                    "$ref": "#/components/schemas/DeliveryMetadata"
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              },
+              "encoding": {
+                "metadata": {
+                  "contentType": "application/json; charset=utf-8"
+                },
+                "file": {
+                  "contentType": "application/pdf, image/jpeg, image/png, image/webp"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Идемпотентный повтор",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Документ создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некорректный запрос",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Неверный или отсутствующий токен",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Недостаточно прав",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Запись не найдена",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт данных или неоднозначная идентификация",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка 1С",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Превышен размер запроса или файла",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Неподдерживаемый тип данных",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Не совпадает размер, хеш или структура файла",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Приёмник временно недоступен",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "basicAuth": {
+        "type": "http",
+        "scheme": "basic"
+      },
+      "token": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "token",
+        "description": "Серверный токен; для Candidate и документов настройки могут различаться."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "description": "Тело ошибки 1С; поля на уровне HTTP-инфраструктуры могут отличаться.",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "code": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "NamedCode": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
+        }
+      },
+      "CandidateResponse": {
+        "type": "object",
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/Candidate"
+          },
+          "position": {
+            "$ref": "#/components/schemas/NamedCode"
+          },
+          "project": {
+            "$ref": "#/components/schemas/NamedCode"
+          },
+          "manager": {
+            "$ref": "#/components/schemas/NamedCode"
+          },
+          "master": {
+            "$ref": "#/components/schemas/NamedCode"
+          },
+          "supervisor": {
+            "$ref": "#/components/schemas/NamedCode"
+          },
+          "mentor": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "position": {
+                "type": "string"
+              },
+              "code1C": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "Candidate": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "description": "UUID чата ЛК; для физлица может быть пустой строкой."
+          },
+          "erpUid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "birthDate": {
+            "type": "string",
+            "description": "Дата YYYY-MM-DD либо пустая строка."
+          },
+          "citizenship": {
+            "type": "string",
+            "description": "Код страны или пустая строка."
+          },
+          "sex": {
+            "type": "string"
+          },
+          "code1C": {
+            "type": "string"
+          },
+          "photoPath": {
+            "type": "string"
+          },
+          "isReemployment": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string",
+                "description": "Пустая строка при отсутствии физлица."
+              }
+            ]
+          }
+        }
+      },
+      "CatalogItem": {
+        "type": "object",
+        "properties": {
+          "УИНДокумента": {
+            "type": "string",
+            "description": "UUID вида документа; 1С может вернуть пустую строку при незаполненном виде."
+          },
+          "НаименованиеДокумента": {
+            "type": "string"
+          },
+          "КодыДолжностей": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "КодыПроектов": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "КодыСтран": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ВсемРФ": {
+            "type": "boolean"
+          },
+          "ВсемИГ": {
+            "type": "boolean"
+          },
+          "ОбязательныйДляВсех": {
+            "type": "boolean"
+          },
+          "Этап": {
+            "description": "Значение этапа в представлении сериализатора 1С; формат требует проверки на платформе."
+          },
+          "requiredFields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "series",
+                "number",
+                "issueDate",
+                "expiryDate",
+                "issuedBy",
+                "departmentCode",
+                "isIdentityDocument",
+                "lastNameLatin",
+                "firstNameLatin",
+                "categories",
+                "specialMarks",
+                "positionUid",
+                "isInvalid",
+                "valueComment",
+                "comment"
+              ]
+            }
+          },
+          "optionalFields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "series",
+                "number",
+                "issueDate",
+                "expiryDate",
+                "issuedBy",
+                "departmentCode",
+                "isIdentityDocument",
+                "lastNameLatin",
+                "firstNameLatin",
+                "categories",
+                "specialMarks",
+                "positionUid",
+                "isInvalid",
+                "valueComment",
+                "comment"
+              ]
+            }
+          }
+        }
+      },
+      "DocumentFields": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "series": {
+            "type": "string",
+            "maxLength": 14
+          },
+          "number": {
+            "type": "string",
+            "maxLength": 16
+          },
+          "issueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "expiryDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "issuedBy": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "departmentCode": {
+            "type": "string",
+            "maxLength": 15
+          },
+          "isIdentityDocument": {
+            "type": "boolean"
+          },
+          "lastNameLatin": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "firstNameLatin": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "categories": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "specialMarks": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "positionUid": {
+            "type": "string",
+            "description": "UUID должности или пустая строка"
+          },
+          "isInvalid": {
+            "type": "boolean"
+          },
+          "valueComment": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "DeliveryMetadata": {
+        "type": "object",
+        "required": [
+          "documentUid",
+          "chatUid"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "documentUid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "chatUid": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "documentFields": {
+            "$ref": "#/components/schemas/DocumentFields"
+          }
+        }
+      },
+      "DeliveryResult": {
+        "type": "object",
+        "required": [
+          "success",
+          "candidateUid",
+          "documentUid",
+          "fileUid",
+          "period"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "candidateUid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "documentUid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fileUid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "period": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      },
+      "DeliveryReceipt": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DeliveryResult"
+          },
+          {
+            "type": "object",
+            "required": [
+              "receiptId",
+              "deliveryId",
+              "duplicate",
+              "fileName",
+              "mimeType",
+              "fileSha256",
+              "fileSize"
+            ],
+            "properties": {
+              "receiptId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "deliveryId": {
+                "type": "string"
+              },
+              "duplicate": {
+                "type": "boolean"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "fileSha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "fileSize": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 104857600
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
