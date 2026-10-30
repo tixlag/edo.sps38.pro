@@ -567,8 +567,8 @@ function CandidateRow({
           onClick={onOpen}
           className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2 border-t border-[var(--border)] pt-2 min-[1400px]:border-l min-[1400px]:border-t-0 min-[1400px]:pl-3 min-[1400px]:pt-0"
         >
-          <div className="min-w-0 flex-1 overflow-x-auto pb-1">
-            <div className="flex w-max min-w-full items-center justify-end gap-1">
+          <div className="min-w-0 flex-1 pb-1">
+            <div className="flex w-full flex-wrap items-center justify-end gap-1">
               {candidate?.stageProgress ? (
                 candidate.stageProgress.map((progress) => (
                   <StageRing
