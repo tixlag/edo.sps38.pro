@@ -53,29 +53,25 @@ function setup() {
     candidate: { findMany: vi.fn(), findFirst: vi.fn() },
     document: {
       findMany: vi.fn(),
-      groupBy: vi
-        .fn()
-        .mockResolvedValue([
-          {
-            candidateId: "c1",
-            documentTypeId: "passport",
-            status: "APPROVED",
-            _count: { _all: 1 },
-          },
-        ]),
+      groupBy: vi.fn().mockResolvedValue([
+        {
+          candidateId: "c1",
+          documentTypeId: "passport",
+          status: "APPROVED",
+          _count: { _all: 1 },
+        },
+      ]),
     },
     documentType: {
-      findMany: vi
-        .fn()
-        .mockResolvedValue([
-          {
-            id: "passport",
-            code: "PASSPORT",
-            allRu: false,
-            allForeign: false,
-            positions: [{ code1c: "POS1" }],
-          },
-        ]),
+      findMany: vi.fn().mockResolvedValue([
+        {
+          id: "passport",
+          code: "PASSPORT",
+          allRu: false,
+          allForeign: false,
+          positions: [{ code1c: "POS1" }],
+        },
+      ]),
     },
   };
   const access = new DocumentAccessService(prisma as never);
@@ -84,6 +80,23 @@ function setup() {
 }
 
 describe("candidate review queue", () => {
+  it("starts a catalog refresh without blocking the queue", async () => {
+    const { prisma, access } = setup();
+    prisma.candidate.findMany.mockResolvedValue([
+      { ...owner("c1"), documents: [document("d1")] },
+    ]);
+    const ensure = vi.fn(() => new Promise<void>(() => {}));
+    const reads = new DocumentReadService(
+      prisma as never,
+      access,
+      null as never,
+      undefined,
+      { ensure } as never,
+    );
+    const result = await reads.candidateReviewQueue(principal);
+    expect(result.items).toHaveLength(1);
+    expect(ensure).toHaveBeenCalledOnce();
+  });
   it("pages candidates and keeps a large document set together without repeating the profile", async () => {
     const { reads, prisma } = setup();
     const first = {

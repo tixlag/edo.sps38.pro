@@ -334,7 +334,15 @@ export const erpCatalogSchema = z
           .uuid()
           .transform((v) => v.toLowerCase()),
         НаименованиеДокумента: z.string().min(1).max(255),
-        КодыДолжностей: z.array(code).max(10000),
+        КодыДолжностей: z.preprocess(
+          (value) =>
+            Array.isArray(value)
+              ? value.filter(
+                  (entry) => typeof entry !== "string" || entry.trim() !== "",
+                )
+              : value,
+          z.array(code).max(10000),
+        ),
         ВсемРФ: z.boolean(),
         ВсемИГ: z.boolean(),
         ОбязательныйДляВсех: z.boolean().default(false),
@@ -362,11 +370,28 @@ export const erpCatalogSchema = z
   .min(1)
   .max(1000)
   .transform((items, ctx) => {
-    const unique = new Map<string, (typeof items)[number]>();
+    type Rule = {
+      stage: number | null;
+      requiredForAll: boolean;
+      allRu: boolean;
+      allForeign: boolean;
+      positions: string[];
+    };
+    const unique = new Map<
+      string,
+      (typeof items)[number] & { stageRules: Rule[] }
+    >();
     for (const item of items) {
+      const rule: Rule = {
+        stage: item.Этап,
+        requiredForAll: item.ОбязательныйДляВсех,
+        allRu: item.ВсемРФ,
+        allForeign: item.ВсемИГ,
+        positions: [...new Set(item.КодыДолжностей)],
+      };
       const prior = unique.get(item.УИНДокумента);
       if (!prior) {
-        unique.set(item.УИНДокумента, { ...item });
+        unique.set(item.УИНДокумента, { ...item, stageRules: [rule] });
         continue;
       }
       if (
@@ -375,8 +400,7 @@ export const erpCatalogSchema = z
         JSON.stringify(prior.requiredFields) !==
           JSON.stringify(item.requiredFields) ||
         JSON.stringify(prior.optionalFields) !==
-          JSON.stringify(item.optionalFields) ||
-        prior.Этап !== item.Этап
+          JSON.stringify(item.optionalFields)
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -387,6 +411,15 @@ export const erpCatalogSchema = z
       prior.ВсемРФ ||= item.ВсемРФ;
       prior.ВсемИГ ||= item.ВсемИГ;
       prior.ОбязательныйДляВсех ||= item.ОбязательныйДляВсех;
+      const previousRule = prior.stageRules.find((r) => r.stage === rule.stage);
+      if (previousRule) {
+        previousRule.requiredForAll ||= rule.requiredForAll;
+        previousRule.allRu ||= rule.allRu;
+        previousRule.allForeign ||= rule.allForeign;
+        previousRule.positions = [
+          ...new Set([...previousRule.positions, ...rule.positions]),
+        ];
+      } else prior.stageRules.push(rule);
       prior.КодыДолжностей = [
         ...new Set([...prior.КодыДолжностей, ...item.КодыДолжностей]),
       ];

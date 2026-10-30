@@ -115,9 +115,77 @@ describe("RU and IG review pages", () => {
     const view = await render("IG");
     expect(view.textContent).toContain("Этап 1");
     expect(view.textContent).toContain("Договор");
-    expect(
-      view.querySelector('[aria-label*="ожидают проверки: 1"]'),
-    ).not.toBeNull();
+    const ring = view.querySelector(
+      '[aria-label="Открыть документы: Этап 1"]',
+    ) as HTMLElement;
+    expect(ring).not.toBeNull();
+    expect(ring.hasAttribute("title")).toBe(false);
+    const bounds = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        if (this === ring)
+          return {
+            left: 1000,
+            top: 740,
+            right: 1096,
+            bottom: 820,
+            width: 96,
+            height: 80,
+            x: 1000,
+            y: 740,
+            toJSON: () => ({}),
+          };
+        if (this.getAttribute("role") === "tooltip")
+          return {
+            left: 0,
+            top: 0,
+            right: 352,
+            bottom: 250,
+            width: 352,
+            height: 250,
+            x: 0,
+            y: 0,
+            toJSON: () => ({}),
+          };
+        return {
+          left: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: 0,
+          height: 0,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        };
+      });
+    await act(async () => ring.focus());
+    const tooltip = document.querySelector('[role="tooltip"]')!;
+    expect(parseFloat((tooltip as HTMLElement).style.left)).toBeLessThanOrEqual(
+      window.innerWidth - 352 - 8,
+    );
+    expect(parseFloat((tooltip as HTMLElement).style.top)).toBeLessThan(740);
+    bounds.mockRestore();
+    expect(tooltip.querySelectorAll("tbody tr")).toHaveLength(5);
+    expect(tooltip.textContent).toContain("Обязательные");
+    expect(tooltip.textContent).toContain("Дополнительные");
+    expect(ring.getAttribute("aria-describedby")).toBe(tooltip.id);
+    await act(async () => (tooltip as HTMLElement).click());
+    expect(state.navigate).not.toHaveBeenCalled();
+    await act(async () =>
+      ring.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    await act(async () => ring.blur());
+    const hover = new Event("pointerover", { bubbles: true });
+    Object.defineProperty(hover, "pointerType", { value: "mouse" });
+    await act(async () => ring.dispatchEvent(hover));
+    expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+    await act(async () => ring.click());
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(state.navigate).toHaveBeenCalled();
   });
   it("keeps the document review page vertically scrollable on desktop", async () => {
     state.documentInfo = {
@@ -153,6 +221,16 @@ describe("RU and IG review pages", () => {
         }),
       );
     }
+  });
+
+  it("refreshes queue data after a background catalog update", async () => {
+    await render("IG");
+    expect(state.queue).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        query: expect.objectContaining({ refetchInterval: 30000 }),
+      }),
+    );
   });
 
   it("keeps IG navigation on its route and resets pagination when changing the tab", async () => {

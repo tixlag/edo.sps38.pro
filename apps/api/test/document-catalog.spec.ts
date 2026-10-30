@@ -48,8 +48,13 @@ describe("document catalog cached snapshot", () => {
         deleteMany: vi.fn(async () => undefined),
         createMany: vi.fn(async () => undefined),
       },
+      documentTypeStageRule: {
+        deleteMany: vi.fn(async () => undefined),
+        create: vi.fn(async () => undefined),
+      },
     };
     return {
+      tx,
       documentType: {
         findFirst: vi.fn(async () =>
           syncedAt ? { catalogSyncedAt: syncedAt } : null,
@@ -136,6 +141,34 @@ describe("document catalog cached snapshot", () => {
     await settle(1);
     await service().ensure();
     expect(request).toHaveBeenCalledTimes(1);
+  });
+  it("saves separate stage rules atomically during a catalog refresh", async () => {
+    request.mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          { ...payload[0], Этап: 7, КодыДолжностей: ["", "001"] },
+          { ...payload[0], Этап: 10, ВсемРФ: false, КодыДолжностей: [] },
+        ]),
+      ),
+    );
+    await service().ensure();
+    await settle(1);
+    expect(
+      prisma.tx.documentTypeStageRule.create.mock.calls.map(
+        ([input]) => input.data,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        stage: 7,
+        allRu: true,
+        positions: { create: [{ code1c: "001" }] },
+      }),
+      expect.objectContaining({
+        stage: 10,
+        allRu: false,
+        positions: { create: [] },
+      }),
+    ]);
   });
   it("waits for the very first snapshot instead of returning an empty document list", async () => {
     syncedAt = null;

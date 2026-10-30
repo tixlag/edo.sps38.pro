@@ -188,6 +188,23 @@ export class DocumentCatalogService {
             await tx.documentTypePosition.deleteMany({
               where: { documentTypeId: type.id },
             });
+            await tx.documentTypeStageRule.deleteMany({
+              where: { documentTypeId: type.id },
+            });
+            for (const rule of item.stageRules) {
+              await tx.documentTypeStageRule.create({
+                data: {
+                  documentTypeId: type.id,
+                  stage: rule.stage,
+                  requiredForAll: rule.requiredForAll,
+                  allRu: rule.allRu,
+                  allForeign: rule.allForeign,
+                  positions: {
+                    create: rule.positions.map((code1c) => ({ code1c })),
+                  },
+                },
+              });
+            }
             await tx.documentTypeField.createMany({
               data: [...item.requiredFields, ...item.optionalFields].map(
                 (name, ordinal) => ({
