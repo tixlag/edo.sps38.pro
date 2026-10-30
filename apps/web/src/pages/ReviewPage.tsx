@@ -533,7 +533,15 @@ function CandidateRow({
                     <span className="block text-xs text-[var(--muted-foreground)]">
                       {label as string}
                     </span>
-                    <span className="block truncate">{value as string}</span>
+                    <span
+                      className={
+                        label === "Объект"
+                          ? "block break-words [overflow-wrap:anywhere]"
+                          : "block truncate"
+                      }
+                    >
+                      {value as string}
+                    </span>
                   </span>
                 </div>
               );
