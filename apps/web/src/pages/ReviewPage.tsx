@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import {
   Link,
   useNavigate,
@@ -143,6 +152,122 @@ function StaticSearchSelect({
   );
 }
 
+const STAGE_STATES = [
+  ["approved", "Подтверждено", "var(--success)"],
+  ["pending", "Ожидают проверки", "var(--warning)"],
+  ["processing", "Обрабатываются", "var(--info)"],
+  ["missing", "Не загружено", "var(--muted-foreground)"],
+  ["attention", "Требуют внимания", "var(--danger)"],
+] as const;
+
+function StageTooltip({
+  id,
+  label,
+  progress,
+  anchor,
+  onEnter,
+  onLeave,
+}: {
+  id: string;
+  label: string;
+  progress: ReviewStageProgressDto;
+  anchor: HTMLElement;
+  onEnter: () => void;
+  onLeave: () => void;
+}) {
+  const panel = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: 0, top: 0, ready: false });
+  useLayoutEffect(() => {
+    const update = () => {
+      const node = panel.current;
+      if (!node) return;
+      const rect = anchor.getBoundingClientRect();
+      const box = node.getBoundingClientRect();
+      const margin = 8;
+      const left = Math.max(
+        margin,
+        Math.min(
+          rect.left + rect.width / 2 - box.width / 2,
+          window.innerWidth - box.width - margin,
+        ),
+      );
+      const above = rect.top - box.height - margin;
+      const top = Math.max(
+        margin,
+        Math.min(
+          above >= margin ? above : rect.bottom + margin,
+          window.innerHeight - box.height - margin,
+        ),
+      );
+      setPosition({ left, top, ready: true });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [anchor]);
+  return createPortal(
+    <div
+      ref={panel}
+      id={id}
+      role="tooltip"
+      onClick={(event) => event.stopPropagation()}
+      onPointerEnter={onEnter}
+      onPointerLeave={onLeave}
+      style={{
+        position: "fixed",
+        left: position.left,
+        top: position.top,
+        visibility: position.ready ? "visible" : "hidden",
+      }}
+      className="z-[100] max-h-[calc(100dvh-16px)] w-[min(22rem,calc(100vw-16px))] overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-left text-sm text-[var(--foreground)] shadow-lg"
+    >
+      <p className="mb-3 font-semibold">{label}</p>
+      <table className="w-full border-collapse text-left text-xs sm:text-sm">
+        <thead>
+          <tr className="border-b border-[var(--border)] text-[var(--muted-foreground)]">
+            <th scope="col" className="pb-2 pr-2 font-medium">
+              Статус
+            </th>
+            <th scope="col" className="px-1 pb-2 text-center font-medium">
+              Обязательные
+            </th>
+            <th scope="col" className="pl-1 pb-2 text-center font-medium">
+              Дополнительные
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {STAGE_STATES.map(([key, text, color]) => (
+            <tr key={key}>
+              <th scope="row" className="py-1.5 pr-2 font-normal">
+                <span className="inline-flex items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: color }}
+                  />
+                  {text}
+                </span>
+              </th>
+              <td className="px-1 py-1.5 text-center tabular-nums">
+                {progress.required[key]}
+              </td>
+              <td className="pl-1 py-1.5 text-center tabular-nums">
+                {progress.additional[key]}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>,
+    document.body,
+  );
+}
+
 function StageRing({
   progress,
   onOpen,
@@ -152,12 +277,31 @@ function StageRing({
 }) {
   const label =
     progress.stage === null ? "Дополнительные" : `Этап ${progress.stage}`;
-  const describe = (
-    title: string,
-    counts: ReviewStageProgressDto["required"],
-  ) =>
-    `${title}: подтверждено ${counts.approved}, ожидают проверки: ${counts.pending}, обрабатываются ${counts.processing}, не загружено ${counts.missing}, требуют внимания ${counts.attention}`;
-  const description = `${label}. ${describe("Обязательные", progress.required)}. ${describe("Дополнительные", progress.additional)}`;
+  const tooltipId = useId();
+  const anchor = useRef<HTMLDivElement>(null);
+  const timer = useRef<number | undefined>(undefined);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const open = (hovered || focused) && !dismissed;
+  const enter = () => {
+    window.clearTimeout(timer.current);
+    setDismissed(false);
+    setHovered(true);
+  };
+  const leave = () => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setHovered(false), 150);
+  };
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (!open) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDismissed(true);
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [open]);
   const total = (counts: ReviewStageProgressDto["required"]) =>
     counts.approved +
     counts.pending +
@@ -211,18 +355,34 @@ function StageRing({
   };
   return (
     <div
+      ref={anchor}
       tabIndex={0}
-      onClick={onOpen}
+      onClick={() => {
+        setDismissed(true);
+        onOpen();
+      }}
+      onFocus={() => {
+        setDismissed(false);
+        setFocused(true);
+      }}
+      onBlur={() => setFocused(false)}
+      onPointerEnter={(event) => {
+        if (event.pointerType === "mouse") enter();
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "mouse") leave();
+      }}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
+          setDismissed(true);
           onOpen();
         }
       }}
       role="button"
       className="group pointer-events-auto relative flex w-24 shrink-0 flex-col items-center gap-1 rounded text-center text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
-      title={description}
-      aria-label={description}
+      aria-label={`Открыть документы: ${label}`}
+      aria-describedby={open ? tooltipId : undefined}
     >
       <span className="relative flex h-16 w-16 items-center justify-center">
         <svg
@@ -258,18 +418,16 @@ function StageRing({
         {progress.required.approved + progress.additional.approved}/
         {total(progress.required) + total(progress.additional)}
       </span>
-      <span
-        aria-hidden="true"
-        className="absolute bottom-full right-0 z-20 mb-2 hidden w-64 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-left text-xs text-[var(--foreground)] shadow-lg group-hover:block group-focus:block"
-      >
-        <span className="block font-semibold">{label}</span>
-        <span className="mt-1 block">
-          {describe("Обязательные", progress.required)}
-        </span>
-        <span className="mt-1 block">
-          {describe("Дополнительные", progress.additional)}
-        </span>
-      </span>
+      {open && anchor.current && (
+        <StageTooltip
+          id={tooltipId}
+          label={label}
+          progress={progress}
+          anchor={anchor.current}
+          onEnter={enter}
+          onLeave={leave}
+        />
+      )}
     </div>
   );
 }
