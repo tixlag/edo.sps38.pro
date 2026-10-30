@@ -1095,6 +1095,12 @@ export interface CandidateStageDocumentsDto {
 export type CandidateDetailsDtoStageDocuments =
   CandidateStageDocumentsDto | null;
 
+/**
+ * @nullable
+ */
+export type CandidateDetailsDtoDocumentGroups =
+  CandidateStageDocumentsDto | null;
+
 export interface CandidateDetailsDto {
   candidate: CandidateProfileDto;
   documents: CandidateDocumentSummaryDto[];
@@ -1105,6 +1111,8 @@ export interface CandidateDetailsDto {
   missingDocuments?: MissingDocumentTypeDto[] | null;
   /** @nullable */
   stageDocuments?: CandidateDetailsDtoStageDocuments;
+  /** @nullable */
+  documentGroups?: CandidateDetailsDtoDocumentGroups;
 }
 
 export interface EmployeeDocumentListDto {

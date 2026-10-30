@@ -441,6 +441,33 @@ describe("candidate details", () => {
         catalogSyncedAt: new Date(),
       },
     ];
+    types.push({
+      id: "d",
+      code: "D",
+      title: "Дополнительная справка",
+      stage: 3,
+      requiredForAll: false,
+      allRu: false,
+      allForeign: false,
+      positions: [],
+      stageRules: [
+        {
+          stage: 3,
+          requiredForAll: false,
+          allRu: false,
+          allForeign: false,
+          positions: [],
+        },
+        {
+          stage: 4,
+          requiredForAll: false,
+          allRu: false,
+          allForeign: false,
+          positions: [],
+        },
+      ],
+      catalogSyncedAt: new Date(),
+    });
     prisma.documentType.findMany.mockResolvedValue(types);
     const result = await reads.candidateDetails("c1", principal, "1");
     expect(
@@ -450,6 +477,27 @@ describe("candidate details", () => {
       { code: "B", title: "Справка" },
     ]);
     expect(result.stageDocuments?.required.missingDocuments).toEqual([]);
+    prisma.document.findMany.mockResolvedValue([
+      { ...document("d1"), documentTypeId: "a" },
+      { ...document("d2"), documentTypeId: "b" },
+      { ...document("d3"), documentTypeId: "unknown" },
+    ]);
+    const all = await reads.candidateDetails("c1", principal);
+    expect(all.documentGroups?.required.documents.map((doc) => doc.id)).toEqual(
+      ["d1", "d2"],
+    );
+    expect(
+      all.documentGroups?.additional.documents.map((doc) => doc.id),
+    ).toEqual(["d3"]);
+    expect(
+      all.documentGroups?.required.missingDocuments.map((doc) => doc.code),
+    ).toEqual(["C"]);
+    expect(all.documentGroups?.additional.missingDocuments).toEqual([
+      { code: "D", title: "Дополнительная справка" },
+    ]);
+    prisma.document.findMany.mockResolvedValue([
+      { ...document("d1"), documentTypeId: "a" },
+    ]);
     const other = await reads.candidateDetails("c1", principal, "2");
     expect(
       other.stageDocuments?.required.missingDocuments.map((d) => d.code),

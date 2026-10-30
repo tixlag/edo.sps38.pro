@@ -12022,6 +12022,14 @@
                 "$ref": "#/components/schemas/CandidateStageDocumentsDto"
               }
             ]
+          },
+          "documentGroups": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateStageDocumentsDto"
+              }
+            ]
           }
         },
         "required": [

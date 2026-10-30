@@ -223,19 +223,30 @@ function StageTooltip({
         top: position.top,
         visibility: position.ready ? "visible" : "hidden",
       }}
-      className="z-[100] max-h-[calc(100dvh-16px)] w-[min(22rem,calc(100vw-16px))] overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-left text-sm text-[var(--foreground)] shadow-lg"
+      className="z-[100] max-h-[calc(100dvh-16px)] w-[min(30rem,calc(100vw-16px))] overflow-y-auto overflow-x-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-left text-sm text-[var(--foreground)] shadow-lg"
     >
       <p className="mb-3 font-semibold">{label}</p>
-      <table className="w-full border-collapse text-left text-xs sm:text-sm">
+      <table className="w-full table-fixed border-collapse text-left text-xs sm:text-sm">
+        <colgroup>
+          <col className="w-2/5" />
+          <col className="w-[30%]" />
+          <col className="w-[30%]" />
+        </colgroup>
         <thead>
           <tr className="border-b border-[var(--border)] text-[var(--muted-foreground)]">
             <th scope="col" className="pb-2 pr-2 font-medium">
               Статус
             </th>
-            <th scope="col" className="px-1 pb-2 text-center font-medium">
+            <th
+              scope="col"
+              className="break-words px-1 pb-2 text-center font-medium [overflow-wrap:anywhere]"
+            >
               Обязательные
             </th>
-            <th scope="col" className="pl-1 pb-2 text-center font-medium">
+            <th
+              scope="col"
+              className="break-words pl-1 pb-2 text-center font-medium [overflow-wrap:anywhere]"
+            >
               Дополнительные
             </th>
           </tr>
@@ -381,7 +392,7 @@ function StageRing({
         }
       }}
       role="button"
-      className="group pointer-events-auto relative flex w-[68px] shrink-0 flex-col items-center gap-0.5 rounded text-center text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+      className="group pointer-events-auto relative flex w-16 shrink-0 flex-col items-center gap-0.5 rounded text-center text-xs min-[1400px]:w-[68px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
       aria-label={`Открыть документы: ${label}`}
       aria-describedby={open ? tooltipId : undefined}
     >
@@ -470,8 +481,8 @@ function CandidateRow({
         onClick={onOpen}
         className="absolute inset-0 rounded-[10px] hover:bg-[var(--border)]/30 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--primary)]"
       />
-      <div className="pointer-events-none relative flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center">
-        <div className="min-w-0 w-full xl:w-[min(42%,620px)] xl:shrink-0">
+      <div className="pointer-events-none relative flex min-w-0 flex-col gap-3 min-[1400px]:flex-row min-[1400px]:items-center">
+        <div className="min-w-0 w-full min-[1400px]:w-[min(42%,620px,calc(100%-783px))] min-[1400px]:shrink-0">
           <div className="mb-2 flex min-w-0 items-center gap-2 font-semibold">
             <span
               aria-hidden
@@ -489,7 +500,7 @@ function CandidateRow({
               <Badge tone="warning">Повторный найм</Badge>
             )}
           </div>
-          <div className="grid min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-[minmax(112px,0.75fr)_minmax(0,1fr)_minmax(0,1.6fr)]">
+          <div className="grid min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-[minmax(150px,0.8fr)_minmax(0,1fr)_minmax(0,1.6fr)]">
             {[
               [
                 CalendarDays,
@@ -522,7 +533,15 @@ function CandidateRow({
                     <span className="block text-xs text-[var(--muted-foreground)]">
                       {label as string}
                     </span>
-                    <span className="block truncate">{value as string}</span>
+                    <span
+                      className={
+                        label === "Объект"
+                          ? "block break-words [overflow-wrap:anywhere]"
+                          : "block truncate"
+                      }
+                    >
+                      {value as string}
+                    </span>
                   </span>
                 </div>
               );
@@ -554,32 +573,34 @@ function CandidateRow({
         </div>
         <div
           onClick={onOpen}
-          className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2 border-t border-[var(--border)] pt-2 xl:border-l xl:border-t-0 xl:pl-3 xl:pt-0"
+          className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2 border-t border-[var(--border)] pt-2 min-[1400px]:border-l min-[1400px]:border-t-0 min-[1400px]:pl-3 min-[1400px]:pt-0"
         >
-          <div className="flex min-w-0 flex-1 items-center overflow-x-auto pb-1">
-            {candidate?.stageProgress ? (
-              candidate.stageProgress.map((progress) => (
-                <StageRing
-                  key={progress.stage ?? "additional"}
-                  progress={progress}
-                  onOpen={() => onOpenStage(progress.stage)}
-                />
-              ))
-            ) : (
-              <span className="w-24 text-center text-xs text-[var(--muted-foreground)]">
-                Этапы неизвестны
+          <div className="min-w-0 flex-1 pb-1">
+            <div className="flex w-full flex-wrap items-center justify-end gap-1">
+              {candidate?.stageProgress ? (
+                candidate.stageProgress.map((progress) => (
+                  <StageRing
+                    key={progress.stage ?? "additional"}
+                    progress={progress}
+                    onOpen={() => onOpenStage(progress.stage)}
+                  />
+                ))
+              ) : (
+                <span className="w-24 text-center text-xs text-[var(--muted-foreground)]">
+                  Этапы неизвестны
+                </span>
+              )}
+              <span className="ml-2 flex w-[72px] shrink-0 flex-col items-center gap-0.5 border-l border-[var(--border)] pl-2 text-xs min-[1400px]:w-[76px]">
+                <span className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]">
+                  <FileSignature size={22} />
+                </span>
+                <strong className="flex h-8 items-center justify-center leading-tight">
+                  Договор
+                </strong>
+                <span>—</span>
               </span>
-            )}
+            </div>
           </div>
-          <span className="flex w-[68px] shrink-0 flex-col items-center gap-0.5 border-l border-[var(--border)] pl-2 text-xs">
-            <span className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]">
-              <FileSignature size={22} />
-            </span>
-            <strong className="flex h-8 items-center justify-center leading-tight">
-              Договор
-            </strong>
-            <span>—</span>
-          </span>
           <ChevronRight
             size={18}
             className="shrink-0 text-[var(--muted-foreground)]"

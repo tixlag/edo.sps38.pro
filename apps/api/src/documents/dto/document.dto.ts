@@ -437,6 +437,8 @@ export class CandidateDetailsDto {
   missingDocuments?: MissingDocumentTypeDto[] | null;
   @ApiPropertyOptional({ type: CandidateStageDocumentsDto, nullable: true })
   stageDocuments?: CandidateStageDocumentsDto | null;
+  @ApiPropertyOptional({ type: CandidateStageDocumentsDto, nullable: true })
+  documentGroups?: CandidateStageDocumentsDto | null;
 }
 export class CandidateReviewQueueDto {
   @ApiProperty({ type: [CandidateDetailsDto] }) items!: CandidateDetailsDto[];
