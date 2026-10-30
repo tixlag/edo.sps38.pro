@@ -183,7 +183,7 @@ describe("independent dataset schema", () => {
     };
     const parsed = erpCatalogSchema.parse([
       row,
-      { ...row, ВсемРФ: true, КодыДолжностей: ["b"], Этап: "Другой" },
+      { ...row, ВсемРФ: true, КодыДолжностей: ["b"], ДругоеПоле: "Другой" },
     ]);
     expect(parsed).toHaveLength(1);
     expect(parsed[0].ВсемРФ).toBe(true);

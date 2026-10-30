@@ -38,6 +38,28 @@ describe("document upload capabilities", () => {
     vi.advanceTimersByTime(300000);
     expect(() => grants.verify(grant.token)).toThrow("Invalid or expired");
   });
+  it("accepts the additional bounded candidate profile fields in a signed grant", () => {
+    const candidateSnapshot = {
+      name: "И".repeat(512),
+      photoPath: "p".repeat(2048),
+      master: { name: "М".repeat(512), code: "M" },
+      supervisor: { name: "С".repeat(512), code: "S" },
+      mentor: { name: "Н".repeat(512) },
+      sex: "female" as const,
+      sexKnown: true,
+    };
+    const grant = grants.grant({
+      ...context,
+      candidateSnapshot,
+      idempotencyKey: "bundle-key",
+    });
+    expect(grant.token.length).toBeGreaterThan(8192);
+    expect(grants.verify(grant.token).context.candidateSnapshot).toMatchObject({
+      photoPath: candidateSnapshot.photoPath,
+      masterName: candidateSnapshot.master.name,
+      supervisorName: candidateSnapshot.supervisor.name,
+    });
+  });
   it("rejects altered context, unified JWTs and opaque SSE credentials", () => {
     const grant = grants.grant({ ...context, idempotencyKey: "bundle-key" });
     const parts = grant.token.split(".");
@@ -51,6 +73,7 @@ describe("document upload capabilities", () => {
       ),
     ).toThrow();
     expect(() => grants.verify("f".repeat(64))).toThrow();
+    expect(() => grants.verify("f".repeat(64 * 1024 + 1))).toThrow();
   });
   it.each(["algorithm", "issuer", "audience", "expiry"])(
     "rejects invalid %s even with the signing key",

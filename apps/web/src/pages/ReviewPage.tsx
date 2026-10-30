@@ -12,6 +12,7 @@ import {
   useListReviewCandidates,
   useListCandidateReviewQueue,
   type CandidateDetailsDto,
+  type ReviewStageProgressDto,
   useGetDocumentInfo,
   useGetMe,
   getListReviewCandidatesQueryKey,
@@ -27,7 +28,20 @@ import {
   StatusBadge,
   EmptyState,
 } from "@edo/ui";
-import { Clock, Check, X, ChevronRight } from "lucide-react";
+import {
+  Clock,
+  Check,
+  X,
+  ChevronRight,
+  CalendarDays,
+  BriefcaseBusiness,
+  Building2,
+  GraduationCap,
+  UserRound,
+  FileSignature,
+  FileText,
+  AlertTriangle,
+} from "lucide-react";
 import { DocumentReviewWorkspace } from "../components/DocumentReviewWorkspace";
 import { useLiveDocumentVersion } from "../lib/use-live-document-version";
 import {
@@ -37,13 +51,16 @@ import {
 import { CandidateDrawer } from "../components/CandidateDrawer";
 import { LkLink } from "../components/LkLink";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
-import { formatDateTimeRu, formatDateRu, maskDateRuInput, parseDateRu } from "../lib/date-format";
+import {
+  formatDateTimeRu,
+  formatDateRu,
+  maskDateRuInput,
+  parseDateRu,
+} from "../lib/date-format";
 import {
   candidateInitials,
-  documentProgressPercent,
   formatBirthDateRu,
   formatCandidateObject,
-  formatDocumentProgress,
   hasActiveReviewFilters,
   parseReviewSearchParams,
   type ReviewTab,
@@ -126,14 +143,140 @@ function StaticSearchSelect({
   );
 }
 
-/**
- * One queue row: candidate profile summary. Clicking opens the candidate
- * drawer (profile + all documents); there is no inline expansion.
- */
+function StageRing({
+  progress,
+  onOpen,
+}: {
+  progress: ReviewStageProgressDto;
+  onOpen: () => void;
+}) {
+  const label =
+    progress.stage === null ? "Дополнительные" : `Этап ${progress.stage}`;
+  const describe = (
+    title: string,
+    counts: ReviewStageProgressDto["required"],
+  ) =>
+    `${title}: подтверждено ${counts.approved}, ожидают проверки: ${counts.pending}, обрабатываются ${counts.processing}, не загружено ${counts.missing}, требуют внимания ${counts.attention}`;
+  const description = `${label}. ${describe("Обязательные", progress.required)}. ${describe("Дополнительные", progress.additional)}`;
+  const total = (counts: ReviewStageProgressDto["required"]) =>
+    counts.approved +
+    counts.pending +
+    counts.processing +
+    counts.missing +
+    counts.attention;
+  const pending = progress.required.pending + progress.additional.pending;
+  const attention = progress.required.attention + progress.additional.attention;
+  const processing =
+    progress.required.processing + progress.additional.processing;
+  const missing = progress.required.missing + progress.additional.missing;
+  const color = pending
+    ? "var(--warning)"
+    : attention
+      ? "var(--danger)"
+      : processing
+        ? "var(--info)"
+        : missing
+          ? "var(--muted-foreground)"
+          : "var(--success)";
+  const arc = (counts: ReviewStageProgressDto["required"], radius: number) => {
+    const sum = total(counts);
+    const circumference = 2 * Math.PI * radius;
+    let offset = 0;
+    return (
+      [
+        ["approved", "var(--success)"],
+        ["pending", "var(--warning)"],
+        ["processing", "var(--info)"],
+        ["attention", "var(--danger)"],
+        ["missing", "var(--border)"],
+      ] as const
+    ).map(([key, stroke]) => {
+      const length = sum ? (circumference * counts[key]) / sum : 0;
+      const element = (
+        <circle
+          key={key}
+          cx="32"
+          cy="32"
+          r={radius}
+          fill="none"
+          stroke={stroke}
+          strokeWidth="4"
+          strokeDasharray={`${length} ${circumference - length}`}
+          strokeDashoffset={-offset}
+        />
+      );
+      offset += length;
+      return element;
+    });
+  };
+  return (
+    <div
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      role="button"
+      className="group pointer-events-auto relative flex w-24 shrink-0 flex-col items-center gap-1 rounded text-center text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+      title={description}
+      aria-label={description}
+    >
+      <span className="relative flex h-16 w-16 items-center justify-center">
+        <svg
+          viewBox="0 0 64 64"
+          className="absolute inset-0 h-full w-full -rotate-90"
+          aria-hidden="true"
+        >
+          <circle
+            cx="32"
+            cy="32"
+            r="28"
+            fill="none"
+            stroke="var(--border)"
+            strokeWidth="4"
+          />
+          <circle
+            cx="32"
+            cy="32"
+            r="21"
+            fill="none"
+            stroke="var(--border)"
+            strokeWidth="4"
+          />
+          {arc(progress.additional, 28)}
+          {arc(progress.required, 21)}
+        </svg>
+        <span style={{ color }} aria-hidden="true">
+          {pending ? <AlertTriangle size={19} /> : <FileText size={19} />}
+        </span>
+      </span>
+      <strong>{label}</strong>
+      <span className="text-[var(--muted-foreground)]">
+        {progress.required.approved + progress.additional.approved}/
+        {total(progress.required) + total(progress.additional)}
+      </span>
+      <span
+        aria-hidden="true"
+        className="absolute bottom-full right-0 z-20 mb-2 hidden w-64 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-left text-xs text-[var(--foreground)] shadow-lg group-hover:block group-focus:block"
+      >
+        <span className="block font-semibold">{label}</span>
+        <span className="mt-1 block">
+          {describe("Обязательные", progress.required)}
+        </span>
+        <span className="mt-1 block">
+          {describe("Дополнительные", progress.additional)}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function CandidateRow({
   group,
   onOpen,
-  returnedHistory = false,
 }: {
   group: CandidateDetailsDto;
   onOpen: () => void;
@@ -141,123 +284,132 @@ function CandidateRow({
 }) {
   const candidate = group.candidate;
   const heading = candidate?.fullName?.trim() || "Без имени в профиле";
-  const count = returnedHistory
-    ? group.documents.reduce(
-        (sum, doc) => sum + (doc.returnedVersions?.length ?? 0),
-        0,
-      )
-    : group.documents.length;
-  const progressPercent = candidate
-    ? documentProgressPercent(
-        candidate.approvedDocuments,
-        candidate.requiredDocuments,
-      )
-    : null;
+  const person = (
+    name: string | null | undefined,
+    code: string | null | undefined,
+  ) =>
+    code ? (
+      <span className="pointer-events-auto">
+        <LkLink code1c={code}>{name ?? code}</LkLink>
+      </span>
+    ) : (
+      name || "—"
+    );
   return (
     <section
       aria-label={heading}
-      className="overflow-hidden rounded-[10px] border border-[var(--border)]"
+      className="relative rounded-[10px] border border-[var(--border)] bg-[var(--card)] p-3"
     >
-      <div className="relative flex w-full flex-wrap items-center gap-3 bg-[var(--muted)] px-3 py-2.5">
-        <button
-          type="button"
-          aria-haspopup="dialog"
-          aria-label={`Открыть документы: ${heading}`}
-          onClick={onOpen}
-          className="absolute inset-0 rounded-[10px] hover:bg-[var(--border)]/30 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--primary)]"
-        />
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-label={`Открыть документы: ${heading}`}
+        onClick={onOpen}
+        className="absolute inset-0 rounded-[10px] hover:bg-[var(--border)]/30 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--primary)]"
+      />
+      <div className="pointer-events-none relative flex flex-wrap items-center gap-4">
         <span
           aria-hidden
-          className="pointer-events-none relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-[13px] font-semibold text-[var(--foreground)]"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] font-semibold"
         >
           {candidateInitials(candidate?.fullName)}
         </span>
-        <span className="pointer-events-none relative min-w-0 flex-1 basis-[180px]">
-          <span className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
+        <div className="min-w-[240px] flex-1">
+          <div className="mb-1 flex flex-wrap items-center gap-2 font-semibold">
             {heading}
             {candidate?.citizenship && (
               <Badge title="Гражданство">
                 {candidate.citizenship.toUpperCase()}
               </Badge>
             )}
-            {candidate?.isReemployment === true && (
+            {candidate?.isReemployment && (
               <Badge tone="warning">Повторный найм</Badge>
             )}
-          </span>
-          <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[var(--muted-foreground)]">
-            <span title="Дата рождения">
-              {formatBirthDateRu(candidate?.birthDate)}
-            </span>
-            {candidate?.positionName && (
-              <span title="Должность">{candidate.positionName}</span>
-            )}
-            <span title="Объект">
-              {formatCandidateObject(
-                candidate?.projectName,
-                candidate?.projectCode,
-              )}
-            </span>
-          </span>
-          <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[var(--muted-foreground)]">
-            <span>
-              Менеджер:{" "}
-              {candidate?.managerCode1c ? (
-                <span className="pointer-events-auto">
-                  <LkLink code1c={candidate.managerCode1c}>
-                    {candidate.managerName ?? candidate.managerCode1c}
-                  </LkLink>
-                </span>
-              ) : (
-                (candidate?.managerName ?? "—")
-              )}
-            </span>
-            <span>
-              Наставник:{" "}
-              {candidate?.mentorCode1c ? (
-                <span className="pointer-events-auto">
-                  <LkLink code1c={candidate.mentorCode1c}>
-                    {candidate.mentorName ?? candidate.mentorCode1c}
-                    {candidate.mentorPosition
-                      ? ` · ${candidate.mentorPosition}`
-                      : ""}
-                  </LkLink>
-                </span>
-              ) : (
-                (candidate?.mentorName ?? "—")
-              )}
-            </span>
-          </span>
-          {candidate && (
-            <span className="mt-1 flex flex-wrap items-center gap-2">
-              <Badge>
-                {formatDocumentProgress(
-                  candidate.approvedDocuments,
-                  candidate.requiredDocuments,
-                )}
-              </Badge>
-              {progressPercent !== null && (
-                <span
-                  role="progressbar"
-                  aria-label="Прогресс подтверждения документов"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={progressPercent}
-                  className="h-1 w-24 overflow-hidden rounded-full bg-[var(--muted)]"
+          </div>
+          <div className="grid gap-2 md:grid-cols-3">
+            {[
+              [
+                CalendarDays,
+                "Дата рождения",
+                formatBirthDateRu(candidate?.birthDate),
+              ],
+              [BriefcaseBusiness, "Должность", candidate?.positionName || "—"],
+              [
+                Building2,
+                "Объект",
+                formatCandidateObject(
+                  candidate?.projectName,
+                  candidate?.projectCode,
+                ).replace(/^Объект: /, ""),
+              ],
+            ].map(([Icon, label, value]) => {
+              const I = Icon as typeof CalendarDays;
+              return (
+                <div
+                  key={label as string}
+                  className="flex min-w-0 items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-1"
                 >
-                  <span
-                    aria-hidden
-                    className="block h-full rounded-full bg-[var(--primary)]"
-                    style={{ width: `${progressPercent}%` }}
+                  <I
+                    size={19}
+                    className="shrink-0 text-[var(--muted-foreground)]"
                   />
+                  <span className="min-w-0 text-sm">
+                    <span className="block text-xs text-[var(--muted-foreground)]">
+                      {label as string}
+                    </span>
+                    {value as string}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-8 gap-y-1 text-xs">
+            <span className="flex items-center gap-2">
+              <UserRound size={18} className="text-[var(--primary)]" />
+              <span>
+                <span className="block text-[var(--muted-foreground)]">
+                  Менеджер
                 </span>
-              )}
+                {person(candidate?.managerName, candidate?.managerCode1c)}
+              </span>
+            </span>
+            <span className="flex items-center gap-2">
+              <GraduationCap
+                size={18}
+                className="text-[var(--muted-foreground)]"
+              />
+              <span>
+                <span className="block text-[var(--muted-foreground)]">
+                  Наставник
+                </span>
+                {person(candidate?.mentorName, candidate?.mentorCode1c)}
+              </span>
+            </span>
+          </div>
+        </div>
+        <div className="flex max-w-full flex-wrap items-center gap-2 border-l border-[var(--border)] pl-3">
+          {candidate?.stageProgress ? (
+            candidate.stageProgress.map((progress) => (
+              <StageRing
+                key={progress.stage ?? "additional"}
+                progress={progress}
+                onOpen={onOpen}
+              />
+            ))
+          ) : (
+            <span className="w-24 text-center text-xs text-[var(--muted-foreground)]">
+              Этапы неизвестны
             </span>
           )}
-        </span>
-        <span className="pointer-events-none relative flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-          {returnedHistory ? "возвратов" : "документов"}: {count}
-          <ChevronRight size={16} aria-hidden />
-        </span>
+          <span className="pointer-events-auto flex w-20 flex-col items-center gap-1 text-xs">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]">
+              <FileSignature size={22} />
+            </span>
+            <strong>Договор</strong>
+            <span>—</span>
+          </span>
+          <ChevronRight size={18} className="text-[var(--muted-foreground)]" />
+        </div>
       </div>
     </section>
   );
@@ -287,8 +439,12 @@ export function ReviewPage({
     filters.birthDateTo ? formatDateRu(filters.birthDateTo) : "",
   );
   useEffect(() => {
-    setBirthDateFromText(filters.birthDateFrom ? formatDateRu(filters.birthDateFrom) : "");
-    setBirthDateToText(filters.birthDateTo ? formatDateRu(filters.birthDateTo) : "");
+    setBirthDateFromText(
+      filters.birthDateFrom ? formatDateRu(filters.birthDateFrom) : "",
+    );
+    setBirthDateToText(
+      filters.birthDateTo ? formatDateRu(filters.birthDateTo) : "",
+    );
   }, [filters.birthDateFrom, filters.birthDateTo]);
 
   // Functional search update: selector commits always apply on top of the
@@ -576,160 +732,178 @@ export function ReviewPage({
           остаются в этом списке.
         </p>
       )}
-      <Card>
-        <CardContent>
-          <div
-            role="search"
-            aria-label="Фильтры очереди проверки"
-            className="flex flex-wrap items-center gap-2 pb-4"
-          >
-            <SearchSelect
-              label="ФИО кандидата"
-              placeholder="ФИО кандидата…"
-              value={filters.candidateId}
-              selectedLabel={candidateLabel}
-              options={candidateOptions}
-              onSearchChange={setCandidateQuery}
-              onChange={commit("candidateId")}
-              isLoading={candidates.isLoading}
-              isError={candidates.isError}
-              onRetry={() => void candidates.refetch()}
-              className="min-w-[180px]"
-            />
-            <StaticSearchSelect
-              label="Тип документа"
-              placeholder="Все типы"
-              value={filters.documentTypeCode}
-              selectedLabel={docTypeLabel}
-              allOptions={docTypeOptions}
-              onChange={commit("documentTypeCode")}
-              className="min-w-[180px]"
-              isLoading={docTypes.isLoading}
-              isError={docTypes.isError}
-              onRetry={() => void docTypes.refetch()}
-            />
-            <StaticSearchSelect
-              label="Гражданство"
-              placeholder="Все гражданства"
-              value={filters.citizenship}
-              allOptions={citizenshipOptions}
-              isLoading={facets.isLoading}
-              isError={facets.isError}
-              onRetry={() => void facets.refetch()}
-              onChange={commit("citizenship")}
-              className="min-w-[140px]"
-            />
-            <StaticSearchSelect
-              label="Менеджер"
-              placeholder="Все менеджеры"
-              value={filters.managerCode1c}
-              selectedLabel={managerLabel}
-              allOptions={managerOptions}
-              isLoading={facets.isLoading}
-              isError={facets.isError}
-              onRetry={() => void facets.refetch()}
-              onChange={commit("managerCode1c")}
-              className="min-w-[160px]"
-            />
-            <StaticSearchSelect
-              label="Наставник"
-              placeholder="Все наставники"
-              value={filters.mentorCode1c}
-              selectedLabel={mentorLabel}
-              allOptions={mentorOptions}
-              isLoading={facets.isLoading}
-              isError={facets.isError}
-              onRetry={() => void facets.refetch()}
-              onChange={commit("mentorCode1c")}
-              className="min-w-[160px]"
-            />
-            <select
-              aria-label="Наличие наставника"
-              className={FILTER_CONTROL}
-              value={
-                filters.hasMentor === undefined ? "" : String(filters.hasMentor)
-              }
-              onChange={(event) =>
-                setFilters({ hasMentor: event.target.value || undefined })
-              }
-            >
-              <option value="">Все (наставник)</option>
-              <option value="true">Только с наставником</option>
-              <option value="false">Только без наставника</option>
-            </select>
-            <SearchSelect
-              label="Должность"
-              placeholder="Все должности"
-              value={filters.positionCode}
-              selectedLabel={positionLabel}
-              options={positionOptions}
-              onSearchChange={setPositionQuery}
-              onChange={commit("positionCode")}
-              isLoading={positions.isLoading}
-              isError={positions.isError}
-              onRetry={() => void positions.refetch()}
-              className="min-w-[160px]"
-            />
-            <StaticSearchSelect
-              label="Объект"
-              placeholder="Все объекты"
-              value={filters.projectCode}
-              selectedLabel={projectLabel}
-              allOptions={projectOptions}
-              isLoading={facets.isLoading}
-              isError={facets.isError}
-              onRetry={() => void facets.refetch()}
-              onChange={commit("projectCode")}
-              className="min-w-[160px]"
-            />
-            <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
-              Рожд. с
-              <input
-                aria-label="Дата рождения с"
-                type="text"
-                inputMode="numeric"
-                placeholder="dd.mm.yyyy"
-                className={FILTER_CONTROL}
-                value={birthDateFromText}
-                onChange={(event) => {
-                  const value = maskDateRuInput(event.target.value);
-                  setBirthDateFromText(value);
-                  if (!value) commit("birthDateFrom")(undefined);
-                  else {
-                    const parsed = parseDateRu(value);
-                    if (parsed) commit("birthDateFrom")(parsed);
+      <div>
+        <div>
+          <Card>
+            <CardContent>
+              <div
+                role="search"
+                aria-label="Фильтры очереди проверки"
+                className="grid grid-cols-1 items-center gap-2 pb-4 sm:grid-cols-2 lg:grid-cols-4"
+              >
+                <SearchSelect
+                  label="ФИО кандидата"
+                  placeholder="ФИО кандидата…"
+                  value={filters.candidateId}
+                  selectedLabel={candidateLabel}
+                  options={candidateOptions}
+                  onSearchChange={setCandidateQuery}
+                  onChange={commit("candidateId")}
+                  isLoading={candidates.isLoading}
+                  isError={candidates.isError}
+                  onRetry={() => void candidates.refetch()}
+                  className="min-w-[180px]"
+                />
+                <StaticSearchSelect
+                  label="Тип документа"
+                  placeholder="Все типы"
+                  value={filters.documentTypeCode}
+                  selectedLabel={docTypeLabel}
+                  allOptions={docTypeOptions}
+                  onChange={commit("documentTypeCode")}
+                  className="min-w-[180px]"
+                  isLoading={docTypes.isLoading}
+                  isError={docTypes.isError}
+                  onRetry={() => void docTypes.refetch()}
+                />
+                <StaticSearchSelect
+                  label="Гражданство"
+                  placeholder="Все гражданства"
+                  value={filters.citizenship}
+                  allOptions={citizenshipOptions}
+                  isLoading={facets.isLoading}
+                  isError={facets.isError}
+                  onRetry={() => void facets.refetch()}
+                  onChange={commit("citizenship")}
+                  className="min-w-[140px]"
+                />
+                <StaticSearchSelect
+                  label="Менеджер"
+                  placeholder="Все менеджеры"
+                  value={filters.managerCode1c}
+                  selectedLabel={managerLabel}
+                  allOptions={managerOptions}
+                  isLoading={facets.isLoading}
+                  isError={facets.isError}
+                  onRetry={() => void facets.refetch()}
+                  onChange={commit("managerCode1c")}
+                  className="min-w-[160px]"
+                />
+                <StaticSearchSelect
+                  label="Наставник"
+                  placeholder="Все наставники"
+                  value={filters.mentorCode1c}
+                  selectedLabel={mentorLabel}
+                  allOptions={mentorOptions}
+                  isLoading={facets.isLoading}
+                  isError={facets.isError}
+                  onRetry={() => void facets.refetch()}
+                  onChange={commit("mentorCode1c")}
+                  className="min-w-[160px]"
+                />
+                <select
+                  aria-label="Наличие наставника"
+                  className={FILTER_CONTROL}
+                  value={
+                    filters.hasMentor === undefined
+                      ? ""
+                      : String(filters.hasMentor)
                   }
-                }}
-                onBlur={() => setBirthDateFromText(filters.birthDateFrom ? formatDateRu(filters.birthDateFrom) : "")}
-              />
-            </label>
-            <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
-              по
-              <input
-                aria-label="Дата рождения по"
-                type="text"
-                inputMode="numeric"
-                placeholder="dd.mm.yyyy"
-                className={FILTER_CONTROL}
-                value={birthDateToText}
-                onChange={(event) => {
-                  const value = maskDateRuInput(event.target.value);
-                  setBirthDateToText(value);
-                  if (!value) commit("birthDateTo")(undefined);
-                  else {
-                    const parsed = parseDateRu(value);
-                    if (parsed) commit("birthDateTo")(parsed);
+                  onChange={(event) =>
+                    setFilters({ hasMentor: event.target.value || undefined })
                   }
-                }}
-                onBlur={() => setBirthDateToText(filters.birthDateTo ? formatDateRu(filters.birthDateTo) : "")}
-              />
-            </label>
-            {filtersActive && (
-              <Button size="sm" variant="ghost" onClick={resetFilters}>
-                Сбросить
-              </Button>
-            )}
-          </div>
+                >
+                  <option value="">Все (наставник)</option>
+                  <option value="true">Только с наставником</option>
+                  <option value="false">Только без наставника</option>
+                </select>
+                <SearchSelect
+                  label="Должность"
+                  placeholder="Все должности"
+                  value={filters.positionCode}
+                  selectedLabel={positionLabel}
+                  options={positionOptions}
+                  onSearchChange={setPositionQuery}
+                  onChange={commit("positionCode")}
+                  isLoading={positions.isLoading}
+                  isError={positions.isError}
+                  onRetry={() => void positions.refetch()}
+                  className="min-w-[160px]"
+                />
+                <StaticSearchSelect
+                  label="Объект"
+                  placeholder="Все объекты"
+                  value={filters.projectCode}
+                  selectedLabel={projectLabel}
+                  allOptions={projectOptions}
+                  isLoading={facets.isLoading}
+                  isError={facets.isError}
+                  onRetry={() => void facets.refetch()}
+                  onChange={commit("projectCode")}
+                  className="min-w-[160px]"
+                />
+                <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
+                  Рожд. с
+                  <input
+                    aria-label="Дата рождения с"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="dd.mm.yyyy"
+                    className={FILTER_CONTROL}
+                    value={birthDateFromText}
+                    onChange={(event) => {
+                      const value = maskDateRuInput(event.target.value);
+                      setBirthDateFromText(value);
+                      if (!value) commit("birthDateFrom")(undefined);
+                      else {
+                        const parsed = parseDateRu(value);
+                        if (parsed) commit("birthDateFrom")(parsed);
+                      }
+                    }}
+                    onBlur={() =>
+                      setBirthDateFromText(
+                        filters.birthDateFrom
+                          ? formatDateRu(filters.birthDateFrom)
+                          : "",
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
+                  по
+                  <input
+                    aria-label="Дата рождения по"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="dd.mm.yyyy"
+                    className={FILTER_CONTROL}
+                    value={birthDateToText}
+                    onChange={(event) => {
+                      const value = maskDateRuInput(event.target.value);
+                      setBirthDateToText(value);
+                      if (!value) commit("birthDateTo")(undefined);
+                      else {
+                        const parsed = parseDateRu(value);
+                        if (parsed) commit("birthDateTo")(parsed);
+                      }
+                    }}
+                    onBlur={() =>
+                      setBirthDateToText(
+                        filters.birthDateTo
+                          ? formatDateRu(filters.birthDateTo)
+                          : "",
+                      )
+                    }
+                  />
+                </label>
+                {filtersActive && (
+                  <Button size="sm" variant="ghost" onClick={resetFilters}>
+                    Сбросить
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
           {list.isLoading && <p role="status">Загрузка документов…</p>}
           {list.isError && (
             <div role="alert">
@@ -769,7 +943,7 @@ export function ReviewPage({
             />
           )}
           {groups.length > 0 && (
-            <div className="flex flex-col gap-3">
+            <div className="mt-2 flex flex-col gap-2">
               {groups.map((group) => (
                 <CandidateRow
                   key={group.candidate.id}
@@ -809,8 +983,8 @@ export function ReviewPage({
               </Button>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
       {drawerCandidateId && (
         <CandidateDrawer
           key={drawerCandidateId}
@@ -891,7 +1065,11 @@ export function ReviewDocumentPage({
         {readOnly ? "← История" : "← Очередь проверки"}
       </Link>
       <PageHeader
-        title={info.data?.candidate?.fullName?.trim() || info.data?.title || "Проверка документа"}
+        title={
+          info.data?.candidate?.fullName?.trim() ||
+          info.data?.title ||
+          "Проверка документа"
+        }
         subtitle={
           info.data ? `${info.data.title} · Версия ${number || "—"}` : undefined
         }

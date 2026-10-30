@@ -97,6 +97,8 @@ model DocumentType {
   erpUid String? @unique @db.VarChar(36)
   allRu Boolean @default(false)
   allForeign Boolean @default(false)
+  requiredForAll Boolean @default(false)
+  stage Int?
   catalogSyncedAt DateTime? @db.DateTime(3)
   definitions DocumentTypeField[]
   positions DocumentTypePosition[]
@@ -372,6 +374,13 @@ model Candidate {
   fullName        String?   @db.VarChar(512)
   birthDate       DateTime? @db.Date
   citizenship     String?   @db.VarChar(2)
+  sex             String?   @db.VarChar(16)
+  sexKnown        Boolean   @default(false)
+  photoPath       String?   @db.VarChar(2048)
+  masterName      String?   @db.VarChar(512)
+  masterCode1c    String?   @db.VarChar(64)
+  supervisorName  String?   @db.VarChar(512)
+  supervisorCode1c String?  @db.VarChar(64)
   positionCode    String?   @db.VarChar(64)
   positionName    String?   @db.VarChar(512)
   projectCode     String?   @db.VarChar(64)

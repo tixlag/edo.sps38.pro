@@ -10440,6 +10440,28 @@
       "CandidateSnapshotDto": {
         "type": "object",
         "properties": {
+          "citizenshipProvided": {
+            "type": "boolean"
+          },
+          "sex": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female"
+            ]
+          },
+          "sexKnown": {
+            "type": "boolean"
+          },
+          "photoPath": {
+            "type": "string"
+          },
+          "master": {
+            "$ref": "#/components/schemas/CandidateSnapshotPositionDto"
+          },
+          "supervisor": {
+            "$ref": "#/components/schemas/CandidateSnapshotPositionDto"
+          },
           "uuid": {
             "type": "string",
             "format": "uuid",
@@ -10681,9 +10703,83 @@
           "supersededByVersion"
         ]
       },
+      "ReviewStageCountsDto": {
+        "type": "object",
+        "properties": {
+          "approved": {
+            "type": "number"
+          },
+          "pending": {
+            "type": "number"
+          },
+          "processing": {
+            "type": "number"
+          },
+          "missing": {
+            "type": "number"
+          },
+          "attention": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "approved",
+          "pending",
+          "processing",
+          "missing",
+          "attention"
+        ]
+      },
+      "ReviewStageProgressDto": {
+        "type": "object",
+        "properties": {
+          "stage": {
+            "type": "number",
+            "nullable": true
+          },
+          "required": {
+            "$ref": "#/components/schemas/ReviewStageCountsDto"
+          },
+          "additional": {
+            "$ref": "#/components/schemas/ReviewStageCountsDto"
+          }
+        },
+        "required": [
+          "stage",
+          "required",
+          "additional"
+        ]
+      },
       "CandidateProfileDto": {
         "type": "object",
         "properties": {
+          "sex": {
+            "type": "string",
+            "nullable": true
+          },
+          "sexKnown": {
+            "type": "boolean"
+          },
+          "photoPath": {
+            "type": "string",
+            "nullable": true
+          },
+          "masterName": {
+            "type": "string",
+            "nullable": true
+          },
+          "masterCode1c": {
+            "type": "string",
+            "nullable": true
+          },
+          "supervisorName": {
+            "type": "string",
+            "nullable": true
+          },
+          "supervisorCode1c": {
+            "type": "string",
+            "nullable": true
+          },
           "reviewGroup": {
             "allOf": [
               {
@@ -10762,15 +10858,29 @@
           },
           "approvedDocuments": {
             "type": "number",
-            "description": "Candidate APPROVED documents under the queue access scope (all tabs)"
+            "description": "Approved applicable documents under the queue access scope (all tabs); all approved documents when position is unknown"
           },
           "requiredDocuments": {
             "type": "number",
             "nullable": true,
-            "description": "Applicable catalog document types for positionCode+citizenship; null when positionCode is unknown"
+            "description": "Applicable catalog document types for position, citizenship and known sex; null when positionCode is unknown"
+          },
+          "stageProgress": {
+            "nullable": true,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewStageProgressDto"
+            }
           }
         },
         "required": [
+          "sex",
+          "sexKnown",
+          "photoPath",
+          "masterName",
+          "masterCode1c",
+          "supervisorName",
+          "supervisorCode1c",
           "reviewGroup",
           "id",
           "chatUuid",

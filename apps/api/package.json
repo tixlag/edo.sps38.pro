@@ -15,6 +15,7 @@
     "prisma:generate": "prisma generate --schema ../../prisma/schema.prisma",
     "lk:sync": "ts-node --transpile-only src/lk-sync/run-sync.ts",
     "candidates:backfill": "ts-node --transpile-only src/documents/run-profile-backfill.ts",
+    "candidates:refresh": "ts-node --transpile-only src/documents/run-profile-refresh.ts",
     "lk:topology": "ts-node --transpile-only src/lk-sync/run-topology.ts",
     "lk:recover": "ts-node --transpile-only src/lk-sync/run-recover.ts",
     "lk:queues:reset": "ts-node --transpile-only scripts/reset-edo-queues.ts",

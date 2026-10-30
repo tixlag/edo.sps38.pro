@@ -90,6 +90,7 @@ describe("ERP candidate adapter", () => {
       await new ErpCandidateClient(config).findByEmployeeCode("ER-0012211"),
     ).toEqual({
       uuid: null,
+      sexKnown: false,
       name: "Тестовый Кандидат",
       birthDate: "1990-01-02",
       citizenship: "ru",
@@ -184,6 +185,7 @@ describe("ERP candidate adapter", () => {
       await new ErpCandidateClient(config).findByChatUuid(chatUuid),
     ).toEqual({
       ...card,
+      sexKnown: false,
       name: "Иван Петров",
       citizenship: "ru",
       mentor: { name: "Наставник" },
@@ -304,7 +306,7 @@ describe("EDO candidate context", () => {
       },
       catalog: { items: [] },
     });
-    expect(catalog.list).toHaveBeenCalledWith("000000173", "ru");
+    expect(catalog.list).toHaveBeenCalledWith("000000173", "ru", null);
     expect(requests.map((url) => url.hostname)).toEqual([
       "lk.example",
       "erp.example",

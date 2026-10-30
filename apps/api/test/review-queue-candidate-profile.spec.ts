@@ -177,7 +177,7 @@ describe("snapshot persistence mapping", () => {
       mentorCode1c: null,
     })!;
     expect(update.fullName).toBe("Иван");
-    expect(update.mentorCode1c).toBeNull();
+    expect(update.mentorCode1c).toBeUndefined();
     expect(update.birthDate).toBeUndefined();
     expect(update.positionCode).toBeUndefined();
     expect(update.profileSyncedAt).toBeInstanceOf(Date);
@@ -217,6 +217,13 @@ describe("snapshot persistence mapping", () => {
     ).toEqual({
       id: "c1",
       reviewGroup: "RU",
+      sex: null,
+      sexKnown: false,
+      photoPath: null,
+      masterName: null,
+      masterCode1c: null,
+      supervisorName: null,
+      supervisorCode1c: null,
       chatUuid: "chat",
       code1c: null,
       fullName: "Иван",
@@ -596,9 +603,15 @@ describe("reviewDocuments candidate progress", () => {
   };
   // Catalog: T1 for all RU, T2 for POS1 only, T3 for all foreigners.
   const catalog = [
-    { allRu: true, allForeign: false, positions: [] },
-    { allRu: false, allForeign: false, positions: [{ code1c: "POS1" }] },
-    { allRu: false, allForeign: true, positions: [] },
+    { id: "t1", code: "T1", allRu: true, allForeign: false, positions: [] },
+    {
+      id: "t2",
+      code: "T2",
+      allRu: false,
+      allForeign: false,
+      positions: [{ code1c: "POS1" }],
+    },
+    { id: "t3", code: "T3", allRu: false, allForeign: true, positions: [] },
   ];
 
   it("enriches all candidate documents for a direct drawer link under the same scope", async () => {
@@ -608,7 +621,14 @@ describe("reviewDocuments candidate progress", () => {
     ];
     const { service, findMany, groupBy } = setup(docs, {
       catalog,
-      grouped: [{ candidateId: "c1", status: "APPROVED", _count: { _all: 1 } }],
+      grouped: [
+        {
+          candidateId: "c1",
+          documentTypeId: "t1",
+          status: "APPROVED",
+          _count: { _all: 1 },
+        },
+      ],
     });
     const guard = vi
       .spyOn(access, "candidate")
@@ -654,7 +674,12 @@ describe("reviewDocuments candidate progress", () => {
     ];
     const { service } = setup(docs, {
       grouped: [
-        { candidateId: "c1", status: "APPROVED", _count: { _all: 2 } },
+        {
+          candidateId: "c1",
+          documentTypeId: "t1",
+          status: "APPROVED",
+          _count: { _all: 2 },
+        },
         { candidateId: "c1", status: "IN_REVIEW", _count: { _all: 1 } },
         { candidateId: "c2", status: "APPROVED", _count: { _all: 1 } },
       ],
@@ -677,6 +702,106 @@ describe("reviewDocuments candidate progress", () => {
     // c3 (kz + unknown POS9): only allForeign T3.
     expect(byId.get("c3")).toMatchObject({
       approvedDocuments: 0,
+      requiredDocuments: 1,
+    });
+  });
+  it("excludes an approved military document from female progress without removing the document", async () => {
+    const docs = [
+      docRow(
+        "d1",
+        profileRow({ sex: "female", sexKnown: true } as never),
+        "APPROVED",
+      ),
+    ];
+    const military = {
+      id: "m",
+      code: "MILITARY",
+      catalogSyncedAt: null,
+      allRu: true,
+      allForeign: false,
+      positions: [],
+    };
+    const passport = {
+      id: "p",
+      code: "PASSPORT",
+      allRu: true,
+      allForeign: false,
+      positions: [],
+    };
+    const { service, catalog: catalogQuery } = setup(docs, {
+      catalog: [military, passport],
+      grouped: [
+        {
+          candidateId: "c1",
+          documentTypeId: "m",
+          status: "APPROVED",
+          _count: { _all: 1 },
+        },
+        {
+          candidateId: "c1",
+          documentTypeId: "p",
+          status: "APPROVED",
+          _count: { _all: 1 },
+        },
+      ],
+    });
+    const page = await service.reviewDocuments(fullAccess, { limit: 10 });
+    expect(catalogQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { catalogSyncedAt: { not: null } },
+            { code: { in: ["MILITARY"] } },
+          ],
+        },
+      }),
+    );
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0].candidate).toMatchObject({
+      approvedDocuments: 1,
+      requiredDocuments: 1,
+    });
+  });
+  it("does not count approved types outside the active requirements", async () => {
+    const docs = [docRow("d1", profileRow())];
+    const types = [
+      {
+        id: "p",
+        code: "PASSPORT",
+        catalogSyncedAt: new Date(),
+        allRu: true,
+        allForeign: false,
+        positions: [],
+      },
+      {
+        id: "other",
+        code: "OTHER",
+        catalogSyncedAt: new Date(),
+        allRu: false,
+        allForeign: true,
+        positions: [],
+      },
+    ];
+    const { service } = setup(docs, {
+      catalog: types,
+      grouped: [
+        {
+          candidateId: "c1",
+          documentTypeId: "p",
+          status: "APPROVED",
+          _count: { _all: 1 },
+        },
+        {
+          candidateId: "c1",
+          documentTypeId: "other",
+          status: "APPROVED",
+          _count: { _all: 1 },
+        },
+      ],
+    });
+    const page = await service.reviewDocuments(fullAccess, { limit: 10 });
+    expect(page.items[0].candidate).toMatchObject({
+      approvedDocuments: 1,
       requiredDocuments: 1,
     });
   });

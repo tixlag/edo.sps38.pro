@@ -60,6 +60,8 @@ export function normalizeErpCandidate(
       position: envelope.position,
       project: envelope.project,
       manager: envelope.manager,
+      master: envelope.master,
+      supervisor: envelope.supervisor,
       mentor: envelope.mentor,
     };
   }
@@ -107,6 +109,54 @@ export function normalizeErpCandidate(
     uuid: typeof returnedUuid === "string" ? returnedUuid.toLowerCase() : null,
     citizenship: citizenship.toLowerCase(),
   };
+  if (
+    row.citizenshipProvided === false ||
+    row.citizenship == null ||
+    (typeof row.citizenship === "string" && !row.citizenship.trim())
+  )
+    result.citizenshipProvided = false;
+  const rawSex =
+    typeof row.sex === "string" ? row.sex.trim().toLowerCase() : "";
+  const sex =
+    rawSex === "женский" || rawSex === "female"
+      ? "female"
+      : rawSex === "мужской" || rawSex === "male"
+        ? "male"
+        : undefined;
+  result.sexKnown = sex !== undefined;
+  if (sex) result.sex = sex;
+  if (typeof row.photoPath === "string" && row.photoPath.trim().length > 2048)
+    throw new ErpCandidateError(502, false);
+  const photoPath = text(row.photoPath, 2048);
+  if (photoPath) result.photoPath = photoPath;
+  for (const key of ["master", "supervisor"]) {
+    const input = row[key];
+    if (typeof input === "string") {
+      if (input.trim().length > 512) throw new ErpCandidateError(502, false);
+      const name = text(input, 512);
+      if (name) result[key] = { name };
+      continue;
+    }
+    if (input && typeof input === "object" && !Array.isArray(input)) {
+      const source = input as Record<string, unknown>;
+      if (
+        (typeof source.name === "string" && source.name.trim().length > 512) ||
+        (typeof source.code === "string" && source.code.trim().length > 64)
+      )
+        throw new ErpCandidateError(502, false);
+    }
+    const source =
+      input && typeof input === "object" && !Array.isArray(input)
+        ? (input as Record<string, unknown>)
+        : {};
+    const name = text(source.name, 512);
+    const code = text(source.code, 64);
+    const value =
+      name || code
+        ? { ...(name ? { name } : {}), ...(code ? { code } : {}) }
+        : undefined;
+    if (value) result[key] = value;
+  }
   for (const [key, max] of [
     ["name", 256],
     ["birthDate", 32],
