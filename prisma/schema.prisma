@@ -633,7 +633,7 @@ model DocumentSubmission {
 }
 
 model ErpDocumentDelivery {
-  transport String @default("base64-v1") @db.VarChar(16)
+  transport String @default("multipart-v2") @db.VarChar(16)
   attemptCount Int @default(0)
   nextAttemptAt DateTime? @db.DateTime(3)
   id String @id @default(cuid()) @db.VarChar(64)

@@ -144,8 +144,7 @@ export class DocumentPdfService {
     });
     const transport = (this.config.get<string>("ERP_DOCUMENTS_TRANSPORT") ??
       "multipart-v2") as DocumentTransport;
-    if (!["base64-v1", "multipart-v2"].includes(transport))
-      throw new Error("ERP_TRANSPORT_INVALID");
+    if (transport !== "multipart-v2") throw new Error("ERP_TRANSPORT_INVALID");
     if (!version.files.length)
       throw new ConflictException("Document originals are unavailable");
     if (

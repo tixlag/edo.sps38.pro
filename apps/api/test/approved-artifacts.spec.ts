@@ -105,17 +105,11 @@ describe("approved artifacts and ownership", () => {
     await expect(f.service.prepare("v", 0)).rejects.toThrow();
     expect(f.objects.size).toBe(2);
   });
-  it("keeps v1 PDF preparation", async () => {
+  it("rejects retired v1 for new approvals", async () => {
     const f = fixture(await read("passport.jpg"), "image/jpeg", "base64-v1");
-    const artifact = await f.service.prepare("v", 0);
-    expect(artifact).toMatchObject({
-      transport: "base64-v1",
-      mimeType: "application/pdf",
-      extension: "pdf",
-    });
-    expect(
-      (await PDFDocument.load(f.objects.get(artifact.key)!)).getPageCount(),
-    ).toBe(1);
+    await expect(f.service.prepare("v", 0)).rejects.toThrow(
+      "ERP_TRANSPORT_INVALID",
+    );
   });
   it("discards only owned pending objects, protects committed artifacts and originals", async () => {
     const f = fixture(await read("scan.png"), "image/png");
@@ -320,10 +314,9 @@ describe("ERP transport configuration", () => {
       ERP_DOCUMENTS_V2_AUTO_RETRY: "false",
       ERP_DOCUMENTS_V2_TIMEOUT_MS: 300000,
     });
-    expect(
-      validateEnv({ ...base, ERP_DOCUMENTS_TRANSPORT: "base64-v1" })
-        .ERP_DOCUMENTS_TRANSPORT,
-    ).toBe("base64-v1");
+    expect(() =>
+      validateEnv({ ...base, ERP_DOCUMENTS_TRANSPORT: "base64-v1" }),
+    ).toThrow();
   });
   it.each([
     { ERP_DOCUMENTS_TRANSPORT: "unknown" },
