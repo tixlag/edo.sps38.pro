@@ -8,7 +8,8 @@ import {
   type CandidatePreviousDocumentDto,
   type CandidateRecheckStatus,
 } from "@edo/api-client";
-import { Button } from "@edo/ui";
+import { Badge, Button } from "@edo/ui";
+import { ChevronDown } from "lucide-react";
 import { CANDIDATE_CONTROL, candidateError } from "./CandidateForm";
 
 const RECHECK_LABELS: Record<CandidateRecheckStatus, string> = {
@@ -211,45 +212,65 @@ export function CandidatePreviousDocuments({
   candidateId: string;
 }) {
   const documents = useListCandidatePreviousDocuments(candidateId);
+  const itemsCount = documents.data?.items?.length;
+
   return (
     <section
       aria-label="Прежние документы физлица"
-      className="space-y-3 border-t border-[var(--border)] pt-5"
+      className="border-t border-[var(--border)] pt-5"
     >
-      <h2 className="text-base font-semibold">Прежние документы физлица</h2>
-      <p className="text-sm text-[var(--muted-foreground)]">
-        Документы ERP проверяются заново для текущего оформления. Прежние
-        решения и оригиналы сохраняются.
-      </p>
-      {documents.isLoading && <p role="status">Загрузка документов ERP…</p>}
-      {documents.isError && (
-        <p role="alert" className="text-sm">
-          Не удалось получить документы ERP.{" "}
-          <Button
-            size="sm"
-            variant="outline"
-            className="rounded-md"
-            onClick={() => void documents.refetch()}
-          >
-            Повторить
-          </Button>
-        </p>
-      )}
-      {documents.data?.items.length === 0 && (
-        <p className="text-sm">
-          Доступных прежних документов нет. Недостающие документы показаны в
-          перечне справа.
-        </p>
-      )}
-      <ul>
-        {documents.data?.items.map((document) => (
-          <PreviousDocument
-            key={`${document.id}:${document.status}`}
-            candidateId={candidateId}
-            document={document}
+      <details
+        className="group rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 transition-colors"
+        open
+      >
+        <summary className="flex cursor-pointer select-none items-center justify-between text-base font-semibold list-none [&::-webkit-details-marker]:hidden">
+          <div className="flex items-center gap-2">
+            <h2>Прежние документы физлица</h2>
+            {typeof itemsCount === "number" && (
+              <Badge tone="default">{itemsCount}</Badge>
+            )}
+          </div>
+          <ChevronDown
+            size={18}
+            className="text-[var(--muted-foreground)] transition-transform duration-200 group-open:rotate-180"
           />
-        ))}
-      </ul>
+        </summary>
+        <div className="space-y-3 pt-3">
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Документы ERP проверяются заново для текущего оформления. Прежние
+            решения и оригиналы сохраняются.
+          </p>
+          {documents.isLoading && <p role="status">Загрузка документов ERP…</p>}
+          {documents.isError && (
+            <p role="alert" className="text-sm">
+              Не удалось получить документы ERP.{" "}
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-md"
+                onClick={() => void documents.refetch()}
+              >
+                Повторить
+              </Button>
+            </p>
+          )}
+          {documents.data?.items.length === 0 && (
+            <p className="text-sm">
+              Доступных прежних документов нет. Недостающие документы показаны в
+              перечне справа.
+            </p>
+          )}
+          <ul>
+            {documents.data?.items.map((document) => (
+              <PreviousDocument
+                key={`${document.id}:${document.status}`}
+                candidateId={candidateId}
+                document={document}
+              />
+            ))}
+          </ul>
+        </div>
+      </details>
     </section>
   );
 }

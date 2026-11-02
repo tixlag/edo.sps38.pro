@@ -197,6 +197,15 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.permissions = { "20002": [] };
   state.profile.linkedPerson = false;
+  state.profile.history = [
+    {
+      date: "2026-10-26T01:00:00Z",
+      author: "Менеджер",
+      statusId: "recruiting",
+      statusName: "Подбор",
+      comment: "Проверен телефон",
+    },
+  ];
   state.previous = [];
   state.workspaceError = null;
   state.managersUnavailable = false;
@@ -568,5 +577,58 @@ describe("candidate manager flows", () => {
     expect(button("Изменить статус")).toBeDefined();
     expect(button("Редактировать данные")).toBeDefined();
     expect(view.textContent).toContain("ERP");
+  });
+
+  it("renders status history timeline with status badge, author and blockquote comment", async () => {
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    expect(view.textContent).toContain("История статусов");
+    const timeline = view.querySelector("ol");
+    expect(timeline).not.toBeNull();
+    expect(timeline?.className).toContain("border-l-2");
+    expect(view.textContent).toContain("Подбор");
+    expect(view.textContent).toContain("Менеджер");
+    const blockquote = view.querySelector("blockquote");
+    expect(blockquote).not.toBeNull();
+    expect(blockquote?.textContent).toContain("Проверен телефон");
+    expect(blockquote?.className).toContain("bg-[var(--muted)]/60");
+  });
+
+  it("renders EmptyState when status history is empty", async () => {
+    state.profile.history = [];
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    expect(view.textContent).toContain("История пока пуста");
+    expect(view.querySelector("ol")).toBeNull();
+  });
+
+  it("renders collapsible accordion for previous documents with counter and details", async () => {
+    state.profile.linkedPerson = true;
+    state.previous = [
+      {
+        id: "old-doc-1",
+        title: "Паспорт",
+        fields: {},
+        expiresAt: null,
+        originalAvailable: true,
+        status: "CONFIRMED",
+        reviewedAt: null,
+      },
+      {
+        id: "old-doc-2",
+        title: "ИНН",
+        fields: {},
+        expiresAt: null,
+        originalAvailable: false,
+        status: "REQUIRES_REVIEW",
+        reviewedAt: null,
+      },
+    ];
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    const details = view.querySelector("details");
+    expect(details).not.toBeNull();
+    expect(details?.open).toBe(true);
+    expect(details?.className).toContain("rounded-xl");
+    const summary = details?.querySelector("summary");
+    expect(summary?.textContent).toContain("Прежние документы физлица");
+    expect(summary?.textContent).toContain("2");
   });
 });

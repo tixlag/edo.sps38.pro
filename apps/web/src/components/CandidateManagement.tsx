@@ -15,7 +15,7 @@ import {
   type CandidateProfileDto,
   type CandidateFieldsDto,
 } from "@edo/api-client";
-import { Badge, Button, StatusBadge } from "@edo/ui";
+import { Badge, Button, EmptyState, StatusBadge } from "@edo/ui";
 import {
   Briefcase,
   Check,
@@ -90,6 +90,54 @@ function CopyPhoneButton({ phone }: { phone: string }) {
       )}
     </button>
   );
+}
+
+function formatHistoryDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+function getStatusDotColor(statusId?: string, statusName?: string): string {
+  const text = `${statusId ?? ""} ${statusName ?? ""}`.toLowerCase();
+  if (/отказ|блок|запрет|увол|недозвон|ошибк/i.test(text)) {
+    return "bg-[var(--primary)]";
+  }
+  if (
+    /заезд|arrival|прием|приём|приказ|оформлен|принят|стажировк|employment|onboarding|готов/i.test(
+      text,
+    )
+  ) {
+    return "bg-[var(--success)]";
+  }
+  if (
+    /медосмотр|удостоверен|согласован|рассмотрен|пропуск|проверк|безопасн|security|medical|approval/i.test(
+      text,
+    ) ||
+    /(?:^|[^\p{L}\p{N}])(?:мо|уц|сб|фсб|епт|воз|sb|mo|uc)(?:[^\p{L}\p{N}]|$)/iu.test(
+      text,
+    )
+  ) {
+    return "bg-[var(--warning)]";
+  }
+  if (
+    /подбор|recruiting|потенциальн|potential|в\s*работе|резерв|reserve|скрининг/i.test(
+      text,
+    )
+  ) {
+    return "bg-[var(--info)]";
+  }
+  return "bg-[var(--muted-foreground)]";
 }
 
 function useConfirmedCandidate(candidateId: string) {
@@ -732,25 +780,42 @@ export function CandidateManagement({
           </div>
         )}
       </section>
-      <section className="space-y-3 border-t border-[var(--border)] pt-5">
+      <section className="space-y-4 border-t border-[var(--border)] pt-5">
         <h2 className="text-base font-semibold">История статусов</h2>
         {!profile.history.length ? (
-          <p className="text-sm text-[var(--muted-foreground)]">
-            История пока пуста.
-          </p>
+          <EmptyState
+            title="История пока пуста"
+            description="Статусы кандидата будут отображаться здесь по мере прохождения оформления."
+            className="py-6"
+          />
         ) : (
-          <ol className="space-y-3">
+          <ol className="relative ml-3 space-y-6 border-l-2 border-[var(--border)] pl-6">
             {profile.history.map((item, index) => (
-              <li key={`${item.date}:${index}`} className="text-sm">
-                <p className="font-medium">{item.statusName}</p>
-                <p className="text-xs text-[var(--muted-foreground)]">
-                  {new Date(item.date).toLocaleString("ru-RU")} ·{" "}
-                  {item.author || "Автор не указан"}
-                </p>
+              <li
+                key={`${item.date}:${index}`}
+                className="relative space-y-1.5 text-sm"
+              >
+                <span
+                  aria-hidden="true"
+                  className={`absolute -left-8 top-1 h-3.5 w-3.5 rounded-full border-2 border-[var(--card)] ${getStatusDotColor(item.statusId, item.statusName)} shadow-sm`}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={item.statusName || item.statusId} />
+                  <time className="text-xs text-[var(--muted-foreground)]">
+                    {formatHistoryDate(item.date)}
+                  </time>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+                  <User
+                    size={13}
+                    className="shrink-0 text-[var(--muted-foreground)]"
+                  />
+                  <span>{item.author || "Автор не указан"}</span>
+                </div>
                 {item.comment && (
-                  <p className="mt-1 whitespace-pre-wrap break-words">
+                  <blockquote className="rounded-lg border border-[var(--border)]/50 bg-[var(--muted)]/60 p-2.5 text-xs text-[var(--foreground)] whitespace-pre-wrap break-words">
                     {item.comment}
-                  </p>
+                  </blockquote>
                 )}
               </li>
             ))}
