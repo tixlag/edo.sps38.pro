@@ -47,7 +47,16 @@ vi.mock("@edo/api-client", () => ({
           ? {
               stageDocuments: {
                 required: {
-                  documents: [],
+                  documents: [
+                    {
+                      id: "doc2",
+                      title: "СНИЛС",
+                      status: "IN_REVIEW",
+                      currentVersion: 2,
+                      pendingDeliveryVersions: [],
+                      returnedVersions: [],
+                    },
+                  ],
                   missingDocuments: [{ code: "passport", title: "Паспорт" }],
                 },
                 additional: { documents: [], missingDocuments: [] },
@@ -102,6 +111,15 @@ it("keeps the chat and candidate data visible while selecting a document stage",
   expect(state.search.document).toBeUndefined();
   expect(state.calls).toContainEqual({ stage: "1" });
   expect(node.textContent).toContain("Паспорт");
+  expect(node.textContent).toContain("Не загружен");
+  expect(node.textContent).toContain("Ожидает проверки");
+  const documentButton = node.querySelector(
+    'button[aria-label="СНИЛС, версия 2"]',
+  ) as HTMLButtonElement;
+  expect(documentButton).not.toBeNull();
+  await act(async () => documentButton.click());
+  expect(state.search.document).toBe("doc2");
+  expect(state.search.version).toBe(2);
   expect(node.textContent).toContain("Содержимое переписки");
   expect(state.chatMounts).toBe(1);
   await act(async () => root.unmount());

@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { CandidateManagement } from "../components/CandidateManagement";
 import { StageRing } from "./ReviewPage";
-import { CandidateRequirements } from "../components/CandidateRequirements";
+import { CandidateDocumentList } from "../components/CandidateDocumentList";
 import { hasAccessRule } from "../lib/audit-types";
 import { CandidateChat } from "../components/CandidateChat";
 import { DocumentReviewWorkspace } from "../components/DocumentReviewWorkspace";
@@ -254,20 +254,13 @@ function CandidateWorkspace() {
     });
   };
   const stageData = stage ? stageDetails.data?.stageDocuments : undefined;
-  const missing = stageData
+  const groups = stage ? stageData : details.data?.documentGroups;
+  const documents = stage
     ? [
-        ...stageData.required.missingDocuments,
-        ...stageData.additional.missingDocuments,
+        ...(stageData?.required.documents ?? []),
+        ...(stageData?.additional.documents ?? []),
       ]
-    : [];
-  const documents = [
-    ...(stage
-      ? [
-          ...(stageData?.required.documents ?? []),
-          ...(stageData?.additional.documents ?? []),
-        ]
-      : (details.data?.documents ?? [])),
-  ].sort((a, b) => a.title.localeCompare(b.title, "ru"));
+    : (details.data?.documents ?? []);
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden p-3 sm:p-4">
       <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -590,21 +583,15 @@ function CandidateWorkspace() {
             </p>
           )}
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {!stage && (
-              <CandidateRequirements
-                candidateId={candidateId}
-                documents={documents}
-              />
-            )}
-            {stage && stageDetails.isFetching && (
-              <p role="status" className="p-2 text-xs">
+            {stage && stageDetails.isFetching && !stageData && (
+              <p role="status" className="p-2 text-sm">
                 Загрузка документов этапа…
               </p>
             )}
             {stage && !stageDetails.isFetching && !stageData && (
               <div
                 role={stageDetails.isError ? "alert" : "status"}
-                className="space-y-2 p-2 text-xs"
+                className="space-y-2 p-2 text-sm"
               >
                 Не удалось определить документы выбранного этапа.
                 {stageDetails.isError && (
@@ -618,113 +605,34 @@ function CandidateWorkspace() {
                 )}
               </div>
             )}
-            {stage && missing.length > 0 && (
-              <section className="mb-3 border-b border-[var(--border)] p-2">
-                <h3 className="mb-2 text-xs font-semibold">Не загружены</h3>
-                <ul className="space-y-1">
-                  {missing.map((item) => (
-                    <li key={item.code} className="text-xs">
-                      {item.title}{" "}
-                      <span className="text-[var(--muted-foreground)]">
-                        ·{" "}
-                        {stageData?.required.missingDocuments.some(
-                          (entry) => entry.code === item.code,
-                        )
-                          ? "обязательный"
-                          : "дополнительный"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
             {details.isLoading && (
               <p role="status" className="p-2 text-sm">
                 Загрузка документов…
               </p>
             )}
-            {details.data &&
-              (!stage || stageData) &&
-              !documents.length &&
-              !missing.length && (
-                <EmptyState
-                  title="Документов пока нет"
-                  description="Кандидат ещё не загрузил документы в EDO."
-                />
-              )}
-            <ul className="flex flex-col gap-2">
-              {documents.map((document) => (
-                <li
-                  key={document.id}
-                  className={`overflow-hidden rounded-lg border border-[var(--border)] ${documentId === document.id ? "bg-[var(--primary-soft)]" : ""}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => openDocument(document)}
-                    className="block w-full p-3 text-left hover:bg-[var(--muted)]"
-                    aria-current={
-                      documentId === document.id ? "true" : undefined
-                    }
+            {details.data && (!stage || stageData) && (
+              <>
+                {!stage && !groups && (
+                  <p
+                    role="status"
+                    className="mb-3 px-1 text-xs text-[var(--muted-foreground)]"
                   >
-                    <span className="mb-1 block break-words text-[13px] font-medium">
-                      {document.title}
-                    </span>
-                    <span className="flex flex-wrap items-center gap-1">
-                      <StatusBadge status={document.status} document />
-                      {stageData && (
-                        <span className="text-xs text-[var(--muted-foreground)]">
-                          {stageData.required.documents.some(
-                            (item) => item.id === document.id,
-                          )
-                            ? "Обязательный"
-                            : "Дополнительный"}
-                        </span>
-                      )}
-                      <span className="text-xs text-[var(--muted-foreground)]">
-                        Версия {document.currentVersion}
-                      </span>
-                    </span>
-                  </button>
-                  {!!document.returnedVersions?.length && (
-                    <details className="border-t border-[var(--border)] px-3 py-2 text-xs">
-                      <summary className="cursor-pointer text-[var(--muted-foreground)]">
-                        Возвращённые версии
-                      </summary>
-                      {document.returnedVersions.map((returned) => (
-                        <button
-                          key={returned.version}
-                          type="button"
-                          className="mt-2 block text-left underline"
-                          onClick={() =>
-                            openDocument(document, returned.version)
-                          }
-                        >
-                          Версия {returned.version}
-                          {returned.rejectionReason
-                            ? ` · ${returned.rejectionReason}`
-                            : ""}
-                        </button>
-                      ))}
-                    </details>
-                  )}
-                  {!!document.pendingDeliveryVersions.length && (
-                    <p className="px-3 pb-2 text-xs text-[var(--muted-foreground)]">
-                      Требует отправки в ERP:{" "}
-                      {document.pendingDeliveryVersions.map((pending) => (
-                        <button
-                          key={pending}
-                          type="button"
-                          className="mr-1 underline"
-                          onClick={() => openDocument(document, pending)}
-                        >
-                          {pending}
-                        </button>
-                      ))}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
+                    Не удалось определить обязательные и дополнительные
+                    документы.
+                  </p>
+                )}
+                <CandidateDocumentList
+                  groups={groups}
+                  documents={documents}
+                  missingDocuments={
+                    stage ? [] : (details.data.missingDocuments ?? [])
+                  }
+                  selectedId={documentId}
+                  stage={stage}
+                  onOpen={openDocument}
+                />
+              </>
+            )}
           </div>
         </aside>
       </div>
