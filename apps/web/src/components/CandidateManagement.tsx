@@ -335,6 +335,22 @@ export function CandidateManagement({ candidateId }: { candidateId: string }) {
     null,
   );
   if (workspace.isLoading) return <p role="status">Загрузка данных ERP…</p>;
+  const response = (
+    workspace.error as {
+      response?: { status?: number; data?: { message?: unknown } };
+    } | null
+  )?.response;
+  if (
+    response?.status === 409 &&
+    response.data?.message === "ERP_CANDIDATE_CONFIRMATION_REQUIRED"
+  )
+    return (
+      <div role="status" className="text-sm text-[var(--muted-foreground)]">
+        Нет подтверждённой связи с кандидатом в 1С. Данные оформления и
+        изменение статуса станут доступны после установления связи. Для
+        переписки и документов вернитесь к соответствующим разделам карточки.
+      </div>
+    );
   if (workspace.isError || !workspace.data)
     return (
       <div role="alert" className="text-sm">

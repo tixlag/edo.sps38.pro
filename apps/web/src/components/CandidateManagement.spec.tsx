@@ -41,6 +41,7 @@ const state = vi.hoisted(() => ({
   setData: vi.fn(),
   persons: vi.fn(),
   previous: [] as unknown[],
+  workspaceError: null as unknown,
 }));
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({
@@ -66,7 +67,10 @@ vi.mock("@edo/api-client", () => {
   });
   return {
     useGetMe: () => ({ data: { permissions: state.permissions } }),
-    useGetCandidateWorkspace: () => ({ data: state.profile }),
+    useGetCandidateWorkspace: () =>
+      state.workspaceError
+        ? { isError: true, error: state.workspaceError }
+        : { data: state.profile },
     useListCandidateManagers: () =>
       result([{ id: "manager-secret", name: "Анна Менеджер" }]),
     useListPositions: () => result([]),
@@ -184,6 +188,7 @@ beforeEach(() => {
   state.permissions = { "20002": [] };
   state.profile.linkedPerson = false;
   state.previous = [];
+  state.workspaceError = null;
   for (const mutation of [state.create, state.update, state.status, state.link])
     mutation.mockResolvedValue(state.profile);
   state.recheck.mockResolvedValue({ items: [] });
@@ -195,6 +200,19 @@ afterEach(async () => {
 });
 
 describe("candidate manager flows", () => {
+  it("explains when an ERP candidate link has not been confirmed", async () => {
+    state.workspaceError = {
+      response: {
+        status: 409,
+        data: { message: "ERP_CANDIDATE_CONFIRMATION_REQUIRED" },
+      },
+    };
+    await render(<CandidateManagement candidateId="unlinked" />);
+    expect(view.textContent).toContain(
+      "Нет подтверждённой связи с кандидатом в 1С",
+    );
+    expect(view.textContent).not.toContain("Повторить");
+  });
   it("creates in ERP without a required object and retains request/body after an uncertain response", async () => {
     state.create.mockRejectedValueOnce(new Error("Lost response"));
     await render(<CandidatesPage />);

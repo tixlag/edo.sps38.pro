@@ -8,7 +8,6 @@ import {
 import {
   useGetCandidateDetails,
   useGetMe,
-  useGetCandidateWorkspace,
   useGetDocumentInfo,
   useListCommunicationCandidates,
   type CandidateDocumentSummaryDto,
@@ -149,7 +148,6 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
   const search = useSearch({ strict: false }) as Record<string, unknown>;
   const navigate = useNavigate();
   const details = useGetCandidateDetails(candidateId);
-  const workspace = useGetCandidateWorkspace(candidateId);
   const [collapsed, setCollapsed] = useState(
     () =>
       typeof window.matchMedia === "function" &&
@@ -456,7 +454,7 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
               <>
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="min-w-0 break-words text-base font-semibold">
-                    {workspace.data?.fullName || profile?.fullName || "Кандидат"}
+                    {profile?.fullName || "Кандидат"}
                   </h1>
                   {profile?.citizenship && (
                     <Badge>{profile.citizenship.toUpperCase()}</Badge>
