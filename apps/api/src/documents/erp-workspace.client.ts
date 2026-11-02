@@ -12,6 +12,21 @@ const uuid = z
   .uuid()
   .transform((v) => v.toLowerCase());
 const named = z.object({ code: z.string(), name: z.string() });
+const safeConflictCodes = new Set([
+  "CANDIDATE_DUPLICATE_REQUIRES_REVIEW",
+  "EXISTING_PERSON_REQUIRES_EXPLICIT_SELECTION",
+  "CANDIDATE_PERSON_LINK_AMBIGUOUS",
+  "PERSON_IDENTITY_AMBIGUOUS",
+  "CURRENT_CANDIDATE_AMBIGUOUS",
+  "CURRENT_CANDIDATE_CONFIRMATION_REQUIRED",
+  "CURRENT_CANDIDATE_UNAVAILABLE",
+  "CANDIDATE_PERSON_LINK_CONFLICT",
+  "PERSON_LINK_REQUIRED_OR_AMBIGUOUS",
+  "DISPATCHER_NOT_CONFIGURED",
+  "DISPATCHER_EMAIL_NOT_CONFIGURED",
+  "OPERATION_RESULT_UNKNOWN",
+  "IDEMPOTENCY_CONFLICT",
+]);
 export const erpIdentitySchema = z
   .object({
     recipientType: z.enum(["candidate", "person"]),
@@ -143,11 +158,22 @@ export class ErpWorkspaceClient {
       );
     }
     if (!response.ok) {
-      await response.body?.cancel();
-      if (response.status === 409)
+      if (response.status === 409) {
+        let code: unknown;
+        try {
+          const bytes = await this.readBounded(response, 8192);
+          code = (JSON.parse(bytes.toString("utf8")) as { code?: unknown })
+            .code;
+        } catch {
+          // Unknown or oversized upstream bodies must never leak to the client.
+        }
         throw new ConflictException(
-          "ERP_RELATION_OR_OPERATION_CONFLICT: требуется точечная проверка связи или результата операции в ERP",
+          typeof code === "string" && safeConflictCodes.has(code)
+            ? code
+            : "ERP_RELATION_OR_OPERATION_CONFLICT: требуется точечная проверка связи или результата операции в ERP",
         );
+      }
+      await response.body?.cancel();
       if (response.status === 404)
         throw new NotFoundException("ERP_ENTITY_NOT_FOUND");
       throw new ServiceUnavailableException(
