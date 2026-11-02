@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  useListCandidateManagers,
+  useListCatalogManagers,
   useListCandidateProjects,
   useListCatalogMentors,
   useListPositions,
@@ -31,7 +31,7 @@ export function CandidateListFilters({
     limit: 100,
   });
   const projects = useListCandidateProjects();
-  const managers = useListCandidateManagers();
+  const managers = useListCatalogManagers();
   const mentors = useListCatalogMentors();
   const options = {
     positionCode: (positions.data?.items ?? []).map((item) => ({

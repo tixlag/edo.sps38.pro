@@ -2018,6 +2018,15 @@ export interface CommunicationCandidatesDto {
   syncedAt: string | null;
 }
 
+export interface CatalogManagerOptionDto {
+  id: string;
+  name: string;
+}
+
+export interface CatalogManagersDto {
+  items: CatalogManagerOptionDto[];
+}
+
 export interface CatalogMentorOptionDto {
   code1c: string;
   name: string;
@@ -11109,6 +11118,76 @@ export function useListCommunicationCandidates<
     params,
     options,
   );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Managers of accessible candidates
+ */
+export const listCatalogManagers = (signal?: AbortSignal) => {
+  return customInstance<CatalogManagersDto>({
+    url: `/api/v1/candidates/catalog/managers`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListCatalogManagersQueryKey = () => {
+  return [`/api/v1/candidates/catalog/managers`] as const;
+};
+
+export const getListCatalogManagersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCatalogManagers>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCatalogManagers>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCatalogManagersQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCatalogManagers>>
+  > = ({ signal }) => listCatalogManagers(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCatalogManagers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCatalogManagersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCatalogManagers>>
+>;
+export type ListCatalogManagersQueryError = ApiErrorDto;
+
+/**
+ * @summary Managers of accessible candidates
+ */
+
+export function useListCatalogManagers<
+  TData = Awaited<ReturnType<typeof listCatalogManagers>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCatalogManagers>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCatalogManagersQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

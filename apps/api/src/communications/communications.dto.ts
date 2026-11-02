@@ -81,6 +81,14 @@ export class CandidateMentorsDto {
   @ApiProperty({ type: [CatalogMentorOptionDto] })
   items!: CatalogMentorOptionDto[];
 }
+export class CatalogManagerOptionDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() name!: string;
+}
+export class CatalogManagersDto {
+  @ApiProperty({ type: [CatalogManagerOptionDto] })
+  items!: CatalogManagerOptionDto[];
+}
 export class CommunicationCandidatesDto {
   @ApiProperty({ type: [CandidateProfileDto] }) items!: CandidateProfileDto[];
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;

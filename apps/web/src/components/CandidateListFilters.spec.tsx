@@ -10,7 +10,7 @@ vi.mock("@edo/api-client", () => ({
   useListCandidateProjects: () => ({
     data: { items: [{ id: "O1", code: "O1", name: "Объект" }] },
   }),
-  useListCandidateManagers: () => ({
+  useListCatalogManagers: () => ({
     data: { items: [{ id: "M1", name: "Менеджер" }] },
   }),
   useListCatalogMentors: () => ({

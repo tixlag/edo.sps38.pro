@@ -149,6 +149,26 @@ const catalogRow = {
   deleted: false,
 };
 describe("ERP candidate catalog projection", () => {
+  it("lists manager options from accessible RU candidates", async () => {
+    const s = catalogSetup();
+    s.prisma.candidate.findMany.mockResolvedValueOnce([
+      { managerId: "manager-1", managerName: "Менеджер" },
+    ] as never[]);
+    expect(await s.service.managers(principal)).toEqual({
+      items: [{ id: "manager-1", name: "Менеджер" }],
+    });
+    expect(s.prisma.candidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: expect.arrayContaining([
+            { locationId: { in: [98] } },
+            { erpDeleted: false },
+            { managerId: { not: null } },
+          ]),
+        },
+      }),
+    );
+  });
   it("filters the catalog by position and mentor within the access scope", async () => {
     const s = catalogSetup();
     await s.service.list(principal, { positionCode: "P1", mentorCode1c: "M1" });

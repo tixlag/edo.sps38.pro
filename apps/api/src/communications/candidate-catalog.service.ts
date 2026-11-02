@@ -184,6 +184,30 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
       await this.redis.compareAndDelStrict(lock, owner);
     }
   }
+  async managers(principal: AuthPrincipal) {
+    const rows = await this.prisma.candidate.findMany({
+      where: {
+        AND: [
+          this.access.candidateWhere(principal),
+          { erpDeleted: false },
+          reviewGroupWhere("RU"),
+          { managerId: { not: null } },
+          { managerName: { not: null } },
+        ],
+      },
+      select: { managerId: true, managerName: true },
+      distinct: ["managerId"],
+      orderBy: { managerName: "asc" },
+      take: 500,
+    });
+    return {
+      items: rows.flatMap((row) =>
+        row.managerId && row.managerName
+          ? [{ id: row.managerId, name: row.managerName }]
+          : [],
+      ),
+    };
+  }
   async mentors(principal: AuthPrincipal) {
     const rows = await this.prisma.candidate.findMany({
       where: {
