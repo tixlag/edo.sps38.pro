@@ -32,6 +32,10 @@ const FIELD_LABELS: Record<string, string> = {
   lastName: "Фамилия",
   middleName: "Отчество",
   birthDate: "Дата рождения",
+  departmentCode: "Код подразделения",
+  subdivisionCode: "Код подразделения",
+  gender: "Пол",
+  citizenship: "Гражданство",
 };
 
 function PreviousDocument({
@@ -93,6 +97,7 @@ function PreviousDocument({
         <Button
           size="sm"
           variant="outline"
+          className="rounded-md"
           disabled={!document.originalAvailable || opening}
           onClick={() => void open()}
         >
@@ -134,7 +139,7 @@ function PreviousDocument({
         </p>
       )}
       <form
-        className="flex flex-wrap items-end gap-2"
+        className="flex flex-col gap-2 sm:flex-row sm:items-end"
         onSubmit={(event) => {
           event.preventDefault();
           setError("");
@@ -177,7 +182,12 @@ function PreviousDocument({
             ))}
           </select>
         </label>
-        <Button type="submit" size="sm" disabled={mutation.isPending}>
+        <Button
+          type="submit"
+          size="sm"
+          className="rounded-md sm:shrink-0"
+          disabled={mutation.isPending}
+        >
           {mutation.isPending ? "Сохранение…" : "Сохранить проверку"}
         </Button>
       </form>
@@ -218,6 +228,7 @@ export function CandidatePreviousDocuments({
           <Button
             size="sm"
             variant="outline"
+            className="rounded-md"
             onClick={() => void documents.refetch()}
           >
             Повторить

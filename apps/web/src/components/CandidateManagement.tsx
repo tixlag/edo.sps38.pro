@@ -90,6 +90,51 @@ function EditCandidate({
   );
 }
 
+const STATUS_GROUPS = [
+  { key: "screening", label: "Подбор и скрининг" },
+  { key: "verification", label: "Согласование и проверки" },
+  { key: "arrival", label: "Заезд и оформление" },
+  { key: "other", label: "Остальные статусы" },
+] as const;
+
+type StatusGroupLabel = (typeof STATUS_GROUPS)[number]["label"];
+
+function classifyStatus(status: { id: string; name: string }): StatusGroupLabel {
+  const text = `${status.id} ${status.name}`.toLowerCase();
+
+  // Заезд и оформление (План на заезд, Заезд/выход, Оформление, Принят и схожие)
+  if (
+    /заезд|arrival|прием|приём|приказ|оформлен|принят|стажировк|employment|onboarding/i.test(
+      text,
+    )
+  ) {
+    return "Заезд и оформление";
+  }
+
+  // Согласование и проверки (СБ, МО, УЦ, Согласование и схожие)
+  if (
+    /медосмотр|удостоверен|согласован|рассмотрен|пропуск|проверк|безопасн|security|medical|approval/i.test(
+      text,
+    ) ||
+    /(?:^|[^\p{L}\p{N}])(?:мо|уц|сб|фсб|епт|воз|sb|mo|uc)(?:[^\p{L}\p{N}]|$)/iu.test(
+      text,
+    )
+  ) {
+    return "Согласование и проверки";
+  }
+
+  // Подбор и скрининг (Подбор, Потенциальный, В работе и схожие)
+  if (
+    /подбор|recruiting|потенциальн|potential|в\s*работе|вработе|in[_\s-]?progress|не\s*дозвон|недозвон|сбор\s*документов|сбордокументов|резерв|reserve|скрининг|screening/iu.test(
+      text,
+    )
+  ) {
+    return "Подбор и скрининг";
+  }
+
+  return "Остальные статусы";
+}
+
 function CandidateStatus({
   profile,
   onClose,
@@ -110,6 +155,12 @@ function CandidateStatus({
   const selected = statuses.data?.items.find(
     (status) => status.id === statusId,
   );
+  const groupedStatuses = STATUS_GROUPS.map((group) => ({
+    ...group,
+    items: (statuses.data?.items ?? []).filter(
+      (status) => classifyStatus(status) === group.label,
+    ),
+  })).filter((group) => group.items.length > 0);
   return (
     <form
       aria-label="Изменение статуса"
@@ -153,15 +204,19 @@ function CandidateStatus({
           onChange={(event) => setStatusId(event.target.value)}
         >
           <option value="">Выберите статус</option>
-          {statuses.data?.items.map((status) => (
-            <option
-              key={status.id}
-              value={status.id}
-              disabled={status.editable === false}
-            >
-              {status.name}
-              {status.editable === false ? " · отображается из ERP" : ""}
-            </option>
+          {groupedStatuses.map((group) => (
+            <optgroup key={group.key} label={group.label}>
+              {group.items.map((status) => (
+                <option
+                  key={status.id}
+                  value={status.id}
+                  disabled={status.editable === false}
+                >
+                  {status.name}
+                  {status.editable === false ? " · отображается из ERP" : ""}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </label>
@@ -183,38 +238,42 @@ function CandidateStatus({
           </Button>
         </p>
       )}
-      {selected?.requiresProject && (
-        <div className="space-y-1 text-sm">
-          <p>Объект для заявки · обязательно</p>
-          <SearchSelect
-            label="Объект для заявки"
-            value={projectCode}
-            selectedLabel={profile.project?.name}
-            disabled={request.locked || mutation.isPending}
-            options={(projects.data?.items ?? []).map((project) => ({
-              value: project.code ?? project.id,
-              label: project.name,
-            }))}
-            onSearchChange={setProjectQuery}
-            onChange={(value) => setProjectCode(value ?? "")}
-            isLoading={projects.isLoading}
-            isError={projects.isError}
-            onRetry={() => void projects.refetch()}
-          />
+      {(selected?.requiresProject || selected?.requiresPlannedArrivalDate) && (
+        <div className="rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/5 p-3 space-y-3">
+          {selected.requiresProject && (
+            <div className="space-y-1 text-sm">
+              <p>Объект для заявки · обязательно</p>
+              <SearchSelect
+                label="Объект для заявки"
+                value={projectCode}
+                selectedLabel={profile.project?.name}
+                disabled={request.locked || mutation.isPending}
+                options={(projects.data?.items ?? []).map((project) => ({
+                  value: project.code ?? project.id,
+                  label: project.name,
+                }))}
+                onSearchChange={setProjectQuery}
+                onChange={(value) => setProjectCode(value ?? "")}
+                isLoading={projects.isLoading}
+                isError={projects.isError}
+                onRetry={() => void projects.refetch()}
+              />
+            </div>
+          )}
+          {selected.requiresPlannedArrivalDate && (
+            <label className="block space-y-1 text-sm">
+              Плановая дата заезда
+              <input
+                type="date"
+                required
+                className={CANDIDATE_CONTROL}
+                value={plannedArrivalDate}
+                disabled={request.locked || mutation.isPending}
+                onChange={(event) => setPlannedArrivalDate(event.target.value)}
+              />
+            </label>
+          )}
         </div>
-      )}
-      {selected?.requiresPlannedArrivalDate && (
-        <label className="block space-y-1 text-sm">
-          Плановая дата заезда
-          <input
-            type="date"
-            required
-            className={CANDIDATE_CONTROL}
-            value={plannedArrivalDate}
-            disabled={request.locked || mutation.isPending}
-            onChange={(event) => setPlannedArrivalDate(event.target.value)}
-          />
-        </label>
       )}
       <label className="block space-y-1 text-sm">
         Комментарий · необязательно
@@ -232,7 +291,7 @@ function CandidateStatus({
           {request.error}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
         <Button
           type="submit"
           disabled={
@@ -251,6 +310,7 @@ function CandidateStatus({
         <Button
           type="button"
           variant="outline"
+          className="min-w-[100px]"
           disabled={request.locked || mutation.isPending}
           onClick={onClose}
         >
@@ -312,7 +372,7 @@ function CandidatePersonLink({
           {request.error}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
         <Button type="submit" disabled={mutation.isPending || !personSelection}>
           {mutation.isPending
             ? "Связывание…"
@@ -323,6 +383,7 @@ function CandidatePersonLink({
         <Button
           type="button"
           variant="outline"
+          className="min-w-[100px]"
           disabled={request.locked || mutation.isPending}
           onClick={onClose}
         >
@@ -430,13 +491,23 @@ export function CandidateManagement({
             </>
           )}
         </div>
-        {action === "edit" ? (
+        {action === "edit" && (
           <EditCandidate
             profile={profile}
             compact={compact}
             onClose={() => setAction(null)}
           />
-        ) : (
+        )}
+        {action === "status" && (
+          <CandidateStatus profile={profile} onClose={() => setAction(null)} />
+        )}
+        {action === "person" && (
+          <CandidatePersonLink
+            profile={profile}
+            onClose={() => setAction(null)}
+          />
+        )}
+        {!action && (
           <dl
             className={`grid gap-x-6 gap-y-3 text-sm ${compact ? "grid-cols-1" : "sm:grid-cols-2"}`}
           >
@@ -471,15 +542,6 @@ export function CandidateManagement({
               </div>
             ))}
           </dl>
-        )}
-        {action === "status" && (
-          <CandidateStatus profile={profile} onClose={() => setAction(null)} />
-        )}
-        {action === "person" && (
-          <CandidatePersonLink
-            profile={profile}
-            onClose={() => setAction(null)}
-          />
         )}
       </section>
       <section className="space-y-3 border-t border-[var(--border)] pt-5">

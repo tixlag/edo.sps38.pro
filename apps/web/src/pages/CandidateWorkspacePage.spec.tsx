@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   search: {} as Record<string, unknown>,
   calls: [] as unknown[],
   chatMounts: 0,
+  candidate: undefined as Record<string, unknown> | undefined,
 }));
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
@@ -41,6 +42,7 @@ vi.mock("@edo/api-client", () => ({
           stageProgress: [{ stage: 1, required: counts, additional: counts }],
           approvedDocuments: 0,
           requiredDocuments: 1,
+          ...state.candidate,
         },
         documents: [],
         ...(params?.stage
@@ -124,4 +126,56 @@ it("keeps the chat and candidate data visible while selecting a document stage",
   expect(state.chatMounts).toBe(1);
   await act(async () => root.unmount());
   node.remove();
+});
+
+it("renders unified breadcrumbs, expressive candidate header with status badge and metadata chips, and centered stage strip", async () => {
+  state.search = {};
+  state.candidate = {
+    fullName: "Иванов Иван Иванович",
+    statusName: "Заезд/выход",
+    citizenship: "ru",
+    isReemployment: true,
+    birthDate: "1990-05-17",
+    positionName: "Электромонтажник",
+    projectName: "ТЦ Север",
+    projectCode: "PRJ1",
+    managerName: "Петров П.П.",
+    mentorName: "Сидоров С.С.",
+  };
+
+  const node = document.createElement("div");
+  document.body.append(node);
+  const root = createRoot(node);
+  await act(async () => root.render(<CandidateWorkspacePage />));
+
+  // 1. Breadcrumbs
+  expect(node.textContent).toContain("Очередь проверки");
+  expect(node.textContent).toContain("/");
+  expect(node.textContent).toContain("Каталог кандидатов");
+
+  // 2. Candidate header & badges
+  const heading = node.querySelector("h1");
+  expect(heading?.textContent).toBe("Иванов Иван Иванович");
+  expect(heading?.className).toContain("text-lg");
+  expect(heading?.className).toContain("font-bold");
+
+  expect(node.textContent).toContain("Заезд/выход");
+  expect(node.textContent).toContain("RU");
+  expect(node.textContent).toContain("Повторный найм");
+
+  // Metadata chips
+  expect(node.textContent).toContain("17.05.1990");
+  expect(node.textContent).toContain("Электромонтажник");
+  expect(node.textContent).toContain("ТЦ Север (PRJ1)");
+  expect(node.textContent).toContain("Менеджер: Петров П.П.");
+  expect(node.textContent).toContain("Наставник: Сидоров С.С.");
+
+  // 3. Stage navigation strip
+  const nav = node.querySelector('nav[aria-label="Этапы документов"]');
+  expect(nav).not.toBeNull();
+  expect(nav?.className).toContain("items-center");
+
+  await act(async () => root.unmount());
+  node.remove();
+  state.candidate = undefined;
 });

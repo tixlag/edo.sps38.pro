@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import {
   useListCandidateManagers,
   useListCatalogManagers,
@@ -14,7 +14,19 @@ import { SearchSelect } from "./SearchSelect";
 import { CandidatePersonPicker } from "./CandidatePersonPicker";
 
 export const CANDIDATE_CONTROL =
-  "w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] disabled:opacity-60";
+  "w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--primary)] disabled:opacity-60";
+
+const CITIZENSHIP_PRESETS = [
+  { code: "ru", label: "РФ" },
+  { code: "uz", label: "Узбекистан" },
+  { code: "tj", label: "Таджикистан" },
+  { code: "kg", label: "Киргизия" },
+  { code: "by", label: "Беларусь" },
+  { code: "kz", label: "Казахстан" },
+  { code: "am", label: "Армения" },
+  { code: "az", label: "Азербайджан" },
+  { code: "md", label: "Молдова" },
+] as const;
 
 export function candidateError(error: unknown): string {
   const response = error as {
@@ -96,6 +108,7 @@ export function CandidateForm({
   compact?: boolean;
 }) {
   const [fields, setFields] = useState(() => candidateFormFields(profile));
+  const citizenshipListId = useId();
   const [personEnabled, setPersonEnabled] = useState(false);
   const [personSelection, setPersonSelection] = useState<string>();
   const [managerQuery, setManagerQuery] = useState("");
@@ -185,12 +198,40 @@ export function CandidateForm({
             minLength={2}
             maxLength={2}
             placeholder="ru"
+            list={citizenshipListId}
             className={CANDIDATE_CONTROL}
             value={fields.citizenship}
             onChange={(event) =>
               set("citizenship", event.target.value.toLowerCase())
             }
           />
+          <datalist id={citizenshipListId}>
+            {CITIZENSHIP_PRESETS.map((item) => (
+              <option key={item.code} value={item.code}>
+                {item.label} ({item.code})
+              </option>
+            ))}
+          </datalist>
+          <div className="flex flex-wrap gap-1 pt-1">
+            {CITIZENSHIP_PRESETS.slice(0, 5).map((item) => (
+              <button
+                key={item.code}
+                type="button"
+                disabled={pending || locked}
+                onClick={(e) => {
+                  e.preventDefault();
+                  set("citizenship", item.code);
+                }}
+                className={`rounded px-1.5 py-0.5 text-xs transition-colors ${
+                  fields.citizenship === item.code
+                    ? "bg-[var(--primary)] text-[var(--primary-foreground)] font-medium"
+                    : "bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {item.label} ({item.code})
+              </button>
+            ))}
+          </div>
         </label>
         <div className="space-y-1 text-sm">
           <p>Должность · обязательно</p>
@@ -326,6 +367,8 @@ export function CandidateForm({
       <div className="flex flex-wrap gap-2">
         <Button
           type="submit"
+          size="sm"
+          className="rounded-md"
           disabled={
             pending ||
             !fields.positionCode ||
@@ -343,6 +386,8 @@ export function CandidateForm({
         </Button>
         <Button
           type="button"
+          size="sm"
+          className="rounded-md"
           variant="outline"
           disabled={pending || locked}
           onClick={onCancel}

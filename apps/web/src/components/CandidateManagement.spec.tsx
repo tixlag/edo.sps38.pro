@@ -222,6 +222,14 @@ describe("candidate manager flows", () => {
     const inputs = form.querySelectorAll<HTMLInputElement>(
       "fieldset > label > input",
     );
+    expect(inputs[3].value).toBe("ru");
+    const uzChip = [...view.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Узбекистан (uz)"),
+    );
+    expect(uzChip).toBeDefined();
+    await act(async () => uzChip!.click());
+    expect(inputs[3].value).toBe("uz");
+    type(inputs[3], "ru");
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");
     type(inputs[2], "1990-02-03");
@@ -267,6 +275,14 @@ describe("candidate manager flows", () => {
     const inputs = form.querySelectorAll<HTMLInputElement>(
       "fieldset > label > input",
     );
+    expect(inputs[3].value).toBe("ru");
+    const uzChip = [...view.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Узбекистан (uz)"),
+    );
+    expect(uzChip).toBeDefined();
+    await act(async () => uzChip!.click());
+    expect(inputs[3].value).toBe("uz");
+    type(inputs[3], "ru");
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");
     type(inputs[2], "1990-02-03");
@@ -305,6 +321,14 @@ describe("candidate manager flows", () => {
     const inputs = form.querySelectorAll<HTMLInputElement>(
       "fieldset > label > input",
     );
+    expect(inputs[3].value).toBe("ru");
+    const uzChip = [...view.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Узбекистан (uz)"),
+    );
+    expect(uzChip).toBeDefined();
+    await act(async () => uzChip!.click());
+    expect(inputs[3].value).toBe("uz");
+    type(inputs[3], "ru");
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");
     type(inputs[2], "1990-02-03");
@@ -384,8 +408,14 @@ describe("candidate manager flows", () => {
 
   it("uses all ERP statuses, respects noneditable results, and requests plan fields only at that transition", async () => {
     await render(<CandidateManagement candidateId="current-cycle" />);
+    expect(view.querySelector("dl")).not.toBeNull();
     await click("Изменить статус");
+    expect(view.querySelector("dl")).toBeNull();
     const status = view.querySelector<HTMLSelectElement>("form select")!;
+    const optgroups = [...status.querySelectorAll("optgroup")].map(
+      (group) => group.label,
+    );
+    expect(optgroups).toEqual(["Подбор и скрининг", "Заезд и оформление"]);
     expect(
       status.querySelector<HTMLOptionElement>('option[value="arrived"]')!
         .disabled,
@@ -397,12 +427,16 @@ describe("candidate manager flows", () => {
       candidateId: "current-cycle",
       data: { requestId: expect.any(String), statusId: "potential" },
     });
+    expect(view.querySelector("dl")).not.toBeNull();
     await click("Изменить статус");
+    expect(view.querySelector("dl")).toBeNull();
     select(view.querySelector("form select")!, "arrival-plan");
     expect(
       view.querySelector<HTMLInputElement>('input[type="date"]')!.required,
     ).toBe(true);
     expect(button("Сохранить статус").disabled).toBe(true);
+    await click("Отмена");
+    expect(view.querySelector("dl")).not.toBeNull();
   });
 
   it.each([false, true])(
@@ -413,6 +447,7 @@ describe("candidate manager flows", () => {
       await click(
         alreadyLinked ? "Подтвердить связь с физлицом" : "Повторный приём",
       );
+      expect(view.querySelector("dl")).toBeNull();
       expect(view.textContent).toContain("Кадровый приём выполняется в ERP");
       expect(state.persons.mock.calls.at(-1)?.[1]).toEqual(
         expect.objectContaining({
@@ -455,7 +490,14 @@ describe("candidate manager flows", () => {
         id: "old-document",
         documentUid: "hidden-erp-uid",
         title: "Паспорт",
-        fields: { number: "123456", code1c: "hidden-person-code" },
+        fields: {
+          number: "123456",
+          code1c: "hidden-person-code",
+          departmentCode: "770-001",
+          subdivisionCode: "770-002",
+          gender: "Мужской",
+          citizenship: "РФ",
+        },
         expiresAt: "2028-01-01",
         originalAvailable: false,
         status: "REQUIRES_REVIEW",
@@ -467,7 +509,17 @@ describe("candidate manager flows", () => {
     expect(view.textContent).toContain("Требует повторной проверки");
     expect(view.textContent).toContain("123456");
     expect(view.textContent).not.toContain("hidden-person-code");
+    expect(view.textContent).toContain("Код подразделения");
+    expect(view.textContent).toContain("770-001");
+    expect(view.textContent).toContain("770-002");
+    expect(view.textContent).toContain("Пол");
+    expect(view.textContent).toContain("Мужской");
+    expect(view.textContent).toContain("Гражданство");
+    expect(view.textContent).not.toContain("departmentCode");
+    expect(view.textContent).not.toContain("subdivisionCode");
     expect(button("Оригинал недоступен").disabled).toBe(true);
+    const recheckForm = view.querySelector("form")!;
+    expect(recheckForm.className).toContain("flex-col gap-2 sm:flex-row sm:items-end");
     select(view.querySelector("select")!, "REPLACE");
     await act(async () =>
       view

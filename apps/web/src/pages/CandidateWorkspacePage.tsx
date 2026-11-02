@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   Link,
   useNavigate,
@@ -17,10 +17,16 @@ import {
 import { Badge, Button, EmptyState, StatusBadge } from "@edo/ui";
 import {
   ArrowLeft,
+  Briefcase,
+  Building2,
+  Calendar,
   FileText,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  User,
+  UserCheck,
+  Users,
   X,
 } from "lucide-react";
 import { CandidateManagement } from "../components/CandidateManagement";
@@ -231,6 +237,12 @@ function CandidateWorkspace() {
     };
   }, [mobilePanel]);
   const profile = details.data?.candidate;
+  const candidateStatus =
+    typeof (profile as { status?: unknown })?.status === "string"
+      ? ((profile as { status?: string }).status as string)
+      : (profile as { status?: { name?: string | null } })?.status?.name ||
+        profile?.statusName ||
+        workspace.data?.status?.name;
   const documentId =
     typeof search.document === "string" && search.document.length <= 64
       ? search.document
@@ -263,39 +275,50 @@ function CandidateWorkspace() {
     : (details.data?.documents ?? []);
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden p-3 sm:p-4">
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <Link
-          to="/review"
-          search={queueSearch}
-          className="mr-auto inline-flex items-center gap-1 text-[13px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-        >
-          <ArrowLeft size={15} />
-          Очередь проверки
-        </Link>
-        <Link
-          to="/candidates"
-          className="text-sm text-[var(--primary)] underline underline-offset-4"
-        >
-          Каталог кандидатов
-        </Link>
-        <Button
-          size="sm"
-          variant="outline"
-          className="lg:hidden"
-          onClick={() => setMobilePanel("candidates")}
-        >
-          <PanelLeftOpen size={15} />
-          Данные кандидата
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="lg:hidden"
-          onClick={() => setMobilePanel("documents")}
-        >
-          <FileText size={15} />
-          Документы{details.data ? ` (${documents.length})` : ""}
-        </Button>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2 text-sm text-[var(--muted-foreground)]">
+          <Link
+            to="/review"
+            search={queueSearch}
+            className="inline-flex shrink-0 items-center gap-1 text-[13px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+          >
+            <ArrowLeft size={14} />
+            <span>Очередь проверки</span>
+          </Link>
+          <span className="select-none text-[var(--border)]" aria-hidden="true">
+            /
+          </span>
+          <span className="truncate text-[13px] font-medium text-[var(--foreground)]">
+            {workspace.data?.fullName || profile?.fullName || "Кандидат"}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            to="/candidates"
+            className="inline-flex h-8 items-center gap-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-3 text-[13px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+          >
+            <Users size={14} className="text-[var(--muted-foreground)]" />
+            <span>Каталог кандидатов</span>
+          </Link>
+          <Button
+            size="sm"
+            variant="outline"
+            className="lg:hidden"
+            onClick={() => setMobilePanel("candidates")}
+          >
+            <PanelLeftOpen size={15} />
+            Данные кандидата
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="lg:hidden"
+            onClick={() => setMobilePanel("documents")}
+          >
+            <FileText size={15} />
+            Документы{details.data ? ` (${documents.length})` : ""}
+          </Button>
+        </div>
       </div>
       <div className="flex min-h-0 flex-1 gap-3">
         {mobilePanel && (
@@ -362,11 +385,12 @@ function CandidateWorkspace() {
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="min-w-0 break-words text-base font-semibold">
+                  <h1 className="min-w-0 break-words text-lg font-bold text-[var(--foreground)]">
                     {workspace.data?.fullName ||
                       profile?.fullName ||
                       "Кандидат"}
                   </h1>
+                  {candidateStatus && <StatusBadge status={candidateStatus} />}
                   {profile?.citizenship && (
                     <Badge>{profile.citizenship.toUpperCase()}</Badge>
                   )}
@@ -375,54 +399,115 @@ function CandidateWorkspace() {
                   )}
                 </div>
                 {profile && (
-                  <div className="mt-1 hidden flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--muted-foreground)] sm:flex">
-                    <span>{formatBirthDateRu(profile.birthDate)}</span>
-                    <span>{profile.positionName}</span>
-                    <span>
-                      {formatCandidateObject(
-                        profile.projectName,
-                        profile.projectCode,
-                      )}
-                    </span>
-                    {profile.managerName && (
-                      <span>
-                        Менеджер:{" "}
-                        {profile.managerCode1c ? (
-                          <LkLink code1c={profile.managerCode1c}>
-                            {profile.managerName}
-                          </LkLink>
-                        ) : (
-                          profile.managerName
-                        )}
-                      </span>
-                    )}
-                    {profile.mentorName && (
-                      <span>Наставник: {profile.mentorName}</span>
-                    )}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted-foreground)]">
+                    {(() => {
+                      const birthDate =
+                        profile.birthDate &&
+                        formatBirthDateRu(profile.birthDate) !== "—"
+                          ? formatBirthDateRu(profile.birthDate)
+                          : null;
+                      const position = profile.positionName?.trim() || null;
+                      const objectText =
+                        profile.projectName || profile.projectCode
+                          ? formatCandidateObject(
+                              profile.projectName,
+                              profile.projectCode,
+                            ).replace(/^Объект:\s*/, "")
+                          : null;
+                      const manager = profile.managerName?.trim() ? (
+                        <span>
+                          Менеджер:{" "}
+                          {profile.managerCode1c ? (
+                            <LkLink code1c={profile.managerCode1c}>
+                              {profile.managerName}
+                            </LkLink>
+                          ) : (
+                            profile.managerName
+                          )}
+                        </span>
+                      ) : null;
+                      const mentor = profile.mentorName?.trim() ? (
+                        <span>Наставник: {profile.mentorName}</span>
+                      ) : null;
+
+                      const items = [
+                        birthDate ? (
+                          <span
+                            key="birthDate"
+                            className="inline-flex items-center gap-1.5"
+                          >
+                            <Calendar
+                              size={13}
+                              className="shrink-0 text-[var(--muted-foreground)]"
+                            />
+                            <span>{birthDate}</span>
+                          </span>
+                        ) : null,
+                        position ? (
+                          <span
+                            key="position"
+                            className="inline-flex items-center gap-1.5"
+                          >
+                            <Briefcase
+                              size={13}
+                              className="shrink-0 text-[var(--muted-foreground)]"
+                            />
+                            <span>{position}</span>
+                          </span>
+                        ) : null,
+                        objectText ? (
+                          <span
+                            key="object"
+                            className="inline-flex items-center gap-1.5"
+                          >
+                            <Building2
+                              size={13}
+                              className="shrink-0 text-[var(--muted-foreground)]"
+                            />
+                            <span>{objectText}</span>
+                          </span>
+                        ) : null,
+                        manager ? (
+                          <span
+                            key="manager"
+                            className="inline-flex items-center gap-1.5"
+                          >
+                            <User
+                              size={13}
+                              className="shrink-0 text-[var(--muted-foreground)]"
+                            />
+                            {manager}
+                          </span>
+                        ) : null,
+                        mentor ? (
+                          <span
+                            key="mentor"
+                            className="inline-flex items-center gap-1.5"
+                          >
+                            <UserCheck
+                              size={13}
+                              className="shrink-0 text-[var(--muted-foreground)]"
+                            />
+                            {mentor}
+                          </span>
+                        ) : null,
+                      ].filter(Boolean);
+
+                      return items.map((item, index) => (
+                        <Fragment key={index}>
+                          {index > 0 && (
+                            <span
+                              className="select-none text-[var(--border)]"
+                              aria-hidden="true"
+                            >
+                              ·
+                            </span>
+                          )}
+                          {item}
+                        </Fragment>
+                      ));
+                    })()}
                   </div>
-                )}
-                {profile && (
-                  <details className="mt-1 text-xs text-[var(--muted-foreground)] sm:hidden">
-                    <summary className="cursor-pointer">
-                      Данные кандидата
-                    </summary>
-                    <p className="mt-1">
-                      {formatBirthDateRu(profile.birthDate)} ·{" "}
-                      {profile.positionName}
-                    </p>
-                    <p className="mt-1">
-                      {formatCandidateObject(
-                        profile.projectName,
-                        profile.projectCode,
-                      )}
-                    </p>
-                    {profile.managerName && (
-                      <p className="mt-1">Менеджер: {profile.managerName}</p>
-                    )}
-                    {profile.mentorName && (
-                      <p className="mt-1">Наставник: {profile.mentorName}</p>
-                    )}
-                  </details>
                 )}
               </>
             )}
@@ -443,11 +528,12 @@ function CandidateWorkspace() {
               <>
                 <nav
                   aria-label="Этапы документов"
-                  className="flex shrink-0 items-start gap-2 overflow-x-auto"
+                  className="flex shrink-0 items-center gap-2 overflow-x-auto py-1 [&_[role=button]]:!flex-row [&_[role=button]]:!h-11 [&_[role=button]]:!w-auto [&_[role=button]]:shrink-0 [&_[role=button]]:gap-2 [&_[role=button]]:rounded-lg [&_[role=button]]:border [&_[role=button]]:border-[var(--border)] [&_[role=button]]:bg-[var(--card)] [&_[role=button]]:px-2.5 [&_[role=button]]:hover:bg-[var(--muted)] [&_[role=button][aria-pressed=true]]:border-[var(--primary)] [&_[role=button][aria-pressed=true]]:bg-[var(--primary-soft)] [&_[role=button]>span:first-child]:!h-9 [&_[role=button]>span:first-child]:!w-9 [&_[role=button]>span:first-child]:shrink-0 [&_[role=button]>strong]:!h-auto [&_[role=button]>strong]:whitespace-nowrap [&_[role=button]>strong]:text-xs [&_[role=button]>strong]:font-medium [&_[role=button]>span:last-of-type]:shrink-0 [&_[role=button]>span:last-of-type]:text-[11px]"
                 >
                   <Button
                     size="sm"
                     variant={!stage ? "default" : "outline"}
+                    className="h-11 shrink-0 rounded-lg px-3.5"
                     onClick={() =>
                       void navigate({
                         to: "/review/candidates/$candidateId",
