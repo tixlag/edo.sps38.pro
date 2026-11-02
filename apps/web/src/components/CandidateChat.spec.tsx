@@ -47,8 +47,30 @@ const mocks = vi.hoisted(() => ({
     nextCursor: null,
     unavailableSources: [],
   },
+  workspace: {
+    history: [] as Array<{
+      date: string;
+      author: string;
+      statusId: string;
+      statusName: string;
+      comment: string;
+    }>,
+  },
+  details: {
+    documents: [] as Array<Record<string, unknown>>,
+  },
 }));
 vi.mock("@edo/api-client", () => ({
+  useGetCandidateWorkspace: () => ({
+    data: mocks.workspace,
+    isLoading: false,
+    refetch: vi.fn(),
+  }),
+  useGetCandidateDetails: () => ({
+    data: mocks.details,
+    isLoading: false,
+    refetch: vi.fn(),
+  }),
   useGetCommunicationContext: () => ({
     data: { ...mocks.context, canSend: mocks.canSend },
     refetch: vi.fn(),
@@ -113,6 +135,8 @@ beforeEach(() => {
   mocks.link.mockReset();
   mocks.receipt = undefined;
   mocks.canSend = true;
+  mocks.workspace = { history: [] };
+  mocks.details = { documents: [] };
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -230,5 +254,125 @@ describe("candidate chat composer", () => {
     expect(host.querySelector("textarea")).toBeNull();
     expect(host.textContent).toContain("Мы получили ваши документы");
     expect(host.textContent).toContain("право проверки документов");
+  });
+});
+
+describe("candidate chat events and feed", () => {
+  it("displays status changes and document lifecycle events in chronological order", async () => {
+    mocks.workspace = {
+      history: [
+        {
+          date: "2026-10-19T08:00:00Z",
+          author: "Администратор",
+          statusId: "INVITED",
+          statusName: "Приглашён",
+          comment: "Первичная регистрация",
+        },
+      ],
+    };
+    mocks.details = {
+      documents: [
+        {
+          id: "doc-1",
+          title: "Паспорт РФ",
+          status: "APPROVED",
+          currentVersion: 1,
+          revision: 1,
+          submittedAt: "2026-10-19T09:00:00Z",
+          reviewedAt: "2026-10-19T10:00:00Z",
+          reviewedBy: "Верификатор 1",
+          returnedVersions: [],
+        },
+      ],
+    };
+    await mount();
+
+    // Check status change event
+    expect(host.textContent).toContain("Смена статуса:");
+    expect(host.textContent).toContain("Приглашён");
+    expect(host.textContent).toContain("Администратор");
+    expect(host.textContent).toContain("«Первичная регистрация»");
+
+    // Check document submitted and reviewed
+    expect(host.textContent).toContain("Паспорт РФ");
+    expect(host.textContent).toContain("Загружен кандидатом");
+    expect(host.textContent).toContain("Документ принят");
+    expect(host.textContent).toContain("Проверил: Верификатор 1");
+
+    // Check existing message is also visible
+    expect(host.textContent).toContain("Мы получили ваши документы");
+  });
+
+  it("filters feed between all, messages, and events tabs with counters", async () => {
+    mocks.workspace = {
+      history: [
+        {
+          date: "2026-10-19T08:00:00Z",
+          author: "Система",
+          statusId: "ONBOARDING",
+          statusName: "Оформление",
+          comment: "",
+        },
+      ],
+    };
+    mocks.details = { documents: [] };
+    await mount();
+
+    // Total: 1 message + 1 status event = 2
+    const tabs = host.querySelectorAll('button[role="tab"]');
+    expect(tabs.length).toBe(3);
+    expect(tabs[0].textContent).toContain("Все");
+    expect(tabs[0].textContent).toContain("2");
+    expect(tabs[1].textContent).toContain("Сообщения");
+    expect(tabs[1].textContent).toContain("1");
+    expect(tabs[2].textContent).toContain("События");
+    expect(tabs[2].textContent).toContain("1");
+
+    // Switch to "Сообщения"
+    await act(async () => {
+      (tabs[1] as HTMLButtonElement).click();
+    });
+    expect(host.textContent).toContain("Мы получили ваши документы");
+    expect(host.textContent).not.toContain("Смена статуса:");
+
+    // Switch to "События"
+    await act(async () => {
+      (tabs[2] as HTMLButtonElement).click();
+    });
+    expect(host.textContent).not.toContain("Мы получили ваши документы");
+    expect(host.textContent).toContain("Смена статуса:");
+    expect(host.textContent).toContain("Оформление");
+  });
+
+  it("displays returned document version details", async () => {
+    mocks.workspace = { history: [] };
+    mocks.details = {
+      documents: [
+        {
+          id: "doc-snils",
+          title: "СНИЛС",
+          status: "RETURNED",
+          currentVersion: 1,
+          revision: 1,
+          submittedAt: "2026-10-19T09:00:00Z",
+          reviewedAt: "2026-10-19T10:00:00Z",
+          reviewedBy: "Верификатор 2",
+          returnedVersions: [
+            {
+              version: 1,
+              submittedAt: "2026-10-19T09:00:00Z",
+              reviewedAt: "2026-10-19T10:00:00Z",
+              reviewedBy: "Верификатор 2",
+              rejectionReason: "Нечитаемый скан",
+              supersededByVersion: null,
+            },
+          ],
+        },
+      ],
+    };
+    await mount();
+
+    expect(host.textContent).toContain("СНИЛС (версия 1)");
+    expect(host.textContent).toContain("Причина возврата: Нечитаемый скан");
   });
 });

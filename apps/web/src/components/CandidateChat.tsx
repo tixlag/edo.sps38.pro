@@ -4,6 +4,8 @@ import {
   type ChatMessageDto,
   type ChatChannel,
   type CommunicationOperationDto,
+  type CandidateStatusHistoryDto,
+  type CandidateDocumentSummaryDto,
   useGetCommunicationContext,
   useListCommunicationMessages,
   getListCommunicationMessagesQueryKey,
@@ -16,6 +18,8 @@ import {
   getCommunicationAttachmentDownload,
   useGetCommunicationOperation,
   getGetCommunicationOperationQueryKey,
+  useGetCandidateWorkspace,
+  useGetCandidateDetails,
 } from "@edo/api-client";
 import { Badge, Button, EmptyState } from "@edo/ui";
 import { Download, Paperclip, Send, X } from "lucide-react";
@@ -26,6 +30,17 @@ import {
   subscribeChatDraftReset,
   type ChatDraft,
 } from "../lib/chat-drafts";
+import {
+  useCandidateFeed,
+  type CandidateFeedFilter,
+} from "../lib/use-candidate-feed";
+import {
+  StatusChangeEventItem,
+  DocumentSubmittedEventItem,
+  DocumentReviewedEventItem,
+  DocumentReturnedEventItem,
+  FeedFilterTabs,
+} from "./CandidateChatEvents";
 
 const CHANNEL_LABEL: Record<ChatChannel, string> = {
   lk: "ЛК",
@@ -43,6 +58,9 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
     cursor,
   });
   const latest = useListCommunicationMessages(candidateId, { limit: 50 });
+  const workspace = useGetCandidateWorkspace(candidateId);
+  const details = useGetCandidateDetails(candidateId);
+  const [filter, setFilter] = useState<CandidateFeedFilter>("all");
   const [older, setOlder] = useState<ChatMessageDto[]>([]);
   const [recipientId, setRecipientId] = useState("");
   const [state, setState] = useState<
@@ -152,6 +170,29 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
       ),
     [older, latest.data],
   );
+  const feed = useCandidateFeed({
+    messages,
+    history:
+      (workspace.data as { history?: CandidateStatusHistoryDto[] } | undefined)
+        ?.history ??
+      (
+        workspace.data as
+          | { profile?: { history?: CandidateStatusHistoryDto[] } }
+          | undefined
+      )?.profile?.history,
+    documents:
+      (
+        details.data as
+          | { documents?: CandidateDocumentSummaryDto[] }
+          | undefined
+      )?.documents ??
+      (
+        details.data as
+          | { details?: { documents?: CandidateDocumentSummaryDto[] } }
+          | undefined
+      )?.details?.documents,
+    filter,
+  });
   const nextCursor = cursor
     ? history.data?.nextCursor
     : latest.data?.nextCursor;
@@ -160,7 +201,7 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
       bottom.current?.scrollIntoView({ block: "end" });
       first.current = false;
     }
-  }, [messages.length]);
+  }, [feed.items.length]);
   useEffect(
     () =>
       subscribeCommunicationUpdates({
@@ -242,8 +283,15 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
       aria-label="Чат кандидата"
       className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]"
     >
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3">
-        <h2 className="text-sm font-semibold">Переписка</h2>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-sm font-semibold">Переписка</h2>
+          <FeedFilterTabs
+            filter={filter}
+            onChange={setFilter}
+            counts={feed.counts}
+          />
+        </div>
         <span role="status" className="text-xs text-[var(--muted-foreground)]">
           {state === "connected"
             ? "Обновляется автоматически"
@@ -328,48 +376,92 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
             </Button>
           </div>
         )}
-        {!latest.isLoading && latest.data && !messages.length && (
+        {!latest.isLoading && latest.data && !feed.items.length && (
           <EmptyState
-            title="Переписки пока нет"
-            description="Выберите доступный канал, чтобы написать кандидату."
+            title={
+              filter === "messages"
+                ? "Сообщений пока нет"
+                : filter === "events"
+                  ? "Событий пока нет"
+                  : "Переписки пока нет"
+            }
+            description={
+              filter === "events"
+                ? "Здесь появятся изменения статусов и действия с документами."
+                : "Выберите доступный канал, чтобы написать кандидату."
+            }
           />
         )}
         <ol className="flex flex-col gap-3" aria-label="Сообщения">
-          {messages.map((message) => (
-            <li
-              key={message.id}
-              className={`max-w-[90%] rounded-xl border border-[var(--border)] px-3 py-2 sm:max-w-[82%] ${message.outgoing ? "ml-auto bg-[var(--primary-soft)]" : "mr-auto bg-[var(--background)]"}`}
-            >
-              <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]">
-                <Badge>{CHANNEL_LABEL[message.channel]}</Badge>
-                <span>{message.author}</span>
-                <time dateTime={message.createdAt}>
-                  {new Date(message.createdAt).toLocaleString("ru-RU", {
-                    day: "numeric",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </time>
-              </div>
-              {message.text && (
-                <p className="whitespace-pre-wrap break-words text-[13px] [overflow-wrap:anywhere]">
-                  {message.text}
-                </p>
-              )}
-              {message.attachments.map((attachment) => (
-                <button
-                  key={attachment.id}
-                  type="button"
-                  onClick={() => void download(attachment.id)}
-                  className="mt-2 flex max-w-full items-center gap-2 rounded-md border border-[var(--border)] px-2 py-1.5 text-left text-xs hover:bg-[var(--muted)]"
+          {feed.items.map((item) => {
+            if (item.kind === "message") {
+              const message = item.message;
+              return (
+                <li
+                  key={item.id}
+                  className={`max-w-[90%] rounded-xl border border-[var(--border)] px-3 py-2 sm:max-w-[82%] ${message.outgoing ? "ml-auto bg-[var(--primary-soft)]" : "mr-auto bg-[var(--background)]"}`}
                 >
-                  <Download size={14} className="shrink-0" />
-                  <span className="break-all">{attachment.filename}</span>
-                </button>
-              ))}
-            </li>
-          ))}
+                  <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                    <Badge>{CHANNEL_LABEL[message.channel]}</Badge>
+                    <span>{message.author}</span>
+                    <time dateTime={message.createdAt}>
+                      {new Date(message.createdAt).toLocaleString("ru-RU", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </time>
+                  </div>
+                  {message.text && (
+                    <p className="whitespace-pre-wrap break-words text-[13px] [overflow-wrap:anywhere]">
+                      {message.text}
+                    </p>
+                  )}
+                  {message.attachments.map((attachment) => (
+                    <button
+                      key={attachment.id}
+                      type="button"
+                      onClick={() => void download(attachment.id)}
+                      className="mt-2 flex max-w-full items-center gap-2 rounded-md border border-[var(--border)] px-2 py-1.5 text-left text-xs hover:bg-[var(--muted)]"
+                    >
+                      <Download size={14} className="shrink-0" />
+                      <span className="break-all">{attachment.filename}</span>
+                    </button>
+                  ))}
+                </li>
+              );
+            }
+            if (item.kind === "status_change") {
+              return (
+                <li key={item.id} className="w-full">
+                  <StatusChangeEventItem item={item} />
+                </li>
+              );
+            }
+            if (item.kind === "document_submitted") {
+              return (
+                <li key={item.id} className="w-full">
+                  <DocumentSubmittedEventItem item={item} />
+                </li>
+              );
+            }
+            if (item.kind === "document_reviewed") {
+              return (
+                <li key={item.id} className="w-full">
+                  <DocumentReviewedEventItem item={item} />
+                </li>
+              );
+            }
+            if (item.kind === "document_returned") {
+              return (
+                <li key={item.id} className="w-full">
+                  <DocumentReturnedEventItem item={item} />
+                </li>
+              );
+            }
+            return null;
+          })}
         </ol>
         {downloadError && (
           <p role="alert" className="mt-2 text-sm">
