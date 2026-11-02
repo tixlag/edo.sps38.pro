@@ -546,9 +546,10 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
                             getGetCommunicationContextQueryKey(candidateId),
                         });
                       },
-                      onError: () =>
+                      onError: (error) =>
                         setNotice(
-                          "Не удалось получить ссылку ЛК. Повторите попытку.",
+                          (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+                            "Не удалось получить ссылку ЛК. Проверьте связь кандидата перед повтором.",
                         ),
                     },
                   )
