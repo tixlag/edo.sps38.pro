@@ -126,6 +126,17 @@ function setup() {
   return { service, prisma, access, erp, lk, audit, storage, redis };
 }
 describe("candidate communications", () => {
+  it("reports an unconfirmed LK link result without hiding the failure as HTTP 500", async () => {
+    const s = setup();
+    s.access.candidate.mockResolvedValue({ ...candidate, chatUuid: null } as never);
+    s.erp.link.mockRejectedValue(new CommunicationSourceError("ERP_CHAT_HTTP_500", true));
+    await expect(s.service.link(candidateId, principal)).rejects.toMatchObject({
+      status: 503,
+      message: "Не удалось подтвердить создание ссылки ЛК. Проверьте связь кандидата перед повтором.",
+    });
+    expect(s.redis.compareAndDelStrict).toHaveBeenCalledOnce();
+    expect(s.audit.logInTransaction).not.toHaveBeenCalled();
+  });
   it("sends SMS as the verified actor, persists request and receipt with atomic audit, and replays without another send", async () => {
     const s = setup();
     expect(await s.service.send(candidateId, principal, input)).toMatchObject({

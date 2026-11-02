@@ -7,6 +7,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
@@ -53,6 +54,7 @@ function operationDto(row: CommunicationOperation): CommunicationOperationDto {
 }
 @Injectable()
 export class CommunicationsService {
+  private readonly logger = new Logger(CommunicationsService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: DocumentAccessService,
@@ -524,6 +526,16 @@ export class CommunicationsService {
         });
       });
       return { url: this.lkLink(result.chatUuid) };
+    } catch (error) {
+      if (error instanceof CommunicationSourceError) {
+        this.logger.warn({ action: "lk-link", code: error.code, uncertain: error.uncertain });
+        throw new ServiceUnavailableException(
+          error.uncertain
+            ? "Не удалось подтвердить создание ссылки ЛК. Проверьте связь кандидата перед повтором."
+            : "1С не смогла создать ссылку ЛК. Проверьте журнал 1С.",
+        );
+      }
+      throw error;
     } finally {
       await this.redis.compareAndDelStrict(lock, owner);
     }

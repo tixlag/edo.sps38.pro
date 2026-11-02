@@ -125,6 +125,12 @@ afterEach(async () => {
 });
 
 describe("candidate chat composer", () => {
+  it("does not suggest an unchecked retry when LK link creation is uncertain", async () => {
+    mocks.link.mockImplementation((_request, options) => options.onError());
+    await mount();
+    await act(async () => button("Ссылка ЛК").click());
+    expect(host.textContent).toContain("Проверьте связь кандидата перед повтором");
+  });
   it("clears the visible draft when the authenticated session changes", async () => {
     await mount();
     await type("Личный черновик");
