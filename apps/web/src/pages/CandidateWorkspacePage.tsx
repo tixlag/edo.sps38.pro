@@ -602,9 +602,21 @@ function CandidateWorkspace() {
               </p>
             )}
             {stage && !stageDetails.isFetching && !stageData && (
-              <p role="status" className="p-2 text-xs">
+              <div
+                role={stageDetails.isError ? "alert" : "status"}
+                className="space-y-2 p-2 text-xs"
+              >
                 Не удалось определить документы выбранного этапа.
-              </p>
+                {stageDetails.isError && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void stageDetails.refetch()}
+                  >
+                    Повторить
+                  </Button>
+                )}
+              </div>
             )}
             {stage && missing.length > 0 && (
               <section className="mb-3 border-b border-[var(--border)] p-2">
