@@ -18,6 +18,7 @@ import { DocumentsModule } from "./documents/documents.module";
 import { MeModule } from "./me/me.module";
 import { AnnotationsModule } from "./annotations/annotations.module";
 import { ContractsModule } from "./contracts/contracts.module";
+import { CommunicationsModule } from "./communications/communications.module";
 
 // Root .env is loaded explicitly: do not rely on process cwd.
 // apps/api runs from apps/api/, repo root is ../../.env.
@@ -46,6 +47,7 @@ const ROOT_ENV = join(__dirname, "..", "..", "..", ".env");
     DocumentsModule,
     AnnotationsModule,
     ContractsModule,
+    CommunicationsModule,
   ],
 })
 export class AppModule {}

@@ -12,7 +12,6 @@ import {
   auditEntityLabel,
   auditLogLink,
   canOpenAuditObject,
-  canReadDocuments,
   hasAccessRule,
   resolveEffectiveMine,
   type AuditLink,
@@ -141,7 +140,7 @@ function AuditLogList({
   // Base read right for object cards (20000 base reading, 20009 implies it).
   // Fail-closed: until useGetMe resolves, links stay non-clickable.
   // UI-hiding only — the backend re-checks every object read.
-  const canOpenObject = profileReady && canReadDocuments(profile.data);
+  const canOpenObject = profileReady;
 
   // Debounced entityId search: commit the trimmed value only when it actually
   // changes. The timer MUST NOT unconditionally clear cursor/items (a 300ms

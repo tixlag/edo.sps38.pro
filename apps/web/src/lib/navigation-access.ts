@@ -14,6 +14,7 @@ export function canAccessPath(
   const required: Record<string, number[]> = {
     "/": [20000],
     "/review": [20002],
+    "/candidates": [20002],
     "/review-ig": [20011],
     "/employees": [20001],
     "/onboarding": [20001],

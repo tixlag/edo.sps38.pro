@@ -451,11 +451,13 @@ function CandidateRow({
   onOpen,
   onOpenStage,
   onContract,
+  opensChat,
 }: {
   group: CandidateDetailsDto;
   onOpen: () => void;
   onOpenStage: (stage: number | null) => void;
   onContract?: () => void;
+  opensChat: boolean;
   returnedHistory?: boolean;
 }) {
   const candidate = group.candidate;
@@ -478,8 +480,8 @@ function CandidateRow({
     >
       <button
         type="button"
-        aria-haspopup="dialog"
-        aria-label={`Открыть документы: ${heading}`}
+        aria-haspopup={opensChat ? undefined : "dialog"}
+        aria-label={`${opensChat ? "Открыть чат" : "Открыть документы"}: ${heading}`}
         onClick={onOpen}
         className="absolute inset-0 rounded-[10px] hover:bg-[var(--border)]/30 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--primary)]"
       />
@@ -1186,7 +1188,15 @@ export function ReviewPage({
                           })
                       : undefined
                   }
-                  onOpen={() => openCandidate(group.candidate.id)}
+                  opensChat={reviewGroup === "RU"}
+                  onOpen={() =>
+                    reviewGroup === "RU"
+                      ? void navigate({
+                          to: "/review/candidates/$candidateId",
+                          params: { candidateId: group.candidate.id },
+                        })
+                      : openCandidate(group.candidate.id)
+                  }
                   onOpenStage={(stage) =>
                     openCandidate(group.candidate.id, stage)
                   }

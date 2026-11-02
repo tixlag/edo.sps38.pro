@@ -173,7 +173,19 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
           },
           metadata: {
             documentUid: String(payload.documentUid),
-            chatUid: String(payload.chatUid),
+            ...(typeof payload.chatUid === "string"
+              ? { chatUid: payload.chatUid }
+              : {}),
+            ...(typeof payload.candidateUid === "string"
+              ? { candidateUid: payload.candidateUid }
+              : {}),
+            ...(payload.recipientType === "person"
+              ? {
+                  recipientType: "person" as const,
+                  personUid: String(payload.personUid),
+                  code1c: String(payload.code1c),
+                }
+              : {}),
             documentFields: payload.documentFields as object,
           },
           deliveryId: id,

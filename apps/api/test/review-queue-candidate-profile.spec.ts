@@ -216,6 +216,9 @@ describe("snapshot persistence mapping", () => {
       }),
     ).toEqual({
       id: "c1",
+      statusId: null,
+      statusName: null,
+      managerId: null,
       reviewGroup: "RU",
       sex: null,
       sexKnown: false,

@@ -87,6 +87,25 @@ afterEach(async () => {
 });
 
 describe("RU and IG review pages", () => {
+  it("opens the candidate chat directly from the RU queue", async () => {
+    state.permissions = { "20002": [] };
+    state.queueItems = [
+      {
+        candidate: { id: "candidate-1", fullName: "Иван Иванов", stageProgress: [] },
+        documents: [],
+      },
+    ];
+    const view = await render("RU");
+    const row = view.querySelector(
+      '[aria-label="Открыть чат: Иван Иванов"]',
+    ) as HTMLButtonElement;
+    expect(row.hasAttribute("aria-haspopup")).toBe(false);
+    await act(async () => row.click());
+    expect(state.navigate).toHaveBeenCalledWith({
+      to: "/review/candidates/$candidateId",
+      params: { candidateId: "candidate-1" },
+    });
+  });
   it("shows stage progress and highlights documents awaiting review", async () => {
     state.queueItems = [
       {

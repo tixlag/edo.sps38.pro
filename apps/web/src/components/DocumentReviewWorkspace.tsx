@@ -104,7 +104,7 @@ export function DocumentReviewWorkspace({
     !!permissions && Object.prototype.hasOwnProperty.call(permissions, "20009");
   const hasReviewPermission =
     !!permissions &&
-    [data.reviewGroup === "IG" ? "20011" : "20002", "20009"].some((rule) =>
+    [...(data.reviewGroup === "IG" ? ["20011"] : data.reviewGroup === "RU" ? ["20002"] : []), "20009"].some((rule) =>
       Object.prototype.hasOwnProperty.call(permissions, rule),
     );
   const canReview = !readOnly && hasReviewPermission;

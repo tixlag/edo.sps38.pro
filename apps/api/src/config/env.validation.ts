@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+const optionalUrl = z.preprocess(
+  (value) => typeof value === 'string' && !value.trim() ? undefined : value,
+  z.string().url().optional(),
+);
+
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   API_PORT: z.coerce.number().default(3001),
@@ -42,6 +47,10 @@ const envSchema = z.object({
   ZUP_DOCUMENTS_BASIC_AUTH: z.string().optional(),
   ZUP_DOCUMENTS_API_KEY: z.string().optional(),
   CONTRACT_LIBREOFFICE_BIN: z.string().default('libreoffice'),
+  ERP_COMMUNICATIONS_URL: optionalUrl,
+  LK_CHAT_BASE_URL: optionalUrl,
+  LK_PUBLIC_BASE_URL: z.string().url().default('https://lk.sps38.pro'),
+  CANDIDATE_CATALOG_SYNC_ENABLED: z.enum(['true', 'false']).default('true'),
   DOCUMENT_WORKER_ENABLED: z.enum(['true', 'false']).default('true'),
   EDO_PUBLIC_API_URL: z.string().url().default('http://localhost:3001/api'),
   OCR_MODE: z.enum(['disabled', 'stub', 'external']).default('disabled'),

@@ -96,7 +96,10 @@ const receiptSchema = z.object({
   receiptId: uuid,
   deliveryId: z.string(),
   duplicate: z.boolean(),
-  candidateUid: uuid,
+  candidateUid: uuid.nullable(),
+  chatUid: uuid.nullish(),
+  recipientType: z.enum(["candidate", "person"]).optional(),
+  personUid: uuid.nullish(),
   documentUid: uuid,
   fileUid: uuid,
   period: z
@@ -119,11 +122,26 @@ export function validateErpReceipt(
   deliveryId: string,
   documentUid: string,
   artifact: DeliveryArtifact,
+  recipient?: ErpDocumentRecipient,
 ): boolean {
   const parsed = receiptSchema.safeParse(value);
   if (!parsed.success || ![200, 201].includes(status)) return false;
   const r = parsed.data;
+  const recipientMatches = !recipient
+    ? !!r.candidateUid
+    : recipient.recipientType === "person"
+      ? r.recipientType === "person" &&
+        r.personUid === recipient.personUid &&
+        r.candidateUid === null &&
+        r.chatUid === null
+      : r.recipientType !== "person" &&
+        !r.personUid &&
+        !!r.candidateUid &&
+        (!recipient.candidateUid ||
+          r.candidateUid === recipient.candidateUid) &&
+        (!recipient.chatUid || !r.chatUid || r.chatUid === recipient.chatUid);
   return (
+    recipientMatches &&
     r.deliveryId === deliveryId &&
     r.documentUid.toLowerCase() === documentUid.toLowerCase() &&
     r.fileSha256 === artifact.sha256 &&
@@ -134,10 +152,21 @@ export function validateErpReceipt(
   );
 }
 
+export type ErpDocumentRecipient = {
+  recipientType?: "candidate" | "person";
+  candidateUid?: string;
+  chatUid?: string;
+  personUid?: string;
+  code1c?: string;
+};
+
 export async function sendErpMultipart(options: {
   storage: StorageService;
   artifact: DeliveryArtifact;
-  metadata: { documentUid: string; chatUid: string; documentFields: object };
+  metadata: ErpDocumentRecipient & {
+    documentUid: string;
+    documentFields: object;
+  };
   deliveryId: string;
   url: URL;
   headers: Record<string, string>;
@@ -245,6 +274,7 @@ export async function sendErpMultipart(options: {
         options.deliveryId,
         metadata.documentUid,
         artifact,
+        metadata,
       );
     diagnostic.responseBody = JSON.stringify({
       success: input.success === true,

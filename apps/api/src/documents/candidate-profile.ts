@@ -148,6 +148,10 @@ export function parseBirthDateBound(value: string, field: string): Date {
 }
 
 type ProfileRow = {
+  statusId?: string | null;
+  statusName?: string | null;
+  managerId?: string | null;
+  reviewGroup?: "RU" | "IG" | null;
   id: string;
   chatUuid: string | null;
   code1c: string | null;
@@ -192,6 +196,9 @@ export function toCandidateProfile(
   if (!row) return null;
   return {
     id: row.id,
+    statusId: row.statusId ?? null,
+    statusName: row.statusName ?? null,
+    managerId: row.managerId ?? null,
     reviewGroup: candidateReviewGroup(row),
     chatUuid: row.chatUuid,
     code1c: row.code1c,

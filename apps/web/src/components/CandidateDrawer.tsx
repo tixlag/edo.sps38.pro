@@ -211,7 +211,7 @@ export function CandidateDrawer({
                   <dd className="mt-0.5 break-words [overflow-wrap:anywhere]">
                     {profile.managerCode1c ? (
                       <LkLink code1c={profile.managerCode1c}>
-                        {profile.managerName ?? profile.managerCode1c}
+                        {profile.managerName ?? "Менеджер"}
                       </LkLink>
                     ) : (
                       (profile.managerName ?? "—")
@@ -225,7 +225,7 @@ export function CandidateDrawer({
                   <dd className="mt-0.5 break-words [overflow-wrap:anywhere]">
                     {profile.mentorCode1c ? (
                       <LkLink code1c={profile.mentorCode1c}>
-                        {profile.mentorName ?? profile.mentorCode1c}
+                        {profile.mentorName ?? "Наставник"}
                         {profile.mentorPosition
                           ? ` · ${profile.mentorPosition}`
                           : ""}

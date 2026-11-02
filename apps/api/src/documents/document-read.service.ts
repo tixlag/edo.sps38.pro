@@ -217,6 +217,7 @@ export class DocumentReadService {
       items: rows.map(
         (d): DocumentDto => ({
           ...this.documentSummary(d),
+          reviewGroup: d.candidate ? candidateReviewGroup(d.candidate) : "RU",
           candidateId: d.candidateId,
           chatUuid: d.candidate?.chatUuid ?? null,
           code1c: d.candidate?.code1c ?? null,
@@ -998,27 +999,34 @@ export class DocumentReadService {
     ];
   }
   scopeWhere(scope: {
+    candidateId?: string;
     chat_uuid?: string;
     code_1c?: string;
   }): Prisma.DocumentWhereInput {
-    if (!scope.chat_uuid && !scope.code_1c)
+    if (!scope.candidateId && !scope.chat_uuid && !scope.code_1c)
       throw new BadRequestException("Document owner is required");
     return {
       candidate: {
-        ...(scope.chat_uuid
-          ? { chatUuid: scope.chat_uuid.toLowerCase() }
-          : { code1c: scope.code_1c }),
+        ...(scope.candidateId
+          ? { id: scope.candidateId }
+          : scope.chat_uuid
+            ? { chatUuid: scope.chat_uuid.toLowerCase() }
+            : { code1c: scope.code_1c }),
       },
     };
   }
-  async internalDocuments(scope: { chat_uuid?: string; code_1c?: string }) {
+  async internalDocuments(scope: {
+    candidateId?: string;
+    chat_uuid?: string;
+    code_1c?: string;
+  }) {
     return this.documents({
       ...this.scopeWhere(scope),
       currentVersion: { gt: 0 },
     });
   }
   async internalDraft(
-    scope: { chat_uuid?: string; code_1c?: string },
+    scope: { candidateId?: string; chat_uuid?: string; code_1c?: string },
     documentUid: string,
   ): Promise<CandidateDocumentDraftDto> {
     const document = await this.prisma.document.findFirst({
