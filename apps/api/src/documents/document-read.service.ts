@@ -30,7 +30,7 @@ import {
 } from "./review-stage-progress";
 import { DocumentCatalogService } from "./document-catalog.service";
 import {
-  applicable,
+  requiredApplicable,
   excludedForSex,
   FIELD_LABELS,
   sexExceptionDocumentCodes,
@@ -288,19 +288,26 @@ export class DocumentReadService {
     let stageDocuments: CandidateDetailsDto["stageDocuments"];
     if (stage !== undefined) {
       stageDocuments = null;
-      if (candidate.positionCode) {
+      if (
+        candidate.positionCode ||
+        candidate.projectCode ||
+        candidate.citizenship
+      ) {
         const types = await this.prisma.documentType.findMany({
           where: { catalogSyncedAt: { not: null } },
           include: {
             positions: true,
-            stageRules: { include: { positions: true } },
+            stageRules: {
+              include: { positions: true, projects: true, countries: true },
+            },
           },
           orderBy: { title: "asc" },
         });
         if (types.length) {
           const selectedStage = stage === "none" ? null : Number(stage);
           const profile = {
-            positionCode: candidate.positionCode,
+            positionCode: candidate.positionCode ?? "",
+            projectCode: candidate.projectCode,
             citizenship: candidate.citizenship ?? "ru",
             sex: candidate.sexKnown ? candidate.sex : null,
           };
@@ -328,18 +335,25 @@ export class DocumentReadService {
     let documentGroups: CandidateDetailsDto["documentGroups"];
     if (stage === undefined) {
       documentGroups = null;
-      if (candidate.positionCode) {
+      if (
+        candidate.positionCode ||
+        candidate.projectCode ||
+        candidate.citizenship
+      ) {
         const types = await this.prisma.documentType.findMany({
           where: { catalogSyncedAt: { not: null } },
           include: {
             positions: true,
-            stageRules: { include: { positions: true } },
+            stageRules: {
+              include: { positions: true, projects: true, countries: true },
+            },
           },
           orderBy: { title: "asc" },
         });
         if (types.length) {
           const profile = {
-            positionCode: candidate.positionCode,
+            positionCode: candidate.positionCode ?? "",
+            projectCode: candidate.projectCode,
             citizenship: candidate.citizenship ?? "ru",
             sex: candidate.sexKnown ? candidate.sex : null,
           };
@@ -401,29 +415,40 @@ export class DocumentReadService {
   private async missingDocumentTypes(
     profile: {
       positionCode: string | null;
+      projectCode?: string | null;
       citizenship: string | null;
       sex?: string | null;
       sexKnown?: boolean;
     } | null,
     uploadedCodes: (string | null | undefined)[],
   ): Promise<MissingDocumentTypeDto[] | null> {
-    if (!profile?.positionCode) return null;
+    if (
+      !profile ||
+      !(profile.positionCode || profile.projectCode || profile.citizenship)
+    )
+      return null;
     const types = await this.prisma.documentType.findMany({
       where: { catalogSyncedAt: { not: null } },
-      include: { positions: true },
+      include: {
+        positions: true,
+        stageRules: {
+          include: { positions: true, projects: true, countries: true },
+        },
+      },
     });
     const uploaded = new Set(uploadedCodes);
     return types
       .filter(
         (type) =>
-          applicable(
+          requiredApplicable(
             type,
-            profile.positionCode!,
+            profile.positionCode ?? "",
             profile.citizenship ?? "ru",
             profile.sexKnown &&
               (profile.sex === "female" || profile.sex === "male")
               ? profile.sex
               : null,
+            profile.projectCode,
           ) && !uploaded.has(type.code),
       )
       .map(({ code, title }) => ({ code, title }));
@@ -474,6 +499,7 @@ export class DocumentReadService {
           orderBy: { updatedAt: "desc" },
           select: {
             positionCode: true,
+            projectCode: true,
             citizenship: true,
             sex: true,
             sexKnown: true,
@@ -491,6 +517,7 @@ export class DocumentReadService {
       ) {
         profile = {
           positionCode: lk.positionCode1c,
+          projectCode: null,
           citizenship: lk.citizenship!.trim(),
           sex: null,
           sexKnown: false,
@@ -1219,7 +1246,9 @@ export class DocumentReadService {
         },
         include: {
           positions: true,
-          stageRules: { include: { positions: true } },
+          stageRules: {
+            include: { positions: true, projects: true, countries: true },
+          },
         },
       }),
     ]);
@@ -1238,17 +1267,19 @@ export class DocumentReadService {
       const excluded =
         profile?.sexKnown && excludedForSex(type?.code, profile.sex);
       const required =
-        !profile?.positionCode ||
+        !profile ||
+        !(profile.positionCode || profile.projectCode || profile.citizenship) ||
         (!!type &&
           type.catalogSyncedAt !== null &&
-          applicable(
+          requiredApplicable(
             type,
-            profile.positionCode,
+            profile.positionCode ?? "",
             profile.citizenship ?? "ru",
             profile.sexKnown &&
               (profile.sex === "female" || profile.sex === "male")
               ? profile.sex
               : null,
+            profile.projectCode,
           ));
       if (row.candidateId && row.status === "APPROVED" && !excluded && required)
         approved.set(
@@ -1257,26 +1288,32 @@ export class DocumentReadService {
         );
     }
     for (const profile of profiles) {
-      const positionCode = profile.positionCode;
+      const hasProfile = !!(
+        profile.positionCode ||
+        profile.projectCode ||
+        profile.citizenship
+      );
+      const positionCode = profile.positionCode ?? "";
       const citizenship = (profile.citizenship ?? "ru").toLowerCase();
       profile.stageProgress =
-        positionCode && catalog.some((type) => type.catalogSyncedAt !== null)
+        hasProfile && catalog.some((type) => type.catalogSyncedAt !== null)
           ? reviewStageProgress(
               catalog.filter((type) => type.catalogSyncedAt !== null),
               grouped.filter((row) => row.candidateId === profile.id),
               {
                 positionCode,
+                projectCode: profile.projectCode,
                 citizenship,
                 sex: profile.sexKnown ? profile.sex : null,
               },
             )
           : null;
       profile.approvedDocuments = approved.get(profile.id) ?? 0;
-      profile.requiredDocuments = positionCode
+      profile.requiredDocuments = hasProfile
         ? catalog.filter(
             (type) =>
               type.catalogSyncedAt !== null &&
-              applicable(
+              requiredApplicable(
                 type,
                 positionCode,
                 citizenship,
@@ -1284,6 +1321,7 @@ export class DocumentReadService {
                   (profile.sex === "female" || profile.sex === "male")
                   ? profile.sex
                   : null,
+                profile.projectCode,
               ),
           ).length
         : null;

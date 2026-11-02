@@ -20,12 +20,6 @@ export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const AuditAction = {
-  CONTRACT_CREATED: "CONTRACT_CREATED",
-  CONTRACT_FILE_REPLACED: "CONTRACT_FILE_REPLACED",
-  CONTRACT_SENT: "CONTRACT_SENT",
-  CONTRACT_CONFIRMED: "CONTRACT_CONFIRMED",
-  CONTRACT_DECLINED: "CONTRACT_DECLINED",
-  CONTRACT_PREPARATION_FAILED: "CONTRACT_PREPARATION_FAILED",
   EMPLOYEE_CREATED: "EMPLOYEE_CREATED",
   DOCUMENT_UPLOADED: "DOCUMENT_UPLOADED",
   DOCUMENT_UPLOAD_STARTED: "DOCUMENT_UPLOAD_STARTED",
@@ -52,6 +46,12 @@ export const AuditAction = {
   ANNOTATION_ACCEPTED: "ANNOTATION_ACCEPTED",
   ANNOTATION_CHANGES_REQUESTED: "ANNOTATION_CHANGES_REQUESTED",
   ANNOTATION_REASSIGNED: "ANNOTATION_REASSIGNED",
+  CONTRACT_CREATED: "CONTRACT_CREATED",
+  CONTRACT_FILE_REPLACED: "CONTRACT_FILE_REPLACED",
+  CONTRACT_SENT: "CONTRACT_SENT",
+  CONTRACT_CONFIRMED: "CONTRACT_CONFIRMED",
+  CONTRACT_DECLINED: "CONTRACT_DECLINED",
+  CONTRACT_PREPARATION_FAILED: "CONTRACT_PREPARATION_FAILED",
 } as const;
 
 export interface AuditLogItemDto {
@@ -577,7 +577,7 @@ export interface CandidateProfileDto {
   /** Approved applicable documents under the queue access scope (all tabs); all approved documents when position is unknown */
   approvedDocuments: number;
   /**
-   * Applicable catalog document types for position, citizenship and known sex; null when positionCode is unknown
+   * Applicable required catalog document types for known position, project, citizenship and sex; null when candidate profile is unknown
    * @nullable
    */
   requiredDocuments: number | null;
@@ -1885,6 +1885,7 @@ export type GetCandidateDetailsParams = {
 };
 
 export type GetCandidateDocumentCatalogParams = {
+  project_code_1c?: string;
   position_code_1c: string;
   citizenship?: Object;
 };

@@ -1,4 +1,4 @@
-import { excludedForSex } from "./document-contract";
+import { classifyRule, excludedForSex } from "./document-contract";
 
 type Type = {
   id: string;
@@ -13,7 +13,9 @@ type Type = {
     requiredForAll: boolean;
     allRu: boolean;
     allForeign: boolean;
-    positions: { code1c: string }[];
+    positions: { code1c: string; required?: boolean }[];
+    projects?: { code1c: string }[];
+    countries?: { code: string }[];
   }[];
 };
 type Counts = {
@@ -39,6 +41,7 @@ const empty = (): Counts => ({
 type Profile = {
   positionCode: string;
   citizenship: string;
+  projectCode?: string | null;
   sex: string | null;
 };
 export function classifyStageType(
@@ -51,20 +54,19 @@ export function classifyStageType(
     (item) => (item.stage ?? null) === stage,
   );
   if (!rule) return null;
-  return stage !== null &&
-    (rule.requiredForAll ||
-      (profile.citizenship.toLowerCase() === "ru"
-        ? rule.allRu
-        : rule.allForeign) ||
-      rule.positions.some((p) => p.code1c === profile.positionCode))
-    ? "required"
-    : "additional";
+  const category = classifyRule(
+    rule,
+    profile.positionCode,
+    profile.citizenship,
+    profile.projectCode,
+  );
+  return category;
 }
 
 export function reviewStageProgress(
   types: Type[],
   documents: { documentTypeId: string | null; status: string }[],
-  profile: { positionCode: string; citizenship: string; sex: string | null },
+  profile: Profile,
 ): StageProgress[] {
   const states = new Map(documents.map((d) => [d.documentTypeId, d.status]));
   const stages = new Map<number | null, StageProgress>();
@@ -72,12 +74,13 @@ export function reviewStageProgress(
     if (excludedForSex(type.code, profile.sex)) continue;
     for (const rule of type.stageRules?.length ? type.stageRules : [type]) {
       const stage = rule.stage ?? null;
+      const category = classifyStageType(type, stage, profile);
+      if (!category) continue;
       let entry = stages.get(stage);
       if (!entry) {
         entry = { stage, required: empty(), additional: empty() };
         stages.set(stage, entry);
       }
-      const category = classifyStageType(type, stage, profile);
       const count = category === "required" ? entry.required : entry.additional;
       const status = states.get(type.id);
       if (!status || status === "DRAFT") count.missing++;

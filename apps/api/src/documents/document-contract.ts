@@ -325,47 +325,99 @@ export function validateFields(
   }
 }
 
+const newCatalogItem = z
+  .object({
+    uid: z.string().uuid(),
+    name: z.string().min(1).max(255),
+    stage: z.number().int().positive().nullable(),
+    requirements: z.object({
+      requiredForAll: z.boolean(),
+      citizenship: z.object({ russian: z.boolean(), foreign: z.boolean() }),
+      positions: z.array(z.object({ code, required: z.boolean() })).max(10000),
+      projectCodes: z.array(code).max(10000),
+      countryCodes: z.array(code).max(10000),
+    }),
+    fields: z.object({
+      required: z
+        .array(z.enum(Object.keys(FIELD_LABELS) as [string, ...string[]]))
+        .max(30),
+      optional: z
+        .array(z.enum(Object.keys(FIELD_LABELS) as [string, ...string[]]))
+        .max(30),
+    }),
+  })
+  .transform((item) => ({
+    УИНДокумента: item.uid,
+    НаименованиеДокумента: item.name,
+    КодыДолжностей: item.requirements.positions.map((p) => p.code),
+    optionalPositions: item.requirements.positions
+      .filter((p) => !p.required)
+      .map((p) => p.code),
+    requiredPositions: item.requirements.positions
+      .filter((p) => p.required)
+      .map((p) => p.code),
+    projectCodes: item.requirements.projectCodes,
+    countryCodes: item.requirements.countryCodes,
+    ВсемРФ: item.requirements.citizenship.russian,
+    ВсемИГ: item.requirements.citizenship.foreign,
+    ОбязательныйДляВсех: item.requirements.requiredForAll,
+    Этап: item.stage,
+    requiredFields: item.fields.required,
+    optionalFields: item.fields.optional,
+  }));
+
 export const erpCatalogSchema = z
   .array(
-    z
-      .object({
-        УИНДокумента: z
-          .string()
-          .uuid()
-          .transform((v) => v.toLowerCase()),
-        НаименованиеДокумента: z.string().min(1).max(255),
-        КодыДолжностей: z.preprocess(
-          (value) =>
-            Array.isArray(value)
-              ? value.filter(
-                  (entry) => typeof entry !== "string" || entry.trim() !== "",
-                )
-              : value,
-          z.array(code).max(10000),
+    z.preprocess(
+      (value) => {
+        if (value && typeof value === "object" && "uid" in value)
+          return newCatalogItem.parse(value);
+        return value;
+      },
+      z
+        .object({
+          УИНДокумента: z
+            .string()
+            .uuid()
+            .transform((v) => v.toLowerCase()),
+          НаименованиеДокумента: z.string().min(1).max(255),
+          КодыДолжностей: z.preprocess(
+            (value) =>
+              Array.isArray(value)
+                ? value.filter(
+                    (entry) => typeof entry !== "string" || entry.trim() !== "",
+                  )
+                : value,
+            z.array(code).max(10000),
+          ),
+          optionalPositions: z.array(code).default([]),
+          requiredPositions: z.array(code).optional(),
+          projectCodes: z.array(code).default([]),
+          countryCodes: z.array(code).default([]),
+          ВсемРФ: z.boolean(),
+          ВсемИГ: z.boolean(),
+          ОбязательныйДляВсех: z.boolean().default(false),
+          Этап: z
+            .number()
+            .int()
+            .positive()
+            .nullable()
+            .optional()
+            .transform((v) => v ?? null),
+          requiredFields: z
+            .array(z.enum(Object.keys(FIELD_LABELS) as [string, ...string[]]))
+            .max(30),
+          optionalFields: z
+            .array(z.enum(Object.keys(FIELD_LABELS) as [string, ...string[]]))
+            .max(30),
+        })
+        .refine(
+          (v) =>
+            new Set([...v.requiredFields, ...v.optionalFields]).size ===
+            v.requiredFields.length + v.optionalFields.length,
+          "Repeated field",
         ),
-        ВсемРФ: z.boolean(),
-        ВсемИГ: z.boolean(),
-        ОбязательныйДляВсех: z.boolean().default(false),
-        Этап: z
-          .number()
-          .int()
-          .positive()
-          .nullable()
-          .optional()
-          .transform((v) => v ?? null),
-        requiredFields: z
-          .array(z.enum(Object.keys(FIELD_LABELS) as [string, ...string[]]))
-          .max(30),
-        optionalFields: z
-          .array(z.enum(Object.keys(FIELD_LABELS) as [string, ...string[]]))
-          .max(30),
-      })
-      .refine(
-        (v) =>
-          new Set([...v.requiredFields, ...v.optionalFields]).size ===
-          v.requiredFields.length + v.optionalFields.length,
-        "Repeated field",
-      ),
+    ),
   )
   .min(1)
   .max(1000)
@@ -376,6 +428,9 @@ export const erpCatalogSchema = z
       allRu: boolean;
       allForeign: boolean;
       positions: string[];
+      optionalPositions: string[];
+      projectCodes: string[];
+      countryCodes: string[];
     };
     const unique = new Map<
       string,
@@ -388,6 +443,17 @@ export const erpCatalogSchema = z
         allRu: item.ВсемРФ,
         allForeign: item.ВсемИГ,
         positions: [...new Set(item.КодыДолжностей)],
+        optionalPositions: [
+          ...new Set(
+            item.optionalPositions.filter(
+              (p) => !item.requiredPositions?.includes(p),
+            ),
+          ),
+        ],
+        projectCodes: [...new Set(item.projectCodes)],
+        countryCodes: [
+          ...new Set(item.countryCodes.map((v) => v.toLowerCase())),
+        ],
       };
       const prior = unique.get(item.УИНДокумента);
       if (!prior) {
@@ -416,6 +482,24 @@ export const erpCatalogSchema = z
         previousRule.requiredForAll ||= rule.requiredForAll;
         previousRule.allRu ||= rule.allRu;
         previousRule.allForeign ||= rule.allForeign;
+        const required = new Set([
+          ...previousRule.positions.filter(
+            (p) => !previousRule.optionalPositions.includes(p),
+          ),
+          ...rule.positions.filter((p) => !rule.optionalPositions.includes(p)),
+        ]);
+        previousRule.optionalPositions = [
+          ...new Set([
+            ...previousRule.optionalPositions,
+            ...rule.optionalPositions,
+          ]),
+        ].filter((p) => !required.has(p));
+        previousRule.projectCodes = [
+          ...new Set([...previousRule.projectCodes, ...rule.projectCodes]),
+        ];
+        previousRule.countryCodes = [
+          ...new Set([...previousRule.countryCodes, ...rule.countryCodes]),
+        ];
         previousRule.positions = [
           ...new Set([...previousRule.positions, ...rule.positions]),
         ];
@@ -440,22 +524,55 @@ export function excludedForSex(
   return !!(code && sex && documentSexExceptions[sex]?.includes(code));
 }
 
+export type ApplicabilityRule = {
+  requiredForAll?: boolean;
+  allRu: boolean;
+  allForeign: boolean;
+  positions: { code1c: string; required?: boolean }[];
+  projects?: { code1c: string }[];
+  countries?: { code: string }[];
+};
+export function classifyRule(
+  rule: ApplicabilityRule,
+  position: string,
+  citizenship: string,
+  project?: string | null,
+): "required" | "additional" | null {
+  const matchedPosition = rule.positions.filter((p) => p.code1c === position);
+  if (
+    rule.requiredForAll ||
+    (citizenship.toLowerCase() === "ru" ? rule.allRu : rule.allForeign) ||
+    matchedPosition.some((p) => p.required !== false) ||
+    (!!project && rule.projects?.some((p) => p.code1c === project)) ||
+    rule.countries?.some(
+      (c) => c.code.toLowerCase() === citizenship.toLowerCase(),
+    )
+  )
+    return "required";
+  return matchedPosition.length ? "additional" : null;
+}
 export function applicable(
-  type: {
-    code?: string;
-    allRu: boolean;
-    allForeign: boolean;
-    requiredForAll?: boolean;
-    positions: { code1c: string }[];
-  },
+  type: ApplicabilityRule & { code?: string; stageRules?: ApplicabilityRule[] },
   position: string,
   citizenship: string,
   sex?: "male" | "female" | null,
+  project?: string | null,
 ): boolean {
   if (excludedForSex(type.code, sex)) return false;
-  return (
-    type.requiredForAll === true ||
-    (citizenship.toLowerCase() === "ru" ? type.allRu : type.allForeign) ||
-    type.positions.some((p) => p.code1c === position)
+  return (type.stageRules?.length ? type.stageRules : [type]).some(
+    (rule) => classifyRule(rule, position, citizenship, project) !== null,
+  );
+}
+
+export function requiredApplicable(
+  type: ApplicabilityRule & { code?: string; stageRules?: ApplicabilityRule[] },
+  position: string,
+  citizenship: string,
+  sex?: "male" | "female" | null,
+  project?: string | null,
+): boolean {
+  if (excludedForSex(type.code, sex)) return false;
+  return (type.stageRules?.length ? type.stageRules : [type]).some(
+    (rule) => classifyRule(rule, position, citizenship, project) === "required",
   );
 }
