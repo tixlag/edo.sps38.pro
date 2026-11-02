@@ -5018,7 +5018,7 @@
             "name": "cursor",
             "required": false,
             "in": "query",
-            "description": "Candidate id from nextCursor",
+            "description": "Opaque cursor from nextCursor",
             "schema": {
               "type": "string"
             }
@@ -5181,6 +5181,35 @@
             "in": "query",
             "description": "Exact mentor code_1c",
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "managerId",
+            "required": false,
+            "in": "query",
+            "description": "Exact candidate manager id from ERP catalog",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdFrom",
+            "required": false,
+            "in": "query",
+            "description": "Candidate added to EDO from (Asia/Irkutsk)",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdTo",
+            "required": false,
+            "in": "query",
+            "description": "Candidate added to EDO through (Asia/Irkutsk)",
+            "schema": {
+              "format": "date",
               "type": "string"
             }
           }
@@ -5601,6 +5630,15 @@
         "operationId": "getReviewDocumentFacets",
         "parameters": [
           {
+            "name": "includeAll",
+            "required": false,
+            "in": "query",
+            "description": "Include accessible RU candidates without documents",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "reviewGroup",
             "required": false,
             "in": "query",
@@ -5726,6 +5764,15 @@
       "get": {
         "operationId": "listReviewCandidates",
         "parameters": [
+          {
+            "name": "includeAll",
+            "required": false,
+            "in": "query",
+            "description": "Include accessible RU candidates without documents",
+            "schema": {
+              "type": "boolean"
+            }
+          },
           {
             "name": "reviewGroup",
             "required": false,

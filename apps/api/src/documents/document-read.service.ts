@@ -41,6 +41,7 @@ import {
 } from "../ocr/ocr-profile";
 import {
   buildCandidateProfileWhere,
+  parseBirthDateBound,
   toCandidateProfile,
 } from "./candidate-profile";
 import type {
@@ -889,12 +890,25 @@ export class DocumentReadService {
   async reviewDocumentFacets(
     principal: AuthPrincipal,
     reviewGroup: ReviewGroup = "RU",
+    includeAll = false,
   ): Promise<ReviewDocumentFacetsDto> {
-    const ids = await this.reviewCandidateIds(principal, reviewGroup);
-    if (ids.length === 0)
+    const ids =
+      includeAll && reviewGroup === "RU"
+        ? null
+        : await this.reviewCandidateIds(principal, reviewGroup);
+    if (ids?.length === 0)
       return { managers: [], mentors: [], projects: [], citizenships: [] };
+    requireReviewGroup(principal, reviewGroup);
     const candidates = await this.prisma.candidate.findMany({
-      where: { id: { in: ids } },
+      where: ids
+        ? { id: { in: ids } }
+        : {
+            AND: [
+              this.access.candidateWhere(principal),
+              reviewGroupWhere("RU"),
+              { erpDeleted: false },
+            ],
+          },
       select: {
         managerName: true,
         managerCode1c: true,
@@ -954,15 +968,25 @@ export class DocumentReadService {
     query: ReviewCandidatesQueryDto,
   ): Promise<ReviewCandidateListDto> {
     const { limit = 20 } = query;
-    const ids = await this.reviewCandidateIds(
-      principal,
-      query.reviewGroup ?? "RU",
-    );
-    if (ids.length === 0) return { items: [] };
+    const group = query.reviewGroup ?? "RU";
+    const ids =
+      query.includeAll && group === "RU"
+        ? null
+        : await this.reviewCandidateIds(principal, group);
+    if (ids?.length === 0) return { items: [] };
+    requireReviewGroup(principal, group);
     const needle = query.q?.trim();
     const rows = await this.prisma.candidate.findMany({
       where: {
-        id: { in: ids },
+        ...(ids
+          ? { id: { in: ids } }
+          : {
+              AND: [
+                this.access.candidateWhere(principal),
+                reviewGroupWhere("RU"),
+                { erpDeleted: false },
+              ],
+            }),
         ...(needle ? { fullName: { contains: needle } } : {}),
       },
       select: { id: true, fullName: true },
@@ -1124,19 +1148,143 @@ export class DocumentReadService {
       currentStatus,
       documentTypeCode,
       reviewGroup = "RU",
+      createdFrom,
+      createdTo,
       ...profile
     } = query;
+    const from = createdFrom
+      ? parseBirthDateBound(createdFrom, "createdFrom")
+      : undefined;
+    const to = createdTo
+      ? parseBirthDateBound(createdTo, "createdTo")
+      : undefined;
+    if (from && to && from > to)
+      throw new BadRequestException("createdFrom must not be after createdTo");
+    const createdAt =
+      from || to
+        ? {
+            ...(from
+              ? { gte: new Date(from.getTime() - 8 * 60 * 60 * 1000) }
+              : {}),
+            ...(to ? { lt: new Date(to.getTime() + 16 * 60 * 60 * 1000) } : {}),
+          }
+        : undefined;
     const documentsWhere = this.reviewDocumentWhere(principal, {
       status,
       currentStatus,
       documentTypeCode,
       reviewGroup,
     });
+    if (reviewGroup === "RU" && status === "ALL") {
+      let after: { group: number; id: string; name: string | null } | undefined;
+      if (cursor) {
+        try {
+          const decoded = JSON.parse(
+            Buffer.from(cursor, "base64url").toString(),
+          );
+          if (
+            ![0, 1].includes(decoded.group) ||
+            typeof decoded.id !== "string" ||
+            (decoded.name !== null && typeof decoded.name !== "string")
+          )
+            throw new Error();
+          after = decoded;
+        } catch {
+          throw new BadRequestException("Invalid candidate cursor");
+        }
+      }
+      const uploadedWhere = {
+        ...this.access.documentWhere(principal),
+        currentVersion: { gt: 0 },
+      };
+      const common = [
+        this.access.candidateWhere(principal),
+        reviewGroupWhere("RU"),
+        { erpDeleted: false },
+        buildCandidateProfileWhere(profile) ?? {},
+        ...(createdAt ? [{ createdAt }] : []),
+      ];
+      const rows: {
+        row: Prisma.CandidateGetPayload<{
+          include: { documents: { include: typeof documentSummaryInclude } };
+        }>;
+        group: number;
+      }[] = [];
+      for (const group of [0, 1]) {
+        if (after && group < after.group) continue;
+        if (group === 1 && (currentStatus || documentTypeCode)) continue;
+        const boundary =
+          after && after.group === group
+            ? after.name === null
+              ? {
+                  OR: [
+                    { fullName: null, id: { gt: after.id } },
+                    { fullName: { not: null } },
+                  ],
+                }
+              : {
+                  OR: [
+                    { fullName: { gt: after.name } },
+                    { fullName: after.name, id: { gt: after.id } },
+                  ],
+                }
+            : undefined;
+        const page = await this.prisma.candidate.findMany({
+          where: {
+            AND: [
+              ...common,
+              group === 0
+                ? { documents: { some: uploadedWhere } }
+                : { documents: { none: uploadedWhere } },
+              ...(group === 0 && (currentStatus || documentTypeCode)
+                ? [{ documents: { some: documentsWhere } }]
+                : []),
+              ...(boundary ? [boundary] : []),
+            ],
+          },
+          include: {
+            documents: {
+              where: documentsWhere,
+              include: documentSummaryInclude,
+              orderBy: { id: "asc" },
+            },
+          },
+          orderBy: [{ fullName: "asc" }, { id: "asc" }],
+          take: limit + 1 - rows.length,
+        });
+        rows.push(...page.map((row) => ({ row, group })));
+        if (rows.length > limit) break;
+      }
+      const page = rows.slice(0, limit);
+      const items = page.map(({ row }) => ({
+        candidate: toCandidateProfile(row)!,
+        documents: row.documents.map((d) => this.documentSummary(d)),
+      }));
+      await this.enrichReviewCandidates(
+        principal,
+        items.map((item) => item.candidate),
+      );
+      const last = page.at(-1);
+      return {
+        items,
+        nextCursor:
+          rows.length > limit && last
+            ? Buffer.from(
+                JSON.stringify({
+                  group: last.group,
+                  id: last.row.id,
+                  name: last.row.fullName,
+                }),
+              ).toString("base64url")
+            : null,
+      };
+    }
     const rows = await this.prisma.candidate.findMany({
       where: {
         AND: [
           this.access.candidateWhere(principal),
           buildCandidateProfileWhere(profile) ?? {},
+          ...(createdAt ? [{ createdAt }] : []),
           ...(cursor ? [{ id: { gt: cursor } }] : []),
           { documents: { some: documentsWhere } },
         ],

@@ -16,6 +16,7 @@ export interface ReviewProfileFilters {
   projectCode?: string;
   candidateId?: string;
   managerCode1c?: string;
+  managerId?: string;
   managerName?: string;
   managerUnassigned?: boolean;
   mentorCode1c?: string;
@@ -247,6 +248,7 @@ export function buildCandidateProfileWhere(
   const citizenship = text(filters.citizenship)?.toLowerCase();
   if (citizenship) and.push({ citizenship });
   const manager = text(filters.manager);
+  if (filters.managerId) and.push({ managerId: filters.managerId });
   if (manager)
     and.push({
       OR: [

@@ -26,6 +26,8 @@ vi.mock("@edo/api-client", () => {
   const list = { data: { items: [] }, isLoading: false, isError: false };
   return {
     useGetMe: () => ({ data: { permissions: state.permissions } }),
+    useListCatalogManagers: () => list,
+    getListCatalogManagersQueryKey: () => ["catalog-managers"],
     useGetDocumentInfo: () => ({ data: state.documentInfo }),
     useListCandidateReviewQueue: (...args: unknown[]) => {
       state.queue(...args);
@@ -87,11 +89,31 @@ afterEach(async () => {
 });
 
 describe("RU and IG review pages", () => {
+  it("opens all candidates by default in RU while keeping IG on the review queue", async () => {
+    state.permissions = { "20002": [] };
+    await render("RU");
+    expect(state.queue).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reviewGroup: "RU", status: "ALL" }),
+      expect.anything(),
+    );
+    await act(async () => root?.unmount());
+    container?.remove();
+    state.permissions = { "20011": [] };
+    await render("IG");
+    expect(state.queue).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reviewGroup: "IG", status: "IN_REVIEW" }),
+      expect.anything(),
+    );
+  });
   it("opens the candidate chat directly from the RU queue", async () => {
     state.permissions = { "20002": [] };
     state.queueItems = [
       {
-        candidate: { id: "candidate-1", fullName: "Иван Иванов", stageProgress: [] },
+        candidate: {
+          id: "candidate-1",
+          fullName: "Иван Иванов",
+          stageProgress: [],
+        },
         documents: [],
       },
     ];

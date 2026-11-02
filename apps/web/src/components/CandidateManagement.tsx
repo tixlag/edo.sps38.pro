@@ -12,6 +12,7 @@ import {
   useListCandidateProjects,
   useLinkCandidatePerson,
   type CandidateWorkspaceDto,
+  type CandidateProfileDto,
   type CandidateFieldsDto,
 } from "@edo/api-client";
 import { Button } from "@edo/ui";
@@ -48,9 +49,11 @@ function useConfirmedCandidate(candidateId: string) {
 function EditCandidate({
   profile,
   onClose,
+  compact,
 }: {
   profile: CandidateWorkspaceDto;
   onClose: () => void;
+  compact?: boolean;
 }) {
   const [initial] = useState(() => candidateFormFields(profile));
   const mutation = useUpdateCandidateWorkspace();
@@ -77,6 +80,7 @@ function EditCandidate({
   return (
     <CandidateForm
       profile={profile}
+      compact={compact}
       pending={mutation.isPending}
       locked={request.locked}
       error={request.error}
@@ -329,7 +333,15 @@ function CandidatePersonLink({
   );
 }
 
-export function CandidateManagement({ candidateId }: { candidateId: string }) {
+export function CandidateManagement({
+  candidateId,
+  compact = false,
+  fallbackProfile,
+}: {
+  candidateId: string;
+  compact?: boolean;
+  fallbackProfile?: CandidateProfileDto | null;
+}) {
   const workspace = useGetCandidateWorkspace(candidateId);
   const [action, setAction] = useState<"edit" | "status" | "person" | null>(
     null,
@@ -345,10 +357,30 @@ export function CandidateManagement({ candidateId }: { candidateId: string }) {
     response.data?.message === "ERP_CANDIDATE_CONFIRMATION_REQUIRED"
   )
     return (
-      <div role="status" className="text-sm text-[var(--muted-foreground)]">
-        Нет подтверждённой связи с кандидатом в 1С. Данные оформления и
-        изменение статуса станут доступны после установления связи. Для
-        переписки и документов вернитесь к соответствующим разделам карточки.
+      <div className="space-y-4 text-sm">
+        <p role="status" className="text-[var(--muted-foreground)]">
+          Нет подтверждённой связи с кандидатом в 1С. Данные оформления и
+          изменение статуса станут доступны после установления связи.
+        </p>
+        {fallbackProfile && (
+          <dl className="space-y-3">
+            {[
+              ["ФИО", fallbackProfile.fullName],
+              ["Дата рождения", formatBirthDateRu(fallbackProfile.birthDate)],
+              ["Должность", fallbackProfile.positionName],
+              ["Объект", fallbackProfile.projectName],
+              ["Менеджер", fallbackProfile.managerName],
+              ["Наставник", fallbackProfile.mentorName],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-[var(--muted-foreground)]">{label}</dt>
+                <dd className="break-words font-medium">
+                  {value || "Не указано"}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
       </div>
     );
   if (workspace.isError || !workspace.data)
@@ -399,9 +431,15 @@ export function CandidateManagement({ candidateId }: { candidateId: string }) {
           )}
         </div>
         {action === "edit" ? (
-          <EditCandidate profile={profile} onClose={() => setAction(null)} />
+          <EditCandidate
+            profile={profile}
+            compact={compact}
+            onClose={() => setAction(null)}
+          />
         ) : (
-          <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+          <dl
+            className={`grid gap-x-6 gap-y-3 text-sm ${compact ? "grid-cols-1" : "sm:grid-cols-2"}`}
+          >
             {[
               ["ФИО", profile.fullName],
               ["Телефон", profile.phone],

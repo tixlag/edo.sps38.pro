@@ -7,11 +7,11 @@ import {
 } from "@tanstack/react-router";
 import {
   useGetCandidateDetails,
+  getGetCandidateDetailsQueryKey,
   useGetMe,
   getGetCandidateWorkspaceQueryKey,
   useGetCandidateWorkspace,
   useGetDocumentInfo,
-  useListCommunicationCandidates,
   type CandidateDocumentSummaryDto,
 } from "@edo/api-client";
 import { Badge, Button, EmptyState, StatusBadge } from "@edo/ui";
@@ -21,19 +21,16 @@ import {
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
-  Search,
-  Users,
   X,
 } from "lucide-react";
 import { CandidateManagement } from "../components/CandidateManagement";
-import { CandidateListFilters, type CandidateListFilterKey, type CandidateListFilterValues } from "../components/CandidateListFilters";
+import { StageRing } from "./ReviewPage";
 import { CandidateRequirements } from "../components/CandidateRequirements";
 import { hasAccessRule } from "../lib/audit-types";
 import { CandidateChat } from "../components/CandidateChat";
 import { DocumentReviewWorkspace } from "../components/DocumentReviewWorkspace";
 import { LkLink } from "../components/LkLink";
 import {
-  candidateInitials,
   formatBirthDateRu,
   formatCandidateObject,
   formatDocumentProgress,
@@ -137,32 +134,56 @@ function CandidateDocumentReview({
 
 export function CandidateWorkspacePage() {
   const me = useGetMe();
-  const { candidateId } = useParams({ strict: false }) as { candidateId: string };
-  const [filters, setFilters] = useState<CandidateListFilterValues>({});
-  if (!hasAccessRule(me.data, 20002) && !hasAccessRule(me.data, 20009)) return <div className="p-4"><EmptyState title={me.isLoading ? "Загрузка прав…" : "Нет доступа"} description="Карточка кандидата доступна сотрудникам направления Россия." /></div>;
-  return <CandidateWorkspace key={candidateId} filters={filters} setFilters={setFilters} />;
+  const { candidateId } = useParams({ strict: false }) as {
+    candidateId: string;
+  };
+  if (!hasAccessRule(me.data, 20002) && !hasAccessRule(me.data, 20009))
+    return (
+      <div className="p-4">
+        <EmptyState
+          title={me.isLoading ? "Загрузка прав…" : "Нет доступа"}
+          description="Карточка кандидата доступна сотрудникам направления Россия."
+        />
+      </div>
+    );
+  return <CandidateWorkspace key={candidateId} />;
 }
 
-function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFilterValues; setFilters: React.Dispatch<React.SetStateAction<CandidateListFilterValues>> }) {
+function CandidateWorkspace() {
   const { candidateId } = useParams({ strict: false }) as {
     candidateId: string;
   };
   const search = useSearch({ strict: false }) as Record<string, unknown>;
   const navigate = useNavigate();
+  const stage = /^(none|[1-9]\d{0,14})$/.test(String(search.stage ?? ""))
+    ? String(search.stage)
+    : undefined;
   const details = useGetCandidateDetails(candidateId);
-  const workspace = useGetCandidateWorkspace(candidateId, {
-    query: { enabled: false, queryKey: getGetCandidateWorkspaceQueryKey(candidateId) },
+  const stageParams = stage ? { stage } : undefined;
+  const stageDetails = useGetCandidateDetails(candidateId, stageParams, {
+    query: {
+      enabled: !!stage,
+      queryKey: getGetCandidateDetailsQueryKey(candidateId, stageParams),
+    },
   });
-  const [collapsed, setCollapsed] = useState(
-    () =>
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(max-width: 1279px)").matches,
-  );
+  const workspace = useGetCandidateWorkspace(candidateId, {
+    query: {
+      enabled: false,
+      queryKey: getGetCandidateWorkspaceQueryKey(candidateId),
+    },
+  });
+  const [collapsed, setCollapsed] = useState(false);
   const candidatesPanel = useRef<HTMLElement>(null);
   const documentsPanel = useRef<HTMLElement>(null);
   const [mobilePanel, setMobilePanel] = useState<
     "candidates" | "documents" | null
-  >(null);
+  >(() =>
+    search.section === "profile" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(max-width: 1023px)").matches
+      ? "candidates"
+      : null,
+  );
   useEffect(() => {
     if (!mobilePanel) return;
     const panel =
@@ -209,34 +230,13 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
       previous?.focus();
     };
   }, [mobilePanel]);
-  const [query, setQuery] = useState(""),
-    [debouncedQuery, setDebouncedQuery] = useState("");
-  const [cursor, setCursor] = useState<string>();
-  const [previousCursors, setPreviousCursors] = useState<
-    (string | undefined)[]
-  >([]);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(query.trim());
-      setCursor(undefined);
-      setPreviousCursors([]);
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [query]);
-  const candidates = useListCommunicationCandidates({
-    q: debouncedQuery || undefined,
-    ...filters,
-    limit: 50,
-    cursor,
-  });
   const profile = details.data?.candidate;
   const documentId =
     typeof search.document === "string" && search.document.length <= 64
       ? search.document
       : undefined;
   const version = parseVersionParam(search.version);
-  const showProfile = !documentId && search.section === "profile";
-  const queueSearch = { ...parseReviewSearchParams(search) };
+  const queueSearch = { ...parseReviewSearchParams(search, "ALL") };
   delete queueSearch.candidate;
   const openDocument = (
     document: CandidateDocumentSummaryDto,
@@ -253,9 +253,21 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
       }),
     });
   };
-  const documents = [...(details.data?.documents ?? [])].sort((a, b) =>
-    a.title.localeCompare(b.title, "ru"),
-  );
+  const stageData = stage ? stageDetails.data?.stageDocuments : undefined;
+  const missing = stageData
+    ? [
+        ...stageData.required.missingDocuments,
+        ...stageData.additional.missingDocuments,
+      ]
+    : [];
+  const documents = [
+    ...(stage
+      ? [
+          ...(stageData?.required.documents ?? []),
+          ...(stageData?.additional.documents ?? []),
+        ]
+      : (details.data?.documents ?? [])),
+  ].sort((a, b) => a.title.localeCompare(b.title, "ru"));
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden p-3 sm:p-4">
       <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -267,15 +279,20 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
           <ArrowLeft size={15} />
           Очередь проверки
         </Link>
-        <Link to="/candidates" className="text-sm text-[var(--primary)] underline underline-offset-4">Каталог кандидатов</Link>
+        <Link
+          to="/candidates"
+          className="text-sm text-[var(--primary)] underline underline-offset-4"
+        >
+          Каталог кандидатов
+        </Link>
         <Button
           size="sm"
           variant="outline"
           className="lg:hidden"
           onClick={() => setMobilePanel("candidates")}
         >
-          <Users size={15} />
-          Кандидаты
+          <PanelLeftOpen size={15} />
+          Данные кандидата
         </Button>
         <Button
           size="sm"
@@ -300,12 +317,12 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
           ref={candidatesPanel}
           role={mobilePanel === "candidates" ? "dialog" : undefined}
           aria-modal={mobilePanel === "candidates" ? true : undefined}
-          aria-label="Кандидаты"
-          className={`${mobilePanel === "candidates" ? "fixed inset-y-0 left-0 z-40 flex w-[min(88vw,360px)] shadow-xl" : collapsed ? "hidden w-12 lg:flex" : "hidden w-72 xl:w-80 lg:flex"} shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]`}
+          aria-label="Данные и оформление кандидата"
+          className={`${mobilePanel === "candidates" ? "fixed inset-y-0 left-0 z-40 flex w-[min(92vw,400px)] shadow-xl" : collapsed ? "hidden w-12 lg:flex" : "hidden w-80 xl:w-96 lg:flex"} shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]`}
         >
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] p-3">
             {(!collapsed || mobilePanel) && (
-              <h2 className="text-sm font-semibold">Кандидаты</h2>
+              <h2 className="text-sm font-semibold">Данные и оформление</h2>
             )}
             <Button
               size="sm"
@@ -313,8 +330,8 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
               className="hidden h-7 px-1 lg:inline-flex"
               aria-label={
                 collapsed
-                  ? "Развернуть список кандидатов"
-                  : "Свернуть список кандидатов"
+                  ? "Развернуть данные кандидата"
+                  : "Свернуть данные кандидата"
               }
               aria-expanded={!collapsed}
               onClick={() => setCollapsed(!collapsed)}
@@ -329,126 +346,20 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
               size="sm"
               variant="ghost"
               className="lg:hidden"
-              aria-label="Закрыть список кандидатов"
+              aria-label="Закрыть данные кандидата"
               onClick={() => setMobilePanel(null)}
             >
               <X size={18} />
             </Button>
           </div>
           {(!collapsed || mobilePanel === "candidates") && (
-            <>
-              <div className="relative z-10 shrink-0 border-b border-[var(--border)] p-3">
-              <label className="relative mb-3 block">
-                <Search
-                  size={15}
-                  className="pointer-events-none absolute left-2 top-2.5 text-[var(--muted-foreground)]"
-                />
-                <span className="sr-only">Поиск кандидата по ФИО</span>
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Поиск по ФИО"
-                  className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] py-2 pl-7 pr-2 text-[13px]"
-                />
-              </label>
-              <CandidateListFilters values={filters} onChange={(key: CandidateListFilterKey, value) => {
-                setFilters((previous) => ({ ...previous, [key]: value }));
-                setCursor(undefined);
-                setPreviousCursors([]);
-              }} />
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                {candidates.isLoading && (
-                  <p role="status" className="px-3 text-sm">
-                    Загрузка кандидатов…
-                  </p>
-                )}
-                {candidates.isError && (
-                  <div role="alert" className="p-3 text-xs">
-                    Не удалось загрузить список.{" "}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void candidates.refetch()}
-                    >
-                      Повторить
-                    </Button>
-                  </div>
-                )}
-                {candidates.data?.items.length === 0 && (
-                  <p className="px-3 text-xs text-[var(--muted-foreground)]">
-                    Кандидаты не найдены.
-                  </p>
-                )}
-                <ul>
-                  {candidates.data?.items.map((candidate) => (
-                    <li key={candidate.id}>
-                      <Link
-                        to="/review/candidates/$candidateId"
-                        params={{ candidateId: candidate.id }}
-                        search={queueSearch}
-                        onClick={() => setMobilePanel(null)}
-                        aria-current={
-                          candidate.id === candidateId ? "page" : undefined
-                        }
-                        className={`flex gap-2 border-b border-[var(--border)] px-3 py-3 text-left hover:bg-[var(--muted)] ${candidate.id === candidateId ? "bg-[var(--primary-soft)]" : ""}`}
-                      >
-                        <span
-                          aria-hidden
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-xs font-semibold"
-                        >
-                          {candidateInitials(candidate.fullName)}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block break-words text-[13px] font-medium">
-                            {candidate.fullName || "Без имени в профиле"}
-                          </span>
-                          <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">
-                            {candidate.positionName ||
-                              formatCandidateObject(
-                                candidate.projectName,
-                                candidate.projectCode,
-                              )}
-                          </span>
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="flex shrink-0 items-center justify-between gap-1 border-t border-[var(--border)] p-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={!previousCursors.length}
-                  onClick={() => {
-                    setCursor(previousCursors.at(-1));
-                    setPreviousCursors((previous) => previous.slice(0, -1));
-                  }}
-                >
-                  Назад
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={!candidates.data?.nextCursor}
-                  onClick={() => {
-                    setPreviousCursors((previous) => [...previous, cursor]);
-                    setCursor(candidates.data?.nextCursor ?? undefined);
-                  }}
-                >
-                  Далее
-                </Button>
-              </div>
-              {candidates.data && !candidates.data.syncedAt && (
-                <p
-                  role="status"
-                  className="p-2 pt-0 text-xs text-[var(--muted-foreground)]"
-                >
-                  Каталог 1С ещё не синхронизирован.
-                </p>
-              )}
-            </>
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              <CandidateManagement
+                candidateId={candidateId}
+                compact
+                fallbackProfile={profile}
+              />
+            </div>
           )}
         </aside>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
@@ -459,7 +370,9 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
               <>
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="min-w-0 break-words text-base font-semibold">
-                    {workspace.data?.fullName || profile?.fullName || "Кандидат"}
+                    {workspace.data?.fullName ||
+                      profile?.fullName ||
+                      "Кандидат"}
                   </h1>
                   {profile?.citizenship && (
                     <Badge>{profile.citizenship.toUpperCase()}</Badge>
@@ -535,11 +448,66 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
           ) : (
             details.data && (
               <>
-                <nav aria-label="Разделы карточки" className="flex shrink-0 flex-wrap gap-2">
-                  <Button size="sm" variant={showProfile ? "default" : "outline"} onClick={() => void navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (previous: Record<string, unknown>) => ({ ...previous, document: undefined, version: undefined, section: "profile" }) })}>Данные и оформление</Button>
-                  <Button size="sm" variant={!showProfile && !documentId ? "default" : "outline"} onClick={() => void navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (previous: Record<string, unknown>) => ({ ...previous, document: undefined, version: undefined, section: "chat" }) })}><MessageSquare size={15} />Переписка</Button>
+                <nav
+                  aria-label="Этапы документов"
+                  className="flex shrink-0 items-start gap-2 overflow-x-auto"
+                >
+                  <Button
+                    size="sm"
+                    variant={!stage ? "default" : "outline"}
+                    onClick={() =>
+                      void navigate({
+                        to: "/review/candidates/$candidateId",
+                        params: { candidateId },
+                        search: (previous: Record<string, unknown>) => ({
+                          ...previous,
+                          stage: undefined,
+                          document: undefined,
+                          version: undefined,
+                        }),
+                      })
+                    }
+                  >
+                    Все документы
+                  </Button>
+                  {profile?.stageProgress?.map((progress) => (
+                    <StageRing
+                      key={progress.stage ?? "none"}
+                      progress={progress}
+                      selected={
+                        stage ===
+                        (progress.stage === null
+                          ? "none"
+                          : String(progress.stage))
+                      }
+                      onOpen={() => {
+                        void navigate({
+                          to: "/review/candidates/$candidateId",
+                          params: { candidateId },
+                          search: (previous: Record<string, unknown>) => ({
+                            ...previous,
+                            document: undefined,
+                            version: undefined,
+                            stage:
+                              progress.stage === null
+                                ? "none"
+                                : String(progress.stage),
+                          }),
+                        });
+                        if (
+                          typeof window.matchMedia === "function" &&
+                          window.matchMedia("(max-width: 1023px)").matches
+                        )
+                          setMobilePanel("documents");
+                      }}
+                    />
+                  ))}
+                  {profile?.stageProgress === null && (
+                    <span className="text-xs text-[var(--muted-foreground)]">
+                      Этапы неизвестны
+                    </span>
+                  )}
                 </nav>
-                {showProfile && <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-4"><CandidateManagement candidateId={candidateId} /></div>}
                 {documentId && (
                   <div className="flex shrink-0 items-center">
                     <Button
@@ -565,7 +533,7 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
                 )}
                 {/* Keep the chat mounted while checking documents: connection, scroll
               position and an unsent draft survive switching the center view. */}
-                <div className={`min-h-0 flex-1 ${documentId || showProfile ? "hidden" : ""}`}>
+                <div className={`min-h-0 flex-1 ${documentId ? "hidden" : ""}`}>
                   <CandidateChat key={candidateId} candidateId={candidateId} />
                 </div>
                 {documentId && (
@@ -622,18 +590,56 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
             </p>
           )}
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            <CandidateRequirements candidateId={candidateId} documents={documents} />
+            {!stage && (
+              <CandidateRequirements
+                candidateId={candidateId}
+                documents={documents}
+              />
+            )}
+            {stage && stageDetails.isFetching && (
+              <p role="status" className="p-2 text-xs">
+                Загрузка документов этапа…
+              </p>
+            )}
+            {stage && !stageDetails.isFetching && !stageData && (
+              <p role="status" className="p-2 text-xs">
+                Не удалось определить документы выбранного этапа.
+              </p>
+            )}
+            {stage && missing.length > 0 && (
+              <section className="mb-3 border-b border-[var(--border)] p-2">
+                <h3 className="mb-2 text-xs font-semibold">Не загружены</h3>
+                <ul className="space-y-1">
+                  {missing.map((item) => (
+                    <li key={item.code} className="text-xs">
+                      {item.title}{" "}
+                      <span className="text-[var(--muted-foreground)]">
+                        ·{" "}
+                        {stageData?.required.missingDocuments.some(
+                          (entry) => entry.code === item.code,
+                        )
+                          ? "обязательный"
+                          : "дополнительный"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             {details.isLoading && (
               <p role="status" className="p-2 text-sm">
                 Загрузка документов…
               </p>
             )}
-            {details.data && !documents.length && (
-              <EmptyState
-                title="Документов пока нет"
-                description="Кандидат ещё не загрузил документы в EDO."
-              />
-            )}
+            {details.data &&
+              (!stage || stageData) &&
+              !documents.length &&
+              !missing.length && (
+                <EmptyState
+                  title="Документов пока нет"
+                  description="Кандидат ещё не загрузил документы в EDO."
+                />
+              )}
             <ul className="flex flex-col gap-2">
               {documents.map((document) => (
                 <li
@@ -653,6 +659,15 @@ function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFil
                     </span>
                     <span className="flex flex-wrap items-center gap-1">
                       <StatusBadge status={document.status} document />
+                      {stageData && (
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          {stageData.required.documents.some(
+                            (item) => item.id === document.id,
+                          )
+                            ? "Обязательный"
+                            : "Дополнительный"}
+                        </span>
+                      )}
                       <span className="text-xs text-[var(--muted-foreground)]">
                         Версия {document.currentVersion}
                       </span>

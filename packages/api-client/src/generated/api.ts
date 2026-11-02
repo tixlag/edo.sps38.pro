@@ -2258,7 +2258,7 @@ export type ListCandidateReviewQueueParams = {
    */
   limit?: number;
   /**
-   * Candidate id from nextCursor
+   * Opaque cursor from nextCursor
    */
   cursor?: string;
   /**
@@ -2306,6 +2306,18 @@ export type ListCandidateReviewQueueParams = {
    * Exact mentor code_1c
    */
   mentorCode1c?: string;
+  /**
+   * Exact candidate manager id from ERP catalog
+   */
+  managerId?: string;
+  /**
+   * Candidate added to EDO from (Asia/Irkutsk)
+   */
+  createdFrom?: string;
+  /**
+   * Candidate added to EDO through (Asia/Irkutsk)
+   */
+  createdTo?: string;
 };
 
 export type ListCandidateReviewQueueStatus =
@@ -2381,10 +2393,18 @@ export const ListReviewDocumentsStatus = {
 } as const;
 
 export type GetReviewDocumentFacetsParams = {
+  /**
+   * Include accessible RU candidates without documents
+   */
+  includeAll?: boolean;
   reviewGroup?: ReviewGroup;
 };
 
 export type ListReviewCandidatesParams = {
+  /**
+   * Include accessible RU candidates without documents
+   */
+  includeAll?: boolean;
   reviewGroup?: ReviewGroup;
   /**
    * Case-insensitive fullName search

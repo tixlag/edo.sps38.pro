@@ -313,7 +313,11 @@ export class ManualDocumentReviewController {
     @CurrentPrincipal() principal: AuthPrincipal,
     @Query() query: ReviewGroupQueryDto,
   ) {
-    return this.reads.reviewDocumentFacets(principal, query.reviewGroup);
+    return this.reads.reviewDocumentFacets(
+      principal,
+      query.reviewGroup,
+      query.includeAll,
+    );
   }
   @Get("review-candidates")
   @RequireAccessRule(EdoAccessRule.ACCESS)

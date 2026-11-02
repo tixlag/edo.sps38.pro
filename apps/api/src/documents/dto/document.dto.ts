@@ -51,10 +51,19 @@ export class CandidateQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @MaxLength(64)
+  @MaxLength(2048)
   cursor?: string;
 }
 export class ReviewGroupQueryDto {
+  @ApiPropertyOptional({
+    description: "Include accessible RU candidates without documents",
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === "true" ? true : value === "false" ? false : value,
+  )
+  @IsBoolean()
+  includeAll?: boolean;
   @ApiPropertyOptional({
     enum: ["RU", "IG"],
     enumName: "ReviewGroup",
@@ -983,13 +992,36 @@ export class ReviewDocumentsDto extends DocumentListDto {
 }
 export class CandidateReviewQueueQueryDto extends ReviewDocumentsQueryDto {
   @ApiPropertyOptional({
+    description: "Exact candidate manager id from ERP catalog",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  managerId?: string;
+  @ApiPropertyOptional({
+    format: "date",
+    description: "Candidate added to EDO from (Asia/Irkutsk)",
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  createdFrom?: string;
+  @ApiPropertyOptional({
+    format: "date",
+    description: "Candidate added to EDO through (Asia/Irkutsk)",
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  createdTo?: string;
+  @ApiPropertyOptional({
     minimum: 1,
     maximum: 100,
     default: 50,
     description: "Number of candidates, regardless of their document counts",
   })
   declare limit?: number;
-  @ApiPropertyOptional({ description: "Candidate id from nextCursor" })
+  @ApiPropertyOptional({ description: "Opaque cursor from nextCursor" })
   declare cursor?: string;
 }
 

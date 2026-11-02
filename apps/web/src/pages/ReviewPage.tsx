@@ -20,6 +20,8 @@ import {
   useListPositions,
   useListReviewCandidates,
   useListCandidateReviewQueue,
+  useListCatalogManagers,
+  getListCatalogManagersQueryKey,
   type CandidateDetailsDto,
   type ReviewStageProgressDto,
   useGetDocumentInfo,
@@ -58,14 +60,10 @@ import {
   type SearchSelectOption,
 } from "../components/SearchSelect";
 import { CandidateDrawer } from "../components/CandidateDrawer";
+import { DateFilter } from "../components/DateFilter";
 import { LkLink } from "../components/LkLink";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
-import {
-  formatDateTimeRu,
-  formatDateRu,
-  maskDateRuInput,
-  parseDateRu,
-} from "../lib/date-format";
+import { formatDateTimeRu } from "../lib/date-format";
 import {
   candidateInitials,
   formatBirthDateRu,
@@ -95,6 +93,7 @@ const FILTER_CONTROL =
   "rounded-[6px] border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[13px] text-[var(--foreground)]";
 
 const TABS: { value: ReviewTab; label: string }[] = [
+  { value: "ALL", label: "Все кандидаты" },
   { value: "IN_REVIEW", label: "Ожидают проверки" },
   { value: "RETURNED", label: "Возвращённые" },
   { value: "ERP_PENDING", label: "Требуют отправки в ERP" },
@@ -279,12 +278,14 @@ function StageTooltip({
   );
 }
 
-function StageRing({
+export function StageRing({
   progress,
   onOpen,
+  selected,
 }: {
   progress: ReviewStageProgressDto;
   onOpen: () => void;
+  selected?: boolean;
 }) {
   const label =
     progress.stage === null ? "Дополнительные" : `Этап ${progress.stage}`;
@@ -392,8 +393,9 @@ function StageRing({
         }
       }}
       role="button"
-      className="group pointer-events-auto relative flex w-16 shrink-0 flex-col items-center gap-0.5 rounded text-center text-xs min-[1400px]:w-[68px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+      className={`group pointer-events-auto relative flex w-16 shrink-0 flex-col items-center gap-0.5 rounded text-center text-xs min-[1400px]:w-[68px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] ${selected ? "bg-[var(--primary-soft)]" : ""}`}
       aria-label={`Открыть документы: ${label}`}
+      aria-pressed={selected}
       aria-describedby={open ? tooltipId : undefined}
     >
       <span className="relative flex h-14 w-14 items-center justify-center">
@@ -643,23 +645,21 @@ export function ReviewPage({
   const rawSearch = useSearch({ strict: false }) as Record<string, unknown>;
   const navigate = useNavigate();
   const filters = useMemo(
-    () => parseReviewSearchParams(rawSearch),
-    [rawSearch],
+    () =>
+      parseReviewSearchParams(
+        rawSearch,
+        reviewGroup === "RU" ? "ALL" : "IN_REVIEW",
+      ),
+    [rawSearch, reviewGroup],
   );
-  const [birthDateFromText, setBirthDateFromText] = useState(
-    filters.birthDateFrom ? formatDateRu(filters.birthDateFrom) : "",
+  const dateRangeInvalid = !!(
+    (filters.createdFrom &&
+      filters.createdTo &&
+      filters.createdFrom > filters.createdTo) ||
+    (filters.birthDateFrom &&
+      filters.birthDateTo &&
+      filters.birthDateFrom > filters.birthDateTo)
   );
-  const [birthDateToText, setBirthDateToText] = useState(
-    filters.birthDateTo ? formatDateRu(filters.birthDateTo) : "",
-  );
-  useEffect(() => {
-    setBirthDateFromText(
-      filters.birthDateFrom ? formatDateRu(filters.birthDateFrom) : "",
-    );
-    setBirthDateToText(
-      filters.birthDateTo ? formatDateRu(filters.birthDateTo) : "",
-    );
-  }, [filters.birthDateFrom, filters.birthDateTo]);
 
   // Functional search update: selector commits always apply on top of the
   // latest URL, so concurrent changes cannot drop each other (stale-closure
@@ -706,10 +706,13 @@ export function ReviewPage({
       documentTypeCode: undefined,
       citizenship: undefined,
       managerCode1c: undefined,
+      managerId: undefined,
       mentorCode1c: undefined,
       hasMentor: undefined,
       birthDateFrom: undefined,
       birthDateTo: undefined,
+      createdFrom: undefined,
+      createdTo: undefined,
       positionCode: undefined,
       projectCode: undefined,
       candidate: undefined,
@@ -756,6 +759,7 @@ export function ReviewPage({
       q: candidateQuery.trim() || undefined,
       limit: CANDIDATE_SELECTOR_LIMIT,
       reviewGroup,
+      includeAll: reviewGroup === "RU",
     }),
     [candidateQuery, reviewGroup],
   );
@@ -774,14 +778,23 @@ export function ReviewPage({
   });
   const positions = useListPositions(positionParams);
   const facets = useGetReviewDocumentFacets(
-    { reviewGroup },
+    { reviewGroup, includeAll: reviewGroup === "RU" },
     {
       query: {
-        queryKey: getGetReviewDocumentFacetsQueryKey({ reviewGroup }),
+        queryKey: getGetReviewDocumentFacetsQueryKey({
+          reviewGroup,
+          includeAll: reviewGroup === "RU",
+        }),
         enabled: canReview,
       },
     },
   );
+  const catalogManagers = useListCatalogManagers({
+    query: {
+      queryKey: getListCatalogManagersQueryKey(),
+      enabled: canReview && reviewGroup === "RU",
+    },
+  });
   const docTypesParams = useMemo(() => ({ catalogOnly: true as const }), []);
   const docTypes = useListDocumentTypes(docTypesParams);
 
@@ -798,10 +811,13 @@ export function ReviewPage({
       documentTypeCode: filters.documentTypeCode,
       citizenship: filters.citizenship,
       managerCode1c: filters.managerCode1c,
+      managerId: filters.managerId,
       mentorCode1c: filters.mentorCode1c,
       hasMentor: filters.hasMentor,
       birthDateFrom: filters.birthDateFrom,
       birthDateTo: filters.birthDateTo,
+      createdFrom: filters.createdFrom,
+      createdTo: filters.createdTo,
       positionCode: filters.positionCode,
       projectCode: filters.projectCode,
     }),
@@ -810,7 +826,7 @@ export function ReviewPage({
   const list = useListCandidateReviewQueue(queryParams, {
     query: {
       queryKey: getListCandidateReviewQueueQueryKey(queryParams),
-      enabled: canReview,
+      enabled: canReview && !dateRangeInvalid,
       refetchInterval: 30_000,
     },
   });
@@ -853,10 +869,20 @@ export function ReviewPage({
   );
   const managerOptions: SearchSelectOption[] = useMemo(
     () =>
-      (facets.data?.managers ?? []).flatMap((person) =>
-        person.code1c ? [{ value: person.code1c, label: person.name }] : [],
-      ),
-    [facets.data],
+      reviewGroup === "RU"
+        ? (catalogManagers.data?.items ?? [])
+            .map((person) => ({ value: `id:${person.id}`, label: person.name }))
+            .concat(
+              (facets.data?.managers ?? []).flatMap((person) =>
+                person.code1c
+                  ? [{ value: `code:${person.code1c}`, label: person.name }]
+                  : [],
+              ),
+            )
+        : (facets.data?.managers ?? []).flatMap((person) =>
+            person.code1c ? [{ value: person.code1c, label: person.name }] : [],
+          ),
+    [facets.data, catalogManagers.data, reviewGroup],
   );
   const mentorOptions: SearchSelectOption[] = useMemo(
     () =>
@@ -937,16 +963,18 @@ export function ReviewPage({
         subtitle="Документы кандидатов и сотрудников"
       />
       <div className="my-4 flex flex-wrap gap-2">
-        {TABS.map((tab) => (
-          <Button
-            key={tab.value}
-            size="sm"
-            variant={filters.status === tab.value ? "default" : "outline"}
-            onClick={() => pickTab(tab.value)}
-          >
-            {tab.label}
-          </Button>
-        ))}
+        {TABS.filter((tab) => reviewGroup === "RU" || tab.value !== "ALL").map(
+          (tab) => (
+            <Button
+              key={tab.value}
+              size="sm"
+              variant={filters.status === tab.value ? "default" : "outline"}
+              onClick={() => pickTab(tab.value)}
+            >
+              {tab.label}
+            </Button>
+          ),
+        )}
       </div>
       {filters.status === "RETURNED" && (
         <p className="mb-4 text-[13px] text-[var(--muted-foreground)]">
@@ -1002,13 +1030,47 @@ export function ReviewPage({
                 <StaticSearchSelect
                   label="Менеджер"
                   placeholder="Все менеджеры"
-                  value={filters.managerCode1c}
-                  selectedLabel={managerLabel}
+                  value={
+                    reviewGroup === "RU"
+                      ? filters.managerId
+                        ? `id:${filters.managerId}`
+                        : filters.managerCode1c
+                          ? `code:${filters.managerCode1c}`
+                          : undefined
+                      : filters.managerCode1c
+                  }
+                  selectedLabel={
+                    filters.managerId
+                      ? catalogManagers.data?.items.find(
+                          (person) => person.id === filters.managerId,
+                        )?.name
+                      : managerLabel
+                  }
                   allOptions={managerOptions}
-                  isLoading={facets.isLoading}
-                  isError={facets.isError}
-                  onRetry={() => void facets.refetch()}
-                  onChange={commit("managerCode1c")}
+                  isLoading={
+                    facets.isLoading ||
+                    (reviewGroup === "RU" && catalogManagers.isLoading)
+                  }
+                  isError={
+                    facets.isError ||
+                    (reviewGroup === "RU" && catalogManagers.isError)
+                  }
+                  onRetry={() => {
+                    void facets.refetch();
+                    if (reviewGroup === "RU") void catalogManagers.refetch();
+                  }}
+                  onChange={(value) =>
+                    reviewGroup === "RU"
+                      ? setFilters({
+                          managerId: value?.startsWith("id:")
+                            ? value.slice(3)
+                            : undefined,
+                          managerCode1c: value?.startsWith("code:")
+                            ? value.slice(5)
+                            : undefined,
+                        })
+                      : commit("managerCode1c")(value)
+                  }
                   className="min-w-[160px]"
                 />
                 <StaticSearchSelect
@@ -1065,59 +1127,46 @@ export function ReviewPage({
                   className="min-w-[160px]"
                 />
                 <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
-                  Рожд. с
-                  <input
-                    aria-label="Дата рождения с"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="dd.mm.yyyy"
-                    className={FILTER_CONTROL}
-                    value={birthDateFromText}
-                    onChange={(event) => {
-                      const value = maskDateRuInput(event.target.value);
-                      setBirthDateFromText(value);
-                      if (!value) commit("birthDateFrom")(undefined);
-                      else {
-                        const parsed = parseDateRu(value);
-                        if (parsed) commit("birthDateFrom")(parsed);
-                      }
-                    }}
-                    onBlur={() =>
-                      setBirthDateFromText(
-                        filters.birthDateFrom
-                          ? formatDateRu(filters.birthDateFrom)
-                          : "",
-                      )
-                    }
+                  Рожд. с{" "}
+                  <DateFilter
+                    label="Дата рождения с"
+                    value={filters.birthDateFrom}
+                    onChange={commit("birthDateFrom")}
                   />
                 </label>
                 <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
-                  по
-                  <input
-                    aria-label="Дата рождения по"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="dd.mm.yyyy"
-                    className={FILTER_CONTROL}
-                    value={birthDateToText}
-                    onChange={(event) => {
-                      const value = maskDateRuInput(event.target.value);
-                      setBirthDateToText(value);
-                      if (!value) commit("birthDateTo")(undefined);
-                      else {
-                        const parsed = parseDateRu(value);
-                        if (parsed) commit("birthDateTo")(parsed);
-                      }
-                    }}
-                    onBlur={() =>
-                      setBirthDateToText(
-                        filters.birthDateTo
-                          ? formatDateRu(filters.birthDateTo)
-                          : "",
-                      )
-                    }
+                  по{" "}
+                  <DateFilter
+                    label="Дата рождения по"
+                    value={filters.birthDateTo}
+                    onChange={commit("birthDateTo")}
                   />
                 </label>
+                {reviewGroup === "RU" && (
+                  <>
+                    <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
+                      Добавлен в ЭДО с{" "}
+                      <DateFilter
+                        label="Дата добавления в ЭДО с"
+                        value={filters.createdFrom}
+                        onChange={commit("createdFrom")}
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
+                      по{" "}
+                      <DateFilter
+                        label="Дата добавления в ЭДО по"
+                        value={filters.createdTo}
+                        onChange={commit("createdTo")}
+                      />
+                    </label>
+                  </>
+                )}
+                {dateRangeInvalid && (
+                  <p role="alert" className="text-sm text-[var(--danger)]">
+                    Начало периода не может быть позже окончания.
+                  </p>
+                )}
                 {filtersActive && (
                   <Button size="sm" variant="ghost" onClick={resetFilters}>
                     Сбросить

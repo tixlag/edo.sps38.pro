@@ -83,6 +83,7 @@ export function CandidateForm({
   error,
   onSubmit,
   onCancel,
+  compact = false,
 }: {
   profile?: CandidateWorkspaceDto;
   pending: boolean;
@@ -90,6 +91,7 @@ export function CandidateForm({
   error: string;
   onSubmit: (fields: CandidateFieldsDto, personSelection?: string) => void;
   onCancel: () => void;
+  compact?: boolean;
 }) {
   const [fields, setFields] = useState(() => candidateFormFields(profile));
   const [personEnabled, setPersonEnabled] = useState(false);
@@ -121,9 +123,11 @@ export function CandidateForm({
     >
       <fieldset
         disabled={pending || locked}
-        className="grid min-w-0 gap-4 sm:grid-cols-2"
+        className={`grid min-w-0 gap-4 ${compact ? "grid-cols-1" : "sm:grid-cols-2"}`}
       >
-        <label className="space-y-1 text-sm sm:col-span-2">
+        <label
+          className={`space-y-1 text-sm ${compact ? "" : "sm:col-span-2"}`}
+        >
           ФИО
           <input
             autoFocus

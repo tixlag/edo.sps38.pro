@@ -85,9 +85,14 @@ export function documentProgressPercent(
   return Math.min(100, Math.max(0, Math.round((approved / required) * 100)));
 }
 
-export type ReviewTab = "IN_REVIEW" | "ERP_PENDING" | "RETURNED";
+export type ReviewTab = "ALL" | "IN_REVIEW" | "ERP_PENDING" | "RETURNED";
 
-const REVIEW_TABS: ReviewTab[] = ["IN_REVIEW", "ERP_PENDING", "RETURNED"];
+const REVIEW_TABS: ReviewTab[] = [
+  "ALL",
+  "IN_REVIEW",
+  "ERP_PENDING",
+  "RETURNED",
+];
 
 export interface ReviewQueueFilters {
   status: ReviewTab;
@@ -101,11 +106,14 @@ export interface ReviewQueueFilters {
   citizenship?: string;
   /** Exact manager code_1c (review facets). */
   managerCode1c?: string;
+  managerId?: string;
   /** Exact mentor code_1c (review facets). */
   mentorCode1c?: string;
   hasMentor?: boolean;
   birthDateFrom?: string;
   birthDateTo?: string;
+  createdFrom?: string;
+  createdTo?: string;
   /** Exact LK position code_1c (positions directory). */
   positionCode?: string;
   /** Exact project code (review facets). */
@@ -139,12 +147,13 @@ function booleanParam(value: unknown): boolean | undefined {
 /** Parse untrusted TanStack Router search params into review-queue filters. */
 export function parseReviewSearchParams(
   raw: Record<string, unknown>,
+  defaultStatus: ReviewTab = "IN_REVIEW",
 ): ReviewQueueFilters {
-  const status = String(raw.status ?? "IN_REVIEW");
+  const status = String(raw.status ?? defaultStatus);
   return {
     status: (REVIEW_TABS as string[]).includes(status)
       ? (status as ReviewTab)
-      : "IN_REVIEW",
+      : defaultStatus,
     currentStatus: [
       "DRAFT",
       "UPLOADED",
@@ -164,10 +173,13 @@ export function parseReviewSearchParams(
     documentTypeCode: textParam(raw.documentTypeCode),
     citizenship: textParam(raw.citizenship),
     managerCode1c: textParam(raw.managerCode1c),
+    managerId: textParam(raw.managerId),
     mentorCode1c: textParam(raw.mentorCode1c),
     hasMentor: booleanParam(raw.hasMentor),
     birthDateFrom: dateParam(raw.birthDateFrom),
     birthDateTo: dateParam(raw.birthDateTo),
+    createdFrom: dateParam(raw.createdFrom),
+    createdTo: dateParam(raw.createdTo),
     positionCode: textParam(raw.positionCode),
     projectCode: textParam(raw.projectCode),
     cursor: textParam(raw.cursor),
@@ -190,9 +202,12 @@ export function hasActiveReviewFilters(filters: ReviewQueueFilters): boolean {
     filters.documentTypeCode ??
     filters.citizenship ??
     filters.managerCode1c ??
+    filters.managerId ??
     filters.mentorCode1c ??
     filters.birthDateFrom ??
     filters.birthDateTo ??
+    filters.createdFrom ??
+    filters.createdTo ??
     filters.positionCode ??
     filters.projectCode ??
     (filters.hasMentor !== undefined ? "hasMentor" : undefined),
