@@ -124,6 +124,7 @@ vi.mock("@edo/api-client", () => {
     getGetCandidateDetailsQueryKey: (id: string) => ["details", id],
     getGetCandidateWorkspaceQueryKey: (id: string) => ["workspace", id],
     getListCommunicationCandidatesQueryKey: () => ["catalog"],
+    getListCandidateReviewQueueQueryKey: () => ["queue"],
     getGetCandidateRequirementsQueryKey: (id: string) => ["requirements", id],
     getListCandidatePreviousDocumentsQueryKey: (id: string) => ["previous", id],
     getCandidatePreviousDocumentOriginal: vi.fn(),

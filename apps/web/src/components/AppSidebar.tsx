@@ -36,7 +36,7 @@ export const WORK_NAV: NavItem[] = [
   { key: "tasks", label: "Мои задачи", icon: ClipboardCheck, to: "/tasks" },
   {
     key: "review",
-    label: "Проверка документов РУ",
+    label: "Кандидаты РУ",
     icon: FileCheck2,
     to: "/review",
   },

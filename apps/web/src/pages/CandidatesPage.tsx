@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
-  getListCommunicationCandidatesQueryKey,
-  useCreateCandidate,
   useGetMe,
   useListCandidateManagers,
   useListCandidateProjects,
@@ -10,68 +8,13 @@ import {
   useListCatalogMentors,
   useListCommunicationCandidates,
   useListPositions,
-  type CandidateFieldsDto,
 } from "@edo/api-client";
-import { useQueryClient } from "@tanstack/react-query";
 import { Button, EmptyState, PageHeader } from "@edo/ui";
-import {
-  CandidateForm,
-  CANDIDATE_CONTROL,
-  useCandidateRequest,
-} from "../components/CandidateForm";
+import { CANDIDATE_CONTROL } from "../components/CandidateForm";
+import { CreateCandidate } from "../components/CreateCandidate";
 import { SearchSelect } from "../components/SearchSelect";
 import { hasAccessRule } from "../lib/audit-types";
 import { formatDocumentProgress } from "../lib/review-groups";
-
-function CreateCandidate({ onCancel }: { onCancel: () => void }) {
-  const create = useCreateCandidate();
-  const request = useCandidateRequest();
-  const navigate = useNavigate();
-  const cache = useQueryClient();
-  const submit = async (
-    fields: CandidateFieldsDto,
-    personSelection?: string,
-  ) => {
-    request.begin();
-    try {
-      const candidate = await create.mutateAsync({
-        data: {
-          requestId: request.requestId,
-          fields,
-          ...(personSelection ? { personSelection } : {}),
-        },
-      });
-      await cache.invalidateQueries({
-        queryKey: getListCommunicationCandidatesQueryKey(),
-      });
-      void navigate({
-        to: "/review/candidates/$candidateId",
-        params: { candidateId: candidate.id },
-        search: { section: "profile" },
-      });
-    } catch (error) {
-      request.fail(error);
-    }
-  };
-  return (
-    <section className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 sm:p-6">
-      <h2 className="mb-4 text-lg font-semibold">Создать кандидата</h2>
-      <p className="mb-4 text-sm text-[var(--muted-foreground)]">
-        Карточка будет создана в ERP со статусом «Подбор». Чат и объект можно
-        добавить позже.
-      </p>
-      <CandidateForm
-        pending={create.isPending}
-        locked={request.locked}
-        error={request.error}
-        onSubmit={(fields, personSelection) =>
-          void submit(fields, personSelection)
-        }
-        onCancel={onCancel}
-      />
-    </section>
-  );
-}
 
 export function CandidatesPage() {
   const me = useGetMe();
@@ -156,7 +99,7 @@ function CandidateCatalog() {
         to="/review"
         className="text-sm text-[var(--primary)] underline underline-offset-4"
       >
-        Очередь проверки документов России
+        Кандидаты РУ
       </Link>
       {create && <CreateCandidate onCancel={() => setCreate(false)} />}
       <section

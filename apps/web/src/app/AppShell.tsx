@@ -20,7 +20,7 @@ const CRUMBS: Record<string, string> = {
   "/employees": "Работники",
   "/employee": "Карточка работника",
   "/tasks": "Мои задачи",
-  "/review": "Проверка документов РУ",
+  "/review": "Кандидаты РУ",
   "/candidates": "Кандидаты · Россия",
   "/review-ig": "Проверка документов ИГ",
   "/history": "История",

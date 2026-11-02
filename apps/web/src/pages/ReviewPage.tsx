@@ -60,6 +60,7 @@ import {
   type SearchSelectOption,
 } from "../components/SearchSelect";
 import { CandidateDrawer } from "../components/CandidateDrawer";
+import { CreateCandidate } from "../components/CreateCandidate";
 import { DateFilter } from "../components/DateFilter";
 import { LkLink } from "../components/LkLink";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
@@ -638,6 +639,7 @@ export function ReviewPage({
 }) {
   const base = reviewGroup === "IG" ? "/review-ig" : "/review";
   const profile = useGetMe();
+  const [creatingCandidate, setCreatingCandidate] = useState(false);
   const permissions = profile.data?.permissions ?? {};
   const canReview = [reviewGroup === "IG" ? "20011" : "20002", "20009"].some(
     (rule) => Object.prototype.hasOwnProperty.call(permissions, rule),
@@ -959,9 +961,24 @@ export function ReviewPage({
         </div>
       )}
       <PageHeader
-        title={`Проверка документов ${reviewGroup === "IG" ? "ИГ" : "РУ"}`}
+        title={reviewGroup === "IG" ? "Проверка документов ИГ" : "Кандидаты РУ"}
         subtitle="Документы кандидатов и сотрудников"
+        actions={
+          reviewGroup === "RU" ? (
+            <Button
+              onClick={() => setCreatingCandidate(true)}
+              disabled={creatingCandidate}
+            >
+              Создать кандидата
+            </Button>
+          ) : undefined
+        }
       />
+      {reviewGroup === "RU" && creatingCandidate && (
+        <div className="mt-4">
+          <CreateCandidate onCancel={() => setCreatingCandidate(false)} />
+        </div>
+      )}
       <div className="my-4 flex flex-wrap gap-2">
         {TABS.filter((tab) => reviewGroup === "RU" || tab.value !== "ALL").map(
           (tab) => (

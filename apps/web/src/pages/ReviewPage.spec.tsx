@@ -59,6 +59,14 @@ vi.mock("../components/CandidateDrawer", () => ({
     return null;
   },
 }));
+vi.mock("../components/CreateCandidate", () => ({
+  CreateCandidate: ({ onCancel }: { onCancel: () => void }) => (
+    <div>
+      <span>Форма создания кандидата</span>
+      <button onClick={onCancel}>Отмена создания</button>
+    </div>
+  ),
+}));
 vi.mock("../components/DocumentReviewWorkspace", () => ({
   DocumentReviewWorkspace: () => null,
 }));
@@ -89,6 +97,22 @@ afterEach(async () => {
 });
 
 describe("RU and IG review pages", () => {
+  it("shows the RU candidate title and opens the create form from the list", async () => {
+    state.permissions = { "20002": [] };
+    const view = await render("RU");
+    expect(view.querySelector("h1")?.textContent).toBe("Кандидаты РУ");
+    const create = [...view.querySelectorAll("button")].find(
+      (button) => button.textContent === "Создать кандидата",
+    )!;
+    await act(async () => create.click());
+    expect(view.textContent).toContain("Форма создания кандидата");
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find((button) => button.textContent === "Отмена создания")!
+        .click(),
+    );
+    expect(view.textContent).not.toContain("Форма создания кандидата");
+  });
   it("opens all candidates by default in RU while keeping IG on the review queue", async () => {
     state.permissions = { "20002": [] };
     await render("RU");
@@ -297,6 +321,7 @@ describe("RU and IG review pages", () => {
   it("uses the IG group for every queue-specific data source", async () => {
     const view = await render("IG");
     expect(view.textContent).toContain("Проверка документов ИГ");
+    expect(view.textContent).not.toContain("Создать кандидата");
     for (const query of [state.queue, state.candidates, state.facets]) {
       expect(query).toHaveBeenCalledWith(
         expect.objectContaining({ reviewGroup: "IG" }),
