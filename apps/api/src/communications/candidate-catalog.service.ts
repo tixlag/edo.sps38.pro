@@ -184,6 +184,30 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
       await this.redis.compareAndDelStrict(lock, owner);
     }
   }
+  async mentors(principal: AuthPrincipal) {
+    const rows = await this.prisma.candidate.findMany({
+      where: {
+        AND: [
+          this.access.candidateWhere(principal),
+          { erpDeleted: false },
+          reviewGroupWhere("RU"),
+          { mentorCode1c: { not: null } },
+          { mentorName: { not: null } },
+        ],
+      },
+      select: { mentorCode1c: true, mentorName: true },
+      distinct: ["mentorCode1c"],
+      orderBy: { mentorName: "asc" },
+      take: 500,
+    });
+    return {
+      items: rows.flatMap((row) =>
+        row.mentorCode1c && row.mentorName
+          ? [{ code1c: row.mentorCode1c, name: row.mentorName }]
+          : [],
+      ),
+    };
+  }
   async list(principal: AuthPrincipal, query: CommunicationCandidatesQueryDto) {
     const limit = query.limit ?? 50;
     let after: { name: string | null; id: string } | undefined;
@@ -211,6 +235,8 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
           ...(query.statusId ? [{ statusId: query.statusId }] : []),
           ...(query.managerId ? [{ managerId: query.managerId }] : []),
           ...(query.projectCode ? [{ projectCode: query.projectCode }] : []),
+          ...(query.positionCode ? [{ positionCode: query.positionCode }] : []),
+          ...(query.mentorCode1c ? [{ mentorCode1c: query.mentorCode1c }] : []),
           ...(query.q?.trim()
             ? [{ fullName: { contains: query.q.trim() } }]
             : []),

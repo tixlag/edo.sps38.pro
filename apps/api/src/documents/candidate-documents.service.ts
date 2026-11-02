@@ -48,7 +48,10 @@ export class CandidateDocumentsService {
       throw error;
     }
   }
-  private ownContextFor(identity: OwnIdentity, signal?: AbortSignal) {
+  private ownContextFor(
+    identity: OwnIdentity,
+    signal?: AbortSignal,
+  ): Promise<CandidateDocumentContextDto> {
     return identity.chat
       ? this.contexts.forIdentity(identity.chat, signal)
       : this.contexts.forEmployee(identity.code1c, signal);

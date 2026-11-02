@@ -149,6 +149,41 @@ const catalogRow = {
   deleted: false,
 };
 describe("ERP candidate catalog projection", () => {
+  it("filters the catalog by position and mentor within the access scope", async () => {
+    const s = catalogSetup();
+    await s.service.list(principal, { positionCode: "P1", mentorCode1c: "M1" });
+    expect(s.prisma.candidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: expect.arrayContaining([
+            { locationId: { in: [98] } },
+            { positionCode: "P1" },
+            { mentorCode1c: "M1" },
+          ]),
+        },
+      }),
+    );
+  });
+  it("limits mentor options to the accessible RU candidate catalog", async () => {
+    const s = catalogSetup();
+    s.prisma.candidate.findMany.mockResolvedValueOnce([
+      { mentorCode1c: "M1", mentorName: "Наставник" },
+    ] as never[]);
+    expect(await s.service.mentors(principal)).toEqual({
+      items: [{ code1c: "M1", name: "Наставник" }],
+    });
+    expect(s.prisma.candidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: expect.arrayContaining([
+            { locationId: { in: [98] } },
+            { erpDeleted: false },
+            { mentorCode1c: { not: null } },
+          ]),
+        },
+      }),
+    );
+  });
   it("imports candidates without documents or chats, maps the exact project code and audits atomically", async () => {
     const s = catalogSetup();
     s.erp.catalog.mockResolvedValue({ items: [catalogRow], nextCursor: null });

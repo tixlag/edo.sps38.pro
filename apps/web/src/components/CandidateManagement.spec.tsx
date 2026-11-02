@@ -69,6 +69,8 @@ vi.mock("@edo/api-client", () => {
     useGetCandidateWorkspace: () => ({ data: state.profile }),
     useListCandidateManagers: () =>
       result([{ id: "manager-secret", name: "Анна Менеджер" }]),
+    useListPositions: () => result([]),
+    useListCatalogMentors: () => result([]),
     useListCandidatePositions: () =>
       result([{ id: "pos", code: "position-secret", name: "Водитель" }]),
     useListCandidateProjects: () =>

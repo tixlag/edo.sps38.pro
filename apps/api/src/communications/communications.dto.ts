@@ -57,11 +57,29 @@ export class CommunicationCandidatesQueryDto extends CommunicationQueryDto {
   @IsString()
   @MaxLength(64)
   projectCode?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  positionCode?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  mentorCode1c?: string;
   @ApiPropertyOptional({ maxLength: 100 })
   @IsOptional()
   @IsString()
   @MaxLength(100)
   q?: string;
+}
+export class CatalogMentorOptionDto {
+  @ApiProperty() code1c!: string;
+  @ApiProperty() name!: string;
+}
+export class CandidateMentorsDto {
+  @ApiProperty({ type: [CatalogMentorOptionDto] })
+  items!: CatalogMentorOptionDto[];
 }
 export class CommunicationCandidatesDto {
   @ApiProperty({ type: [CandidateProfileDto] }) items!: CandidateProfileDto[];

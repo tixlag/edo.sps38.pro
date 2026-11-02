@@ -7,7 +7,9 @@ import {
   useListCandidateManagers,
   useListCandidateProjects,
   useListCandidateStatuses,
+  useListCatalogMentors,
   useListCommunicationCandidates,
+  useListPositions,
   type CandidateFieldsDto,
 } from "@edo/api-client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -96,6 +98,8 @@ function CandidateCatalog() {
   );
   const [managerQuery, setManagerQuery] = useState("");
   const [projectQuery, setProjectQuery] = useState("");
+  const [positionQuery, setPositionQuery] = useState("");
+  const [mentorQuery, setMentorQuery] = useState("");
   const commit = (patch: Record<string, string | undefined>) =>
     void navigate({
       to: "/candidates",
@@ -123,6 +127,8 @@ function CandidateCatalog() {
     statusId: value("statusId"),
     managerId: value("managerId"),
     projectCode: value("projectCode"),
+    positionCode: value("positionCode"),
+    mentorCode1c: value("mentorCode1c"),
     cursor: value("cursor"),
     limit: 50,
   };
@@ -130,6 +136,11 @@ function CandidateCatalog() {
   const statuses = useListCandidateStatuses();
   const managers = useListCandidateManagers({ q: managerQuery || undefined });
   const projects = useListCandidateProjects({ q: projectQuery || undefined });
+  const positions = useListPositions({
+    q: positionQuery || undefined,
+    limit: 100,
+  });
+  const mentors = useListCatalogMentors();
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-3 sm:p-6">
       <PageHeader
@@ -150,7 +161,7 @@ function CandidateCatalog() {
       {create && <CreateCandidate onCancel={() => setCreate(false)} />}
       <section
         aria-label="Фильтры кандидатов"
-        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
       >
         <input
           aria-label="Поиск кандидатов"
@@ -170,6 +181,20 @@ function CandidateCatalog() {
           isLoading={statuses.isLoading}
           isError={statuses.isError}
           onRetry={() => void statuses.refetch()}
+        />
+        <SearchSelect
+          label="Должность кандидата"
+          placeholder="Все должности"
+          value={value("positionCode")}
+          options={(positions.data?.items ?? []).map((item) => ({
+            value: item.code,
+            label: item.name,
+          }))}
+          onSearchChange={setPositionQuery}
+          onChange={(positionCode) => commit({ positionCode })}
+          isLoading={positions.isLoading}
+          isError={positions.isError}
+          onRetry={() => void positions.refetch()}
         />
         <SearchSelect
           label="Менеджер кандидата"
@@ -196,6 +221,28 @@ function CandidateCatalog() {
           isLoading={projects.isLoading}
           isError={projects.isError}
           onRetry={() => void projects.refetch()}
+        />
+        <SearchSelect
+          label="Наставник кандидата"
+          placeholder="Все наставники"
+          value={value("mentorCode1c")}
+          options={(mentors.data?.items ?? [])
+            .filter((item) =>
+              item.name
+                .toLocaleLowerCase("ru")
+                .includes(mentorQuery.toLocaleLowerCase("ru")),
+            )
+            .map((item) => ({ value: item.code1c, label: item.name }))}
+          selectedLabel={
+            mentors.data?.items.find(
+              (item) => item.code1c === value("mentorCode1c"),
+            )?.name
+          }
+          onSearchChange={setMentorQuery}
+          onChange={(mentorCode1c) => commit({ mentorCode1c })}
+          isLoading={mentors.isLoading}
+          isError={mentors.isError}
+          onRetry={() => void mentors.refetch()}
         />
       </section>
       {candidates.isLoading && <p role="status">Загрузка кандидатов…</p>}

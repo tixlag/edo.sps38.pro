@@ -2018,6 +2018,15 @@ export interface CommunicationCandidatesDto {
   syncedAt: string | null;
 }
 
+export interface CatalogMentorOptionDto {
+  code1c: string;
+  name: string;
+}
+
+export interface CandidateMentorsDto {
+  items: CatalogMentorOptionDto[];
+}
+
 export type ChatChannel = (typeof ChatChannel)[keyof typeof ChatChannel];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
@@ -2449,6 +2458,8 @@ export type ListCommunicationCandidatesParams = {
   statusId?: string;
   managerId?: string;
   projectCode?: string;
+  positionCode?: string;
+  mentorCode1c?: string;
   q?: string;
 };
 
@@ -11098,6 +11109,76 @@ export function useListCommunicationCandidates<
     params,
     options,
   );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Mentors of accessible candidates
+ */
+export const listCatalogMentors = (signal?: AbortSignal) => {
+  return customInstance<CandidateMentorsDto>({
+    url: `/api/v1/candidates/catalog/mentors`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListCatalogMentorsQueryKey = () => {
+  return [`/api/v1/candidates/catalog/mentors`] as const;
+};
+
+export const getListCatalogMentorsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCatalogMentors>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCatalogMentors>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCatalogMentorsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCatalogMentors>>
+  > = ({ signal }) => listCatalogMentors(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCatalogMentors>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCatalogMentorsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCatalogMentors>>
+>;
+export type ListCatalogMentorsQueryError = ApiErrorDto;
+
+/**
+ * @summary Mentors of accessible candidates
+ */
+
+export function useListCatalogMentors<
+  TData = Awaited<ReturnType<typeof listCatalogMentors>>,
+  TError = ApiErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCatalogMentors>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCatalogMentorsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

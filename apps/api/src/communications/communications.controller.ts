@@ -35,6 +35,7 @@ import {
   ChatDownloadDto,
   ChatLinkDto,
   ChatStreamGrantDto,
+  CandidateMentorsDto,
   CommunicationCandidatesDto,
   CommunicationCandidatesQueryDto,
   CommunicationContextDto,
@@ -73,6 +74,17 @@ export class CommunicationsController {
     @Query() query: CommunicationCandidatesQueryDto,
   ) {
     return this.catalog.list(p, query);
+  }
+
+  @Get("catalog/mentors")
+  @RequireAccessRule(EdoAccessRule.ACCESS)
+  @ApiOperation({
+    operationId: "listCatalogMentors",
+    summary: "Mentors of accessible candidates",
+  })
+  @ApiResponse({ status: 200, type: CandidateMentorsDto })
+  mentors(@CurrentPrincipal() p: AuthPrincipal) {
+    return this.catalog.mentors(p);
   }
 
   @Get(":candidateId/communications")
