@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { CandidateManagement } from "../components/CandidateManagement";
+import { CandidateListFilters, type CandidateListFilterKey, type CandidateListFilterValues } from "../components/CandidateListFilters";
 import { CandidateRequirements } from "../components/CandidateRequirements";
 import { hasAccessRule } from "../lib/audit-types";
 import { CandidateChat } from "../components/CandidateChat";
@@ -136,11 +137,12 @@ function CandidateDocumentReview({
 export function CandidateWorkspacePage() {
   const me = useGetMe();
   const { candidateId } = useParams({ strict: false }) as { candidateId: string };
+  const [filters, setFilters] = useState<CandidateListFilterValues>({});
   if (!hasAccessRule(me.data, 20002) && !hasAccessRule(me.data, 20009)) return <div className="p-4"><EmptyState title={me.isLoading ? "Загрузка прав…" : "Нет доступа"} description="Карточка кандидата доступна сотрудникам направления Россия." /></div>;
-  return <CandidateWorkspace key={candidateId} />;
+  return <CandidateWorkspace key={candidateId} filters={filters} setFilters={setFilters} />;
 }
 
-function CandidateWorkspace() {
+function CandidateWorkspace({ filters, setFilters }: { filters: CandidateListFilterValues; setFilters: React.Dispatch<React.SetStateAction<CandidateListFilterValues>> }) {
   const { candidateId } = useParams({ strict: false }) as {
     candidateId: string;
   };
@@ -220,6 +222,7 @@ function CandidateWorkspace() {
   }, [query]);
   const candidates = useListCommunicationCandidates({
     q: debouncedQuery || undefined,
+    ...filters,
     limit: 50,
     cursor,
   });
@@ -295,7 +298,7 @@ function CandidateWorkspace() {
           role={mobilePanel === "candidates" ? "dialog" : undefined}
           aria-modal={mobilePanel === "candidates" ? true : undefined}
           aria-label="Кандидаты"
-          className={`${mobilePanel === "candidates" ? "fixed inset-y-0 left-0 z-40 flex w-[min(88vw,320px)] shadow-xl" : collapsed ? "hidden w-12 lg:flex" : "hidden w-60 xl:w-64 lg:flex"} shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]`}
+          className={`${mobilePanel === "candidates" ? "fixed inset-y-0 left-0 z-40 flex w-[min(88vw,360px)] shadow-xl" : collapsed ? "hidden w-12 lg:flex" : "hidden w-72 xl:w-80 lg:flex"} shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]`}
         >
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] p-3">
             {(!collapsed || mobilePanel) && (
@@ -331,7 +334,8 @@ function CandidateWorkspace() {
           </div>
           {(!collapsed || mobilePanel === "candidates") && (
             <>
-              <label className="relative m-3 block">
+              <div className="relative z-10 shrink-0 border-b border-[var(--border)] p-3">
+              <label className="relative mb-3 block">
                 <Search
                   size={15}
                   className="pointer-events-none absolute left-2 top-2.5 text-[var(--muted-foreground)]"
@@ -344,6 +348,12 @@ function CandidateWorkspace() {
                   className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] py-2 pl-7 pr-2 text-[13px]"
                 />
               </label>
+              <CandidateListFilters values={filters} onChange={(key: CandidateListFilterKey, value) => {
+                setFilters((previous) => ({ ...previous, [key]: value }));
+                setCursor(undefined);
+                setPreviousCursors([]);
+              }} />
+              </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {candidates.isLoading && (
                   <p role="status" className="px-3 text-sm">
