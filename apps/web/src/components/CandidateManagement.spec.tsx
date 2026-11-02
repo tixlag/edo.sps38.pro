@@ -42,6 +42,7 @@ const state = vi.hoisted(() => ({
   persons: vi.fn(),
   previous: [] as unknown[],
   workspaceError: null as unknown,
+  managersUnavailable: false,
 }));
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({
@@ -72,7 +73,15 @@ vi.mock("@edo/api-client", () => {
         ? { isError: true, error: state.workspaceError }
         : { data: state.profile },
     useListCandidateManagers: () =>
-      result([{ id: "manager-secret", name: "Анна Менеджер" }]),
+      state.managersUnavailable
+        ? { isError: true, isLoading: false, refetch: vi.fn() }
+        : result([{ id: "manager-secret", name: "Анна Менеджер" }]),
+    useListCatalogManagers: () =>
+      result([
+        { id: "manager-secret", name: "Анна Менеджер" },
+        { id: "other", name: "Борис" },
+      ]),
+    getListCatalogManagersQueryKey: () => ["catalog-managers"],
     useListPositions: () => result([]),
     useListCatalogMentors: () => result([]),
     useListCandidatePositions: () =>
@@ -190,6 +199,7 @@ beforeEach(() => {
   state.profile.linkedPerson = false;
   state.previous = [];
   state.workspaceError = null;
+  state.managersUnavailable = false;
   for (const mutation of [state.create, state.update, state.status, state.link])
     mutation.mockResolvedValue(state.profile);
   state.recheck.mockResolvedValue({ items: [] });
@@ -201,6 +211,41 @@ afterEach(async () => {
 });
 
 describe("candidate manager flows", () => {
+  it("uses known ERP manager IDs when the ERP manager directory is unavailable", async () => {
+    state.managersUnavailable = true;
+    await render(<CandidatesPage />);
+    await click("Создать кандидата");
+    expect(view.textContent).toContain(
+      "Менеджеры из ранее загруженных кандидатов",
+    );
+    const form = view.querySelector("form")!;
+    const inputs = form.querySelectorAll<HTMLInputElement>(
+      "fieldset > label > input",
+    );
+    type(inputs[0], "Иванов Иван");
+    type(inputs[1], "+79000000000");
+    type(inputs[2], "1990-02-03");
+    await pick("Должность", "Водитель");
+    const managerInput = view.querySelector<HTMLInputElement>(
+      'input[aria-label="Менеджер"]',
+    )!;
+    await act(async () =>
+      managerInput.dispatchEvent(new FocusEvent("focusin", { bubbles: true })),
+    );
+    type(managerInput, "анна");
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 350)));
+    expect(view.textContent).toContain("Анна Менеджер");
+    expect(view.textContent).not.toContain("Борис");
+    await pick("Менеджер", "Анна Менеджер");
+    await submit("Создание кандидата");
+    expect(state.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fields: expect.objectContaining({ managerId: "manager-secret" }),
+        }),
+      }),
+    );
+  });
   it("explains when an ERP candidate link has not been confirmed", async () => {
     state.workspaceError = {
       response: {

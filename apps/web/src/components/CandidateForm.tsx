@@ -1,6 +1,8 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   useListCandidateManagers,
+  useListCatalogManagers,
+  getListCatalogManagersQueryKey,
   useListCandidatePositions,
   useListCandidateProjects,
   type CandidateFieldsDto,
@@ -97,9 +99,26 @@ export function CandidateForm({
   const [personEnabled, setPersonEnabled] = useState(false);
   const [personSelection, setPersonSelection] = useState<string>();
   const [managerQuery, setManagerQuery] = useState("");
+  const [managerFallback, setManagerFallback] = useState(false);
   const [positionQuery, setPositionQuery] = useState("");
   const [projectQuery, setProjectQuery] = useState("");
-  const managers = useListCandidateManagers({ q: managerQuery || undefined });
+  const managers = useListCandidateManagers({
+    q: managerFallback ? undefined : managerQuery || undefined,
+  });
+  const useFallback = managerFallback || (managers.isError && !managers.data);
+  const knownManagers = useListCatalogManagers({
+    query: { queryKey: getListCatalogManagersQueryKey(), enabled: useFallback },
+  });
+  useEffect(() => {
+    if (managers.isError && !managers.data) setManagerFallback(true);
+  }, [managers.isError, managers.data]);
+  const managerOptions = useFallback
+    ? (knownManagers.data?.items ?? []).filter((item) =>
+        item.name
+          .toLocaleLowerCase("ru")
+          .includes(managerQuery.trim().toLocaleLowerCase("ru")),
+      )
+    : (managers.data?.items ?? []);
   const positions = useListCandidatePositions({
     q: positionQuery || undefined,
   });
@@ -197,17 +216,46 @@ export function CandidateForm({
             label="Менеджер"
             value={fields.managerId}
             selectedLabel={profile?.manager?.name}
-            options={(managers.data?.items ?? []).map((item) => ({
+            options={managerOptions.map((item) => ({
               value: item.id,
               label: item.name,
             }))}
             onSearchChange={setManagerQuery}
             onChange={(value) => set("managerId", value ?? "")}
-            isLoading={managers.isLoading}
-            isError={managers.isError}
-            onRetry={() => void managers.refetch()}
+            isLoading={
+              useFallback ? knownManagers.isLoading : managers.isLoading
+            }
+            isError={
+              useFallback
+                ? knownManagers.isError
+                : managers.isError && !managers.data
+            }
+            onRetry={() => {
+              if (useFallback) void knownManagers.refetch();
+              else void managers.refetch();
+            }}
             disabled={pending || locked}
           />
+          {useFallback && !knownManagers.isError && (
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Менеджеры из ранее загруженных кандидатов: справочник 1С
+              недоступен, список может быть неполным.{" "}
+              <button
+                type="button"
+                className="text-[var(--primary)] underline underline-offset-2"
+                onClick={() =>
+                  void managers.refetch().then((result) => {
+                    if (!result.isError) {
+                      setManagerQuery("");
+                      setManagerFallback(false);
+                    }
+                  })
+                }
+              >
+                Повторить загрузку справочника
+              </button>
+            </p>
+          )}
         </div>
         <div className="space-y-1 text-sm">
           <p>Объект · необязательно</p>
