@@ -45,6 +45,33 @@ import {
 import { useLiveDocumentVersion } from "../lib/use-live-document-version";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
 
+function getStatusDotClass(status?: string | null): string {
+  if (!status) return "bg-[var(--muted-foreground)]";
+  const s = status.toLowerCase();
+  if (/принят|оформлен|approved|signed|done|success/i.test(s)) {
+    return "bg-[var(--success)]";
+  }
+  if (/заезд|arrival|проверк|approval|review|warning|мо|уц|сб/i.test(s)) {
+    return "bg-[var(--warning)]";
+  }
+  if (/отказ|failed|danger|expired|отклон/i.test(s)) {
+    return "bg-[var(--danger)]";
+  }
+  if (/подбор|recruiting|potential|in_progress|направлен/i.test(s)) {
+    return "bg-[var(--info)]";
+  }
+  return "bg-[var(--primary)]";
+}
+
+function getCandidateInitials(name?: string | null): string {
+  if (!name) return "К";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return (parts[0]?.[0] || "К").toUpperCase();
+}
+
 function CandidateDocumentReview({
   candidateId,
   documentId,
@@ -243,6 +270,8 @@ function CandidateWorkspace() {
       : (profile as { status?: { name?: string | null } })?.status?.name ||
         profile?.statusName ||
         workspace.data?.status?.name;
+  const candidateName =
+    workspace.data?.fullName || profile?.fullName || "Кандидат";
   const documentId =
     typeof search.document === "string" && search.document.length <= 64
       ? search.document
@@ -336,7 +365,13 @@ function CandidateWorkspace() {
           aria-label="Данные и оформление кандидата"
           className={`${mobilePanel === "candidates" ? "fixed inset-y-0 left-0 z-40 flex w-[min(92vw,400px)] shadow-xl" : collapsed ? "hidden w-12 lg:flex" : "hidden w-80 xl:w-96 lg:flex"} shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]`}
         >
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] p-3">
+          <div
+            className={`flex shrink-0 items-center ${
+              collapsed && !mobilePanel
+                ? "justify-center p-2"
+                : "justify-between p-3"
+            } border-b border-[var(--border)]`}
+          >
             {(!collapsed || mobilePanel) && (
               <h2 className="text-sm font-semibold">Данные и оформление</h2>
             )}
@@ -368,6 +403,60 @@ function CandidateWorkspace() {
               <X size={18} />
             </Button>
           </div>
+          {collapsed && !mobilePanel && (
+            <div
+              className="flex min-h-0 flex-1 cursor-pointer flex-col items-center justify-between py-3 select-none transition-colors hover:bg-[var(--muted)]/40"
+              onClick={() => setCollapsed(false)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setCollapsed(false);
+                }
+              }}
+              aria-label="Развернуть данные кандидата"
+              title="Нажмите, чтобы развернуть данные кандидата"
+            >
+              <div className="flex flex-col items-center pt-1">
+                {candidateStatus ? (
+                  <span
+                    className="relative flex h-2.5 w-2.5"
+                    title={`Статус: ${candidateStatus}`}
+                  >
+                    <span
+                      className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${getStatusDotClass(
+                        candidateStatus,
+                      )}`}
+                    />
+                    <span
+                      className={`relative inline-flex h-2.5 w-2.5 rounded-full ${getStatusDotClass(
+                        candidateStatus,
+                      )}`}
+                    />
+                  </span>
+                ) : (
+                  <span className="h-2.5 w-2.5 rounded-full bg-[var(--muted-foreground)]" />
+                )}
+              </div>
+
+              <div className="my-auto flex flex-1 items-center justify-center py-2">
+                <span
+                  className="max-h-[280px] truncate text-xs font-semibold tracking-wide text-[var(--muted-foreground)] [writing-mode:vertical-rl] rotate-180"
+                  title={candidateName}
+                >
+                  {candidateName}
+                </span>
+              </div>
+
+              <div
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-[11px] font-bold text-[var(--primary)]"
+                title={candidateName}
+              >
+                {getCandidateInitials(candidateName)}
+              </div>
+            </div>
+          )}
           {(!collapsed || mobilePanel === "candidates") && (
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               <CandidateManagement

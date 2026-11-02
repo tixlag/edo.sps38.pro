@@ -551,4 +551,22 @@ describe("candidate manager flows", () => {
     expect(view.querySelector("form")).toBeNull();
     expect(state.create).not.toHaveBeenCalled();
   });
+
+  it("structures candidate fields into personal and ERP cards with phone mask and actions toolbar", async () => {
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    expect(view.textContent).toContain("Личные данные");
+    expect(view.textContent).toContain("Назначение ERP");
+    expect(view.textContent).toContain("+7 (900) 000-00-00");
+    const telLink = view.querySelector<HTMLAnchorElement>(
+      'a[href="tel:+79000000000"]',
+    );
+    expect(telLink).not.toBeNull();
+    const copyButton = view.querySelector<HTMLButtonElement>(
+      'button[aria-label="Скопировать телефон"]',
+    );
+    expect(copyButton).not.toBeNull();
+    expect(button("Изменить статус")).toBeDefined();
+    expect(button("Редактировать данные")).toBeDefined();
+    expect(view.textContent).toContain("ERP");
+  });
 });

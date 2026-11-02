@@ -179,3 +179,33 @@ it("renders unified breadcrumbs, expressive candidate header with status badge a
   node.remove();
   state.candidate = undefined;
 });
+
+it("renders informative collapsed state with candidate initials and status dot when sidebar is collapsed", async () => {
+  state.search = {};
+  state.candidate = {
+    fullName: "Иванов Иван",
+    statusName: "Подбор",
+  };
+  const node = document.createElement("div");
+  document.body.append(node);
+  const root = createRoot(node);
+  await act(async () => root.render(<CandidateWorkspacePage />));
+
+  const collapseBtn = node.querySelector<HTMLButtonElement>(
+    'button[aria-label="Свернуть данные кандидата"]',
+  );
+  expect(collapseBtn).not.toBeNull();
+  await act(async () => collapseBtn?.click());
+
+  const expandBtn = node.querySelector<HTMLButtonElement>(
+    'button[aria-label="Развернуть данные кандидата"]',
+  );
+  expect(expandBtn).not.toBeNull();
+  expect(node.textContent).toContain("ИИ");
+  const statusDot = node.querySelector('[title="Статус: Подбор"]');
+  expect(statusDot).not.toBeNull();
+
+  await act(async () => root.unmount());
+  node.remove();
+  state.candidate = undefined;
+});

@@ -15,7 +15,16 @@ import {
   type CandidateProfileDto,
   type CandidateFieldsDto,
 } from "@edo/api-client";
-import { Button } from "@edo/ui";
+import { Badge, Button, StatusBadge } from "@edo/ui";
+import {
+  Briefcase,
+  Check,
+  Clock,
+  Copy,
+  Pencil,
+  User,
+  UserCheck,
+} from "lucide-react";
 import {
   CandidateForm,
   CANDIDATE_CONTROL,
@@ -27,6 +36,61 @@ import { SearchSelect } from "./SearchSelect";
 import { formatBirthDateRu } from "../lib/review-groups";
 import { CandidatePreviousDocuments } from "./CandidatePreviousDocuments";
 import { CandidatePersonPicker } from "./CandidatePersonPicker";
+import { LkLink } from "./LkLink";
+
+function formatPhoneRu(phone?: string | null): string {
+  if (!phone) return "";
+  const cleaned = phone.replace(/\D/g, "");
+  if (
+    cleaned.length === 11 &&
+    (cleaned.startsWith("7") || cleaned.startsWith("8"))
+  ) {
+    return `+7 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7, 9)}-${cleaned.slice(9, 11)}`;
+  }
+  if (cleaned.length === 10) {
+    return `+7 (${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6, 8)}-${cleaned.slice(8, 10)}`;
+  }
+  return phone;
+}
+
+function CopyPhoneButton({ phone }: { phone: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(phone);
+      } else if (typeof document !== "undefined") {
+        const input = document.createElement("textarea");
+        input.value = phone;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        document.body.removeChild(input);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore clipboard copy failure
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleCopy()}
+      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+      title={copied ? "Скопировано!" : "Скопировать телефон"}
+      aria-label={copied ? "Скопировано!" : "Скопировать телефон"}
+    >
+      {copied ? (
+        <Check size={13} className="text-[var(--success)]" />
+      ) : (
+        <Copy size={13} />
+      )}
+    </button>
+  );
+}
 
 function useConfirmedCandidate(candidateId: string) {
   const cache = useQueryClient();
@@ -458,37 +522,50 @@ export function CandidateManagement({
       </div>
     );
   const profile = workspace.data;
+  const managerCode1c =
+    (profile.manager as { code1c?: string })?.code1c ||
+    fallbackProfile?.managerCode1c;
   return (
     <div className="space-y-6 p-1">
       <section aria-label="Данные кандидата" className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="mr-auto text-base font-semibold">Данные кандидата</h2>
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-base font-semibold text-[var(--foreground)]">
+            Данные кандидата
+          </h2>
           {!action && (
-            <>
+            <div className="flex flex-wrap items-center gap-1.5">
               <Button
                 size="sm"
-                variant="outline"
-                onClick={() => setAction("edit")}
+                variant="default"
+                onClick={() => setAction("status")}
+                className="inline-flex items-center gap-1.5"
               >
-                Редактировать данные
+                <Clock size={14} />
+                <span>Изменить статус</span>
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => setAction("status")}
+                onClick={() => setAction("edit")}
+                className="inline-flex items-center gap-1.5"
               >
-                Изменить статус
+                <Pencil size={14} />
+                <span>Редактировать данные</span>
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setAction("person")}
+                className="inline-flex items-center gap-1.5"
               >
-                {profile.linkedPerson
-                  ? "Подтвердить связь с физлицом"
-                  : "Повторный приём"}
+                <UserCheck size={14} />
+                <span>
+                  {profile.linkedPerson
+                    ? "Подтвердить связь с физлицом"
+                    : "Повторный приём"}
+                </span>
               </Button>
-            </>
+            </div>
           )}
         </div>
         {action === "edit" && (
@@ -508,40 +585,151 @@ export function CandidateManagement({
           />
         )}
         {!action && (
-          <dl
-            className={`grid gap-x-6 gap-y-3 text-sm ${compact ? "grid-cols-1" : "sm:grid-cols-2"}`}
+          <div
+            className={`grid gap-3 ${compact ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"}`}
           >
-            {[
-              ["ФИО", profile.fullName],
-              ["Телефон", profile.phone],
-              [
-                "Дата рождения",
-                formatBirthDateRu(profile.birthDate?.slice(0, 10)),
-              ],
-              ["Гражданство", profile.citizenship?.toUpperCase()],
-              ["Должность", profile.position?.name || "Не указана"],
-              ["Объект", profile.project?.name || "Не указан"],
-              ["Менеджер", profile.manager?.name || "Не назначен"],
-              [
-                "Наставник · назначается в ERP",
-                profile.mentor
-                  ? `${profile.mentor.name}${profile.mentor.position ? ` · ${profile.mentor.position}` : ""}`
-                  : "Не назначен",
-              ],
-              ["Статус", profile.status?.name || "Не указан"],
-              [
-                "Связь с физлицом",
-                profile.linkedPerson ? "Указана в ERP" : "Пока не установлена",
-              ],
-            ].map(([label, value]) => (
-              <div key={label} className="min-w-0">
-                <dt className="text-[var(--muted-foreground)]">{label}</dt>
-                <dd className="break-words font-medium">
-                  {value || "Не указано"}
-                </dd>
+            {/* Карточка 1: Личные данные */}
+            <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3.5">
+              <div className="flex items-center gap-2 border-b border-[var(--border)] pb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                <User size={14} className="text-[var(--primary)]" />
+                <span>Личные данные</span>
               </div>
-            ))}
-          </dl>
+              <dl className="space-y-2.5 text-sm">
+                <div className="min-w-0">
+                  <dt className="text-xs text-[var(--muted-foreground)]">ФИО</dt>
+                  <dd className="break-words font-medium text-[var(--foreground)]">
+                    {profile.fullName || "Не указано"}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-[var(--muted-foreground)]">
+                    Телефон
+                  </dt>
+                  <dd className="break-words font-medium text-[var(--foreground)]">
+                    {profile.phone ? (
+                      <div className="flex items-center gap-1.5">
+                        <a
+                          href={`tel:${profile.phone}`}
+                          className="transition-colors hover:text-[var(--primary)] hover:underline"
+                        >
+                          {formatPhoneRu(profile.phone)}
+                        </a>
+                        <CopyPhoneButton phone={profile.phone} />
+                      </div>
+                    ) : (
+                      "Не указан"
+                    )}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-[var(--muted-foreground)]">
+                    Дата рождения
+                  </dt>
+                  <dd className="break-words font-medium text-[var(--foreground)]">
+                    {formatBirthDateRu(profile.birthDate?.slice(0, 10)) ||
+                      "Не указана"}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-[var(--muted-foreground)]">
+                    Гражданство
+                  </dt>
+                  <dd className="pt-0.5">
+                    {profile.citizenship ? (
+                      <Badge tone="default">
+                        {profile.citizenship.toUpperCase()}
+                      </Badge>
+                    ) : (
+                      <span className="font-medium text-[var(--foreground)]">
+                        Не указано
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
+            {/* Карточка 2: Назначение ERP */}
+            <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3.5">
+              <div className="flex items-center gap-2 border-b border-[var(--border)] pb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                <Briefcase size={14} className="text-[var(--primary)]" />
+                <span>Назначение ERP</span>
+              </div>
+              <dl className="space-y-2.5 text-sm">
+                <div className="min-w-0">
+                  <dt className="text-xs text-[var(--muted-foreground)]">
+                    Должность
+                  </dt>
+                  <dd className="break-words font-medium text-[var(--foreground)]">
+                    {profile.position?.name || "Не указана"}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-[var(--muted-foreground)]">
+                    Объект
+                  </dt>
+                  <dd className="break-words font-medium text-[var(--foreground)]">
+                    {profile.project?.name || "Не указан"}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-[var(--muted-foreground)]">
+                    Менеджер
+                  </dt>
+                  <dd className="break-words font-medium text-[var(--foreground)]">
+                    {profile.manager ? (
+                      managerCode1c ? (
+                        <LkLink code1c={managerCode1c}>
+                          {profile.manager.name}
+                        </LkLink>
+                      ) : (
+                        profile.manager.name
+                      )
+                    ) : (
+                      "Не назначен"
+                    )}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+                    <span>Наставник</span>
+                    <span className="rounded bg-[var(--muted)] px-1 py-0.5 text-[10px] font-semibold text-[var(--muted-foreground)]">
+                      ERP
+                    </span>
+                  </dt>
+                  <dd className="break-words font-medium text-[var(--foreground)]">
+                    {profile.mentor
+                      ? `${profile.mentor.name}${profile.mentor.position ? ` · ${profile.mentor.position}` : ""}`
+                      : "Не назначен"}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-[var(--muted-foreground)]">
+                    Связь с физлицом
+                  </dt>
+                  <dd className="break-words font-medium text-[var(--foreground)]">
+                    {profile.linkedPerson
+                      ? "Указана в ERP"
+                      : "Пока не установлена"}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs text-[var(--muted-foreground)]">
+                    Статус
+                  </dt>
+                  <dd className="pt-0.5">
+                    {profile.status?.name ? (
+                      <StatusBadge status={profile.status.name} />
+                    ) : (
+                      <span className="font-medium text-[var(--foreground)]">
+                        Не указан
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </div>
         )}
       </section>
       <section className="space-y-3 border-t border-[var(--border)] pt-5">
