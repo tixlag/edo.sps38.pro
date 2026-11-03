@@ -4,6 +4,7 @@ export const DOCUMENT_FIELD_LABELS: Record<string, string> = {
   lastNameLatin: "Фамилия латиницей",
   first_name: "Имя",
   firstNameLatin: "Имя латиницей",
+  middleNameLatin: "Отчество латиницей",
   middle_name: "Отчество",
   document_series: "Серия",
   series: "Серия",

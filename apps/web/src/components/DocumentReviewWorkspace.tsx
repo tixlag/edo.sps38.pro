@@ -129,6 +129,7 @@ export function DocumentReviewWorkspace({
         field.name,
         field.kind,
         field.required,
+        field.reviewVisible,
         field.value,
         field.editedBy,
       ])
@@ -633,7 +634,7 @@ export function DocumentReviewWorkspace({
           <div className="shrink-0 border-b border-[var(--border)] px-3 py-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold">
-                Обязательные поля · {visibleFields.length}
+                {fields.some((field) => !field.required) ? "Поля документа" : "Обязательные поля"} · {visibleFields.length}
               </h3>
               {changedCount > 0 && (
                 <Badge tone="warning">Не сохранено: {changedCount}</Badge>
@@ -742,6 +743,9 @@ export function DocumentReviewWorkspace({
                           htmlFor={`field-${data.documentId}-${field.name}`}
                         >
                           {label}
+                          {field.required && fields.some((item) => !item.required) && (
+                            <span className="text-[var(--muted-foreground)]"> · обязательно</span>
+                          )}
                         </label>
                       ) : (
                         <span className="break-words">{label}</span>
@@ -958,7 +962,7 @@ export function DocumentReviewWorkspace({
             )}
             {mismatchOnly && !visibleFields.length && !!fields.length && (
               <p className="py-3 text-[13px] text-[var(--muted-foreground)]">
-                Расхождений нет — снимите фильтр, чтобы увидеть все обязательные
+                Расхождений нет — снимите фильтр, чтобы увидеть все
                 поля.
               </p>
             )}

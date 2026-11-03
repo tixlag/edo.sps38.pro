@@ -16386,6 +16386,10 @@
           "required": {
             "type": "boolean"
           },
+          "reviewVisible": {
+            "type": "boolean",
+            "description": "Field is shown in the document review form even when optional"
+          },
           "mismatch": {
             "type": "boolean"
           },

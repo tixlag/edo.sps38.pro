@@ -854,6 +854,8 @@ export interface DocumentFieldDto {
   label: string;
   kind: DocumentFieldDtoKind;
   required: boolean;
+  /** Field is shown in the document review form even when optional */
+  reviewVisible?: boolean;
   mismatch: boolean;
   regions: OcrRegionDto[];
 }

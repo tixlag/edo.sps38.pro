@@ -14,7 +14,9 @@ export function getReviewFieldValue(field: DocumentFieldDto): string {
  * selection for the review form and its clickable OCR regions only.
  */
 export function getRequiredReviewFields(data: DocumentVersionDto) {
-  const fields = data.fields.filter((field) => field.required === true);
+  const fields = data.fields.filter(
+    (field) => field.required === true || field.reviewVisible === true,
+  );
   if (!data.ocrSource) return fields;
 
   const order = Object.keys(DOCUMENT_FIELD_LABELS);

@@ -1,5 +1,7 @@
 import {
   candidateReviewGroup,
+  IG_PASSPORT_LATIN_FIELDS,
+  IG_PASSPORT_OCR_NAMES,
   isForeignPassport,
   requireReviewGroup,
   reviewGroupWhere,
@@ -103,7 +105,10 @@ const versionInclude = {
     },
   },
   issues: true,
-  ocrFields: { orderBy: { ordinal: "asc" as const } },
+  ocrFields: {
+    orderBy: { ordinal: "asc" as const },
+    include: { regions: { include: { file: { select: { ordinal: true } } } } },
+  },
   job: true,
   delivery: {
     include: { attempts: { orderBy: { startedAt: "desc" as const } } },
@@ -553,8 +558,44 @@ export class DocumentReadService {
     });
     if (!row) throw new NotFoundException("Document version not found");
     const foreignPassport = isForeignPassport(row.document);
+    const canViewOcrDetails =
+      !!principal &&
+      hasAccessRule(principal.accessRules, EdoAccessRule.OCR_DETAILS_VIEW);
     const isRequired = (field: { name: string; required: boolean }) =>
       foreignPassport ? field.name === "number" : field.required;
+    const isLatinName = (name: string) =>
+      foreignPassport &&
+      IG_PASSPORT_LATIN_FIELDS.some((field) => field === name);
+    const observationFor = (name: string) =>
+      canViewOcrDetails && isLatinName(name)
+        ? row.ocrFields?.find(
+            (field) =>
+              !!field.value?.trim() &&
+              (IG_PASSPORT_OCR_NAMES[field.name] ?? field.documentFieldName) ===
+                name,
+          )
+        : undefined;
+    const regionDto = (region: {
+      id: string;
+      fileId: string;
+      file: { ordinal: number };
+      pageNumber: number;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      text: string | null;
+    }) => ({
+      id: region.id,
+      fileId: region.fileId,
+      fileOrdinal: region.file.ordinal,
+      pageNumber: region.pageNumber,
+      x: region.x,
+      y: region.y,
+      width: region.width,
+      height: region.height,
+      text: region.text,
+    });
     const isRussianPassport =
       resolveOcrProfile({
         documentUid: row.document.documentType?.erpUid,
@@ -599,11 +640,19 @@ export class DocumentReadService {
             ? reviewers[0].fullName
             : null,
       ocrFields: (row.ocrFields ?? [])
-        .filter((observation) =>
-          row.fields.some(
-            (field) =>
-              isRequired(field) && field.name === observation.documentFieldName,
-          ),
+        .filter(
+          (observation) =>
+            (canViewOcrDetails &&
+              isLatinName(
+                IG_PASSPORT_OCR_NAMES[observation.name] ??
+                  observation.documentFieldName ??
+                  "",
+              )) ||
+            row.fields.some(
+              (field) =>
+                (isRequired(field) || (foreignPassport && canViewOcrDetails)) &&
+                field.name === observation.documentFieldName,
+            ),
         )
         .map(
           ({
@@ -634,17 +683,20 @@ export class DocumentReadService {
       })),
       fields: [
         ...row.fields.map((f) => {
-          const rawOcrText = f.ocrText ?? f.originalValue;
+          const observation = observationFor(f.name);
+          const rawOcrText =
+            f.ocrText ?? f.originalValue ?? observation?.value ?? null;
           const isRussianSeries = isRussianPassport && f.name === "series";
           const required = isRequired(f);
+          const showOcr = required || (foreignPassport && canViewOcrDetails);
           return {
             name: f.name,
-            originalValue: required
+            originalValue: showOcr
               ? isRussianSeries
                 ? normalizeRussianPassportSeries(f.originalValue)
-                : f.originalValue
+                : (f.originalValue ?? observation?.value ?? null)
               : null,
-            ocrText: required
+            ocrText: showOcr
               ? isRussianSeries
                 ? normalizeRussianPassportSeries(rawOcrText)
                 : rawOcrText
@@ -655,9 +707,10 @@ export class DocumentReadService {
             label: FIELD_LABELS[f.name] ?? f.name,
             kind: f.kind,
             required,
+            ...(foreignPassport ? { reviewVisible: true } : {}),
             mismatch:
               !!f.submittedValue?.trim() &&
-              required &&
+              showOcr &&
               !!rawOcrText?.trim() &&
               !ocrValuesMatch(
                 f.submittedValue,
@@ -665,36 +718,36 @@ export class DocumentReadService {
                 f,
                 isRussianPassport,
               ),
-            regions: (required ? f.regions : []).map((region) => ({
-              id: region.id,
-              fileId: region.fileId,
-              fileOrdinal: region.file.ordinal,
-              pageNumber: region.pageNumber,
-              x: region.x,
-              y: region.y,
-              width: region.width,
-              height: region.height,
-              text: region.text,
-            })),
+            regions: (showOcr
+              ? f.regions.length
+                ? f.regions
+                : (observation?.regions ?? [])
+              : []
+            ).map(regionDto),
           };
         }),
-        ...(foreignPassport &&
-        !row.fields.some((field) => field.name === "number")
-          ? [
-              {
-                name: "number",
-                originalValue: null,
-                ocrText: null,
-                value: null,
-                editedBy: null,
-                submittedValue: null,
-                label: FIELD_LABELS.number,
-                kind: "text",
-                required: true,
-                mismatch: false,
-                regions: [],
-              },
-            ]
+        ...(foreignPassport
+          ? ["number", ...IG_PASSPORT_LATIN_FIELDS]
+              .filter(
+                (name) => !row.fields.some((field) => field.name === name),
+              )
+              .map((name) => {
+                const observation = observationFor(name);
+                return {
+                  name,
+                  originalValue: observation?.value ?? null,
+                  ocrText: observation?.value ?? null,
+                  value: null,
+                  editedBy: null,
+                  submittedValue: null,
+                  label: FIELD_LABELS[name],
+                  kind: "text",
+                  required: name === "number",
+                  reviewVisible: true,
+                  mismatch: false,
+                  regions: (observation?.regions ?? []).map(regionDto),
+                };
+              })
           : []),
       ],
       issues: row.issues.map((i) => ({

@@ -135,6 +135,11 @@ export class DocumentFieldDto {
   @ApiProperty() label!: string;
   @ApiProperty({ enum: ["text", "date", "boolean"] }) kind!: string;
   @ApiProperty() required!: boolean;
+  @ApiPropertyOptional({
+    description:
+      "Field is shown in the document review form even when optional",
+  })
+  reviewVisible?: boolean;
   @ApiProperty() mismatch!: boolean;
   @ApiProperty({ type: [OcrRegionDto] }) regions!: OcrRegionDto[];
 }
