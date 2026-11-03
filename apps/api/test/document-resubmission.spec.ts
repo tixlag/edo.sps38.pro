@@ -258,7 +258,10 @@ describe("owner-scoped returned document fields", () => {
       ],
     });
     const service = new DocumentReadService(
-      { document: { findFirst } } as unknown as PrismaService,
+      {
+        document: { findFirst },
+        igEmploymentState: { findUnique: vi.fn().mockResolvedValue(null) },
+      } as unknown as PrismaService,
       {} as DocumentAccessService,
       {} as StorageService,
     );

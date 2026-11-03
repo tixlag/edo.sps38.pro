@@ -23,6 +23,7 @@ import {
 } from "./document-contract";
 import { changedProfileFields, snapshotUpdateInput } from "./candidate-profile";
 import type { StagedUpload } from "./document-upload.service";
+import { igUploadOwner } from "./ig-upload-owner";
 
 @Injectable()
 export class ManualDocumentService {
@@ -253,16 +254,26 @@ export class ManualDocumentService {
             // LK profile snapshot: only keys actually present in the upload
             // update the stored profile; empty values never clear stored fields.
             const profile = snapshotUpdateInput(metadata.candidateSnapshot);
-            const owner = await tx.candidate.upsert({
-              where: { identityKey },
-              update: {},
-              create: {
-                identityKey,
-                chatUuid: metadata.chat_uuid ?? null,
-                code1c: metadata.code_1c ?? null,
-                locationId: locationId ?? null,
-              },
-            });
+            const owner =
+              !metadata.chat_uuid &&
+              metadata.code_1c &&
+              metadata.citizenship.toLowerCase() !== "ru"
+                ? await igUploadOwner(
+                    tx,
+                    metadata.code_1c,
+                    metadata.citizenship,
+                    locationId,
+                  )
+                : await tx.candidate.upsert({
+                    where: { identityKey },
+                    update: {},
+                    create: {
+                      identityKey,
+                      chatUuid: metadata.chat_uuid ?? null,
+                      code1c: metadata.code_1c ?? null,
+                      locationId: locationId ?? null,
+                    },
+                  });
             await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${owner.id} FOR UPDATE`;
             const current = await tx.candidate.findUniqueOrThrow({
               where: { id: owner.id },

@@ -1457,7 +1457,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentListDto"
+                  "$ref": "#/components/schemas/OwnDocumentListDto"
                 }
               }
             }
@@ -1969,6 +1969,235 @@
           }
         ],
         "summary": "Own document upload grant using server context",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/my/history": {
+      "get": {
+        "operationId": "getMyDocumentHistory",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnDocumentHistoryDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Documents from previous employments",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/my/history/edo/{documentId}/files/{fileId}": {
+      "get": {
+        "operationId": "getMyHistoricalEdoFile",
+        "parameters": [
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Download an owned historical EDO file",
+        "tags": [
+          "candidate-document-browser"
+        ]
+      }
+    },
+    "/api/candidate-documents/my/history/erp/{documentId}": {
+      "get": {
+        "operationId": "getMyHistoricalErpFile",
+        "parameters": [
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Download an owned historical ERP original",
         "tags": [
           "candidate-document-browser"
         ]
@@ -16314,6 +16543,91 @@
           "catalog"
         ]
       },
+      "OwnDocumentListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentDto"
+            }
+          },
+          "reusedDocumentUids": {
+            "description": "Confirmed reusable previous document types",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "items",
+          "reusedDocumentUids"
+        ]
+      },
+      "OwnHistoricalFileDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "OwnHistoricalDocumentDto": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "EDO",
+              "ERP"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OwnHistoricalFileDto"
+            }
+          }
+        },
+        "required": [
+          "source",
+          "id",
+          "title",
+          "files"
+        ]
+      },
+      "OwnDocumentHistoryDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OwnHistoricalDocumentDto"
+            }
+          },
+          "erpAvailable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "erpAvailable"
+        ]
+      },
       "ApiErrorDto": {
         "type": "object",
         "properties": {
@@ -19379,6 +19693,29 @@
           "items"
         ]
       },
+      "CandidateHistoricalEdoDocumentDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "currentVersion": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "currentVersion",
+          "status"
+        ]
+      },
       "CandidatePreviousDocumentsDto": {
         "type": "object",
         "properties": {
@@ -19390,6 +19727,12 @@
           },
           "employmentHistory": {
             "$ref": "#/components/schemas/CandidateEmploymentHistoryDto"
+          },
+          "edoDocuments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateHistoricalEdoDocumentDto"
+            }
           }
         },
         "required": [

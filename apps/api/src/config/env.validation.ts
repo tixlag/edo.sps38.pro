@@ -51,6 +51,9 @@ const envSchema = z.object({
   LK_CHAT_BASE_URL: optionalUrl,
   LK_PUBLIC_BASE_URL: z.string().url().default('https://lk.sps38.pro'),
   CANDIDATE_CATALOG_SYNC_ENABLED: z.enum(['true', 'false']).default('true'),
+  EDO_ADAPTATION_SYNC_ENABLED: z.enum(['true', 'false']).default('false'),
+  EDO_ADAPTATION_EVENTS_URL: optionalUrl,
+  EDO_ADAPTATION_SYNC_TOKEN: z.string().optional(),
   DOCUMENT_WORKER_ENABLED: z.enum(['true', 'false']).default('true'),
   EDO_PUBLIC_API_URL: z.string().url().default('http://localhost:3001/api'),
   OCR_MODE: z.enum(['disabled', 'stub', 'external']).default('disabled'),
@@ -72,6 +75,9 @@ export type AppEnv = z.infer<typeof envSchema>;
 
 export function validateEnv(config: Record<string, unknown>): AppEnv {
   const parsed = envSchema.parse(config);
+  if (parsed.EDO_ADAPTATION_SYNC_ENABLED === 'true' && (!parsed.EDO_ADAPTATION_EVENTS_URL || !parsed.EDO_ADAPTATION_SYNC_TOKEN?.trim())) {
+    throw new Error('EDO_ADAPTATION_EVENTS_URL and EDO_ADAPTATION_SYNC_TOKEN are required when EDO_ADAPTATION_SYNC_ENABLED=true');
+  }
   const nodeEnv = String(config['NODE_ENV'] ?? parsed.NODE_ENV ?? 'development');
   // Fail closed: production must have a real JWT secret and no dev bypass.
   if (nodeEnv === 'production') {

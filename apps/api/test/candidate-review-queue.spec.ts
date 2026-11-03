@@ -80,6 +80,39 @@ function setup() {
 }
 
 describe("candidate review queue", () => {
+  it("includes newly admitted IG candidates before their first upload", async () => {
+    const { reads, prisma } = setup();
+    prisma.candidate.findMany.mockResolvedValue([
+      { ...owner("ig1"), chatUuid: null, citizenship: "uz", documents: [] },
+    ]);
+    const result = await reads.candidateReviewQueue(principal, {
+      status: "IN_REVIEW",
+      reviewGroup: "IG",
+    });
+    expect(result.items.map((item) => item.candidate.id)).toEqual(["ig1"]);
+    expect(prisma.candidate.findMany.mock.calls[0][0].where.AND).toContainEqual(
+      expect.objectContaining({
+        OR: expect.arrayContaining([
+          expect.objectContaining({
+            igEmploymentState: { isNot: null },
+            igCompletedAt: null,
+          }),
+        ]),
+      }),
+    );
+  });
+  it("offers IG candidates without uploads in the name filter", async () => {
+    const { reads, prisma } = setup();
+    prisma.document.findMany.mockResolvedValue([]);
+    prisma.candidate.findMany.mockResolvedValue([
+      { id: "ig1", fullName: "Петров" },
+    ]);
+    const result = await reads.reviewCandidates(principal, {
+      reviewGroup: "IG",
+    });
+    expect(result.items).toEqual([{ id: "ig1", fullName: "Петров" }]);
+    expect(prisma.candidate.findMany).toHaveBeenCalled();
+  });
   it("includes candidates with and without uploaded documents in separate ordered groups", async () => {
     const { reads, prisma } = setup();
     prisma.candidate.findMany

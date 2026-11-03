@@ -15,6 +15,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { usablePreviousUids } from "./ig-completion";
 import { documentCheckEnabled } from "../ocr/document-check";
 import {
   canRetryDocumentOcr,
@@ -293,6 +294,19 @@ export class DocumentReadService {
     });
     const candidate = toCandidateProfile(owner)!;
     await this.enrichReviewCandidates(principal, [candidate]);
+    const previousUids = new Set(
+      owner.code1c && candidateReviewGroup(owner) === "IG"
+        ? usablePreviousUids(
+            await this.prisma.candidatePreviousDocument.findMany({
+              where: {
+                candidateId: id,
+                status: "CONFIRMED",
+                originalAvailable: true,
+              },
+            }),
+          )
+        : [],
+    );
     let stageDocuments: CandidateDetailsDto["stageDocuments"];
     if (stage !== undefined) {
       stageDocuments = null;
@@ -331,7 +345,13 @@ export class DocumentReadService {
               stageDocuments[category].documents.push(
                 this.documentSummary(doc),
               );
-            if (!doc || doc.status === "DRAFT")
+            if (
+              (!doc &&
+                !(
+                  type.erpUid && previousUids.has(type.erpUid.toLowerCase())
+                )) ||
+              doc?.status === "DRAFT"
+            )
               stageDocuments[category].missingDocuments.push({
                 code: type.code,
                 title: type.title,
@@ -389,7 +409,11 @@ export class DocumentReadService {
           }
           const uploaded = new Set(rows.map((row) => row.documentTypeId));
           for (const type of types) {
-            if (uploaded.has(type.id)) continue;
+            if (
+              uploaded.has(type.id) ||
+              (type.erpUid && previousUids.has(type.erpUid.toLowerCase()))
+            )
+              continue;
             const rules = type.stageRules?.length ? type.stageRules : [type];
             const category = requiredIds.has(type.id)
               ? "required"
@@ -415,6 +439,7 @@ export class DocumentReadService {
       missingDocuments: await this.missingDocumentTypes(
         owner,
         rows.map((row) => row.documentType?.code),
+        previousUids,
       ),
       ...(stage !== undefined ? { stageDocuments } : { documentGroups }),
     };
@@ -429,6 +454,7 @@ export class DocumentReadService {
       sexKnown?: boolean;
     } | null,
     uploadedCodes: (string | null | undefined)[],
+    previousUids: Set<string> = new Set(),
   ): Promise<MissingDocumentTypeDto[] | null> {
     if (
       !profile ||
@@ -457,7 +483,9 @@ export class DocumentReadService {
               ? profile.sex
               : null,
             profile.projectCode,
-          ) && !uploaded.has(type.code),
+          ) &&
+          !uploaded.has(type.code) &&
+          !(type.erpUid && previousUids.has(type.erpUid.toLowerCase())),
       )
       .map(({ code, title }) => ({ code, title }));
   }
@@ -1056,13 +1084,29 @@ export class DocumentReadService {
       query.includeAll && group === "RU"
         ? null
         : await this.reviewCandidateIds(principal, group);
-    if (ids?.length === 0) return { items: [] };
+    if (ids?.length === 0 && group !== "IG") return { items: [] };
     requireReviewGroup(principal, group);
     const needle = query.q?.trim();
     const rows = await this.prisma.candidate.findMany({
       where: {
         ...(ids
-          ? { id: { in: ids } }
+          ? group === "IG"
+            ? {
+                AND: [
+                  this.access.candidateWhere(principal),
+                  reviewGroupWhere("IG"),
+                  {
+                    OR: [
+                      { id: { in: ids } },
+                      {
+                        igEmploymentState: { isNot: null },
+                        igCompletedAt: null,
+                      },
+                    ],
+                  },
+                ],
+              }
+            : { id: { in: ids } }
           : {
               AND: [
                 this.access.candidateWhere(principal),
@@ -1122,15 +1166,59 @@ export class DocumentReadService {
       },
     };
   }
+  private async currentScopeWhere(scope: {
+    candidateId?: string;
+    chat_uuid?: string;
+    code_1c?: string;
+  }) {
+    if (!scope.candidateId && !scope.chat_uuid && scope.code_1c) {
+      const state = await this.prisma.igEmploymentState.findUnique({
+        where: { code1c: scope.code_1c },
+        select: { currentCandidateId: true },
+      });
+      if (state?.currentCandidateId)
+        return this.scopeWhere({ candidateId: state.currentCandidateId });
+    }
+    return this.scopeWhere(scope);
+  }
   async internalDocuments(scope: {
     candidateId?: string;
     chat_uuid?: string;
     code_1c?: string;
   }) {
-    return this.documents({
-      ...this.scopeWhere(scope),
+    const state =
+      !scope.candidateId && !scope.chat_uuid && scope.code_1c
+        ? await this.prisma.igEmploymentState.findUnique({
+            where: { code1c: scope.code_1c },
+            select: { currentCandidateId: true },
+          })
+        : null;
+    const result = await this.documents({
+      ...this.scopeWhere(
+        state?.currentCandidateId
+          ? { candidateId: state.currentCandidateId }
+          : scope,
+      ),
       currentVersion: { gt: 0 },
     });
+    if (!state?.currentCandidateId)
+      return { ...result, reusedDocumentUids: [] };
+    const previous = await this.prisma.candidatePreviousDocument.findMany({
+      where: {
+        candidateId: state.currentCandidateId,
+        status: "CONFIRMED",
+        originalAvailable: true,
+      },
+    });
+    const current = new Set(
+      result.items.map((doc) => doc.documentUid?.toLowerCase()),
+    );
+    return {
+      ...result,
+      reusedDocumentUids: usablePreviousUids(previous).filter(
+        (uid) => !current.has(uid),
+      ),
+    };
   }
   async internalDraft(
     scope: { candidateId?: string; chat_uuid?: string; code_1c?: string },
@@ -1138,7 +1226,7 @@ export class DocumentReadService {
   ): Promise<CandidateDocumentDraftDto> {
     const document = await this.prisma.document.findFirst({
       where: {
-        ...this.scopeWhere(scope),
+        ...(await this.currentScopeWhere(scope)),
         documentType: { erpUid: documentUid },
         status: "RETURNED",
         currentVersion: { gt: 0 },
@@ -1369,7 +1457,23 @@ export class DocumentReadService {
           buildCandidateProfileWhere(profile) ?? {},
           ...(createdAt ? [{ createdAt }] : []),
           ...(cursor ? [{ id: { gt: cursor } }] : []),
-          { documents: { some: documentsWhere } },
+          ...(reviewGroup === "IG" &&
+          (!status || status === "IN_REVIEW" || status === "ALL") &&
+          !currentStatus &&
+          !documentTypeCode
+            ? [
+                {
+                  OR: [
+                    { documents: { some: documentsWhere } },
+                    {
+                      ...reviewGroupWhere("IG"),
+                      igEmploymentState: { isNot: null },
+                      igCompletedAt: null,
+                    },
+                  ],
+                },
+              ]
+            : [{ documents: { some: documentsWhere } }]),
         ],
       },
       include: {
@@ -1491,6 +1595,18 @@ export class DocumentReadService {
         },
       }),
     ]);
+    const igIds = profiles
+      .filter((profile) => profile.reviewGroup === "IG" && profile.code1c)
+      .map((profile) => profile.id);
+    const historical = igIds.length
+      ? await this.prisma.candidatePreviousDocument.findMany({
+          where: {
+            candidateId: { in: igIds },
+            status: "CONFIRMED",
+            originalAvailable: true,
+          },
+        })
+      : [];
     const approved = new Map<string, number>();
     const profileById = new Map(
       profiles.map((profile) => [profile.id, profile]),
@@ -1526,6 +1642,18 @@ export class DocumentReadService {
         );
     }
     for (const profile of profiles) {
+      const previousUids = usablePreviousUids(
+        historical.filter((doc) => doc.candidateId === profile.id),
+      );
+      const reusedTypes = catalog.filter(
+        (type) =>
+          type.erpUid &&
+          previousUids.includes(type.erpUid.toLowerCase()) &&
+          !grouped.some(
+            (row) =>
+              row.candidateId === profile.id && row.documentTypeId === type.id,
+          ),
+      );
       const hasProfile = !!(
         profile.positionCode ||
         profile.projectCode ||
@@ -1544,9 +1672,23 @@ export class DocumentReadService {
                 citizenship,
                 sex: profile.sexKnown ? profile.sex : null,
               },
+              previousUids,
             )
           : null;
-      profile.approvedDocuments = approved.get(profile.id) ?? 0;
+      profile.approvedDocuments =
+        (approved.get(profile.id) ?? 0) +
+        reusedTypes.filter((type) =>
+          requiredApplicable(
+            type,
+            profile.positionCode ?? "",
+            profile.citizenship ?? "ru",
+            profile.sexKnown &&
+              (profile.sex === "female" || profile.sex === "male")
+              ? profile.sex
+              : null,
+            profile.projectCode,
+          ),
+        ).length;
       profile.requiredDocuments = profile.positionCode
         ? catalog.filter(
             (type) =>

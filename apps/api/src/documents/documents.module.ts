@@ -45,12 +45,17 @@ import { CandidateContextService } from "./candidate-context.service";
 import { LkCandidateIdentityService } from "./lk-candidate-identity.service";
 import { ErpCandidateClient } from "./erp-candidate.client";
 import { CandidateCardCache } from "./candidate-card-cache";
+import { IgEmploymentService } from "./ig-employment.service";
+import { IgGrantPoller } from "./ig-grant-poller";
+import { OwnDocumentHistoryService } from "./own-document-history.service";
+import { OwnDocumentHistoryController } from "./own-document-history.controller";
 
 @Module({
   imports: [PrismaModule, AuditModule, StorageModule, OcrModule, RedisModule],
   controllers: [
     BrowserCandidateDocumentsController,
     MyCandidateDocumentsController,
+    OwnDocumentHistoryController,
     CandidateIntegrationController,
     DocumentsController,
     ManualDocumentIntegrationController,
@@ -58,13 +63,20 @@ import { CandidateCardCache } from "./candidate-card-cache";
     CandidateDocumentEventsController,
     CandidateDocumentUploadController,
   ],
-  exports: [CandidateContextService, DocumentCatalogService],
+  exports: [
+    CandidateContextService,
+    DocumentCatalogService,
+    OwnDocumentHistoryService,
+  ],
   providers: [
     ErpWorkspaceClient,
     CandidateDocumentsService,
     CandidateContextService,
     LkCandidateIdentityService,
     ErpCandidateClient,
+    IgEmploymentService,
+    IgGrantPoller,
+    OwnDocumentHistoryService,
     CandidateCardCache,
     DocumentAccessService,
     DocumentReadService,

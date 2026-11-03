@@ -73,7 +73,8 @@ describe.skipIf(!db)(
     };
     const personUid = randomUUID(),
       erpUid = randomUUID(),
-      sourceId = "opaque-original";
+      sourceId = "opaque-original",
+      sourceDocumentUid = randomUUID();
     let card = {
       erpUid,
       chatUuid: null,
@@ -134,7 +135,7 @@ describe.skipIf(!db)(
           items: [
             {
               id: sourceId,
-              documentUid: randomUUID(),
+              documentUid: sourceDocumentUid,
               title: "Previous passport",
               fields: { number: "0001" },
               expiresAt: "2030-01-01",
@@ -302,15 +303,25 @@ describe.skipIf(!db)(
       vi.stubGlobal("fetch", fetcher);
       const previous = card;
       try {
-        card = { ...card, position: { code: "NEW-POS", name: "New position" }, citizenship: "uz" };
+        card = {
+          ...card,
+          position: { code: "NEW-POS", name: "New position" },
+          citizenship: "uz",
+        };
         await service.requirements(id, actor);
         expect(catalogList).toHaveBeenLastCalledWith("NEW-POS", "uz");
         card = { ...card, position: null as never };
-        await expect(service.requirements(id, actor)).rejects.toMatchObject({ code: "CANDIDATE_PROFILE_INCOMPLETE" });
-      } finally { card = previous; }
+        await expect(service.requirements(id, actor)).rejects.toMatchObject({
+          code: "CANDIDATE_PROFILE_INCOMPLETE",
+        });
+      } finally {
+        card = previous;
+      }
     });
     it("protects RU requirements with the same review permission", async () => {
-      await expect(service.requirements(id, { ...actor, accessRules: { "20011": [] } })).rejects.toThrow("review group");
+      await expect(
+        service.requirements(id, { ...actor, accessRules: { "20011": [] } }),
+      ).rejects.toThrow("review group");
     });
     it("opens sparse historical cards with missing position/status for correction", async () => {
       vi.stubGlobal("fetch", fetcher);

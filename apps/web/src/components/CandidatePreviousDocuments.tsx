@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
   getCandidatePreviousDocumentOriginal,
   getListCandidatePreviousDocumentsQueryKey,
@@ -224,7 +225,10 @@ export function CandidatePreviousDocuments({
   candidateId: string;
 }) {
   const documents = useListCandidatePreviousDocuments(candidateId);
-  const itemsCount = documents.data?.items?.length;
+  const navigate = useNavigate();
+  const itemsCount = documents.data
+    ? documents.data.items.length + (documents.data.edoDocuments?.length ?? 0)
+    : undefined;
 
   return (
     <section
@@ -287,6 +291,32 @@ export function CandidatePreviousDocuments({
             Документы ERP проверяются заново для текущего оформления. Прежние
             решения и оригиналы сохраняются.
           </p>
+          {!!documents.data?.edoDocuments?.length && (
+            <div>
+              <h3 className="text-sm font-semibold">
+                Документы прошлых оформлений в ЭДО
+              </h3>
+              <ul className="mt-2 space-y-1">
+                {documents.data.edoDocuments.map((document) => (
+                  <li key={document.id}>
+                    <button
+                      type="button"
+                      className="text-sm underline"
+                      onClick={() =>
+                        void navigate({
+                          to: "/review-ig/$documentId",
+                          params: { documentId: document.id },
+                          search: { version: document.currentVersion },
+                        })
+                      }
+                    >
+                      {document.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {documents.isLoading && <p role="status">Загрузка документов ERP…</p>}
           {documents.isError && (
             <p role="alert" className="text-sm">
@@ -301,12 +331,13 @@ export function CandidatePreviousDocuments({
               </Button>
             </p>
           )}
-          {documents.data?.items.length === 0 && (
-            <p className="text-sm">
-              Доступных прежних документов нет. Недостающие документы показаны в
-              перечне справа.
-            </p>
-          )}
+          {documents.data?.items.length === 0 &&
+            !documents.data.edoDocuments?.length && (
+              <p className="text-sm">
+                Доступных прежних документов нет. Недостающие документы показаны
+                в перечне справа.
+              </p>
+            )}
           <ul>
             {documents.data?.items.map((document) => (
               <PreviousDocument

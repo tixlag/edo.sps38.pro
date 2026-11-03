@@ -724,6 +724,38 @@ export interface CandidateDocumentFormsDto {
   catalog: CatalogDocumentTypesDto;
 }
 
+export interface OwnDocumentListDto {
+  items: DocumentDto[];
+  /** Confirmed reusable previous document types */
+  reusedDocumentUids: string[];
+}
+
+export interface OwnHistoricalFileDto {
+  id: string;
+  name: string;
+}
+
+export type OwnHistoricalDocumentDtoSource =
+  (typeof OwnHistoricalDocumentDtoSource)[keyof typeof OwnHistoricalDocumentDtoSource];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const OwnHistoricalDocumentDtoSource = {
+  EDO: "EDO",
+  ERP: "ERP",
+} as const;
+
+export interface OwnHistoricalDocumentDto {
+  source: OwnHistoricalDocumentDtoSource;
+  id: string;
+  title: string;
+  files: OwnHistoricalFileDto[];
+}
+
+export interface OwnDocumentHistoryDto {
+  items: OwnHistoricalDocumentDto[];
+  erpAvailable: boolean;
+}
+
 export type ApiErrorDtoMessage = string | string[];
 
 export interface ApiErrorDto {
@@ -2031,9 +2063,17 @@ export interface CandidateEmploymentHistoryDto {
   items: CandidateEmploymentEventDto[];
 }
 
+export interface CandidateHistoricalEdoDocumentDto {
+  id: string;
+  title: string;
+  currentVersion: number;
+  status: string;
+}
+
 export interface CandidatePreviousDocumentsDto {
   items: CandidatePreviousDocumentDto[];
   employmentHistory?: CandidateEmploymentHistoryDto;
+  edoDocuments?: CandidateHistoricalEdoDocumentDto[];
 }
 
 export interface CandidateRecheckRequestDto {
@@ -3865,7 +3905,7 @@ export function useGetMyCandidateDocumentForms<
  * @summary Own document statuses, independently of ERP
  */
 export const getMyCandidateDocuments = (signal?: AbortSignal) => {
-  return customInstance<DocumentListDto>({
+  return customInstance<OwnDocumentListDto>({
     url: `/api/candidate-documents/my/statuses`,
     method: "GET",
     signal,
@@ -4186,6 +4226,264 @@ export const useGetMyCandidateDocumentUploadGrant = <
 
   return useMutation(mutationOptions);
 };
+
+/**
+ * @summary Documents from previous employments
+ */
+export const getMyDocumentHistory = (signal?: AbortSignal) => {
+  return customInstance<OwnDocumentHistoryDto>({
+    url: `/api/candidate-documents/my/history`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetMyDocumentHistoryQueryKey = () => {
+  return [`/api/candidate-documents/my/history`] as const;
+};
+
+export const getGetMyDocumentHistoryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyDocumentHistory>>,
+  TError = CandidateDocumentErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyDocumentHistory>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetMyDocumentHistoryQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyDocumentHistory>>
+  > = ({ signal }) => getMyDocumentHistory(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyDocumentHistory>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyDocumentHistoryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyDocumentHistory>>
+>;
+export type GetMyDocumentHistoryQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @summary Documents from previous employments
+ */
+
+export function useGetMyDocumentHistory<
+  TData = Awaited<ReturnType<typeof getMyDocumentHistory>>,
+  TError = CandidateDocumentErrorDto,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMyDocumentHistory>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyDocumentHistoryQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Download an owned historical EDO file
+ */
+export const getMyHistoricalEdoFile = (
+  documentId: string,
+  fileId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<Blob>({
+    url: `/api/candidate-documents/my/history/edo/${documentId}/files/${fileId}`,
+    method: "GET",
+    responseType: "blob",
+    signal,
+  });
+};
+
+export const getGetMyHistoricalEdoFileQueryKey = (
+  documentId: string,
+  fileId: string,
+) => {
+  return [
+    `/api/candidate-documents/my/history/edo/${documentId}/files/${fileId}`,
+  ] as const;
+};
+
+export const getGetMyHistoricalEdoFileQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyHistoricalEdoFile>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  documentId: string,
+  fileId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyHistoricalEdoFile>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetMyHistoricalEdoFileQueryKey(documentId, fileId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyHistoricalEdoFile>>
+  > = ({ signal }) => getMyHistoricalEdoFile(documentId, fileId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(documentId && fileId),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyHistoricalEdoFile>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyHistoricalEdoFileQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyHistoricalEdoFile>>
+>;
+export type GetMyHistoricalEdoFileQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @summary Download an owned historical EDO file
+ */
+
+export function useGetMyHistoricalEdoFile<
+  TData = Awaited<ReturnType<typeof getMyHistoricalEdoFile>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  documentId: string,
+  fileId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyHistoricalEdoFile>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyHistoricalEdoFileQueryOptions(
+    documentId,
+    fileId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Download an owned historical ERP original
+ */
+export const getMyHistoricalErpFile = (
+  documentId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<Blob>({
+    url: `/api/candidate-documents/my/history/erp/${documentId}`,
+    method: "GET",
+    responseType: "blob",
+    signal,
+  });
+};
+
+export const getGetMyHistoricalErpFileQueryKey = (documentId: string) => {
+  return [`/api/candidate-documents/my/history/erp/${documentId}`] as const;
+};
+
+export const getGetMyHistoricalErpFileQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyHistoricalErpFile>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  documentId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyHistoricalErpFile>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMyHistoricalErpFileQueryKey(documentId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyHistoricalErpFile>>
+  > = ({ signal }) => getMyHistoricalErpFile(documentId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!documentId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyHistoricalErpFile>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyHistoricalErpFileQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyHistoricalErpFile>>
+>;
+export type GetMyHistoricalErpFileQueryError = CandidateDocumentErrorDto;
+
+/**
+ * @summary Download an owned historical ERP original
+ */
+
+export function useGetMyHistoricalErpFile<
+  TData = Awaited<ReturnType<typeof getMyHistoricalErpFile>>,
+  TError = CandidateDocumentErrorDto,
+>(
+  documentId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyHistoricalErpFile>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyHistoricalErpFileQueryOptions(
+    documentId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
 
 /**
  * @summary Upload candidate document metadata for manual review, or use the legacy OCR contract

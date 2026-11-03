@@ -1,4 +1,5 @@
 import { DocumentCatalogService } from "../documents/document-catalog.service";
+import { tryCompleteIgEmployment } from "../documents/ig-completion";
 import {
   isPreviousDocumentExpired,
   needsNewIgDocument,
@@ -14,6 +15,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -23,6 +25,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
+import { OwnDocumentHistoryService } from "../documents/own-document-history.service";
 import { DocumentAccessService } from "../documents/document-access.service";
 import {
   candidateIdentityTransaction,
@@ -59,6 +62,7 @@ export class CandidateWorkspaceService {
     private readonly audit: AuditService,
     private readonly config: ConfigService,
     private readonly catalog: DocumentCatalogService,
+    @Optional() private readonly ownHistory?: OwnDocumentHistoryService,
   ) {}
   private actor(p: AuthPrincipal) {
     requireReviewGroup(p, "RU");
@@ -384,6 +388,71 @@ export class CandidateWorkspaceService {
         ? { code1c: row.code1c!, personUid: row.personUid! }
         : { candidate: row.erpUid! },
     );
+    const edoDocuments = isIg
+      ? await this.prisma.document.findMany({
+          where: {
+            currentVersion: { gt: 0 },
+            candidate: {
+              id: { not: id },
+              code1c: row.code1c,
+              chatUuid: null,
+              AND: [
+                { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
+                { OR: [{ personUid: null }, { personUid: row.personUid }] },
+              ],
+            },
+          },
+          include: {
+            documentType: true,
+            versions: { include: { fields: true, files: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        })
+      : [];
+    const edoHistory = edoDocuments.flatMap((document) => {
+      const version = document.versions.find(
+        (v) => v.version === document.currentVersion,
+      );
+      if (!version) return [];
+      const fields = Object.fromEntries(
+        version.fields.map((field) => [
+          field.name,
+          field.kind === "boolean" && field.value !== null
+            ? field.value === "true"
+            : field.value,
+        ]),
+      );
+      const expiry = fields.expiryDate;
+      const parsedExpiry =
+        typeof expiry === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(expiry) &&
+        Number.isFinite(Date.parse(`${expiry}T00:00:00Z`)) &&
+        new Date(`${expiry}T00:00:00Z`).toISOString().slice(0, 10) === expiry
+          ? expiry
+          : null;
+      const originalAvailable = version.files.length
+        ? version.files.some((file) => !file.deletedAt)
+        : !!version.storageKey;
+      return [
+        {
+          id: `edo:${document.id}:${version.id}`,
+          documentUid: document.documentType?.erpUid ?? null,
+          title: document.documentType?.title ?? "Документ",
+          fields,
+          expiresAt: parsedExpiry,
+          originalAvailable,
+          isInvalid:
+            typeof fields.isInvalid === "boolean"
+              ? fields.isInvalid
+              : undefined,
+          recordDate: undefined,
+          recheckStatus: originalAvailable
+            ? ("REQUIRES_REVIEW" as const)
+            : ("ORIGINAL_UNAVAILABLE" as const),
+        },
+      ];
+    });
+    const allDocuments = [...result.items, ...edoHistory];
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${id} FOR UPDATE`;
       const current = await tx.candidate.findFirst({
@@ -405,7 +474,7 @@ export class CandidateWorkspaceService {
         oldDocuments.map((doc) => [doc.sourceId, doc]),
       );
       const seen = new Set<string>();
-      for (const doc of result.items) {
+      for (const doc of allDocuments) {
         if (seen.has(doc.id))
           throw new ConflictException("ERP_DOCUMENT_DUPLICATE_SOURCE");
         seen.add(doc.id);
@@ -528,7 +597,7 @@ export class CandidateWorkspaceService {
         entityType: "CandidatePreviousDocuments",
         entityId: id,
         correlationId: "",
-        after: { count: result.items.length },
+        after: { count: allDocuments.length },
       });
     });
     const docs = await this.prisma.candidatePreviousDocument.findMany({
@@ -548,6 +617,16 @@ export class CandidateWorkspaceService {
         reviewedAt: doc.reviewedAt?.toISOString() ?? null,
       })),
       ...(historyPromise ? { employmentHistory: await historyPromise } : {}),
+      ...(edoDocuments.length
+        ? {
+            edoDocuments: edoDocuments.map((doc) => ({
+              id: doc.id,
+              currentVersion: doc.currentVersion,
+              status: doc.status,
+              title: doc.documentType?.title ?? "Документ",
+            })),
+          }
+        : {}),
     };
   }
   async recheck(
@@ -619,6 +698,8 @@ export class CandidateWorkspaceService {
         before: { status: doc.status },
         after: { status: body.status },
       });
+      if (body.status === "CONFIRMED" && candidateReviewGroup(current) === "IG")
+        await tryCompleteIgEmployment(tx, this.audit, id, p.uuid, "");
     });
     return this.previous(id, p);
   }
@@ -629,6 +710,26 @@ export class CandidateWorkspaceService {
     });
     if (!doc?.originalAvailable)
       throw new NotFoundException("Оригинал недоступен");
+    if (candidateReviewGroup(row) === "IG" && doc.sourceId.startsWith("edo:")) {
+      const parts = doc.sourceId.split(":");
+      if (parts.length !== 3 || !this.ownHistory) throw new NotFoundException();
+      const version = await this.prisma.documentVersion.findFirst({
+        where: {
+          id: parts[2],
+          documentId: parts[1],
+          document: { candidate: { code1c: row.code1c, chatUuid: null } },
+        },
+        include: {
+          files: { where: { deletedAt: null }, orderBy: { ordinal: "asc" } },
+        },
+      });
+      if (!version) throw new NotFoundException();
+      return this.ownHistory.edoFile(
+        row.code1c!,
+        parts[1],
+        version.files[0]?.id ?? `legacy-${version.id}`,
+      );
+    }
     return candidateReviewGroup(row) === "IG"
       ? this.erp.personOriginal(row.code1c!, row.personUid!, doc.sourceId)
       : this.erp.original(row.erpUid!, doc.sourceId);

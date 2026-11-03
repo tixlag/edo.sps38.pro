@@ -46,7 +46,12 @@ function setup() {
   };
   const prisma = {
     $transaction: vi.fn(async (fn: (arg: typeof tx) => unknown) => fn(tx)),
-    candidatePreviousDocument: { findMany: vi.fn(async () => []) },
+    candidatePreviousDocument: {
+      findMany: vi.fn(async () => []),
+      findFirst: vi.fn(),
+    },
+    document: { findMany: vi.fn(async () => [] as unknown[]) },
+    documentVersion: { findFirst: vi.fn() },
   };
   const audit = { logInTransaction: vi.fn() };
   const access = {
@@ -63,6 +68,11 @@ function setup() {
     request: vi.fn(async () => ({ items: [] })),
     employmentHistory: vi.fn(async () => ({ items: [] })),
   };
+  const ownHistory = {
+    edoFile: vi
+      .fn()
+      .mockResolvedValue({ bytes: Buffer.from("file"), mimeType: "image/png" }),
+  };
   const service = new CandidateWorkspaceService(
     prisma as unknown as PrismaService,
     erp as unknown as ErpWorkspaceClient,
@@ -70,8 +80,9 @@ function setup() {
     audit as unknown as AuditService,
     new ConfigService({ JWT_SECRET: "secret" }),
     {} as DocumentCatalogService,
+    ownHistory as never,
   );
-  return { service, row, tx, erp, audit };
+  return { service, row, tx, erp, audit, prisma, ownHistory };
 }
 describe("IG previous ERP documents", () => {
   it("checks expiration by Irkutsk calendar date and includes the expiration day", () => {
@@ -140,6 +151,74 @@ describe("IG previous ERP documents", () => {
       expect.anything(),
       { code1c: "worker", personUid },
     );
+  });
+  it("includes EDO documents from earlier cycles for the same verified person", async () => {
+    const { service, row, prisma, tx } = setup();
+    prisma.document.findMany.mockResolvedValue([
+      {
+        id: "document",
+        currentVersion: 2,
+        status: "APPROVED",
+        documentType: { title: "Паспорт", erpUid: personUid },
+        versions: [
+          {
+            id: "version",
+            version: 2,
+            fields: [{ name: "number", value: "123", kind: "text" }],
+            files: [{ id: "file", deletedAt: null }],
+            storageKey: "key",
+          },
+        ],
+      },
+    ]);
+    const result = await service.previous(row.id, actor({ "20011": [] }));
+    expect(result.edoDocuments).toEqual([
+      {
+        id: "document",
+        currentVersion: 2,
+        status: "APPROVED",
+        title: "Паспорт",
+      },
+    ]);
+    expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          sourceId: "edo:document:version",
+          title: "Паспорт",
+          originalAvailable: true,
+        }),
+      }),
+    );
+    expect(prisma.document.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          candidate: expect.objectContaining({ code1c: "worker" }),
+        }),
+      }),
+    );
+  });
+  it("opens an old EDO original through the verified employee scope", async () => {
+    const { service, row, prisma, tx, ownHistory } = setup();
+    prisma.documentVersion.findFirst.mockResolvedValue({
+      id: "version",
+      files: [{ id: "file" }],
+    } as never);
+    prisma.candidatePreviousDocument.findFirst.mockResolvedValue({
+      sourceId: "edo:document:version",
+      originalAvailable: true,
+    });
+    const result = await service.original(
+      row.id,
+      "old",
+      actor({ "20011": [] }),
+    );
+    expect(result.bytes).toEqual(Buffer.from("file"));
+    expect(ownHistory.edoFile).toHaveBeenCalledWith(
+      "worker",
+      "document",
+      "file",
+    );
+    expect(tx.candidate.update).toHaveBeenCalled();
   });
   it("rejects changed ERP identity without importing another person's documents", async () => {
     const { service, row, erp } = setup();

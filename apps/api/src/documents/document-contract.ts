@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { z } from "zod";
+import { needsNewIgDocument } from "./reemployment-document-policy";
 
 export const FIELD_LABELS: Record<string, string> = {
   series: "Серия",
@@ -584,12 +585,21 @@ export function classifyRule(
   return matchedPosition.length ? "additional" : null;
 }
 export function applicable(
-  type: ApplicabilityRule & { code?: string; stageRules?: ApplicabilityRule[] },
+  type: ApplicabilityRule & {
+    code?: string;
+    erpUid?: string | null;
+    stageRules?: ApplicabilityRule[];
+  },
   position: string,
   citizenship: string,
   sex?: "male" | "female" | null,
   project?: string | null,
 ): boolean {
+  if (
+    citizenship.toLowerCase() !== "ru" &&
+    needsNewIgDocument(type.erpUid ?? null)
+  )
+    return true;
   if (excludedForSex(type.code, sex)) return false;
   return (type.stageRules?.length ? type.stageRules : [type]).some(
     (rule) => classifyRule(rule, position, citizenship, project) !== null,
@@ -597,12 +607,21 @@ export function applicable(
 }
 
 export function requiredApplicable(
-  type: ApplicabilityRule & { code?: string; stageRules?: ApplicabilityRule[] },
+  type: ApplicabilityRule & {
+    code?: string;
+    erpUid?: string | null;
+    stageRules?: ApplicabilityRule[];
+  },
   position: string,
   citizenship: string,
   sex?: "male" | "female" | null,
   project?: string | null,
 ): boolean {
+  if (
+    citizenship.toLowerCase() !== "ru" &&
+    needsNewIgDocument(type.erpUid ?? null)
+  )
+    return true;
   if (excludedForSex(type.code, sex)) return false;
   return (type.stageRules?.length ? type.stageRules : [type]).some(
     (rule) => classifyRule(rule, position, citizenship, project) === "required",

@@ -42,6 +42,7 @@ const state = vi.hoisted(() => ({
   persons: vi.fn(),
   matches: vi.fn(),
   previous: [] as unknown[],
+  edoDocuments: [] as unknown[],
   employmentHistory: undefined as unknown,
   workspaceError: null as unknown,
   managersUnavailable: false,
@@ -142,6 +143,7 @@ vi.mock("@edo/api-client", () => {
       data: {
         items: state.previous,
         employmentHistory: state.employmentHistory,
+        edoDocuments: state.edoDocuments,
       },
     }),
     useGetCandidateRequirements: () =>
@@ -235,6 +237,7 @@ beforeEach(() => {
     },
   ];
   state.previous = [];
+  state.edoDocuments = [];
   state.employmentHistory = undefined;
   state.workspaceError = null;
   state.managersUnavailable = false;
@@ -249,6 +252,26 @@ afterEach(async () => {
 });
 
 describe("candidate manager flows", () => {
+  it("shows documents from earlier EDO employments with a link to the original case", async () => {
+    state.profile.linkedPerson = true;
+    state.edoDocuments = [
+      {
+        id: "old-document",
+        title: "Прежний паспорт",
+        currentVersion: 2,
+        status: "APPROVED",
+      },
+    ];
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    expect(view.textContent).toContain("Прежний паспорт");
+    await click("Прежний паспорт");
+    expect(state.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "/review-ig/$documentId",
+        params: { documentId: "old-document" },
+      }),
+    );
+  });
   it("shows verified ERP employment events in the previous-document section", async () => {
     state.profile.linkedPerson = true;
     state.employmentHistory = {

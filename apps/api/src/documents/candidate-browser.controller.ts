@@ -34,6 +34,7 @@ import {
   DocumentUploadGrantDto,
 } from "./dto/document.dto";
 import { CandidateDocumentErrorDto } from "./dto/candidate-error.dto";
+import { OwnDocumentListDto } from "./dto/own-document-history.dto";
 const Errors = () =>
   applyDecorators(
     ...[400, 401, 403, 404, 409, 422, 500, 502, 503, 504].map((status) =>
@@ -162,7 +163,7 @@ export class MyCandidateDocumentsController {
     operationId: "getMyCandidateDocuments",
     summary: "Own document statuses, independently of ERP",
   })
-  @ApiResponse({ status: 200, type: DocumentListDto })
+  @ApiResponse({ status: 200, type: OwnDocumentListDto })
   statuses(@CurrentPrincipal() me: AuthPrincipal) {
     return this.documents.ownStatuses(me.code1c);
   }

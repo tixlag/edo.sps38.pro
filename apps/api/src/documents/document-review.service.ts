@@ -14,6 +14,7 @@ import { DocumentReadService } from "./document-read.service";
 import type { ApprovedArtifact } from "./approved-artifact";
 import { DocumentPdfService } from "./document-pdf.service";
 import { IG_PASSPORT_LATIN_FIELDS, isForeignPassport } from "./review-group";
+import { tryCompleteIgEmployment } from "./ig-completion";
 import {
   formatDateForErp,
   shouldOmitPositionUid,
@@ -383,6 +384,21 @@ export class DocumentReviewService {
                 }),
           },
         });
+        if (
+          !edits &&
+          !rejectionReason &&
+          version.document?.candidateId &&
+          version.document.candidate?.code1c &&
+          version.document.candidate.citizenship?.toLowerCase() !== "ru" &&
+          !version.document.candidate.chatUuid
+        )
+          await tryCompleteIgEmployment(
+            tx,
+            this.audit,
+            version.document.candidateId,
+            principal.uuid,
+            correlationId,
+          );
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );

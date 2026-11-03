@@ -214,11 +214,19 @@ export class CandidateEmploymentHistoryDto {
   @ApiProperty({ type: [CandidateEmploymentEventDto] })
   items!: CandidateEmploymentEventDto[];
 }
+export class CandidateHistoricalEdoDocumentDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() title!: string;
+  @ApiProperty() currentVersion!: number;
+  @ApiProperty() status!: string;
+}
 export class CandidatePreviousDocumentsDto {
   @ApiProperty({ type: [CandidatePreviousDocumentDto] })
   items!: CandidatePreviousDocumentDto[];
   @ApiPropertyOptional({ type: CandidateEmploymentHistoryDto })
   employmentHistory?: CandidateEmploymentHistoryDto;
+  @ApiPropertyOptional({ type: [CandidateHistoricalEdoDocumentDto] })
+  edoDocuments?: CandidateHistoricalEdoDocumentDto[];
 }
 export class CandidateRecheckRequestDto {
   @ApiProperty({ enum: recheckStates, enumName: "CandidateRecheckStatus" })

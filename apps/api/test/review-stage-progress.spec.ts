@@ -7,6 +7,7 @@ import {
   reviewStageProgress,
   classifyStageType,
 } from "../src/documents/review-stage-progress";
+import { EMPLOYMENT_PATENT_UID } from "../src/documents/reemployment-document-policy";
 
 const item = {
   УИНДокумента: "6ffb1fd5-8341-11eb-ba8b-00259002db81",
@@ -18,6 +19,44 @@ const item = {
   optionalFields: [],
 };
 describe("review stage progress", () => {
+  it("requires a new IG patent even when the ERP catalog does not mark it required", () => {
+    const type = {
+      id: "patent",
+      erpUid: EMPLOYMENT_PATENT_UID,
+      code: "PATENT",
+      stage: 1,
+      requiredForAll: false,
+      allRu: false,
+      allForeign: false,
+      positions: [],
+    };
+    const profile = { positionCode: "001", citizenship: "uz", sex: null };
+    expect(applicable(type, "001", "uz")).toBe(true);
+    expect(classifyStageType(type, 1, profile)).toBe("required");
+    expect(
+      classifyStageType(type, 1, { ...profile, citizenship: "ru" }),
+    ).toBeNull();
+  });
+  it("counts a confirmed previous passport as approved when no current version exists", () => {
+    const type = {
+      id: "passport",
+      erpUid: "6ffb1fd5-8341-11eb-ba8b-00259002db81",
+      code: "PASSPORT",
+      stage: 1,
+      requiredForAll: true,
+      allRu: false,
+      allForeign: false,
+      positions: [],
+    };
+    const result = reviewStageProgress(
+      [type],
+      [],
+      { positionCode: "001", citizenship: "uz", sex: null },
+      [type.erpUid],
+    );
+    expect(result[0].required.approved).toBe(1);
+    expect(result[0].required.missing).toBe(0);
+  });
   it("selects and classifies a type using the rule for the chosen stage", () => {
     const type = {
       id: "a",

@@ -379,6 +379,8 @@ model LkSyncState {
 }
 
 model Candidate {
+  igCompletedAt DateTime? @db.DateTime(3)
+  igEmploymentState IgEmploymentState?
   reviewGroup ReviewGroup?
   personUid String? @db.VarChar(36)
   phone String? @db.VarChar(64)
@@ -428,6 +430,21 @@ model Candidate {
   @@index([locationId])
   @@index([code1c])
   @@map("candidates")
+}
+
+model IgEmploymentState {
+  code1c String @id @db.VarChar(64)
+  currentCandidateId String? @unique @db.VarChar(64)
+  currentCandidate Candidate? @relation(fields: [currentCandidateId], references: [id], onDelete: Restrict)
+  @@map("ig_employment_states")
+}
+
+model IgGrantEvent {
+  id String @id @db.VarChar(36)
+  code1c String @db.VarChar(64)
+  candidateId String @db.VarChar(64)
+  receivedAt DateTime @default(now()) @db.DateTime(3)
+  @@map("ig_grant_events")
 }
 
 enum SigningContractState {
