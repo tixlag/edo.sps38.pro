@@ -473,9 +473,7 @@ describe("candidate details", () => {
     expect(
       result.stageDocuments?.required.documents.map((doc) => doc.id),
     ).toEqual(["d1"]);
-    expect(result.stageDocuments?.additional.missingDocuments).toEqual([
-      { code: "B", title: "Справка" },
-    ]);
+    expect(result.stageDocuments?.additional.missingDocuments).toEqual([]);
     expect(result.stageDocuments?.required.missingDocuments).toEqual([]);
     prisma.document.findMany.mockResolvedValue([
       { ...document("d1"), documentTypeId: "a" },
@@ -492,9 +490,7 @@ describe("candidate details", () => {
     expect(
       all.documentGroups?.required.missingDocuments.map((doc) => doc.code),
     ).toEqual(["C"]);
-    expect(all.documentGroups?.additional.missingDocuments).toEqual([
-      { code: "D", title: "Дополнительная справка" },
-    ]);
+    expect(all.documentGroups?.additional.missingDocuments).toEqual([]);
     prisma.document.findMany.mockResolvedValue([
       { ...document("d1"), documentTypeId: "a" },
     ]);
@@ -503,7 +499,44 @@ describe("candidate details", () => {
       other.stageDocuments?.required.missingDocuments.map((d) => d.code),
     ).toEqual(["B", "C"]);
   });
-  it("keeps returned history of a draft and places unstaged types in additional", async () => {
+  it("shows project rules even when the candidate position is unknown", async () => {
+    const { reads, prisma } = setup();
+    prisma.candidate.findFirst.mockResolvedValue({
+      ...owner("c1"),
+      positionCode: null,
+      projectCode: "P1",
+    });
+    prisma.document.findMany.mockResolvedValue([]);
+    prisma.documentType.findMany.mockResolvedValue([
+      {
+        id: "a",
+        code: "A",
+        title: "Документ",
+        stage: 2,
+        requiredForAll: false,
+        allRu: false,
+        allForeign: false,
+        positions: [],
+        stageRules: [
+          {
+            stage: 2,
+            requiredForAll: false,
+            allRu: false,
+            allForeign: false,
+            positions: [],
+            projects: [{ code1c: "P1" }],
+            countries: [],
+          },
+        ],
+        catalogSyncedAt: new Date(),
+      },
+    ]);
+    const result = await reads.candidateDetails("c1", principal, "2");
+    expect(result.stageDocuments?.required.missingDocuments).toEqual([
+      { code: "A", title: "Документ" },
+    ]);
+  });
+  it("keeps returned history of a draft and applies rules to unstaged types", async () => {
     const { reads, prisma } = setup();
     prisma.candidate.findFirst.mockResolvedValue(owner("c1"));
     prisma.document.findMany.mockResolvedValue([
@@ -545,12 +578,12 @@ describe("candidate details", () => {
       },
     ]);
     const result = await reads.candidateDetails("c1", principal, "none");
-    expect(result.stageDocuments?.required.documents).toEqual([]);
+    expect(result.stageDocuments?.additional.documents).toEqual([]);
     expect(
-      result.stageDocuments?.additional.documents[0].returnedVersions?.[0]
+      result.stageDocuments?.required.documents[0].returnedVersions?.[0]
         .rejectionReason,
     ).toBe("Фото");
-    expect(result.stageDocuments?.additional.missingDocuments).toEqual([
+    expect(result.stageDocuments?.required.missingDocuments).toEqual([
       { code: "A", title: "Документ" },
     ]);
   });

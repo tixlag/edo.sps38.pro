@@ -82,6 +82,7 @@ export class CandidateDocumentsService {
         context.candidateSnapshot?.sexKnown
           ? context.candidateSnapshot.sex
           : null,
+        context.projectCode1c,
       );
       return { context, catalog };
     });
@@ -117,6 +118,7 @@ export class CandidateDocumentsService {
       context.candidateSnapshot?.sexKnown
         ? context.candidateSnapshot.sex
         : null,
+      context.projectCode1c,
     );
   }
   async statuses(uuid: string) {

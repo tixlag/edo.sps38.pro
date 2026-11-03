@@ -76,11 +76,23 @@ export class ManualDocumentService {
     await this.catalog.ensure();
     const type = await this.prisma.documentType.findUnique({
       where: { erpUid: metadata.documentUid },
-      include: { definitions: true, positions: true },
+      include: {
+        definitions: true,
+        positions: true,
+        stageRules: {
+          include: { positions: true, projects: true, countries: true },
+        },
+      },
     });
     if (
       !type?.catalogSyncedAt ||
-      !applicable(type, metadata.position_code_1c, metadata.citizenship)
+      !applicable(
+        type,
+        metadata.position_code_1c,
+        metadata.citizenship,
+        null,
+        metadata.project_code_1c,
+      )
     )
       throw new BadRequestException(
         "Document type is unavailable for this candidate",

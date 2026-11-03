@@ -581,17 +581,38 @@ model DocumentTypeStageRule {
   allForeign Boolean @default(false)
   documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
   positions DocumentTypeStagePosition[]
+  projects DocumentTypeStageProject[]
+  countries DocumentTypeStageCountry[]
   @@index([documentTypeId])
   @@map("document_type_stage_rules")
 }
 
 model DocumentTypeStagePosition {
+  required Boolean @default(true)
   id String @id @default(cuid()) @db.VarChar(64)
   ruleId String @db.VarChar(64)
   code1c String @db.VarChar(64)
   rule DocumentTypeStageRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
   @@unique([ruleId, code1c])
   @@map("document_type_stage_positions")
+}
+
+model DocumentTypeStageProject {
+  id String @id @default(cuid()) @db.VarChar(64)
+  ruleId String @db.VarChar(64)
+  code1c String @db.VarChar(64)
+  rule DocumentTypeStageRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  @@unique([ruleId, code1c])
+  @@map("document_type_stage_projects")
+}
+
+model DocumentTypeStageCountry {
+  id String @id @default(cuid()) @db.VarChar(64)
+  ruleId String @db.VarChar(64)
+  code String @db.VarChar(64)
+  rule DocumentTypeStageRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  @@unique([ruleId, code])
+  @@map("document_type_stage_countries")
 }
 
 model DocumentSubmission {

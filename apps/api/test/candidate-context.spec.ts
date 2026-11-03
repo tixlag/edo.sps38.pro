@@ -306,7 +306,7 @@ describe("EDO candidate context", () => {
       },
       catalog: { items: [] },
     });
-    expect(catalog.list).toHaveBeenCalledWith("000000173", "ru", null);
+    expect(catalog.list).toHaveBeenCalledWith("000000173", "ru", null, "P1");
     expect(requests.map((url) => url.hostname)).toEqual([
       "lk.example",
       "erp.example",

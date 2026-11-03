@@ -200,7 +200,16 @@ export class DocumentCatalogService {
                   allRu: rule.allRu,
                   allForeign: rule.allForeign,
                   positions: {
-                    create: rule.positions.map((code1c) => ({ code1c })),
+                    create: rule.positions.map((code1c) => ({
+                      code1c,
+                      required: !rule.optionalPositions.includes(code1c),
+                    })),
+                  },
+                  projects: {
+                    create: rule.projectCodes.map((code1c) => ({ code1c })),
+                  },
+                  countries: {
+                    create: rule.countryCodes.map((code) => ({ code })),
                   },
                 },
               });
@@ -273,6 +282,7 @@ export class DocumentCatalogService {
     position: string,
     citizenship = "ru",
     sex?: "male" | "female" | null,
+    project?: string | null,
   ) {
     await this.ensure();
     const types = await this.prisma.documentType.findMany({
@@ -280,12 +290,15 @@ export class DocumentCatalogService {
       include: {
         definitions: { orderBy: { ordinal: "asc" } },
         positions: true,
+        stageRules: {
+          include: { positions: true, projects: true, countries: true },
+        },
       },
       orderBy: { title: "asc" },
     });
     return {
       items: types
-        .filter((t) => applicable(t, position, citizenship, sex))
+        .filter((t) => applicable(t, position, citizenship, sex, project))
         .map((t) => ({
           code: t.code,
           title: t.title,

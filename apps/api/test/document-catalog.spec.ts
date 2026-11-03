@@ -161,7 +161,7 @@ describe("document catalog cached snapshot", () => {
       expect.objectContaining({
         stage: 7,
         allRu: true,
-        positions: { create: [{ code1c: "001" }] },
+        positions: { create: [{ code1c: "001", required: true }] },
       }),
       expect.objectContaining({
         stage: 10,
@@ -169,6 +169,45 @@ describe("document catalog cached snapshot", () => {
         positions: { create: [] },
       }),
     ]);
+  });
+  it("persists optional positions, projects and countries from the new contract", async () => {
+    request.mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            uid,
+            name: "Passport",
+            stage: 3,
+            requirements: {
+              requiredForAll: false,
+              citizenship: { russian: false, foreign: false },
+              positions: [
+                { code: "001", required: false },
+                { code: "002", required: true },
+              ],
+              projectCodes: ["project"],
+              countryCodes: ["UZ"],
+            },
+            fields: { required: ["number"], optional: [] },
+          },
+        ]),
+      ),
+    );
+    await service().ensure();
+    await settle(1);
+    expect(prisma.tx.documentTypeStageRule.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        stage: 3,
+        positions: {
+          create: [
+            { code1c: "001", required: false },
+            { code1c: "002", required: true },
+          ],
+        },
+        projects: { create: [{ code1c: "project" }] },
+        countries: { create: [{ code: "uz" }] },
+      }),
+    });
   });
   it("waits for the very first snapshot instead of returning an empty document list", async () => {
     syncedAt = null;
@@ -201,6 +240,32 @@ describe("document catalog cached snapshot", () => {
   it("rejects invalid or empty ERP catalogs without replacing the saved snapshot", async () => {
     const previous = syncedAt;
     request.mockResolvedValue(new Response("[]"));
+    await service().list("001");
+    await vi.waitFor(() => expect(Logger.prototype.warn).toHaveBeenCalled());
+    expect(syncedAt).toBe(previous);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+  it("keeps the previous snapshot when the new ERP format has an invalid project code", async () => {
+    const previous = syncedAt;
+    request.mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            uid,
+            name: "Passport",
+            stage: 3,
+            requirements: {
+              requiredForAll: false,
+              citizenship: { russian: true, foreign: false },
+              positions: [],
+              projectCodes: ["bad code"],
+              countryCodes: [],
+            },
+            fields: { required: ["number"], optional: [] },
+          },
+        ]),
+      ),
+    );
     await service().list("001");
     await vi.waitFor(() => expect(Logger.prototype.warn).toHaveBeenCalled());
     expect(syncedAt).toBe(previous);

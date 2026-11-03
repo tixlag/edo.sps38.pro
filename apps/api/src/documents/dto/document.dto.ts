@@ -328,7 +328,7 @@ export class CandidateProfileDto {
     type: Number,
     nullable: true,
     description:
-      "Applicable catalog document types for position, citizenship and known sex; null when positionCode is unknown",
+      "Applicable required catalog document types for known position, project, citizenship and sex; null when candidate profile is unknown",
   })
   requiredDocuments!: number | null;
   @ApiPropertyOptional({ type: [ReviewStageProgressDto], nullable: true })
@@ -607,6 +607,12 @@ export class DocumentScopeDto {
   code_1c?: string;
 }
 export class CatalogQueryDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^\S+$/)
+  project_code_1c?: string;
   @ApiProperty()
   @IsString()
   @MaxLength(64)
