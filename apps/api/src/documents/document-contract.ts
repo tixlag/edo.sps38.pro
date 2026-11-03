@@ -333,8 +333,27 @@ const newCatalogItem = z
     requirements: z.object({
       requiredForAll: z.boolean(),
       citizenship: z.object({ russian: z.boolean(), foreign: z.boolean() }),
-      positions: z.array(z.object({ code, required: z.boolean() })).max(10000),
-      projectCodes: z.array(code).max(10000),
+      positions: z.preprocess(
+        (value) =>
+          Array.isArray(value)
+            ? value.filter(
+                (entry) =>
+                  !entry ||
+                  typeof entry !== "object" ||
+                  typeof entry.code !== "string" ||
+                  entry.code.trim() !== "",
+              )
+            : value,
+        z.array(z.object({ code, required: z.boolean() })).max(10000),
+      ),
+      projectCodes: z
+        .array(
+          z.preprocess(
+            (value) => (typeof value === "string" ? value.trim() : value),
+            code,
+          ),
+        )
+        .max(10000),
       countryCodes: z.array(code).max(10000),
     }),
     fields: z.object({

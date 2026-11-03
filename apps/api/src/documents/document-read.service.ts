@@ -1297,8 +1297,7 @@ export class DocumentReadService {
       const excluded =
         profile?.sexKnown && excludedForSex(type?.code, profile.sex);
       const required =
-        !profile ||
-        !(profile.positionCode || profile.projectCode || profile.citizenship) ||
+        !profile?.positionCode ||
         (!!type &&
           type.catalogSyncedAt !== null &&
           requiredApplicable(
@@ -1339,7 +1338,7 @@ export class DocumentReadService {
             )
           : null;
       profile.approvedDocuments = approved.get(profile.id) ?? 0;
-      profile.requiredDocuments = hasProfile
+      profile.requiredDocuments = profile.positionCode
         ? catalog.filter(
             (type) =>
               type.catalogSyncedAt !== null &&
