@@ -1842,6 +1842,10 @@ export interface CandidateReferenceDto {
   code?: string;
   /** @nullable */
   birthDate?: string | null;
+  /** @nullable */
+  latinName?: string | null;
+  matchedCyrillic?: boolean;
+  matchedLatin?: boolean;
   editable?: boolean;
   requiresProject?: boolean;
   requiresPlannedArrivalDate?: boolean;
@@ -2483,6 +2487,14 @@ export type ListCandidateProjectsParams = {
 
 export type SearchCandidatePersonsParams = {
   q?: string;
+};
+
+export type FindCandidatePersonMatchesParams = {
+  lastName: string;
+  firstName: string;
+  middleName?: string;
+  latinName?: string;
+  birthDate: string;
 };
 
 export type ListCommunicationCandidatesParams = {
@@ -10342,6 +10354,95 @@ export function useSearchCandidatePersons<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getSearchCandidatePersonsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Find possible ERP physical person matches for explicit confirmation
+ */
+export const findCandidatePersonMatches = (
+  params: FindCandidatePersonMatchesParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateReferencesDto>({
+    url: `/api/v1/candidates/references/person-matches`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getFindCandidatePersonMatchesQueryKey = (
+  params: FindCandidatePersonMatchesParams,
+) => {
+  return [
+    `/api/v1/candidates/references/person-matches`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getFindCandidatePersonMatchesQueryOptions = <
+  TData = Awaited<ReturnType<typeof findCandidatePersonMatches>>,
+  TError = ApiErrorDto,
+>(
+  params: FindCandidatePersonMatchesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof findCandidatePersonMatches>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getFindCandidatePersonMatchesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof findCandidatePersonMatches>>
+  > = ({ signal }) => findCandidatePersonMatches(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof findCandidatePersonMatches>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type FindCandidatePersonMatchesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof findCandidatePersonMatches>>
+>;
+export type FindCandidatePersonMatchesQueryError = ApiErrorDto;
+
+/**
+ * @summary Find possible ERP physical person matches for explicit confirmation
+ */
+
+export function useFindCandidatePersonMatches<
+  TData = Awaited<ReturnType<typeof findCandidatePersonMatches>>,
+  TError = ApiErrorDto,
+>(
+  params: FindCandidatePersonMatchesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof findCandidatePersonMatches>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getFindCandidatePersonMatchesQueryOptions(
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

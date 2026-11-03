@@ -107,6 +107,20 @@ export const referencesSchema = z.object({
     }),
   ),
 });
+export const personMatchesSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: uuid,
+        name: z.string().max(512),
+        birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        latinName: z.string().max(512).nullable(),
+        matchedCyrillic: z.boolean(),
+        matchedLatin: z.boolean(),
+      }),
+    )
+    .max(100),
+});
 
 /** Shared narrow ERP business bridge. No automatic retries of mutations. */
 @Injectable()

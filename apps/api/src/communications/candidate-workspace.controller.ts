@@ -23,10 +23,14 @@ import { CurrentPrincipal } from "../auth/current-principal.decorator";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { RequireAccessRule } from "../auth/require-access-rule.decorator";
 import { EdoAccessRule } from "../auth/edo-access-rule";
-import { CatalogDocumentTypesDto, ApiErrorDto } from "../documents/dto/document.dto";
+import {
+  CatalogDocumentTypesDto,
+  ApiErrorDto,
+} from "../documents/dto/document.dto";
 import { CandidateWorkspaceService } from "./candidate-workspace.service";
 import {
   CandidatePersonLinkDto,
+  CandidatePersonMatchQueryDto,
   CandidatePreviousDocumentsDto,
   CandidateRecheckRequestDto,
   CandidateReferenceQueryDto,
@@ -114,6 +118,23 @@ export class CandidateWorkspaceController {
   ) {
     return this.workspace.references("persons", p, q.q);
   }
+  @Get("references/person-matches")
+  @RequireAccessRule(
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
+  @ApiOperation({
+    operationId: "findCandidatePersonMatches",
+    summary:
+      "Find possible ERP physical person matches for explicit confirmation",
+  })
+  @ApiResponse({ status: 200, type: CandidateReferencesDto })
+  matches(
+    @CurrentPrincipal() p: AuthPrincipal,
+    @Query() q: CandidatePersonMatchQueryDto,
+  ) {
+    return this.workspace.personMatches(p, q);
+  }
   @Post()
   @ApiOperation({
     operationId: "createCandidate",
@@ -137,9 +158,16 @@ export class CandidateWorkspaceController {
     return this.workspace.card(id, p);
   }
   @Get(":candidateId/requirements")
-  @ApiOperation({ operationId: "getCandidateRequirements", summary: "Applicable ERP document requirements for the confirmed current candidate profile" })
+  @ApiOperation({
+    operationId: "getCandidateRequirements",
+    summary:
+      "Applicable ERP document requirements for the confirmed current candidate profile",
+  })
   @ApiResponse({ status: 200, type: CatalogDocumentTypesDto })
-  requirements(@Param("candidateId") id: string, @CurrentPrincipal() p: AuthPrincipal) {
+  requirements(
+    @Param("candidateId") id: string,
+    @CurrentPrincipal() p: AuthPrincipal,
+  ) {
     return this.workspace.requirements(id, p);
   }
   @Patch(":candidateId/workspace")

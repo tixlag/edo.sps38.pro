@@ -98,12 +98,35 @@ export class CandidatePersonLinkDto {
 export class CandidateReferenceQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(256) q?: string;
 }
+export class CandidatePersonMatchQueryDto {
+  @ApiProperty() @IsString() @Length(1, 100) lastName!: string;
+  @ApiProperty() @IsString() @Length(1, 100) firstName!: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  middleName?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  latinName?: string;
+  @ApiProperty({ format: "date" })
+  @IsISO8601({ strict: true })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  birthDate!: string;
+}
 export class CandidateReferenceDto {
   @ApiProperty() id!: string;
   @ApiProperty() name!: string;
   @ApiPropertyOptional() code?: string;
   @ApiPropertyOptional({ type: String, nullable: true, format: "date" })
   birthDate?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) latinName?:
+    | string
+    | null;
+  @ApiPropertyOptional() matchedCyrillic?: boolean;
+  @ApiPropertyOptional() matchedLatin?: boolean;
   @ApiPropertyOptional() editable?: boolean;
   @ApiPropertyOptional() requiresProject?: boolean;
   @ApiPropertyOptional() requiresPlannedArrivalDate?: boolean;

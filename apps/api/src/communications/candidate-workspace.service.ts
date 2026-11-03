@@ -1,6 +1,9 @@
 import { DocumentCatalogService } from "../documents/document-catalog.service";
 import { CandidateDocumentError } from "../documents/candidate-document.error";
-import { CandidateDocumentErrorCode, CandidateProfileField } from "../documents/dto/candidate-error.dto";
+import {
+  CandidateDocumentErrorCode,
+  CandidateProfileField,
+} from "../documents/dto/candidate-error.dto";
 import {
   BadRequestException,
   ConflictException,
@@ -20,16 +23,18 @@ import {
   candidateIdentityTransaction,
   resolveCandidateIdentity,
 } from "../documents/candidate-identity";
-import { requireReviewGroup } from "../documents/review-group";
+import { canReviewGroup, requireReviewGroup } from "../documents/review-group";
 import {
   ErpWorkspaceClient,
   erpCardSchema,
   previousDocumentsSchema,
   referencesSchema,
+  personMatchesSchema,
   type ErpCard,
 } from "../documents/erp-workspace.client";
 import {
   CandidatePersonLinkDto,
+  CandidatePersonMatchQueryDto,
   CandidateRecheckRequestDto,
   CandidateStatusRequestDto,
   CreateCandidateDto,
@@ -126,6 +131,33 @@ export class CandidateWorkspaceService {
         }
       : result;
   }
+  async personMatches(p: AuthPrincipal, query: CandidatePersonMatchQueryDto) {
+    if (!canReviewGroup(p, "RU") && !canReviewGroup(p, "IG"))
+      throw new ForbiddenException(
+        "Missing required EDO review group access rule",
+      );
+    const result = await this.erp.request(
+      "person-matches",
+      personMatchesSchema,
+      {
+        lastName: query.lastName.trim(),
+        firstName: query.firstName.trim(),
+        birthDate: query.birthDate,
+        ...(query.middleName?.trim()
+          ? { middleName: query.middleName.trim() }
+          : {}),
+        ...(query.latinName?.trim()
+          ? { latinName: query.latinName.trim() }
+          : {}),
+      },
+    );
+    return {
+      items: result.items.map((row) => ({
+        ...row,
+        id: this.selection(row.id, p),
+      })),
+    };
+  }
   private async project(card: ErpCard, p: AuthPrincipal, expectedId?: string) {
     return candidateIdentityTransaction(this.prisma, async (tx) => {
       const owner = await resolveCandidateIdentity(tx, {
@@ -208,7 +240,10 @@ export class CandidateWorkspaceService {
     if (card.erpUid !== owner.erpUid)
       throw new ConflictException("ERP_CANDIDATE_IDENTITY_CHANGED");
     if (!card.position?.code)
-      throw new CandidateDocumentError(CandidateDocumentErrorCode.CANDIDATE_PROFILE_INCOMPLETE, [CandidateProfileField.POSITION_CODE]);
+      throw new CandidateDocumentError(
+        CandidateDocumentErrorCode.CANDIDATE_PROFILE_INCOMPLETE,
+        [CandidateProfileField.POSITION_CODE],
+      );
     return this.catalog.list(card.position.code, card.citizenship);
   }
   async create(p: AuthPrincipal, body: CreateCandidateDto) {

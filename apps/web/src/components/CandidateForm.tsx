@@ -5,8 +5,8 @@ import {
   getListCatalogManagersQueryKey,
   useListCandidatePositions,
   useListCandidateProjects,
-  useSearchCandidatePersons,
-  getSearchCandidatePersonsQueryKey,
+  useFindCandidatePersonMatches,
+  getFindCandidatePersonMatchesQueryKey,
   type CandidateFieldsDto,
   type CandidatePatchFieldsDto,
   type CandidateWorkspaceDto,
@@ -113,6 +113,9 @@ export function CandidateForm({
   const citizenshipListId = useId();
   const [personEnabled, setPersonEnabled] = useState(false);
   const [personSelection, setPersonSelection] = useState<string>();
+  const [suggestedName, setSuggestedName] = useState("");
+  const [latinName, setLatinName] = useState("");
+  const [latinMatchQuery, setLatinMatchQuery] = useState("");
   const [matchQuery, setMatchQuery] = useState("");
   const [managerQuery, setManagerQuery] = useState("");
   const [managerFallback, setManagerFallback] = useState(false);
@@ -141,34 +144,41 @@ export function CandidateForm({
   const projects = useListCandidateProjects({ q: projectQuery || undefined });
   const matchName = fields.fullName.trim().replace(/\s+/g, " ");
   useEffect(() => {
-    const timer = window.setTimeout(() => setMatchQuery(matchName), 500);
+    const timer = window.setTimeout(() => {
+      setMatchQuery(matchName);
+      setLatinMatchQuery(latinName.trim().replace(/\s+/g, " "));
+    }, 500);
     return () => window.clearTimeout(timer);
-  }, [matchName]);
+  }, [matchName, latinName]);
+  const nameParts = matchQuery.split(" ");
   const canCheckPerson =
     !profile &&
     matchQuery === matchName &&
-    matchQuery.length >= 3 &&
-    matchQuery.length <= 100 &&
+    latinMatchQuery === latinName.trim().replace(/\s+/g, " ") &&
+    latinMatchQuery.length <= 100 &&
+    nameParts.length >= 2 &&
+    nameParts.every((part) => part.length > 0 && part.length <= 100) &&
+    nameParts.slice(2).join(" ").length <= 100 &&
     /^\d{4}-\d{2}-\d{2}$/.test(fields.birthDate);
-  const possiblePersons = useSearchCandidatePersons(
-    { q: matchQuery || undefined },
-    {
-      query: {
-        queryKey: getSearchCandidatePersonsQueryKey({
-          q: matchQuery || undefined,
-        }),
-        enabled: canCheckPerson,
-        refetchOnWindowFocus: false,
-      },
+  const matchParams = {
+    lastName: nameParts[0] ?? "",
+    firstName: nameParts[1] ?? "",
+    middleName: nameParts.slice(2).join(" ") || undefined,
+    latinName:
+      fields.citizenship.toLowerCase() === "ru"
+        ? undefined
+        : latinMatchQuery || undefined,
+    birthDate: fields.birthDate,
+  };
+  const possiblePersons = useFindCandidatePersonMatches(matchParams, {
+    query: {
+      queryKey: getFindCandidatePersonMatchesQueryKey(matchParams),
+      enabled: canCheckPerson,
+      refetchOnWindowFocus: false,
     },
-  );
+  });
   const matchingPersons = canCheckPerson
-    ? (possiblePersons.data?.items ?? []).filter(
-        (person) =>
-          person.name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ru") ===
-            matchName.toLocaleLowerCase("ru") &&
-          person.birthDate?.slice(0, 10) === fields.birthDate,
-      )
+    ? (possiblePersons.data?.items ?? [])
     : [];
   const set = (key: keyof CandidateFieldsDto, value: string | null) =>
     setFields((previous) => ({ ...previous, [key]: value }));
@@ -356,6 +366,18 @@ export function CandidateForm({
           className="space-y-3 border-t border-[var(--border)] pt-4"
           aria-label="Существующее физлицо"
         >
+          {fields.citizenship.toLowerCase() !== "ru" && (
+            <label className="block space-y-1 text-sm">
+              Фамилия и имя латиницей для поиска · необязательно
+              <input
+                className={CANDIDATE_CONTROL}
+                maxLength={100}
+                value={latinName}
+                disabled={pending || locked}
+                onChange={(event) => setLatinName(event.target.value)}
+              />
+            </label>
+          )}
           {canCheckPerson && possiblePersons.isError && (
             <p role="status" className="text-sm text-[var(--danger)]">
               Не удалось проверить физлиц в ERP. Можно повторить проверку или
@@ -370,10 +392,31 @@ export function CandidateForm({
             </p>
           )}
           {matchingPersons.length > 0 && (
-            <p role="status" className="text-sm">
-              В ERP найдено возможное совпадение по ФИО и дате рождения.
-              Проверьте физлицо и подтвердите связь с текущим оформлением.
-            </p>
+            <div role="status" className="space-y-2 text-sm">
+              <p>
+                В ERP найдены возможные совпадения по ФИО и дате рождения.
+                Проверьте физлицо и подтвердите связь с текущим оформлением.
+              </p>
+              <ul className="space-y-1">
+                {matchingPersons.map((person) => (
+                  <li key={person.id}>
+                    <button
+                      type="button"
+                      className="text-left underline"
+                      disabled={pending || locked}
+                      onClick={() => {
+                        setSuggestedName(person.name);
+                        setPersonSelection(undefined);
+                        setPersonEnabled(true);
+                      }}
+                    >
+                      {person.name}{" "}
+                      {person.latinName ? `· ${person.latinName}` : ""}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           <label className="flex items-start gap-2 text-sm">
             <input
@@ -397,9 +440,10 @@ export function CandidateForm({
                 выполняется в ERP.
               </p>
               <CandidatePersonPicker
+                key={suggestedName}
                 disabled={pending || locked}
                 onChange={setPersonSelection}
-                initialQuery={matchName}
+                initialQuery={suggestedName || matchName}
               />
             </>
           )}

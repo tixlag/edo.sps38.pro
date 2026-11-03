@@ -40,6 +40,7 @@ const state = vi.hoisted(() => ({
   invalidate: vi.fn(),
   setData: vi.fn(),
   persons: vi.fn(),
+  matches: vi.fn(),
   previous: [] as unknown[],
   workspaceError: null as unknown,
   managersUnavailable: false,
@@ -115,6 +116,25 @@ vi.mock("@edo/api-client", () => {
       ]);
     },
     getSearchCandidatePersonsQueryKey: (params: unknown) => ["persons", params],
+    useFindCandidatePersonMatches: (params: { birthDate: string }) => {
+      state.matches(params);
+      return result(
+        params.birthDate === "1990-02-03"
+          ? [
+              {
+                id: "signed-opaque-person",
+                name: "Иванов Иван",
+                birthDate: "1990-02-03",
+                matchedCyrillic: true,
+              },
+            ]
+          : [],
+      );
+    },
+    getFindCandidatePersonMatchesQueryKey: (params: unknown) => [
+      "person-matches",
+      params,
+    ],
     useListCommunicationCandidates: () => result([]),
     useListCandidatePreviousDocuments: () => result(state.previous),
     useGetCandidateRequirements: () =>
@@ -221,6 +241,31 @@ afterEach(async () => {
 });
 
 describe("candidate manager flows", () => {
+  it("sends the optional Latin name with the date and candidate name", async () => {
+    vi.useFakeTimers();
+    await render(<CandidatesPage />);
+    await click("Создать кандидата");
+    const inputs = view.querySelectorAll<HTMLInputElement>(
+      "fieldset > label > input",
+    );
+    type(inputs[0], "Иванов Иван");
+    type(inputs[2], "1990-02-03");
+    type(inputs[3], "uz");
+    const latin = [...view.querySelectorAll("label")]
+      .find((label) => label.textContent?.includes("Фамилия и имя латиницей"))
+      ?.querySelector("input");
+    expect(latin).toBeTruthy();
+    type(latin!, "IVANOV IVAN");
+    await act(async () => vi.advanceTimersByTime(500));
+    expect(state.matches).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        lastName: "Иванов",
+        firstName: "Иван",
+        birthDate: "1990-02-03",
+        latinName: "IVANOV IVAN",
+      }),
+    );
+  });
   it("offers a possible ERP match only when name and date of birth agree", async () => {
     vi.useFakeTimers();
     await render(<CandidatesPage />);
@@ -231,11 +276,11 @@ describe("candidate manager flows", () => {
     type(inputs[0], "Иванов Иван");
     type(inputs[2], "1990-02-03");
     await act(async () => vi.advanceTimersByTime(500));
-    expect(view.textContent).toContain("В ERP найдено возможное совпадение");
+    expect(view.textContent).toContain("В ERP найдены возможные совпадения");
     expect(state.create).not.toHaveBeenCalled();
     type(inputs[2], "1991-02-03");
     expect(view.textContent).not.toContain(
-      "В ERP найдено возможное совпадение",
+      "В ERP найдены возможные совпадения",
     );
   });
   it("uses known ERP manager IDs when the ERP manager directory is unavailable", async () => {
