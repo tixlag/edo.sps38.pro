@@ -14,19 +14,23 @@ const state = vi.hoisted(() => ({
   documentVersion: null as unknown,
   queueItems: [] as unknown[],
   drawer: vi.fn(),
+  workspace: vi.fn(),
+  params: { documentId: "document-1" },
+  documentList: [] as unknown[],
 }));
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
   useNavigate: () => state.navigate,
   useSearch: () => state.search,
-  useParams: () => ({ documentId: "document-1" }),
+  useParams: () => state.params,
 }));
 vi.mock("@edo/api-client", () => {
   const list = { data: { items: [] }, isLoading: false, isError: false };
   return {
     useGetMe: () => ({ data: { permissions: state.permissions } }),
     useGetDocumentInfo: () => ({ data: state.documentInfo }),
+    useGetCandidateDetails: () => ({ data: { documents: state.documentList } }),
     useListCandidateReviewQueue: (...args: unknown[]) => {
       state.queue(...args);
       return { ...list, data: { items: state.queueItems } };
@@ -58,7 +62,10 @@ vi.mock("../components/CandidateDrawer", () => ({
   },
 }));
 vi.mock("../components/DocumentReviewWorkspace", () => ({
-  DocumentReviewWorkspace: () => null,
+  DocumentReviewWorkspace: (props: unknown) => {
+    state.workspace(props);
+    return null;
+  },
 }));
 vi.mock("../lib/use-live-document-version", () => ({
   useLiveDocumentVersion: () => ({ data: state.documentVersion }),
@@ -84,6 +91,8 @@ afterEach(async () => {
   state.documentInfo = null;
   state.documentVersion = null;
   state.queueItems = [];
+  state.documentList = [];
+  state.params = { documentId: "document-1" };
 });
 
 describe("RU and IG review pages", () => {
@@ -336,3 +345,141 @@ async function renderDocument() {
   await act(async () => root!.render(<ReviewDocumentPage reviewGroup="IG" />));
   return container;
 }
+
+describe("review document navigation", () => {
+  function seedDocument() {
+    state.documentInfo = {
+      id: "document-1",
+      candidateId: "candidate-1",
+      title: "Паспорт",
+      currentVersion: 1,
+      status: "IN_REVIEW",
+      pendingDeliveryVersions: [],
+      candidate: { fullName: "Иван Иванов", reviewGroup: "IG" },
+    };
+    state.documentVersion = {
+      documentId: "document-1",
+      version: 1,
+      status: "IN_REVIEW",
+    };
+    state.documentList = [
+      {
+        id: "document-1",
+        title: "Паспорт",
+        currentVersion: 1,
+        status: "IN_REVIEW",
+      },
+      {
+        id: "document-2",
+        title: "Анкета",
+        currentVersion: 3,
+        status: "IN_REVIEW",
+      },
+    ];
+    state.search = {
+      version: 1,
+      status: "IN_REVIEW",
+      candidate: "candidate-1",
+      candidateStage: "2",
+      projectCode: "P1",
+    };
+  }
+  function nextButton(view: HTMLElement) {
+    return [...view.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Следующий на проверке"),
+    )!;
+  }
+
+  it.each(["IG", "RU"])(
+    "opens the current version on the %s route and preserves queue context",
+    async (group) => {
+      seedDocument();
+      (
+        state.documentInfo as { candidate: { reviewGroup: string } }
+      ).candidate.reviewGroup = group;
+      const view = await renderDocument();
+      await act(async () => nextButton(view).click());
+      const navigation = state.navigate.mock.calls.at(-1)![0];
+      expect(navigation.to).toBe(
+        group === "IG" ? "/review-ig/$documentId" : "/review/$documentId",
+      );
+      expect(navigation.params).toEqual({ documentId: "document-2" });
+      expect(navigation.search(state.search)).toEqual({
+        ...state.search,
+        version: 3,
+      });
+    },
+  );
+
+  it("protects dirty drafts and pending operations, then allows switching after cancel or save", async () => {
+    seedDocument();
+    const view = await renderDocument();
+    const report =
+      state.workspace.mock.calls.at(-1)![0].onNavigationStateChange;
+    await act(async () => report({ hasUnsavedChanges: true, busy: false }));
+    await act(async () => nextButton(view).click());
+    expect(state.navigate).not.toHaveBeenCalled();
+    expect(view.textContent).toContain("Сохраните или отмените правки");
+    await act(async () => report({ hasUnsavedChanges: false, busy: true }));
+    expect(nextButton(view).disabled).toBe(true);
+    await act(async () => report({ hasUnsavedChanges: false, busy: false }));
+    await act(async () => nextButton(view).click());
+    expect(state.navigate).toHaveBeenCalledOnce();
+  });
+
+  it("restores the active document when route params change, keeping the list expanded", async () => {
+    seedDocument();
+    const view = await renderDocument();
+    await act(async () =>
+      view.querySelector<HTMLButtonElement>("[aria-expanded]")!.click(),
+    );
+    state.params = { documentId: "document-2" };
+    const previousInfo = state.documentInfo as object;
+    state.documentInfo = null;
+    state.documentVersion = null;
+    state.search = { ...state.search, version: 3 };
+    await act(async () =>
+      root!.render(<ReviewDocumentPage reviewGroup="IG" />),
+    );
+    expect(view.querySelector("[aria-expanded]")).toBeNull();
+    state.documentInfo = {
+      ...previousInfo,
+      id: "document-2",
+      title: "Анкета",
+      currentVersion: 3,
+    };
+    state.documentVersion = {
+      documentId: "document-2",
+      version: 3,
+      status: "IN_REVIEW",
+    };
+    state.search = { ...state.search, version: 3 };
+    await act(async () =>
+      root!.render(<ReviewDocumentPage reviewGroup="IG" />),
+    );
+    expect(
+      view.querySelector("[aria-expanded]")?.getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(view.querySelector('[aria-current="page"]')?.textContent).toContain(
+      "Анкета",
+    );
+    state.params = { documentId: "document-1" };
+    state.search = { ...state.search, version: 1 };
+    await act(async () =>
+      root!.render(<ReviewDocumentPage reviewGroup="IG" />),
+    );
+    expect(view.querySelector('[aria-current="page"]')?.textContent).toContain(
+      "Паспорт",
+    );
+  });
+
+  it("does not render candidate navigation without an API candidate id or in history", async () => {
+    seedDocument();
+    (state.documentInfo as { candidateId: string | null }).candidateId = null;
+    const view = await renderDocument();
+    expect(view.textContent).not.toContain("Документы сотрудника");
+    seedDocument();
+    await act(async () => root!.render(<ReviewDocumentPage readOnly />));
+    expect(view.textContent).not.toContain("Документы сотрудника");
+  });
+});

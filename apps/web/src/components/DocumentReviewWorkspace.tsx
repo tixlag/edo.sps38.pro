@@ -41,6 +41,11 @@ import {
   DocumentReviewMetadata,
 } from "./DocumentOcrDetails";
 
+export interface DocumentReviewNavigationState {
+  hasUnsavedChanges: boolean;
+  busy: boolean;
+}
+
 export function DocumentReviewWorkspace({
   data,
   employeeId,
@@ -49,6 +54,7 @@ export function DocumentReviewWorkspace({
   allowAnnotation = !readOnly,
   allowAnnotationClaim = !readOnly,
   fitContainer = false,
+  onNavigationStateChange,
 }: {
   data: DocumentVersionDto;
   employeeId?: string;
@@ -57,6 +63,7 @@ export function DocumentReviewWorkspace({
   allowAnnotation?: boolean;
   allowAnnotationClaim?: boolean;
   fitContainer?: boolean;
+  onNavigationStateChange?: (state: DocumentReviewNavigationState) => void;
 }) {
   const [annotationMode, setAnnotationMode] = useState(false);
   const [annotationVisited, setAnnotationVisited] = useState(false);
@@ -320,6 +327,10 @@ export function DocumentReviewWorkspace({
     send.isPending ||
     retryOcr.isPending ||
     startOcr.isPending;
+  const hasUnsavedChanges = hasManualChanges || invalidDateDraft;
+  useEffect(() => {
+    onNavigationStateChange?.({ hasUnsavedChanges, busy });
+  }, [onNavigationStateChange, hasUnsavedChanges, busy]);
   const setField = (name: string, value: string) => {
     const values = draft?.values ?? currentValues;
     setDraft({
@@ -432,12 +443,13 @@ export function DocumentReviewWorkspace({
     else if (
       draft &&
       !changedCount &&
+      !invalidDateDraft &&
       ((draft.revision !== data.revision &&
         !Object.keys(draft.touched).length) ||
         !canEdit)
     )
       setDraft(null);
-  }, [draft, changedCount, data.revision, canEdit, reviewSnapshot]);
+  }, [draft, changedCount, invalidDateDraft, data.revision, canEdit, reviewSnapshot]);
   const beginDraft = () => {
     if (!draft) {
       setDraft({
@@ -1153,6 +1165,7 @@ export function DocumentReviewWorkspace({
                     disabled={busy}
                     onClick={() => {
                       setDraft(null);
+                      setDateInputDrafts({});
                       setMessage("");
                     }}
                   >
