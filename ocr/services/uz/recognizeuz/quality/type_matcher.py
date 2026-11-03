@@ -18,6 +18,10 @@ def normalize(text: str) -> str:
     return ' '.join(re.sub(r'[^\w]+', ' ', text).split())
 
 
+def canonical_code(code: str) -> str:
+    return {'MILITARY': 'MILITARY_ID'}.get(code, code)
+
+
 class DocumentTypeMatcher:
     def __init__(self, rules_path: Path | None = None):
         path = rules_path or ROOT / 'contracts/document-type-rules.json'
@@ -31,7 +35,7 @@ class DocumentTypeMatcher:
     def evaluate_text(self, text: str, expected_code: str) -> dict:
         result = {'verdict': 'UNCERTAIN', 'detected_code': None,
                   'rejection_reason': None, 'matched_phrases': []}
-        expected_code = {'MILITARY': 'MILITARY_ID'}.get(expected_code, expected_code)
+        expected_code = canonical_code(expected_code)
         if expected_code not in self.rules:
             return result
         normalized = ' ' + normalize(text) + ' '
@@ -52,7 +56,4 @@ class DocumentTypeMatcher:
             # A type name can occur in another document. Treat it as a hint
             # until this rule is validated against representative documents.
             result['verdict'] = 'UNCERTAIN'
-            result['rejection_reason'] = (
-                f'Загружен документ «{self.rules[code]["title"]}» вместо '
-                f'ожидаемого «{self.rules[expected_code]["title"]}»')
         return result

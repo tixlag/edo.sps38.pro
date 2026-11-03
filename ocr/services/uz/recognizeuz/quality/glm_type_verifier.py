@@ -7,7 +7,7 @@ import math
 import urllib.error
 import urllib.request
 
-from recognizeuz.quality.type_matcher import DocumentTypeMatcher
+from recognizeuz.quality.type_matcher import DocumentTypeMatcher, canonical_code
 
 
 class GlmTypeVerifier:
@@ -21,6 +21,7 @@ class GlmTypeVerifier:
     def verify_image(self, image_bytes: bytes, expected_code: str,
                      mime_type: str = 'image/png') -> dict:
         uncertain = {'verdict': 'UNCERTAIN', 'detected_code': None, 'source': 'GLM'}
+        expected_code = canonical_code(expected_code)
         if expected_code not in self.matcher.rules or mime_type not in {'image/png', 'image/jpeg'}:
             return uncertain
         choices = [{'code': code, 'title': rule['title']}

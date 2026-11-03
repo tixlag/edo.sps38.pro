@@ -1,9 +1,12 @@
 """Aggregate page decisions only after validating complete page coverage."""
 from __future__ import annotations
 
+from recognizeuz.quality.type_matcher import canonical_code
+
 
 def aggregate_type_pages(pages: list[dict], expected_code: str,
                          expected_pages: set[tuple[int, int]]) -> dict:
+    expected_code = canonical_code(expected_code)
     uncertain = {'verdict': 'UNCERTAIN', 'detected_code': None}
     keys = [(page.get('file_index'), page.get('page_number')) for page in pages]
     if not expected_pages or len(keys) != len(set(keys)) or set(keys) != expected_pages:
