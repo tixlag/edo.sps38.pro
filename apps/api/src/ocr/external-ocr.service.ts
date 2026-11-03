@@ -5,6 +5,7 @@ import {
   checkDocumentPresence,
   documentCheckEnabled,
   nonDocumentResult,
+  typeMismatchResult,
   type DocumentCheckResult,
 } from "./document-check";
 import { readOcrBody as readBody } from "./ocr-http";
@@ -306,6 +307,31 @@ export class ExternalOcrService extends OcrService {
       : { status: "DISABLED" };
     const rejected = nonDocumentResult(documentCheck, request.files);
     if (rejected) return rejected;
+    const mismatch =
+      this.config.get("OCR_DOCUMENT_TYPE_AUTO_RETURN_ENABLED") === "true"
+        ? typeMismatchResult(documentCheck)
+        : null;
+    if (mismatch) return mismatch;
+    if (
+      documentCheck.status === "COMPLETED" &&
+      documentCheck.result.policy_version === "document-check-v2" &&
+      documentCheck.result.type_verdict !== "MATCH"
+    )
+      return {
+        outcome: "SUCCEEDED",
+        source: "EXTERNAL",
+        fields: {},
+        issues: [
+          {
+            code: "DOCUMENT_TYPE_MISMATCH",
+            message:
+              "Не удалось уверенно определить тип документа. Проверьте его вручную.",
+            fileOrdinal: null,
+            pageNumber: null,
+          },
+        ],
+        raw: { documentCheck, recognition: "TYPE_UNCERTAIN" },
+      };
     if (!profile)
       return {
         outcome: "SUCCEEDED",

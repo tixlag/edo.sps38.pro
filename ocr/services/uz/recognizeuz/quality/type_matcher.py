@@ -80,10 +80,15 @@ class DocumentTypeMatcher:
             return result
         code, phrases = next(iter(hits.items()))
         result.update(detected_code=code, matched_phrases=phrases)
-        if code == expected_code:
-            result['verdict'] = 'MATCH'
-        else:
-            # A type name can occur in another document. Treat it as a hint
-            # until this rule is validated against representative documents.
-            result['verdict'] = 'UNCERTAIN'
+        # Overlapping phrases count once; require two independent markers.
+        normalized_phrases = sorted({normalize(p) for p in phrases}, key=len, reverse=True)
+        independent = []
+        for phrase in normalized_phrases:
+            if not any(' ' + phrase + ' ' in ' ' + other + ' ' for other in independent):
+                independent.append(phrase)
+        corroborated = any(' ' + normalize(p) + ' ' in normalized
+                           for p in self.rules[code].get('supporting_markers', [])
+                           if normalize(p) and not any(normalize(p) in anchor for anchor in independent))
+        if len(independent) >= 2 or corroborated:
+            result['verdict'] = 'MATCH' if code == expected_code else 'MISMATCH'
         return result

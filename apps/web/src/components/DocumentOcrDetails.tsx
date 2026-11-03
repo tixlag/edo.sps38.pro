@@ -76,6 +76,22 @@ export function DocumentReviewMetadata({ data }: { data: DocumentVersionDto }) {
           "решение ещё не принято"
         )}
       </p>
+      {data.status === "IN_REVIEW" &&
+        data.issues.some((issue) =>
+          ["DOCUMENT_TYPE_MISMATCH", "POOR_IMAGE_QUALITY"].includes(issue.code),
+        ) && (
+          <p role="status" className="font-medium text-[var(--foreground)]">
+            Внимание:{" "}
+            {
+              data.issues.find((issue) =>
+                ["DOCUMENT_TYPE_MISMATCH", "POOR_IMAGE_QUALITY"].includes(
+                  issue.code,
+                ),
+              )?.message
+            }{" "}
+            Проверьте документ вручную.
+          </p>
+        )}
       {pending && (
         <p role="status">
           {data.status === "OCR_PENDING"

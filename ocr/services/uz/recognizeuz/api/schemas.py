@@ -20,6 +20,7 @@ class DocumentCheckResponse(BaseModel):
     elapsed_ms: float
     expected_code: str | None = None
     expected_title: str | None = None
+    expected_canonical_code: str | None = None
     detected_code: str | None = None
     detected_title: str | None = None
     type_verdict: Literal['MATCH', 'MISMATCH', 'UNCERTAIN'] | None = None

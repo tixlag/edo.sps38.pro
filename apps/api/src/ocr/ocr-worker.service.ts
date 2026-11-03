@@ -304,7 +304,8 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
       }
       const candidateReturn =
         result.outcome === "REJECTED" &&
-        result.rejectionKind === "NON_DOCUMENT";
+        (result.rejectionKind === "NON_DOCUMENT" ||
+          result.rejectionKind === "DOCUMENT_TYPE_MISMATCH");
       const previous = candidateReturn
         ? await tx.documentVersion.findMany({
             where: {
@@ -317,13 +318,9 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
             select: { status: true, reviewedBy: true },
           })
         : [];
-      const passToReview =
-        previous.length === 2 &&
-        previous.every(
-          (version) =>
-            version.status === "RETURNED" &&
-            version.reviewedBy === "ocr-document-check",
-        );
+      // The third submitted version goes to review regardless of who returned
+      // previous versions or why; unfinished uploads have no submittedAt.
+      const passToReview = previous.length === 2;
       const returned = candidateReturn && !passToReview;
       const changed = await tx.ocrJob.updateMany({
         where: {
@@ -343,13 +340,15 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
       if (!changed.count) return;
       const status = returned ? "RETURNED" : "IN_REVIEW";
       const rejectionReason = returned
-        ? documentReturnReason(
-            result.issues,
-            await tx.documentVersionFile.findMany({
-              where: { versionId: initial.versionId },
-              select: { ordinal: true, mimeType: true },
-            }),
-          )
+        ? result.rejectionKind === "DOCUMENT_TYPE_MISMATCH"
+          ? result.issues[0].message
+          : documentReturnReason(
+              result.issues,
+              await tx.documentVersionFile.findMany({
+                where: { versionId: initial.versionId },
+                select: { ordinal: true, mimeType: true },
+              }),
+            )
         : null;
       await tx.documentVersion.update({
         where: { id: initial.versionId },
@@ -375,6 +374,13 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
         },
       });
       if (result.outcome === "SUCCEEDED") {
+        if (result.issues?.length)
+          await tx.ocrIssue.createMany({
+            data: result.issues.map((issue) => ({
+              versionId: initial.versionId,
+              ...issue,
+            })),
+          });
         const observationIds = (result.ocrFields ?? []).map(() => randomUUID());
         if (result.ocrFields?.length) {
           await tx.documentVersionOcrField.createMany({
@@ -460,11 +466,14 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           });
           await tx.ocrRegion.createMany({ data: regions });
         }
-      } else if (!passToReview) {
+      } else {
         await tx.ocrIssue.createMany({
           data: result.issues.map((issue) => ({
             versionId: initial.versionId,
             ...issue,
+            message: passToReview
+              ? `Третья попытка загрузки. ${issue.message}`.slice(0, 1024)
+              : issue.message,
           })),
         });
       }

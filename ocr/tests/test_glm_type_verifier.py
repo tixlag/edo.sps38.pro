@@ -23,7 +23,7 @@ class TestGlmTypeVerifier(TestCase):
         urlopen.return_value = self.response({'verdict': 'MISMATCH', 'detected_code': 'PASSPORT', 'confidence': 0.99})
         result = self.verifier.verify_image(b'image', 'INN')
         self.assertEqual(result['detected_code'], 'PASSPORT')
-        self.assertEqual(result['verdict'], 'UNCERTAIN')
+        self.assertEqual(result['verdict'], 'MISMATCH')
 
     @patch('urllib.request.urlopen')
     def test_inconsistent_unknown_and_low_confidence_fail_closed(self, urlopen):

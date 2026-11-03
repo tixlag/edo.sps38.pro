@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { OcrInputFile, OcrResult } from "./ocr.service";
 import { readOcrBody } from "./ocr-http";
+import {
+  canonicalDocumentType,
+  isKnownDocumentType,
+} from "./document-type-codes";
 
 export const NON_DOCUMENT_REASON = "Документ не надлежащего качества";
 
@@ -36,6 +40,7 @@ const checkBase = z.object({
     .max(100),
   expected_code: z.string().min(1).max(128).optional(),
   expected_title: z.string().max(512).nullable().optional(),
+  expected_canonical_code: z.string().max(128).nullable().optional(),
   detected_code: z.string().max(128).nullable().optional(),
   detected_title: z.string().max(512).nullable().optional(),
   type_verdict: z.enum(["MATCH", "MISMATCH", "UNCERTAIN"]).optional(),
@@ -177,6 +182,55 @@ export function nonDocumentResult(
       fileOrdinal: files[page.file_index].ordinal,
       pageNumber: page.page_number,
     })),
+  };
+}
+
+export function typeMismatchResult(
+  check: DocumentCheckResult,
+): OcrResult | null {
+  if (check.status !== "COMPLETED") return null;
+  const result = check.result;
+  if (
+    result.policy_version !== "document-check-v2" ||
+    result.type_verdict !== "MISMATCH" ||
+    !result.expected_title ||
+    !result.detected_title ||
+    !result.detected_code ||
+    !result.expected_canonical_code ||
+    !result.expected_code ||
+    result.expected_canonical_code !==
+      canonicalDocumentType(result.expected_code) ||
+    !isKnownDocumentType(result.expected_canonical_code) ||
+    !isKnownDocumentType(result.detected_code) ||
+    result.detected_code === result.expected_canonical_code ||
+    !result.type_pages?.length ||
+    result.type_pages.some(
+      (page) =>
+        page.verdict !== "MISMATCH" ||
+        page.detected_code !== result.detected_code ||
+        !page.source ||
+        !["GLM", "PADDLE_RULES"].includes(page.source),
+    )
+  )
+    return null;
+  const message =
+    `Загружен документ «${result.detected_title}» вместо ожидаемого «${result.expected_title}». Пожалуйста, прикрепите верный документ.`.slice(
+      0,
+      1024,
+    );
+  return {
+    outcome: "REJECTED",
+    rejectionKind: "DOCUMENT_TYPE_MISMATCH",
+    source: "EXTERNAL",
+    raw: { documentCheck: check },
+    issues: [
+      {
+        code: "DOCUMENT_TYPE_MISMATCH",
+        message,
+        fileOrdinal: null,
+        pageNumber: null,
+      },
+    ],
   };
 }
 

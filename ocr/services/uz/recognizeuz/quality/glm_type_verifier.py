@@ -56,9 +56,7 @@ class GlmTypeVerifier:
                     or not math.isfinite(confidence) or not 0.98 <= confidence <= 1
                     or (verdict == 'MATCH') != (code == expected_code)):
                 return uncertain
-            # Self-reported model confidence is not calibrated evidence for an
-            # automatic rejection. Preserve the classification as a hint.
-            return {'verdict': 'UNCERTAIN', 'detected_code': code, 'source': 'GLM'}
+            return {'verdict': verdict, 'detected_code': code, 'source': 'GLM'}
         except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError,
                 IndexError, TypeError):
             return uncertain
