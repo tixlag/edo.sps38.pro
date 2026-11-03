@@ -46,7 +46,7 @@ describe("IG employment grant events", () => {
       personUid: "00000000-0000-4000-8000-000000000001",
       citizenship: "uz",
       chatUuid: null,
-      igCompletedAt: new Date(),
+      igCompletedAt: new Date("2026-11-02T00:00:00.000Z"),
     };
     const tx = {
       igEmploymentState: {
