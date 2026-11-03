@@ -13,6 +13,7 @@ import { DocumentAccessService } from "./document-access.service";
 import { DocumentReadService } from "./document-read.service";
 import type { ApprovedArtifact } from "./approved-artifact";
 import { DocumentPdfService } from "./document-pdf.service";
+import { isForeignPassport } from "./review-group";
 import {
   formatDateForErp,
   shouldOmitPositionUid,
@@ -159,7 +160,10 @@ export class DocumentReviewService {
           await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${initial.candidateId} FOR UPDATE`;
         await tx.$queryRaw`SELECT id FROM documents WHERE id = ${documentId} FOR UPDATE`;
         const doc = await tx.document.findFirst({
-          where: { id: documentId, ...this.access.documentReviewWhere(principal) },
+          where: {
+            id: documentId,
+            ...this.access.documentReviewWhere(principal),
+          },
         });
         if (!doc) {
           // Reuse the same 404 for inaccessible documents.
@@ -192,7 +196,26 @@ export class DocumentReviewService {
         )
           throw new ConflictException("Approval lease expired");
         if (edits && version.submission) {
-          validateFields(version.fields, edits);
+          const definitions =
+            isForeignPassport(version.document) &&
+            !version.fields.some((field) => field.name === "number")
+              ? [
+                  ...version.fields,
+                  { name: "number", kind: "text", required: true, ordinal: 0 },
+                ]
+              : version.fields;
+          validateFields(definitions, edits);
+        }
+        if (
+          !edits &&
+          !rejectionReason &&
+          version.document &&
+          isForeignPassport(version.document) &&
+          !version.fields
+            .find((field) => field.name === "number")
+            ?.value?.trim()
+        ) {
+          throw new BadRequestException("Номер паспорта обязателен");
         }
         const reviewedAt = new Date();
         const changed = await tx.documentVersion.updateMany({

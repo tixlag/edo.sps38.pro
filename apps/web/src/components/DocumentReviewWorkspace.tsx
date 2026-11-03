@@ -250,7 +250,14 @@ export function DocumentReviewWorkspace({
         await update(result);
         setMessage("Документ подтверждён вами.");
       },
-      onError: failure,
+      onError: (error) => {
+        const response = error as unknown as {
+          response?: { data?: { message?: unknown } };
+        };
+        if (response.response?.data?.message === "Номер паспорта обязателен") {
+          setMessage("Введите и сохраните номер паспорта перед подтверждением.");
+        } else failure();
+      },
     },
   });
   const reject = useRejectDocument({

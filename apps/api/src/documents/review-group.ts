@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { hasAccessRule } from "../auth/access-rules";
 import { EdoAccessRule } from "../auth/edo-access-rule";
+import { PASSPORT_UID } from "../ocr/ocr-profile";
 
 export type ReviewGroup = "RU" | "IG";
 
@@ -14,6 +15,21 @@ export function candidateReviewGroup(candidate: {
     candidate.citizenship?.trim().toLowerCase() === "ru"
     ? "RU"
     : "IG";
+}
+
+export function isForeignPassport(document: {
+  candidate: { chatUuid: string | null; citizenship: string | null } | null;
+  documentType: { code: string; erpUid: string | null } | null;
+}): boolean {
+  const type = document.documentType;
+  return (
+    !!document.candidate &&
+    candidateReviewGroup(document.candidate) === "IG" &&
+    !!type &&
+    (type.erpUid
+      ? type.erpUid.toLowerCase() === PASSPORT_UID
+      : type.code === "PASSPORT")
+  );
 }
 
 export function reviewGroupWhere(

@@ -9,7 +9,7 @@ export function getReviewFieldValue(field: DocumentFieldDto): string {
 }
 
 /**
- * required is the version's snapshot of the 1C requiredFields contract.
+ * required reflects the backend's review rules for the document version.
  * Keep the complete API fields intact for lifecycle processing; use this
  * selection for the review form and its clickable OCR regions only.
  */

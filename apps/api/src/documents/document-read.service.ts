@@ -1,5 +1,6 @@
 import {
   candidateReviewGroup,
+  isForeignPassport,
   requireReviewGroup,
   reviewGroupWhere,
   type ReviewGroup,
@@ -522,6 +523,9 @@ export class DocumentReadService {
       include: versionInclude,
     });
     if (!row) throw new NotFoundException("Document version not found");
+    const foreignPassport = isForeignPassport(row.document);
+    const isRequired = (field: { name: string; required: boolean }) =>
+      foreignPassport ? field.name === "number" : field.required;
     const isRussianPassport =
       resolveOcrProfile({
         documentUid: row.document.documentType?.erpUid,
@@ -569,7 +573,7 @@ export class DocumentReadService {
         .filter((observation) =>
           row.fields.some(
             (field) =>
-              field.required && field.name === observation.documentFieldName,
+              isRequired(field) && field.name === observation.documentFieldName,
           ),
         )
         .map(
@@ -599,45 +603,71 @@ export class DocumentReadService {
         pageCount: f.pageCount,
         deleted: f.deletedAt !== null,
       })),
-      fields: row.fields.map((f) => {
-        const rawOcrText = f.ocrText ?? f.originalValue;
-        const isRussianSeries = isRussianPassport && f.name === "series";
-        return {
-          name: f.name,
-          originalValue: f.required
-            ? isRussianSeries
-              ? normalizeRussianPassportSeries(f.originalValue)
-              : f.originalValue
-            : null,
-          ocrText: f.required
-            ? isRussianSeries
-              ? normalizeRussianPassportSeries(rawOcrText)
-              : rawOcrText
-            : null,
-          value: f.value,
-          editedBy: f.editedBy,
-          submittedValue: f.submittedValue,
-          label: FIELD_LABELS[f.name] ?? f.name,
-          kind: f.kind,
-          required: f.required,
-          mismatch:
-            !!f.submittedValue?.trim() &&
-            f.required &&
-            !!rawOcrText?.trim() &&
-            !ocrValuesMatch(f.submittedValue, rawOcrText, f, isRussianPassport),
-          regions: (f.required ? f.regions : []).map((region) => ({
-            id: region.id,
-            fileId: region.fileId,
-            fileOrdinal: region.file.ordinal,
-            pageNumber: region.pageNumber,
-            x: region.x,
-            y: region.y,
-            width: region.width,
-            height: region.height,
-            text: region.text,
-          })),
-        };
-      }),
+      fields: [
+        ...row.fields.map((f) => {
+          const rawOcrText = f.ocrText ?? f.originalValue;
+          const isRussianSeries = isRussianPassport && f.name === "series";
+          const required = isRequired(f);
+          return {
+            name: f.name,
+            originalValue: required
+              ? isRussianSeries
+                ? normalizeRussianPassportSeries(f.originalValue)
+                : f.originalValue
+              : null,
+            ocrText: required
+              ? isRussianSeries
+                ? normalizeRussianPassportSeries(rawOcrText)
+                : rawOcrText
+              : null,
+            value: f.value,
+            editedBy: f.editedBy,
+            submittedValue: f.submittedValue,
+            label: FIELD_LABELS[f.name] ?? f.name,
+            kind: f.kind,
+            required,
+            mismatch:
+              !!f.submittedValue?.trim() &&
+              required &&
+              !!rawOcrText?.trim() &&
+              !ocrValuesMatch(
+                f.submittedValue,
+                rawOcrText,
+                f,
+                isRussianPassport,
+              ),
+            regions: (required ? f.regions : []).map((region) => ({
+              id: region.id,
+              fileId: region.fileId,
+              fileOrdinal: region.file.ordinal,
+              pageNumber: region.pageNumber,
+              x: region.x,
+              y: region.y,
+              width: region.width,
+              height: region.height,
+              text: region.text,
+            })),
+          };
+        }),
+        ...(foreignPassport &&
+        !row.fields.some((field) => field.name === "number")
+          ? [
+              {
+                name: "number",
+                originalValue: null,
+                ocrText: null,
+                value: null,
+                editedBy: null,
+                submittedValue: null,
+                label: FIELD_LABELS.number,
+                kind: "text",
+                required: true,
+                mismatch: false,
+                regions: [],
+              },
+            ]
+          : []),
+      ],
       issues: row.issues.map((i) => ({
         code: i.code,
         message: i.message,
