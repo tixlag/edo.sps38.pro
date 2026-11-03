@@ -73,6 +73,46 @@ const fetchResponse = (result: unknown) => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("document presence before field OCR", () => {
+  it("validates v2 code and page coverage", () => {
+    const body = {
+      ...response(),
+      policy_version: "document-check-v2",
+      expected_code: "INN",
+      type_verdict: "UNCERTAIN",
+      type_pages: [
+        {
+          file_index: 0,
+          page_number: 1,
+          verdict: "UNCERTAIN",
+          detected_code: null,
+          source: null,
+        },
+        {
+          file_index: 1,
+          page_number: 1,
+          verdict: "UNCERTAIN",
+          detected_code: null,
+          source: null,
+        },
+        {
+          file_index: 1,
+          page_number: 2,
+          verdict: "UNCERTAIN",
+          detected_code: null,
+          source: null,
+        },
+      ],
+    };
+    expect(validateDocumentCheck(body, request.files, "INN").type_verdict).toBe(
+      "UNCERTAIN",
+    );
+    expect(() =>
+      validateDocumentCheck(body, request.files, "PASSPORT"),
+    ).toThrow();
+    body.type_pages[2] = body.type_pages[1];
+    expect(() => validateDocumentCheck(body, request.files, "INN")).toThrow();
+  });
+
   it("checks unsupported documents too and returns the bad PDF page with the original ordinal", async () => {
     const fetcher = fetchResponse(response());
     const result = await service().recognize(
@@ -116,23 +156,11 @@ describe("document presence before field OCR", () => {
         request,
         new AbortController().signal,
       );
-      expect(actual).toMatchObject(
-        verdict === "DOCUMENT"
-          ? {
-              outcome: "SUCCEEDED",
-              fields: {},
-              raw: { documentCheck: { status: "COMPLETED" } },
-            }
-          : {
-              outcome: "REJECTED",
-              rejectionKind: "NON_DOCUMENT",
-              issues: [
-                { fileOrdinal: 0, pageNumber: 1 },
-                { fileOrdinal: 1, pageNumber: 1 },
-                { fileOrdinal: 1, pageNumber: 2 },
-              ],
-            },
-      );
+      expect(actual).toMatchObject({
+        outcome: "SUCCEEDED",
+        fields: {},
+        raw: { documentCheck: { status: "COMPLETED" } },
+      });
     },
   );
 

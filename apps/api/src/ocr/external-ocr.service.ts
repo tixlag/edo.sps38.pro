@@ -301,6 +301,7 @@ export class ExternalOcrService extends OcrService {
           request.files,
           signal,
           Number(this.config.get("OCR_DOCUMENT_CHECK_TIMEOUT_MS") ?? 60000),
+          request.documentTypeCode || undefined,
         )
       : { status: "DISABLED" };
     const rejected = nonDocumentResult(documentCheck, request.files);

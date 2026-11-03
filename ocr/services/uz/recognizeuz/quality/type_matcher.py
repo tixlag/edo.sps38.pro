@@ -19,7 +19,10 @@ def normalize(text: str) -> str:
 
 
 def canonical_code(code: str) -> str:
-    return {'MILITARY': 'MILITARY_ID'}.get(code, code)
+    return {
+        'MILITARY': 'MILITARY_ID',
+        'ERP_39554ac3-6462-11ec-80cc-002590854e7f': 'MIGRATION_CARD',
+    }.get(code, code)
 
 
 class DocumentTypeMatcher:

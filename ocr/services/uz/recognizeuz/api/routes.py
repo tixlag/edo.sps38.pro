@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from typing import Any
+import time
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
@@ -14,9 +15,11 @@ router = APIRouter()
 
 
 @router.post('/document-check', response_model=DocumentCheckResponse,
+             response_model_exclude_unset=True,
              operation_id='checkDocumentPresence',
              responses={413: {'description': 'Upload limits exceeded'}})
-def document_check(files: list[UploadFile] = File(...)) -> dict[str, Any]:
+def document_check(files: list[UploadFile] = File(...),
+                   expected_code: str | None = Form(None, max_length=128)) -> dict[str, Any]:
     if not 1 <= len(files) <= 20:
         raise HTTPException(413, 'Upload limits exceeded')
     payload = []
@@ -27,7 +30,12 @@ def document_check(files: list[UploadFile] = File(...)) -> dict[str, Any]:
         if len(data) > 10 * 1024 * 1024 or total > 50 * 1024 * 1024:
             raise HTTPException(413, 'Upload limits exceeded')
         payload.append((file.filename or 'upload', data, file.content_type))
-    return check_files(payload)
+    deadline = time.monotonic() + 55
+    presence = check_files(payload)
+    if expected_code is None:
+        return presence
+    from recognizeuz.quality.type_check import check_types
+    return {**presence, **check_types(payload, expected_code, presence, deadline=deadline)}
 
 
 @router.get("/health")
