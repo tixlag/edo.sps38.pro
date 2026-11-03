@@ -358,6 +358,45 @@ describe("manual review enrichment", () => {
 });
 
 describe("review decision metadata", () => {
+  it("does not approve an IG passport without a number", async () => {
+    const version = {
+      id: "v1",
+      status: "IN_REVIEW",
+      revision: 2,
+      fields: [{ name: "number", value: "  " }],
+      submission: null,
+      job: null,
+      document: {
+        documentType: { code: "PASSPORT", erpUid: null },
+        candidate: { chatUuid: null, citizenship: "uz" },
+      },
+    };
+    const tx = {
+      $queryRaw: vi.fn(),
+      document: {
+        findUnique: vi.fn(async () => ({ candidateId: "owner" })),
+        findFirst: vi.fn(async () => ({ currentVersion: 1 })),
+      },
+      documentVersion: {
+        findUnique: vi.fn(async () => version),
+        updateMany: vi.fn(),
+      },
+    };
+    const service = new DocumentReviewService(
+      {
+        documentVersion: tx.documentVersion,
+        $transaction: async (run: (tx: unknown) => unknown) => run(tx),
+      } as never,
+      { document: vi.fn(), documentReviewWhere: () => ({}) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    await expect(
+      service.approve("doc", 1, 2, principal, "correlation"),
+    ).rejects.toThrow("Номер паспорта обязателен");
+    expect(tx.documentVersion.updateMany).not.toHaveBeenCalled();
+  });
   it.each([false, true])(
     "records decision and verified actor for return=%s, atomically with audit",
     async (returned) => {
