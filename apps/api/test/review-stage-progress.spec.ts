@@ -46,7 +46,7 @@ describe("review stage progress", () => {
     };
     const profile = { positionCode: "001", citizenship: "ru", sex: null };
     expect(classifyStageType(type, 1, profile)).toBe("required");
-    expect(classifyStageType(type, 2, profile)).toBe("additional");
+    expect(classifyStageType(type, 2, profile)).toBeNull();
     expect(classifyStageType(type, 3, profile)).toBeNull();
   });
   it("makes universally required documents available to candidates", () => {
@@ -135,27 +135,10 @@ describe("review stage progress", () => {
           attention: 0,
         },
         additional: {
-          approved: 1,
-          pending: 0,
-          processing: 0,
-          missing: 0,
-          attention: 0,
-        },
-      },
-      {
-        stage: null,
-        required: {
           approved: 0,
           pending: 0,
           processing: 0,
           missing: 0,
-          attention: 0,
-        },
-        additional: {
-          approved: 0,
-          pending: 0,
-          processing: 0,
-          missing: 1,
           attention: 0,
         },
       },
@@ -198,10 +181,7 @@ describe("review stage progress", () => {
         stage.required.approved,
         stage.additional.approved,
       ]),
-    ).toEqual([
-      [1, 1, 0],
-      [2, 0, 1],
-    ]);
+    ).toEqual([[1, 1, 0]]);
   });
   it("applies citizenship and position rules and keeps returned documents separate from missing", () => {
     const types = [
@@ -245,7 +225,7 @@ describe("review stage progress", () => {
       missing: 1,
       attention: 1,
     });
-    expect(result[0].additional.missing).toBe(1);
+    expect(result[0].additional.missing).toBe(0);
   });
   it("distinguishes documents being processed from documents needing attention", () => {
     const types = [

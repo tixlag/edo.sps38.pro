@@ -4068,6 +4068,14 @@
         "operationId": "getCandidateDocumentCatalog",
         "parameters": [
           {
+            "name": "project_code_1c",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "position_code_1c",
             "required": true,
             "in": "query",
@@ -11367,12 +11375,6 @@
       "AuditAction": {
         "type": "string",
         "enum": [
-          "CONTRACT_CREATED",
-          "CONTRACT_FILE_REPLACED",
-          "CONTRACT_SENT",
-          "CONTRACT_CONFIRMED",
-          "CONTRACT_DECLINED",
-          "CONTRACT_PREPARATION_FAILED",
           "EMPLOYEE_CREATED",
           "DOCUMENT_UPLOADED",
           "DOCUMENT_UPLOAD_STARTED",
@@ -11398,7 +11400,13 @@
           "ANNOTATION_SUBMITTED",
           "ANNOTATION_ACCEPTED",
           "ANNOTATION_CHANGES_REQUESTED",
-          "ANNOTATION_REASSIGNED"
+          "ANNOTATION_REASSIGNED",
+          "CONTRACT_CREATED",
+          "CONTRACT_FILE_REPLACED",
+          "CONTRACT_SENT",
+          "CONTRACT_CONFIRMED",
+          "CONTRACT_DECLINED",
+          "CONTRACT_PREPARATION_FAILED"
         ]
       },
       "AuditLogItemDto": {
@@ -12648,7 +12656,7 @@
           "requiredDocuments": {
             "type": "number",
             "nullable": true,
-            "description": "Applicable catalog document types for position, citizenship and known sex; null when positionCode is unknown"
+            "description": "Applicable required catalog document types for known position, project, citizenship and sex; null when candidate profile is unknown"
           },
           "stageProgress": {
             "nullable": true,

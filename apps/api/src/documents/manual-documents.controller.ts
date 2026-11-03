@@ -108,7 +108,12 @@ export class ManualDocumentIntegrationController {
   })
   @ApiResponse({ status: 200, type: CatalogDocumentTypesDto })
   catalogList(@Query() query: CatalogQueryDto) {
-    return this.catalog.list(query.position_code_1c, query.citizenship);
+    return this.catalog.list(
+      query.position_code_1c,
+      query.citizenship,
+      null,
+      query.project_code_1c,
+    );
   }
   @Post("documents")
   @HttpCode(202)
