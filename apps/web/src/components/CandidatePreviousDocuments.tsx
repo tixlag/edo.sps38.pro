@@ -248,6 +248,41 @@ export function CandidatePreviousDocuments({
           />
         </summary>
         <div className="space-y-3 pt-3">
+          {documents.data?.employmentHistory &&
+            (documents.data.employmentHistory.available ? (
+              <details className="text-sm">
+                <summary className="cursor-pointer font-medium">
+                  Кадровая история в ERP
+                </summary>
+                {documents.data.employmentHistory.items.length ? (
+                  <ol className="mt-2 space-y-1">
+                    {documents.data.employmentHistory.items.map(
+                      (event, index) => (
+                        <li
+                          key={`${event.eventDate}:${event.eventType}:${index}`}
+                        >
+                          {event.eventType === "HIRE" ? "Приём" : "Увольнение"}{" "}
+                          · {formatDateRu(event.startDate ?? event.eventDate)}
+                        </li>
+                      ),
+                    )}
+                  </ol>
+                ) : (
+                  <p className="mt-2">Записей о приёме или увольнении нет.</p>
+                )}
+              </details>
+            ) : (
+              <p className="text-sm">
+                Кадровая история ERP временно недоступна.{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => void documents.refetch()}
+                >
+                  Повторить
+                </button>
+              </p>
+            ))}
           <p className="text-sm text-[var(--muted-foreground)]">
             Документы ERP проверяются заново для текущего оформления. Прежние
             решения и оригиналы сохраняются.

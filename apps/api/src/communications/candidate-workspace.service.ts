@@ -370,6 +370,12 @@ export class CandidateWorkspaceService {
   async previous(id: string, p: AuthPrincipal) {
     const row = await this.previousOwner(id, p);
     const isIg = candidateReviewGroup(row) === "IG";
+    const historyPromise = isIg
+      ? this.erp
+          .employmentHistory(row.code1c!, row.personUid!)
+          .then((history) => ({ available: true, items: history.items }))
+          .catch(() => ({ available: false, items: [] }))
+      : undefined;
     const result = await this.erp.request(
       isIg ? "person-documents-by-code" : "person-documents",
       previousDocumentsSchema,
@@ -535,6 +541,7 @@ export class CandidateWorkspaceService {
         reviewedBy: doc.reviewedBy,
         reviewedAt: doc.reviewedAt?.toISOString() ?? null,
       })),
+      ...(historyPromise ? { employmentHistory: await historyPromise } : {}),
     };
   }
   async recheck(

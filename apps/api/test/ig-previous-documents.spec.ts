@@ -61,6 +61,7 @@ function setup() {
       code1C: "worker",
     })),
     request: vi.fn(async () => ({ items: [] })),
+    employmentHistory: vi.fn(async () => ({ items: [] })),
   };
   const service = new CandidateWorkspaceService(
     prisma as unknown as PrismaService,
@@ -110,7 +111,10 @@ describe("IG previous ERP documents", () => {
     const { service, row, erp, audit } = setup();
     await expect(
       service.previous(row.id, actor({ "20011": [] })),
-    ).resolves.toEqual({ items: [] });
+    ).resolves.toEqual({
+      items: [],
+      employmentHistory: { available: true, items: [] },
+    });
     expect(row.personUid).toBe(personUid);
     expect(erp.request).toHaveBeenCalledWith(
       "person-documents-by-code",
@@ -120,6 +124,21 @@ describe("IG previous ERP documents", () => {
     expect(audit.logInTransaction).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ action: "CANDIDATE_LINKED" }),
+    );
+  });
+  it("keeps documents accessible when the optional employment-history source is unavailable", async () => {
+    const { service, row, erp } = setup();
+    erp.employmentHistory.mockRejectedValueOnce(new Error("ERP unavailable"));
+    await expect(
+      service.previous(row.id, actor({ "20011": [] })),
+    ).resolves.toEqual({
+      items: [],
+      employmentHistory: { available: false, items: [] },
+    });
+    expect(erp.request).toHaveBeenCalledWith(
+      "person-documents-by-code",
+      expect.anything(),
+      { code1c: "worker", personUid },
     );
   });
   it("rejects changed ERP identity without importing another person's documents", async () => {

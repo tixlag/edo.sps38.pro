@@ -42,6 +42,7 @@ const state = vi.hoisted(() => ({
   persons: vi.fn(),
   matches: vi.fn(),
   previous: [] as unknown[],
+  employmentHistory: undefined as unknown,
   workspaceError: null as unknown,
   managersUnavailable: false,
 }));
@@ -136,7 +137,13 @@ vi.mock("@edo/api-client", () => {
       params,
     ],
     useListCommunicationCandidates: () => result([]),
-    useListCandidatePreviousDocuments: () => result(state.previous),
+    useListCandidatePreviousDocuments: () => ({
+      ...result(state.previous),
+      data: {
+        items: state.previous,
+        employmentHistory: state.employmentHistory,
+      },
+    }),
     useGetCandidateRequirements: () =>
       result([
         { code: "passport", title: "Паспорт", documentUid: "passport-uid" },
@@ -228,6 +235,7 @@ beforeEach(() => {
     },
   ];
   state.previous = [];
+  state.employmentHistory = undefined;
   state.workspaceError = null;
   state.managersUnavailable = false;
   for (const mutation of [state.create, state.update, state.status, state.link])
@@ -241,6 +249,20 @@ afterEach(async () => {
 });
 
 describe("candidate manager flows", () => {
+  it("shows verified ERP employment events in the previous-document section", async () => {
+    state.profile.linkedPerson = true;
+    state.employmentHistory = {
+      available: true,
+      items: [
+        { eventDate: "2020-01-01", startDate: "2020-01-05", eventType: "HIRE" },
+        { eventDate: "2021-03-01", startDate: null, eventType: "DISMISSAL" },
+      ],
+    };
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    expect(view.textContent).toContain("Кадровая история в ERP");
+    expect(view.textContent).toContain("Приём · 05.01.2020");
+    expect(view.textContent).toContain("Увольнение · 01.03.2021");
+  });
   it("sends the optional Latin name with the date and candidate name", async () => {
     vi.useFakeTimers();
     await render(<CandidatesPage />);

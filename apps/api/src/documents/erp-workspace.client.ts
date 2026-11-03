@@ -106,6 +106,17 @@ export const previousDocumentsSchema = z.object({
     }),
   ),
 });
+export const erpEmploymentHistorySchema = z.object({
+  items: z
+    .array(
+      z.object({
+        eventDate: erpCalendarDate,
+        startDate: erpCalendarDate.nullable(),
+        eventType: z.enum(["HIRE", "DISMISSAL"]),
+      }),
+    )
+    .max(500),
+});
 export const referencesSchema = z.object({
   items: z.array(
     z.object({
@@ -251,6 +262,13 @@ export class ErpWorkspaceClient {
     if (identity.code1C !== code1c)
       throw new ConflictException("ERP_IDENTITY_MISMATCH");
     return identity;
+  }
+  employmentHistory(code1c: string, personUid: string) {
+    return this.request(
+      "person-employment-history",
+      erpEmploymentHistorySchema,
+      { code1c, personUid },
+    );
   }
   card(erpUid: string) {
     return this.request("card", erpCardSchema, { candidate: erpUid });

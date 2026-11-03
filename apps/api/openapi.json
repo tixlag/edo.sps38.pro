@@ -19335,6 +19335,50 @@
           "reviewedAt"
         ]
       },
+      "CandidateEmploymentEventDto": {
+        "type": "object",
+        "properties": {
+          "eventDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "startDate": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          },
+          "eventType": {
+            "type": "string",
+            "enum": [
+              "HIRE",
+              "DISMISSAL"
+            ]
+          }
+        },
+        "required": [
+          "eventDate",
+          "startDate",
+          "eventType"
+        ]
+      },
+      "CandidateEmploymentHistoryDto": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateEmploymentEventDto"
+            }
+          }
+        },
+        "required": [
+          "available",
+          "items"
+        ]
+      },
       "CandidatePreviousDocumentsDto": {
         "type": "object",
         "properties": {
@@ -19343,6 +19387,9 @@
             "items": {
               "$ref": "#/components/schemas/CandidatePreviousDocumentDto"
             }
+          },
+          "employmentHistory": {
+            "$ref": "#/components/schemas/CandidateEmploymentHistoryDto"
           }
         },
         "required": [

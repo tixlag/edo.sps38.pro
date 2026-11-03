@@ -200,9 +200,25 @@ export class CandidatePreviousDocumentDto {
   @ApiProperty({ type: String, nullable: true }) reviewedBy!: string | null;
   @ApiProperty({ type: String, nullable: true }) reviewedAt!: string | null;
 }
+export class CandidateEmploymentEventDto {
+  @ApiProperty({ format: "date" }) eventDate!: string;
+  @ApiProperty({ type: String, nullable: true, format: "date" }) startDate!:
+    | string
+    | null;
+  @ApiProperty({ enum: ["HIRE", "DISMISSAL"] }) eventType!:
+    | "HIRE"
+    | "DISMISSAL";
+}
+export class CandidateEmploymentHistoryDto {
+  @ApiProperty() available!: boolean;
+  @ApiProperty({ type: [CandidateEmploymentEventDto] })
+  items!: CandidateEmploymentEventDto[];
+}
 export class CandidatePreviousDocumentsDto {
   @ApiProperty({ type: [CandidatePreviousDocumentDto] })
   items!: CandidatePreviousDocumentDto[];
+  @ApiPropertyOptional({ type: CandidateEmploymentHistoryDto })
+  employmentHistory?: CandidateEmploymentHistoryDto;
 }
 export class CandidateRecheckRequestDto {
   @ApiProperty({ enum: recheckStates, enumName: "CandidateRecheckStatus" })

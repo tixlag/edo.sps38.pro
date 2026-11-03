@@ -2010,8 +2010,30 @@ export interface CandidatePreviousDocumentDto {
   reviewedAt: string | null;
 }
 
+export type CandidateEmploymentEventDtoEventType =
+  (typeof CandidateEmploymentEventDtoEventType)[keyof typeof CandidateEmploymentEventDtoEventType];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateEmploymentEventDtoEventType = {
+  HIRE: "HIRE",
+  DISMISSAL: "DISMISSAL",
+} as const;
+
+export interface CandidateEmploymentEventDto {
+  eventDate: string;
+  /** @nullable */
+  startDate: string | null;
+  eventType: CandidateEmploymentEventDtoEventType;
+}
+
+export interface CandidateEmploymentHistoryDto {
+  available: boolean;
+  items: CandidateEmploymentEventDto[];
+}
+
 export interface CandidatePreviousDocumentsDto {
   items: CandidatePreviousDocumentDto[];
+  employmentHistory?: CandidateEmploymentHistoryDto;
 }
 
 export interface CandidateRecheckRequestDto {
