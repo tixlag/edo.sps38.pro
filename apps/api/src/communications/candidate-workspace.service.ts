@@ -1,5 +1,8 @@
 import { DocumentCatalogService } from "../documents/document-catalog.service";
-import { needsNewIgDocument } from "../documents/reemployment-document-policy";
+import {
+  isPreviousDocumentExpired,
+  needsNewIgDocument,
+} from "../documents/reemployment-document-policy";
 import { CandidateDocumentError } from "../documents/candidate-document.error";
 import {
   CandidateDocumentErrorCode,
@@ -398,7 +401,15 @@ export class CandidateWorkspaceService {
             sourceId: doc.id,
             documentUid: doc.documentUid,
             title: doc.title,
-            fields: doc.fields as Prisma.InputJsonObject,
+            fields: {
+              ...doc.fields,
+              ...(doc.recordDate !== undefined
+                ? { recordDate: doc.recordDate }
+                : {}),
+              ...(doc.isInvalid !== undefined
+                ? { isInvalid: doc.isInvalid }
+                : {}),
+            } as Prisma.InputJsonObject,
             expiresAt: doc.expiresAt
               ? new Date(`${doc.expiresAt.slice(0, 10)}T00:00:00Z`)
               : null,
@@ -407,7 +418,15 @@ export class CandidateWorkspaceService {
           },
           update: {
             title: doc.title,
-            fields: doc.fields as Prisma.InputJsonObject,
+            fields: {
+              ...doc.fields,
+              ...(doc.recordDate !== undefined
+                ? { recordDate: doc.recordDate }
+                : {}),
+              ...(doc.isInvalid !== undefined
+                ? { isInvalid: doc.isInvalid }
+                : {}),
+            } as Prisma.InputJsonObject,
             expiresAt: doc.expiresAt
               ? new Date(`${doc.expiresAt.slice(0, 10)}T00:00:00Z`)
               : null,
@@ -476,6 +495,20 @@ export class CandidateWorkspaceService {
         );
       if (body.status === "CONFIRMED" && !doc.originalAvailable)
         throw new ConflictException("Оригинал недоступен для проверки");
+      if (
+        body.status === "CONFIRMED" &&
+        doc.fields &&
+        typeof doc.fields === "object" &&
+        !Array.isArray(doc.fields) &&
+        doc.fields.isInvalid === true
+      )
+        throw new ConflictException("В ERP документ отмечен недействительным");
+      if (
+        body.status === "CONFIRMED" &&
+        doc.expiresAt &&
+        isPreviousDocumentExpired(doc.expiresAt)
+      )
+        throw new ConflictException("Срок действия документа истёк");
       await tx.candidatePreviousDocument.update({
         where: { id: documentId },
         data: {

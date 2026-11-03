@@ -9,3 +9,14 @@ export function needsNewIgDocument(documentUid: string | null): boolean {
     documentUid !== null && freshIgDocuments.has(documentUid.toLowerCase())
   );
 }
+
+/** ERP expiry dates are calendar days; review queues use Irkutsk business dates. */
+export function isPreviousDocumentExpired(
+  expiresAt: Date,
+  now = new Date(),
+): boolean {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Irkutsk",
+  }).format(now);
+  return expiresAt.toISOString().slice(0, 10) < today;
+}

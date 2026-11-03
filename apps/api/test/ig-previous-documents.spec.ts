@@ -7,6 +7,8 @@ import type { AuditService } from "../src/audit/audit.service";
 import type { DocumentAccessService } from "../src/documents/document-access.service";
 import type { DocumentCatalogService } from "../src/documents/document-catalog.service";
 import type { ErpWorkspaceClient } from "../src/documents/erp-workspace.client";
+import { previousDocumentsSchema } from "../src/documents/erp-workspace.client";
+import { isPreviousDocumentExpired } from "../src/documents/reemployment-document-policy";
 
 const personUid = "00000000-0000-4000-8000-000000000001";
 const actor = (rules: Record<string, unknown>): AuthPrincipal => ({
@@ -70,6 +72,34 @@ function setup() {
   return { service, row, tx, erp, audit };
 }
 describe("IG previous ERP documents", () => {
+  it("checks expiration by Irkutsk calendar date and includes the expiration day", () => {
+    const expires = new Date("2026-11-03T00:00:00Z");
+    expect(
+      isPreviousDocumentExpired(expires, new Date("2026-11-03T15:59:59Z")),
+    ).toBe(false);
+    expect(
+      isPreviousDocumentExpired(expires, new Date("2026-11-03T16:00:00Z")),
+    ).toBe(true);
+  });
+  it("preserves ERP record date and explicit invalidity while accepting the older contract", () => {
+    const base = {
+      id: "old",
+      documentUid: personUid,
+      title: "Документ",
+      fields: {},
+      expiresAt: null,
+      originalAvailable: true,
+      recheckStatus: "REQUIRES_REVIEW",
+    };
+    expect(
+      previousDocumentsSchema.parse({ items: [base] }).items[0].isInvalid,
+    ).toBeUndefined();
+    expect(
+      previousDocumentsSchema.parse({
+        items: [{ ...base, recordDate: "2020-01-01", isInvalid: false }],
+      }).items[0],
+    ).toMatchObject({ recordDate: "2020-01-01", isInvalid: false });
+  });
   it("pins the ERP-confirmed person and imports only for the matching code", async () => {
     const { service, row, erp, audit } = setup();
     await expect(
@@ -125,6 +155,31 @@ describe("IG previous ERP documents", () => {
         documentUid,
         originalAvailable: true,
         status: "REQUIRES_REVIEW",
+      } as never);
+      await expect(
+        service.recheck(row.id, "old", actor({ "20011": [] }), {
+          status: "CONFIRMED",
+        }),
+      ).rejects.toThrow();
+      expect(tx.candidatePreviousDocument.update).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    { fields: { isInvalid: true }, expiresAt: null },
+    {
+      fields: { isInvalid: false },
+      expiresAt: new Date("2000-01-01T00:00:00Z"),
+    },
+  ])(
+    "does not confirm an invalid or expired ERP document",
+    async (document) => {
+      const { service, row, tx } = setup();
+      tx.candidatePreviousDocument.findFirst.mockResolvedValue({
+        id: "old",
+        documentUid: "6ffb1fd5-8341-11eb-ba8b-00259002db81",
+        originalAvailable: true,
+        status: "REQUIRES_REVIEW",
+        ...document,
       } as never);
       await expect(
         service.recheck(row.id, "old", actor({ "20011": [] }), {

@@ -37,6 +37,8 @@ const FIELD_LABELS: Record<string, string> = {
   subdivisionCode: "Код подразделения",
   gender: "Пол",
   citizenship: "Гражданство",
+  isInvalid: "Отмечен недействительным в ERP",
+  recordDate: "Дата записи в ERP",
 };
 
 function PreviousDocument({
