@@ -31,6 +31,7 @@ class DocumentTypeMatcher:
     def evaluate_text(self, text: str, expected_code: str) -> dict:
         result = {'verdict': 'UNCERTAIN', 'detected_code': None,
                   'rejection_reason': None, 'matched_phrases': []}
+        expected_code = {'MILITARY': 'MILITARY_ID'}.get(expected_code, expected_code)
         if expected_code not in self.rules:
             return result
         normalized = ' ' + normalize(text) + ' '
@@ -48,7 +49,9 @@ class DocumentTypeMatcher:
         if code == expected_code:
             result['verdict'] = 'MATCH'
         else:
-            result['verdict'] = 'MISMATCH'
+            # A type name can occur in another document. Treat it as a hint
+            # until this rule is validated against representative documents.
+            result['verdict'] = 'UNCERTAIN'
             result['rejection_reason'] = (
                 f'Загружен документ «{self.rules[code]["title"]}» вместо '
                 f'ожидаемого «{self.rules[expected_code]["title"]}»')

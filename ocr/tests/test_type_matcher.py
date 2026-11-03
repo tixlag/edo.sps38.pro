@@ -15,7 +15,7 @@ class TestTypeMatcher(unittest.TestCase):
         passport = 'Паспорт гражданина Российской Федерации'
         self.assertEqual(self.matcher.evaluate_text(inn, 'INN')['verdict'], 'MATCH')
         result = self.matcher.evaluate_text(passport, 'INN')
-        self.assertEqual((result['verdict'], result['detected_code']), ('MISMATCH', 'PASSPORT'))
+        self.assertEqual((result['verdict'], result['detected_code']), ('UNCERTAIN', 'PASSPORT'))
         self.assertIn('Паспорт', result['rejection_reason'])
 
     def test_generic_words_numbers_and_unknown_codes_are_uncertain(self):
