@@ -391,7 +391,54 @@ export class CandidateWorkspaceService {
       )
         throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
       requireReviewGroup(p, candidateReviewGroup(current));
-      for (const doc of result.items)
+      const oldDocuments = await tx.candidatePreviousDocument.findMany({
+        where: { candidateId: id },
+      });
+      const oldBySource = new Map(
+        oldDocuments.map((doc) => [doc.sourceId, doc]),
+      );
+      const seen = new Set<string>();
+      for (const doc of result.items) {
+        if (seen.has(doc.id))
+          throw new ConflictException("ERP_DOCUMENT_DUPLICATE_SOURCE");
+        seen.add(doc.id);
+        const old = oldBySource.get(doc.id);
+        if (
+          old?.documentUid &&
+          doc.documentUid &&
+          old.documentUid !== doc.documentUid
+        )
+          throw new ConflictException("ERP_DOCUMENT_IDENTITY_MISMATCH");
+        const oldFields =
+          old?.fields &&
+          typeof old.fields === "object" &&
+          !Array.isArray(old.fields)
+            ? old.fields
+            : {};
+        const isInvalid =
+          doc.isInvalid !== undefined ? doc.isInvalid : oldFields.isInvalid;
+        const recordDate =
+          doc.recordDate !== undefined ? doc.recordDate : oldFields.recordDate;
+        const fields = {
+          ...doc.fields,
+          ...(recordDate !== undefined ? { recordDate } : {}),
+          ...(isInvalid !== undefined ? { isInvalid } : {}),
+        } as Prisma.InputJsonObject;
+        const expiresAt = doc.expiresAt
+          ? new Date(`${doc.expiresAt}T00:00:00Z`)
+          : null;
+        const confirmedInvalid =
+          old?.status === "CONFIRMED" &&
+          (!doc.originalAvailable ||
+            isInvalid === true ||
+            (expiresAt !== null && isPreviousDocumentExpired(expiresAt)) ||
+            (isIg &&
+              (!doc.documentUid || needsNewIgDocument(doc.documentUid))));
+        const nextStatus = confirmedInvalid
+          ? !doc.originalAvailable
+            ? "ORIGINAL_UNAVAILABLE"
+            : "REPLACE"
+          : undefined;
         await tx.candidatePreviousDocument.upsert({
           where: {
             candidateId_sourceId: { candidateId: id, sourceId: doc.id },
@@ -401,38 +448,68 @@ export class CandidateWorkspaceService {
             sourceId: doc.id,
             documentUid: doc.documentUid,
             title: doc.title,
-            fields: {
-              ...doc.fields,
-              ...(doc.recordDate !== undefined
-                ? { recordDate: doc.recordDate }
-                : {}),
-              ...(doc.isInvalid !== undefined
-                ? { isInvalid: doc.isInvalid }
-                : {}),
-            } as Prisma.InputJsonObject,
-            expiresAt: doc.expiresAt
-              ? new Date(`${doc.expiresAt.slice(0, 10)}T00:00:00Z`)
-              : null,
+            fields,
+            expiresAt,
             originalAvailable: doc.originalAvailable,
             status: doc.recheckStatus,
           },
           update: {
             title: doc.title,
-            fields: {
-              ...doc.fields,
-              ...(doc.recordDate !== undefined
-                ? { recordDate: doc.recordDate }
-                : {}),
-              ...(doc.isInvalid !== undefined
-                ? { isInvalid: doc.isInvalid }
-                : {}),
-            } as Prisma.InputJsonObject,
-            expiresAt: doc.expiresAt
-              ? new Date(`${doc.expiresAt.slice(0, 10)}T00:00:00Z`)
-              : null,
+            documentUid: doc.documentUid ?? old?.documentUid ?? null,
+            fields,
+            expiresAt,
             originalAvailable: doc.originalAvailable,
+            ...(nextStatus
+              ? { status: nextStatus, reviewedBy: null, reviewedAt: null }
+              : {}),
           },
         });
+        if (nextStatus && old)
+          await this.audit.logInTransaction(tx, {
+            actorId: p.uuid,
+            action: "DOCUMENT_FIELDS_UPDATED",
+            entityType: "CandidatePreviousDocument",
+            entityId: old.id,
+            correlationId: "",
+            before: { status: old.status },
+            after: { status: nextStatus, source: "ERP_REVALIDATION" },
+          });
+      }
+      for (const old of oldDocuments) {
+        if (
+          seen.has(old.sourceId) ||
+          (!old.originalAvailable && old.status !== "CONFIRMED")
+        )
+          continue;
+        const nextStatus =
+          old.status === "CONFIRMED" ? "ORIGINAL_UNAVAILABLE" : old.status;
+        await tx.candidatePreviousDocument.update({
+          where: { id: old.id },
+          data: {
+            originalAvailable: false,
+            status: nextStatus,
+            ...(old.status === "CONFIRMED"
+              ? { reviewedBy: null, reviewedAt: null }
+              : {}),
+          },
+        });
+        await this.audit.logInTransaction(tx, {
+          actorId: p.uuid,
+          action: "DOCUMENT_FIELDS_UPDATED",
+          entityType: "CandidatePreviousDocument",
+          entityId: old.id,
+          correlationId: "",
+          before: {
+            status: old.status,
+            originalAvailable: old.originalAvailable,
+          },
+          after: {
+            status: nextStatus,
+            originalAvailable: false,
+            source: "ERP_REVALIDATION",
+          },
+        });
+      }
       await this.audit.logInTransaction(tx, {
         actorId: p.uuid,
         action: "DATA_IMPORTED",

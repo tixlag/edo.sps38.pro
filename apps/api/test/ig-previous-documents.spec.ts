@@ -39,6 +39,7 @@ function setup() {
     },
     candidatePreviousDocument: {
       upsert: vi.fn(),
+      findMany: vi.fn(async () => [] as unknown[]),
       findFirst: vi.fn(),
       update: vi.fn(),
     },
@@ -99,6 +100,11 @@ describe("IG previous ERP documents", () => {
         items: [{ ...base, recordDate: "2020-01-01", isInvalid: false }],
       }).items[0],
     ).toMatchObject({ recordDate: "2020-01-01", isInvalid: false });
+    expect(() =>
+      previousDocumentsSchema.parse({
+        items: [{ ...base, expiresAt: "2024-02-31" }],
+      }),
+    ).toThrow();
   });
   it("pins the ERP-confirmed person and imports only for the matching code", async () => {
     const { service, row, erp, audit } = setup();
@@ -134,6 +140,68 @@ describe("IG previous ERP documents", () => {
       service.previous(row.id, actor({ "20011": [] })),
     ).rejects.toThrow("ERP_PERSON_IDENTITY_MISMATCH");
     expect(tx.candidatePreviousDocument.upsert).not.toHaveBeenCalled();
+  });
+  it("withdraws confirmation and audits when a previously confirmed document expires", async () => {
+    const { service, row, tx, erp, audit } = setup();
+    tx.candidatePreviousDocument.findMany.mockResolvedValue([
+      {
+        id: "old",
+        sourceId: "source",
+        documentUid: personUid,
+        status: "CONFIRMED",
+        originalAvailable: true,
+        fields: {},
+      },
+    ]);
+    erp.request.mockResolvedValue({
+      items: [
+        {
+          id: "source",
+          documentUid: personUid,
+          title: "Документ",
+          fields: {},
+          expiresAt: "2000-01-01",
+          originalAvailable: true,
+          recheckStatus: "REQUIRES_REVIEW",
+        },
+      ],
+    } as never);
+    await service.previous(row.id, actor({ "20011": [] }));
+    expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ status: "REPLACE" }),
+      }),
+    );
+    expect(audit.logInTransaction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        entityType: "CandidatePreviousDocument",
+        after: expect.objectContaining({ source: "ERP_REVALIDATION" }),
+      }),
+    );
+  });
+  it("marks a disappeared ERP original unavailable and withdraws confirmation", async () => {
+    const { service, row, tx } = setup();
+    tx.candidatePreviousDocument.findMany.mockResolvedValue([
+      {
+        id: "old",
+        sourceId: "source",
+        documentUid: personUid,
+        status: "CONFIRMED",
+        originalAvailable: true,
+        fields: {},
+      },
+    ]);
+    await service.previous(row.id, actor({ "20011": [] }));
+    expect(tx.candidatePreviousDocument.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "old" },
+        data: expect.objectContaining({
+          status: "ORIGINAL_UNAVAILABLE",
+          originalAvailable: false,
+        }),
+      }),
+    );
   });
   it("does not grant IG history to an RU-only reviewer", async () => {
     const { service, row, erp } = setup();

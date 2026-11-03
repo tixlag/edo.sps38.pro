@@ -81,6 +81,16 @@ export const erpCardSchema = z.object({
   ),
 });
 export type ErpCard = z.infer<typeof erpCardSchema>;
+const erpCalendarDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return (
+      Number.isFinite(date.getTime()) &&
+      date.toISOString().slice(0, 10) === value
+    );
+  });
 export const previousDocumentsSchema = z.object({
   items: z.array(
     z.object({
@@ -88,12 +98,8 @@ export const previousDocumentsSchema = z.object({
       documentUid: uuid.nullable(),
       title: z.string().max(512),
       fields: z.record(z.unknown()),
-      expiresAt: z.string().nullable(),
-      recordDate: z
-        .string()
-        .regex(/^\d{4}-\d{2}-\d{2}$/)
-        .nullable()
-        .optional(),
+      expiresAt: erpCalendarDate.nullable(),
+      recordDate: erpCalendarDate.nullable().optional(),
       isInvalid: z.boolean().nullable().optional(),
       originalAvailable: z.boolean(),
       recheckStatus: z.enum(["REQUIRES_REVIEW", "ORIGINAL_UNAVAILABLE"]),
