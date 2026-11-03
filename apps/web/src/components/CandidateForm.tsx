@@ -5,6 +5,8 @@ import {
   getListCatalogManagersQueryKey,
   useListCandidatePositions,
   useListCandidateProjects,
+  useSearchCandidatePersons,
+  getSearchCandidatePersonsQueryKey,
   type CandidateFieldsDto,
   type CandidatePatchFieldsDto,
   type CandidateWorkspaceDto,
@@ -111,6 +113,7 @@ export function CandidateForm({
   const citizenshipListId = useId();
   const [personEnabled, setPersonEnabled] = useState(false);
   const [personSelection, setPersonSelection] = useState<string>();
+  const [matchQuery, setMatchQuery] = useState("");
   const [managerQuery, setManagerQuery] = useState("");
   const [managerFallback, setManagerFallback] = useState(false);
   const [positionQuery, setPositionQuery] = useState("");
@@ -136,6 +139,37 @@ export function CandidateForm({
     q: positionQuery || undefined,
   });
   const projects = useListCandidateProjects({ q: projectQuery || undefined });
+  const matchName = fields.fullName.trim().replace(/\s+/g, " ");
+  useEffect(() => {
+    const timer = window.setTimeout(() => setMatchQuery(matchName), 500);
+    return () => window.clearTimeout(timer);
+  }, [matchName]);
+  const canCheckPerson =
+    !profile &&
+    matchQuery === matchName &&
+    matchQuery.length >= 3 &&
+    matchQuery.length <= 100 &&
+    /^\d{4}-\d{2}-\d{2}$/.test(fields.birthDate);
+  const possiblePersons = useSearchCandidatePersons(
+    { q: matchQuery || undefined },
+    {
+      query: {
+        queryKey: getSearchCandidatePersonsQueryKey({
+          q: matchQuery || undefined,
+        }),
+        enabled: canCheckPerson,
+        refetchOnWindowFocus: false,
+      },
+    },
+  );
+  const matchingPersons = canCheckPerson
+    ? (possiblePersons.data?.items ?? []).filter(
+        (person) =>
+          person.name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ru") ===
+            matchName.toLocaleLowerCase("ru") &&
+          person.birthDate?.slice(0, 10) === fields.birthDate,
+      )
+    : [];
   const set = (key: keyof CandidateFieldsDto, value: string | null) =>
     setFields((previous) => ({ ...previous, [key]: value }));
   const submit = (event: FormEvent) => {
@@ -322,6 +356,25 @@ export function CandidateForm({
           className="space-y-3 border-t border-[var(--border)] pt-4"
           aria-label="Существующее физлицо"
         >
+          {canCheckPerson && possiblePersons.isError && (
+            <p role="status" className="text-sm text-[var(--danger)]">
+              Не удалось проверить физлиц в ERP. Можно повторить проверку или
+              найти физлицо вручную.{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => void possiblePersons.refetch()}
+              >
+                Повторить проверку
+              </button>
+            </p>
+          )}
+          {matchingPersons.length > 0 && (
+            <p role="status" className="text-sm">
+              В ERP найдено возможное совпадение по ФИО и дате рождения.
+              Проверьте физлицо и подтвердите связь с текущим оформлением.
+            </p>
+          )}
           <label className="flex items-start gap-2 text-sm">
             <input
               type="checkbox"
@@ -346,6 +399,7 @@ export function CandidateForm({
               <CandidatePersonPicker
                 disabled={pending || locked}
                 onChange={setPersonSelection}
+                initialQuery={matchName}
               />
             </>
           )}

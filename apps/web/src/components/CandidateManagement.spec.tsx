@@ -114,6 +114,7 @@ vi.mock("@edo/api-client", () => {
         { id: "another-person", name: "Иванов Иван", birthDate: "1980-06-07" },
       ]);
     },
+    getSearchCandidatePersonsQueryKey: (params: unknown) => ["persons", params],
     useListCommunicationCandidates: () => result([]),
     useListCandidatePreviousDocuments: () => result(state.previous),
     useGetCandidateRequirements: () =>
@@ -220,6 +221,23 @@ afterEach(async () => {
 });
 
 describe("candidate manager flows", () => {
+  it("offers a possible ERP match only when name and date of birth agree", async () => {
+    vi.useFakeTimers();
+    await render(<CandidatesPage />);
+    await click("Создать кандидата");
+    const inputs = view.querySelectorAll<HTMLInputElement>(
+      "fieldset > label > input",
+    );
+    type(inputs[0], "Иванов Иван");
+    type(inputs[2], "1990-02-03");
+    await act(async () => vi.advanceTimersByTime(500));
+    expect(view.textContent).toContain("В ERP найдено возможное совпадение");
+    expect(state.create).not.toHaveBeenCalled();
+    type(inputs[2], "1991-02-03");
+    expect(view.textContent).not.toContain(
+      "В ERP найдено возможное совпадение",
+    );
+  });
   it("uses known ERP manager IDs when the ERP manager directory is unavailable", async () => {
     state.managersUnavailable = true;
     await render(<CandidatesPage />);
@@ -528,7 +546,9 @@ describe("candidate manager flows", () => {
     expect(view.textContent).not.toContain("subdivisionCode");
     expect(button("Оригинал недоступен").disabled).toBe(true);
     const recheckForm = view.querySelector("form")!;
-    expect(recheckForm.className).toContain("flex-col gap-2 sm:flex-row sm:items-end");
+    expect(recheckForm.className).toContain(
+      "flex-col gap-2 sm:flex-row sm:items-end",
+    );
     select(view.querySelector("select")!, "REPLACE");
     await act(async () =>
       view

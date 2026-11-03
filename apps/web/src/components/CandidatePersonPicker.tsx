@@ -10,11 +10,13 @@ import { formatBirthDateRu } from "../lib/review-groups";
 export function CandidatePersonPicker({
   disabled,
   onChange,
+  initialQuery = "",
 }: {
   disabled: boolean;
   onChange: (personSelection: string | undefined) => void;
+  initialQuery?: string;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [selected, setSelected] = useState<CandidateReferenceDto>();
   const [confirmed, setConfirmed] = useState(false);
   const persons = useSearchCandidatePersons(
