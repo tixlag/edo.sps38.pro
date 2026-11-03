@@ -49,6 +49,16 @@ function version(fields: DocumentFieldDto[]): DocumentVersionDto {
 }
 
 describe("required document review fields", () => {
+  it("includes optional fields selected for review by the server", () => {
+    const optional = field("lastNameLatin", false, {
+      reviewVisible: true,
+    } as Partial<DocumentFieldDto>);
+    expect(
+      getRequiredReviewFields(
+        version([field("number", true), optional, field("comment", false)]),
+      ).map((f) => f.name),
+    ).toEqual(["lastNameLatin", "number"]);
+  });
   it("keeps required OCR/candidate/mismatch data and excludes optional regions", () => {
     const required = field("number", true, {
       regions: [
@@ -81,9 +91,9 @@ describe("required document review fields", () => {
   });
 
   it("does not fall back to optional fields when none are required", () => {
-    expect(
-      getRequiredReviewFields(version([field("comment", false)])),
-    ).toEqual([]);
+    expect(getRequiredReviewFields(version([field("comment", false)]))).toEqual(
+      [],
+    );
   });
 
   it("preserves required fields in historical read-only versions", () => {

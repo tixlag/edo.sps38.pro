@@ -11,6 +11,7 @@ export const FIELD_LABELS: Record<string, string> = {
   isIdentityDocument: "Документ удостоверяет личность",
   lastNameLatin: "Фамилия латиницей",
   firstNameLatin: "Имя латиницей",
+  middleNameLatin: "Отчество латиницей",
   categories: "Категории",
   specialMarks: "Особые отметки",
   positionUid: "Должность в водительском удостоверении (UUID)",

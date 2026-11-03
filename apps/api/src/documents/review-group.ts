@@ -6,6 +6,16 @@ import { EdoAccessRule } from "../auth/edo-access-rule";
 import { PASSPORT_UID } from "../ocr/ocr-profile";
 
 export type ReviewGroup = "RU" | "IG";
+export const IG_PASSPORT_LATIN_FIELDS = [
+  "lastNameLatin",
+  "firstNameLatin",
+  "middleNameLatin",
+] as const;
+export const IG_PASSPORT_OCR_NAMES: Record<string, string> = {
+  pas_surname: "lastNameLatin",
+  pas_name: "firstNameLatin",
+  pas_patronymic: "middleNameLatin",
+};
 
 export function candidateReviewGroup(candidate: {
   chatUuid: string | null;

@@ -69,22 +69,100 @@ function fixture() {
 
 describe("OCR review data boundaries", () => {
   it("shows only the passport number as required for an IG candidate, including existing versions", async () => {
-    const { row, reads } = fixture();
+    const { row, reads, principal } = fixture();
     Object.assign(row.document, {
       documentType: { code: "PASSPORT", erpUid: null },
       candidate: { chatUuid: null, citizenship: "uz" },
     });
     row.fields.push({ ...row.fields[0], name: "number", required: false });
-    const result = await reads.version("document", 4);
+    const result = await reads.version(
+      "document",
+      4,
+      principal({ "20010": [] }),
+    );
     expect(result.fields.map(({ name, required }) => [name, required])).toEqual(
       [
         ["issueDate", false],
         ["optional", false],
         ["number", true],
+        ["lastNameLatin", false],
+        ["firstNameLatin", false],
+        ["middleNameLatin", false],
       ],
     );
-    expect(result.ocrFields).toEqual([]);
-    expect(result.fields[0].regions).toEqual([]);
+    expect(result.fields.every((field) => field.reviewVisible)).toBe(true);
+    expect(result.ocrFields.map((field) => field.name)).toEqual(["date_issue"]);
+    expect(result.fields[0]).toMatchObject({
+      originalValue: "2026-10-20",
+      ocrText: "20.10.2026",
+      regions: [expect.objectContaining({ id: "box" })],
+    });
+  });
+  it("recovers existing Uzbek OCR observations for optional Latin fields without overwriting entered values", async () => {
+    const { row, reads, principal } = fixture();
+    Object.assign(row.document, {
+      documentType: { code: "PASSPORT", erpUid: null },
+      candidate: { chatUuid: null, citizenship: "uz" },
+    });
+    row.ocrFields.push({
+      ...row.ocrFields[0],
+      name: "pas_patronymic",
+      documentFieldName: null,
+      value: "",
+    });
+    row.ocrFields.push({
+      ...row.ocrFields[0],
+      name: "pas_patronymic",
+      documentFieldName: null,
+      value: "VALIYEVICH",
+    });
+    row.fields.push({
+      ...row.fields[0],
+      name: "firstNameLatin",
+      required: false,
+      value: "ALI",
+      originalValue: null,
+      ocrText: null,
+    });
+    const result = await reads.version(
+      "document",
+      4,
+      principal({ "20010": [] }),
+    );
+    expect(
+      result.fields.find((field) => field.name === "middleNameLatin"),
+    ).toMatchObject({
+      required: false,
+      originalValue: "VALIYEVICH",
+      value: null,
+    });
+    expect(
+      result.fields.find((field) => field.name === "firstNameLatin")?.value,
+    ).toBe("ALI");
+  });
+  it("does not expose optional passport OCR observations without the OCR-details right", async () => {
+    const { row, reads, principal } = fixture();
+    Object.assign(row.document, {
+      documentType: { code: "PASSPORT", erpUid: null },
+      candidate: { chatUuid: null, citizenship: "uz" },
+    });
+    row.ocrFields.push({
+      ...row.ocrFields[0],
+      name: "pas_patronymic",
+      documentFieldName: null,
+      value: "VALIYEVICH",
+    });
+    const result = await reads.version(
+      "document",
+      4,
+      principal({ "20011": [] }),
+    );
+    expect(
+      result.fields.find((field) => field.name === "middleNameLatin"),
+    ).toMatchObject({ reviewVisible: true, originalValue: null, regions: [] });
+    expect(
+      result.ocrFields.some((field) => field.name === "pas_patronymic"),
+    ).toBe(false);
   });
   it("allows a number to be entered when an existing IG passport has no number field", async () => {
     const { row, reads } = fixture();
