@@ -503,6 +503,12 @@ export class CandidateWorkspaceService {
         const expiresAt = doc.expiresAt
           ? new Date(`${doc.expiresAt}T00:00:00Z`)
           : null;
+        const automaticallyConfirmed =
+          !!doc.documentUid &&
+          (!isIg || !needsNewIgDocument(doc.documentUid)) &&
+          doc.originalAvailable &&
+          isInvalid !== true &&
+          (!expiresAt || !isPreviousDocumentExpired(expiresAt));
         const confirmedInvalid =
           old?.status === "CONFIRMED" &&
           (!doc.originalAvailable ||
@@ -514,12 +520,14 @@ export class CandidateWorkspaceService {
           ? !doc.originalAvailable
             ? "ORIGINAL_UNAVAILABLE"
             : "REPLACE"
-          : old?.status === "CONFIRMED" &&
-              (!isDeepStrictEqual(oldFields, fields) ||
-                (old.expiresAt?.getTime() ?? null) !==
-                  (expiresAt?.getTime() ?? null))
-            ? "REQUIRES_REVIEW"
-            : undefined;
+          : old?.status === "REQUIRES_REVIEW" && automaticallyConfirmed
+            ? "CONFIRMED"
+            : old?.status === "CONFIRMED" &&
+                (!isDeepStrictEqual(oldFields, fields) ||
+                  (old.expiresAt?.getTime() ?? null) !==
+                    (expiresAt?.getTime() ?? null))
+              ? "REQUIRES_REVIEW"
+              : undefined;
         await tx.candidatePreviousDocument.upsert({
           where: {
             candidateId_sourceId: { candidateId: id, sourceId: doc.id },
@@ -532,7 +540,13 @@ export class CandidateWorkspaceService {
             fields,
             expiresAt,
             originalAvailable: doc.originalAvailable,
-            status: doc.recheckStatus,
+            status: automaticallyConfirmed ? "CONFIRMED" : doc.recheckStatus,
+            ...(automaticallyConfirmed
+              ? {
+                  reviewedBy: "system:previous-document",
+                  reviewedAt: new Date(),
+                }
+              : {}),
           },
           update: {
             title: doc.title,
@@ -541,10 +555,26 @@ export class CandidateWorkspaceService {
             expiresAt,
             originalAvailable: doc.originalAvailable,
             ...(nextStatus
-              ? { status: nextStatus, reviewedBy: null, reviewedAt: null }
+              ? {
+                  status: nextStatus,
+                  reviewedBy:
+                    nextStatus === "CONFIRMED"
+                      ? "system:previous-document"
+                      : null,
+                  reviewedAt: nextStatus === "CONFIRMED" ? new Date() : null,
+                }
               : {}),
           },
         });
+        if (!old && automaticallyConfirmed)
+          await this.audit.logInTransaction(tx, {
+            actorId: "system:previous-document",
+            action: "DATA_IMPORTED",
+            entityType: "CandidatePreviousDocuments",
+            entityId: id,
+            correlationId: "",
+            after: { sourceId: doc.id, status: "CONFIRMED" },
+          });
         if (nextStatus && old)
           await this.audit.logInTransaction(tx, {
             actorId: p.uuid,

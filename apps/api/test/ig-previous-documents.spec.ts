@@ -85,6 +85,85 @@ function setup() {
   return { service, row, tx, erp, audit, prisma, ownHistory };
 }
 describe("IG previous ERP documents", () => {
+  it("treats an earlier ordinary document as verified when importing it for the linked person", async () => {
+    const { service, row, tx, erp } = setup();
+    erp.request.mockResolvedValue({
+      items: [
+        {
+          id: "old-passport",
+          documentUid: personUid,
+          title: "Паспорт",
+          fields: {},
+          expiresAt: null,
+          originalAvailable: true,
+          recheckStatus: "REQUIRES_REVIEW",
+        },
+      ],
+    } as never);
+    await service.previous(row.id, actor({ "20011": [] }));
+    expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          sourceId: "old-passport",
+          status: "CONFIRMED",
+        }),
+      }),
+    );
+  });
+  it.each([
+    {
+      documentUid: "39554ac3-6462-11ec-80cc-002590854e7f",
+      expiresAt: null,
+      originalAvailable: true,
+      isInvalid: false,
+    },
+    {
+      documentUid: "e87d5a10-d248-11eb-80c7-002590854e7f",
+      expiresAt: null,
+      originalAvailable: true,
+      isInvalid: false,
+    },
+    {
+      documentUid: personUid,
+      expiresAt: "2000-01-01",
+      originalAvailable: true,
+      isInvalid: false,
+    },
+    {
+      documentUid: personUid,
+      expiresAt: null,
+      originalAvailable: true,
+      isInvalid: true,
+    },
+    {
+      documentUid: personUid,
+      expiresAt: null,
+      originalAvailable: false,
+      isInvalid: false,
+    },
+  ])(
+    "does not automatically count a document requiring replacement",
+    async (input) => {
+      const { service, row, tx, erp } = setup();
+      erp.request.mockResolvedValue({
+        items: [
+          {
+            id: "old",
+            title: "Документ",
+            fields: {},
+            recheckStatus: "REQUIRES_REVIEW",
+            ...input,
+          },
+        ],
+      } as never);
+      await service.previous(row.id, actor({ "20011": [] }));
+      expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ status: "REQUIRES_REVIEW" }),
+        }),
+      );
+    },
+  );
   it("checks expiration by Irkutsk calendar date and includes the expiration day", () => {
     const expires = new Date("2026-11-03T00:00:00Z");
     expect(

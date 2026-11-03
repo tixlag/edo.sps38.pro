@@ -276,10 +276,10 @@ describe.skipIf(!db)(
         calls.findLast((c) => c.action === "link-person")?.body.personUid,
       ).toBe(personUid);
     });
-    it("imports previous ERP originals as requiring review and persists current-cycle decisions", async () => {
+    it("automatically accepts valid previous ERP originals and persists current-cycle decisions", async () => {
       vi.stubGlobal("fetch", fetcher);
       const result = await service.previous(id, actor);
-      expect(result.items[0].status).toBe("REQUIRES_REVIEW");
+      expect(result.items[0].status).toBe("CONFIRMED");
       const checked = await service.recheck(id, result.items[0].id, actor, {
         status: "CONFIRMED",
       });

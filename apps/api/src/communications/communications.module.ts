@@ -17,8 +17,15 @@ import { CandidateCatalogService } from "./candidate-catalog.service";
 import { CommunicationEventsService } from "./communication-events.service";
 import { ErpCommunicationsClient } from "./erp-communications.client";
 import { LkChatClient } from "./lk-chat.client";
+import { IgGrantPoller } from "../documents/ig-grant-poller";
 @Module({
-  imports: [PrismaModule, AuditModule, StorageModule, RedisModule, DocumentsModule],
+  imports: [
+    PrismaModule,
+    AuditModule,
+    StorageModule,
+    RedisModule,
+    DocumentsModule,
+  ],
   controllers: [
     CandidateWorkspaceController,
     CommunicationsController,
@@ -26,6 +33,7 @@ import { LkChatClient } from "./lk-chat.client";
   ],
   providers: [
     CandidateWorkspaceService,
+    IgGrantPoller,
     ErpWorkspaceClient,
     CommunicationsService,
     CandidateCatalogService,

@@ -4,6 +4,38 @@ import { Logger } from "@nestjs/common";
 import { IgGrantPoller } from "../src/documents/ig-grant-poller";
 
 describe("adaptation grant polling", () => {
+  it("loads previous documents before acknowledging an admitted person", async () => {
+    const event = {
+      id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+      employeeCode1c: "worker",
+      citizenship: "UZ",
+      createdAt: "2026-11-03T00:00:00.000Z",
+    };
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([event])))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      const history = { previous: vi.fn().mockResolvedValue({ items: [] }) };
+      const poller = new IgGrantPoller(
+        new ConfigService({
+          EDO_ADAPTATION_EVENTS_URL: "https://surveys.example/events",
+          EDO_ADAPTATION_SYNC_TOKEN: "secret",
+        }),
+        { applyGrant: vi.fn().mockResolvedValue("case") } as never,
+        history as never,
+      );
+      await poller.sync();
+      expect(history.previous).toHaveBeenCalledWith(
+        "case",
+        expect.objectContaining({ uuid: "system:adaptation" }),
+      );
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it("rejects an oversized event response without applying or acknowledging anything", async () => {
     const fetcher = vi
       .fn()

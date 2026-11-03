@@ -46,7 +46,6 @@ import { LkCandidateIdentityService } from "./lk-candidate-identity.service";
 import { ErpCandidateClient } from "./erp-candidate.client";
 import { CandidateCardCache } from "./candidate-card-cache";
 import { IgEmploymentService } from "./ig-employment.service";
-import { IgGrantPoller } from "./ig-grant-poller";
 import { OwnDocumentHistoryService } from "./own-document-history.service";
 import { OwnDocumentHistoryController } from "./own-document-history.controller";
 
@@ -67,6 +66,7 @@ import { OwnDocumentHistoryController } from "./own-document-history.controller"
     CandidateContextService,
     DocumentCatalogService,
     OwnDocumentHistoryService,
+    IgEmploymentService,
   ],
   providers: [
     ErpWorkspaceClient,
@@ -75,7 +75,6 @@ import { OwnDocumentHistoryController } from "./own-document-history.controller"
     LkCandidateIdentityService,
     ErpCandidateClient,
     IgEmploymentService,
-    IgGrantPoller,
     OwnDocumentHistoryService,
     CandidateCardCache,
     DocumentAccessService,

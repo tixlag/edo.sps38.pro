@@ -3,10 +3,12 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { z } from "zod";
 import { IgEmploymentService } from "./ig-employment.service";
+import { CandidateWorkspaceService } from "../communications/candidate-workspace.service";
 
 const eventSchema = z.object({
   id: z.string().uuid(),
@@ -49,6 +51,7 @@ export class IgGrantPoller implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly employment: IgEmploymentService,
+    @Optional() private readonly workspace?: CandidateWorkspaceService,
   ) {}
 
   onModuleInit() {
@@ -112,7 +115,16 @@ export class IgGrantPoller implements OnModuleInit, OnModuleDestroy {
         continue;
       }
       try {
-        await this.employment.applyGrant(parsed.data);
+        const candidateId = await this.employment.applyGrant(parsed.data);
+        if (this.workspace)
+          await this.workspace.previous(candidateId, {
+            uuid: "system:adaptation",
+            code1c: null,
+            sid: null,
+            deviceId: null,
+            expiresAt: null,
+            accessRules: { "20011": [] },
+          });
         ids.push(parsed.data.id);
       } catch {
         this.logger.warn("Adaptation event could not be applied");
