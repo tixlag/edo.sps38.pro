@@ -1,4 +1,5 @@
 import { DocumentCatalogService } from "../documents/document-catalog.service";
+import { needsNewIgDocument } from "../documents/reemployment-document-policy";
 import { CandidateDocumentError } from "../documents/candidate-document.error";
 import {
   CandidateDocumentErrorCode,
@@ -23,7 +24,11 @@ import {
   candidateIdentityTransaction,
   resolveCandidateIdentity,
 } from "../documents/candidate-identity";
-import { canReviewGroup, requireReviewGroup } from "../documents/review-group";
+import {
+  canReviewGroup,
+  candidateReviewGroup,
+  requireReviewGroup,
+} from "../documents/review-group";
 import {
   ErpWorkspaceClient,
   erpCardSchema,
@@ -62,6 +67,52 @@ export class CandidateWorkspaceService {
     if (row.reviewGroup !== "RU" || !row.erpUid)
       throw new ConflictException("ERP_CANDIDATE_CONFIRMATION_REQUIRED");
     return row;
+  }
+  private async previousOwner(id: string, p: AuthPrincipal) {
+    const row = await this.access.candidate(id, p);
+    const group = candidateReviewGroup(row);
+    requireReviewGroup(p, group);
+    if (group === "RU") return this.owner(id, p);
+    if (!row.code1c)
+      throw new ConflictException("ERP_PERSON_IDENTITY_REQUIRED");
+    const identity = await this.erp.identity(row.code1c);
+    if (
+      identity.reviewGroup !== "IG" ||
+      identity.recipientType !== "person" ||
+      !identity.personUid ||
+      (row.personUid && row.personUid !== identity.personUid)
+    )
+      throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
+    const personUid = identity.personUid;
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${id} FOR UPDATE`;
+      const current = await tx.candidate.findFirst({
+        where: { id, ...this.access.candidateWhere(p) },
+      });
+      if (
+        !current ||
+        candidateReviewGroup(current) !== "IG" ||
+        current.code1c !== row.code1c ||
+        (current.personUid && current.personUid !== personUid)
+      )
+        throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
+      requireReviewGroup(p, "IG");
+      if (current.personUid) return current;
+      const updated = await tx.candidate.update({
+        where: { id },
+        data: { personUid },
+      });
+      await this.audit.logInTransaction(tx, {
+        actorId: p.uuid,
+        action: "CANDIDATE_LINKED",
+        entityType: "Candidate",
+        entityId: id,
+        correlationId: "",
+        before: { personUid: null },
+        after: { personUid },
+      });
+      return updated;
+    });
   }
   private signature(value: string) {
     const secret = this.config.get<string>("JWT_SECRET");
@@ -314,14 +365,29 @@ export class CandidateWorkspaceService {
     return this.project(card, p, id);
   }
   async previous(id: string, p: AuthPrincipal) {
-    const row = await this.owner(id, p);
+    const row = await this.previousOwner(id, p);
+    const isIg = candidateReviewGroup(row) === "IG";
     const result = await this.erp.request(
-      "person-documents",
+      isIg ? "person-documents-by-code" : "person-documents",
       previousDocumentsSchema,
-      { candidate: row.erpUid! },
+      isIg
+        ? { code1c: row.code1c!, personUid: row.personUid! }
+        : { candidate: row.erpUid! },
     );
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${id} FOR UPDATE`;
+      const current = await tx.candidate.findFirst({
+        where: { id, ...this.access.candidateWhere(p) },
+      });
+      if (
+        !current ||
+        candidateReviewGroup(current) !== candidateReviewGroup(row) ||
+        current.personUid !== row.personUid ||
+        current.code1c !== row.code1c ||
+        current.erpUid !== row.erpUid
+      )
+        throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
+      requireReviewGroup(p, candidateReviewGroup(current));
       for (const doc of result.items)
         await tx.candidatePreviousDocument.upsert({
           where: {
@@ -381,13 +447,33 @@ export class CandidateWorkspaceService {
     p: AuthPrincipal,
     body: CandidateRecheckRequestDto,
   ) {
-    await this.owner(id, p);
+    const row = await this.previousOwner(id, p);
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${id} FOR UPDATE`;
+      const current = await tx.candidate.findFirst({
+        where: { id, ...this.access.candidateWhere(p) },
+      });
+      if (
+        !current ||
+        candidateReviewGroup(current) !== candidateReviewGroup(row) ||
+        current.personUid !== row.personUid ||
+        current.code1c !== row.code1c ||
+        current.erpUid !== row.erpUid
+      )
+        throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
+      requireReviewGroup(p, candidateReviewGroup(current));
       const doc = await tx.candidatePreviousDocument.findFirst({
         where: { id: documentId, candidateId: id },
       });
       if (!doc) throw new NotFoundException();
+      if (
+        body.status === "CONFIRMED" &&
+        candidateReviewGroup(current) === "IG" &&
+        (!doc.documentUid || needsNewIgDocument(doc.documentUid))
+      )
+        throw new ConflictException(
+          "Для этого оформления нужна новая миграционная карта или патент. Если вид документа неизвестен, подтвердить его нельзя.",
+        );
       if (body.status === "CONFIRMED" && !doc.originalAvailable)
         throw new ConflictException("Оригинал недоступен для проверки");
       await tx.candidatePreviousDocument.update({
@@ -411,12 +497,14 @@ export class CandidateWorkspaceService {
     return this.previous(id, p);
   }
   async original(id: string, documentId: string, p: AuthPrincipal) {
-    const row = await this.owner(id, p);
+    const row = await this.previousOwner(id, p);
     const doc = await this.prisma.candidatePreviousDocument.findFirst({
       where: { id: documentId, candidateId: id },
     });
     if (!doc?.originalAvailable)
       throw new NotFoundException("Оригинал недоступен");
-    return this.erp.original(row.erpUid!, doc.sourceId);
+    return candidateReviewGroup(row) === "IG"
+      ? this.erp.personOriginal(row.code1c!, row.personUid!, doc.sourceId)
+      : this.erp.original(row.erpUid!, doc.sourceId);
   }
 }

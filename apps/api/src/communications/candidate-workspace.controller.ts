@@ -213,6 +213,10 @@ export class CandidateWorkspaceController {
     return this.workspace.link(id, p, body);
   }
   @Get(":candidateId/previous-documents")
+  @RequireAccessRule(
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
   @ApiOperation({
     operationId: "listCandidatePreviousDocuments",
     summary:
@@ -226,6 +230,10 @@ export class CandidateWorkspaceController {
     return this.workspace.previous(id, p);
   }
   @Patch(":candidateId/previous-documents/:documentId")
+  @RequireAccessRule(
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
   @ApiOperation({
     operationId: "recheckCandidatePreviousDocument",
     summary:
@@ -241,6 +249,10 @@ export class CandidateWorkspaceController {
     return this.workspace.recheck(id, documentId, p, body);
   }
   @Get(":candidateId/previous-documents/:documentId/original")
+  @RequireAccessRule(
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
   @ApiOperation({
     operationId: "getCandidatePreviousDocumentOriginal",
     summary: "Authorized binary original from linked ERP physical person",

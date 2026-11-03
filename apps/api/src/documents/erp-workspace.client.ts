@@ -254,4 +254,16 @@ export class ErpWorkspaceClient {
         response.headers.get("content-type") ?? "application/octet-stream",
     };
   }
+  async personOriginal(code1c: string, personUid: string, id: string) {
+    const response = await this.response("person-document-original-by-code", {
+      code1c,
+      personUid,
+      id,
+    });
+    return {
+      bytes: await this.readBounded(response, 100 * 1024 * 1024),
+      mimeType:
+        response.headers.get("content-type") ?? "application/octet-stream",
+    };
+  }
 }

@@ -18,6 +18,11 @@ vi.mock("@edo/api-client", () => ({
     return { data: mock.data };
   },
 }));
+vi.mock("./CandidatePreviousDocuments", () => ({
+  CandidatePreviousDocuments: ({ candidateId }: { candidateId: string }) => (
+    <div>История ERP: {candidateId}</div>
+  ),
+}));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 HTMLDialogElement.prototype.showModal = vi.fn();
 HTMLDialogElement.prototype.close = vi.fn();
@@ -56,6 +61,24 @@ async function render(
   return container;
 }
 describe("stage candidate drawer", () => {
+  it("shows ERP history for an IG candidate even within a stage", async () => {
+    mock.data = {
+      candidate: {
+        id: "c1",
+        fullName: "Кандидат",
+        reviewGroup: "IG",
+        code1c: "person-code",
+        approvedDocuments: 0,
+        requiredDocuments: 0,
+      },
+      stageDocuments: {
+        required: { documents: [], missingDocuments: [] },
+        additional: { documents: [], missingDocuments: [] },
+      },
+    };
+    const view = await render();
+    expect(view.textContent).toContain("История ERP: c1");
+  });
   it("shows the chosen stage in required and additional sections including missing types", async () => {
     mock.data = {
       candidate: {

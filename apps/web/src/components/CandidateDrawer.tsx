@@ -9,6 +9,7 @@ import {
 import { Badge, Button, StatusBadge } from "@edo/ui";
 import { ChevronRight, X } from "lucide-react";
 import { LkLink } from "./LkLink";
+import { CandidatePreviousDocuments } from "./CandidatePreviousDocuments";
 import {
   candidateInitials,
   documentProgressPercent,
@@ -408,6 +409,11 @@ export function CandidateDrawer({
                   )}
                 </section>
               ))}
+            {profile?.reviewGroup === "IG" &&
+              profile.code1c &&
+              !returnedHistory && (
+                <CandidatePreviousDocuments candidateId={candidateId} />
+              )}
           </div>
         </div>
       </div>
