@@ -468,6 +468,26 @@ describe("DocumentReviewWorkspace hover vs select", () => {
     }
   });
 
+  it("shows optional Latin passport names and lets the reviewer save OCR suggestions", () => {
+    const mutate = vi.fn();
+    vi.mocked(useGetMe).mockReturnValue({ data: { permissions: { "20011": [] }, locationScope: { type: "none" } } } as never);
+    vi.mocked(useEditDocumentFields).mockReturnValue({ mutate, isPending: false } as never);
+    const data = buildData();
+    data.reviewGroup = "IG";
+    data.fields = [
+      { ...data.fields[0], name: "number", label: "Номер", value: "123", originalValue: null, submittedValue: "123", required: true, reviewVisible: true, regions: [] },
+      ...([ ["lastNameLatin", "ALIYEV"], ["firstNameLatin", "ALI"], ["middleNameLatin", "VALIYEVICH"] ] as const).map(([name, originalValue]) => ({ ...data.fields[0], name, label: name, originalValue, value: null, submittedValue: null, editedBy: null, required: false, reviewVisible: true, regions: [] })),
+    ];
+    const view = renderWorkspace(data);
+    try {
+      expect(view.container.textContent).toContain("Номер · обязательно");
+      expect(view.container.textContent).toContain("Отчество латиницей");
+      expect(view.container.querySelector<HTMLTextAreaElement>('[data-field-row="middleNameLatin"] textarea')?.value).toBe("VALIYEVICH");
+      click(saveButton(view.container));
+      expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ data: { revision: 3, fields: { lastNameLatin: "ALIYEV", firstNameLatin: "ALI", middleNameLatin: "VALIYEVICH" } } }));
+    } finally { view.cleanup(); }
+  });
+
   it("formats OCR dates and accepted date inputs as dd.mm.yyyy", () => {
     const data = buildData();
     Object.assign(data.fields[1], {

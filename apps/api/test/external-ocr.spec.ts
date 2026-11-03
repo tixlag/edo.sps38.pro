@@ -53,6 +53,27 @@ const service = (extra: Record<string, unknown> = {}) =>
 afterEach(() => vi.unstubAllGlobals());
 
 describe("OCR profiles and normalization without inference", () => {
+  it("maps all three Uzbek passport name observations to Latin review fields", () => {
+    const result = normalizeOcrResponse("passport_uz", [
+      {
+        type: "passport",
+        fields: {},
+        ocr_fields: [
+          field("pas_surname", "ALIYEV"),
+          field("pas_name", "ALI"),
+          field("pas_patronymic", "VALIYEVICH"),
+        ],
+      },
+    ]);
+    expect(result).toMatchObject({
+      outcome: "SUCCEEDED",
+      fields: {
+        lastNameLatin: "ALIYEV",
+        firstNameLatin: "ALI",
+        middleNameLatin: "VALIYEVICH",
+      },
+    });
+  });
   it("keeps a later valid date usable when an earlier page had an invalid date", () => {
     const box = {
       file_index: 0,

@@ -13,7 +13,7 @@ import { DocumentAccessService } from "./document-access.service";
 import { DocumentReadService } from "./document-read.service";
 import type { ApprovedArtifact } from "./approved-artifact";
 import { DocumentPdfService } from "./document-pdf.service";
-import { isForeignPassport } from "./review-group";
+import { IG_PASSPORT_LATIN_FIELDS, isForeignPassport } from "./review-group";
 import {
   formatDateForErp,
   shouldOmitPositionUid,
@@ -196,14 +196,22 @@ export class DocumentReviewService {
         )
           throw new ConflictException("Approval lease expired");
         if (edits && version.submission) {
-          const definitions =
-            isForeignPassport(version.document) &&
-            !version.fields.some((field) => field.name === "number")
-              ? [
-                  ...version.fields,
-                  { name: "number", kind: "text", required: true, ordinal: 0 },
-                ]
-              : version.fields;
+          const definitions = isForeignPassport(version.document)
+            ? [
+                ...version.fields,
+                ...["number", ...IG_PASSPORT_LATIN_FIELDS]
+                  .filter(
+                    (name) =>
+                      !version.fields.some((field) => field.name === name),
+                  )
+                  .map((name) => ({
+                    name,
+                    kind: "text",
+                    required: name === "number",
+                    ordinal: 0,
+                  })),
+              ]
+            : version.fields;
           validateFields(definitions, edits);
         }
         if (
@@ -308,21 +316,27 @@ export class DocumentReviewService {
             const uid = version.document.documentType?.erpUid;
             const chatUid = version.document.candidate?.chatUuid;
             const documentFields = Object.fromEntries(
-              version.fields.map((f) => {
-                const value = typedValue(f.value, f.kind);
-                const erpValue =
-                  typeof value === "string" && !value.trim()
-                    ? ""
-                    : (value ?? (f.kind === "boolean" ? false : ""));
-                return [
-                  f.name,
-                  artifact!.transport === "base64-v1" &&
-                  f.kind === "date" &&
-                  typeof erpValue === "string"
-                    ? formatDateForErp(erpValue)
-                    : erpValue,
-                ];
-              }),
+              version.fields
+                .filter(
+                  (f) =>
+                    !isForeignPassport(version.document) ||
+                    !IG_PASSPORT_LATIN_FIELDS.some((name) => name === f.name),
+                )
+                .map((f) => {
+                  const value = typedValue(f.value, f.kind);
+                  const erpValue =
+                    typeof value === "string" && !value.trim()
+                      ? ""
+                      : (value ?? (f.kind === "boolean" ? false : ""));
+                  return [
+                    f.name,
+                    artifact!.transport === "base64-v1" &&
+                    f.kind === "date" &&
+                    typeof erpValue === "string"
+                      ? formatDateForErp(erpValue)
+                      : erpValue,
+                  ];
+                }),
             );
             if (
               shouldOmitPositionUid(

@@ -358,6 +358,169 @@ describe("manual review enrichment", () => {
 });
 
 describe("review decision metadata", () => {
+  it("approves an IG passport with only a number", async () => {
+    const version = {
+      id: "v1",
+      status: "IN_REVIEW",
+      revision: 2,
+      fields: [{ name: "number", value: "123" }],
+      submission: null,
+      job: null,
+      document: {
+        documentType: { code: "PASSPORT", erpUid: null },
+        candidate: { chatUuid: null, citizenship: "uz" },
+      },
+    };
+    const tx = {
+      $queryRaw: vi.fn(),
+      document: {
+        findUnique: vi.fn(async () => ({ candidateId: "owner" })),
+        findFirst: vi.fn(async () => ({ currentVersion: 1 })),
+        update: vi.fn(),
+      },
+      documentVersion: {
+        findUnique: vi.fn(async () => version),
+        updateMany: vi.fn(async () => ({ count: 1 })),
+      },
+    };
+    const service = new DocumentReviewService(
+      {
+        documentVersion: tx.documentVersion,
+        $transaction: async (run: (tx: unknown) => unknown) => run(tx),
+      } as never,
+      { document: vi.fn(), documentReviewWhere: () => ({}) } as never,
+      { logInTransaction: vi.fn() } as never,
+      { version: vi.fn() } as never,
+      {} as never,
+    );
+    await service.approve("doc", 1, 2, principal, "correlation");
+    expect(tx.documentVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "APPROVED" }),
+      }),
+    );
+  });
+  it("omits local Latin name fields from the IG passport ERP delivery", async () => {
+    const version = {
+      id: "v1",
+      status: "IN_REVIEW",
+      revision: 2,
+      positionCode1c: null,
+      fields: [
+        { name: "number", kind: "text", value: "123" },
+        { name: "lastNameLatin", kind: "text", value: "ALIYEV" },
+        { name: "firstNameLatin", kind: "text", value: "ALI" },
+        { name: "middleNameLatin", kind: "text", value: "VALIYEVICH" },
+      ],
+      submission: { id: "s" },
+      job: null,
+      pendingApprovalStorageKey: "key",
+      approvalLeaseUntil: new Date("2099-01-01"),
+      document: {
+        documentType: { code: "PASSPORT", erpUid: null },
+        candidate: { chatUuid: null, citizenship: "uz" },
+      },
+    };
+    const tx = {
+      $queryRaw: vi.fn(),
+      document: {
+        findUnique: vi.fn(async () => ({ candidateId: "owner" })),
+        findFirst: vi.fn(async () => ({ currentVersion: 1 })),
+        update: vi.fn(),
+      },
+      documentVersion: {
+        findUnique: vi.fn(async () => version),
+        updateMany: vi.fn(async () => ({ count: 1 })),
+      },
+      erpDocumentDelivery: { create: vi.fn() },
+    };
+    const service = new DocumentReviewService(
+      {
+        documentVersion: tx.documentVersion,
+        $transaction: async (run: (tx: unknown) => unknown) => run(tx),
+      } as never,
+      { document: vi.fn(), documentReviewWhere: () => ({}) } as never,
+      { logInTransaction: vi.fn() } as never,
+      { version: vi.fn() } as never,
+      {
+        prepare: vi.fn(async () => ({ key: "key", transport: "multipart-v2" })),
+      } as never,
+    );
+    await service.approve("doc", 1, 2, principal, "correlation");
+    expect(tx.erpDocumentDelivery.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          payload: expect.objectContaining({
+            documentFields: { number: "123" },
+          }),
+        }),
+      }),
+    );
+  });
+  it("saves optional Latin name fields missing from the submitted IG passport", async () => {
+    const version = {
+      id: "v1",
+      status: "IN_REVIEW",
+      revision: 2,
+      fields: [
+        {
+          name: "number",
+          kind: "text",
+          required: true,
+          ordinal: 0,
+          value: "123",
+        },
+      ],
+      submission: { id: "s" },
+      job: null,
+      document: {
+        documentType: { code: "PASSPORT", erpUid: null },
+        candidate: { chatUuid: null, citizenship: "uz" },
+      },
+    };
+    const tx = {
+      $queryRaw: vi.fn(),
+      document: {
+        findUnique: vi.fn(async () => ({ candidateId: "owner" })),
+        findFirst: vi.fn(async () => ({ currentVersion: 1 })),
+      },
+      documentVersion: {
+        findUnique: vi.fn(async () => version),
+        updateMany: vi.fn(async () => ({ count: 1 })),
+      },
+      documentVersionField: { upsert: vi.fn() },
+    };
+    const service = new DocumentReviewService(
+      {
+        $transaction: async (run: (tx: unknown) => unknown) => run(tx),
+      } as never,
+      { documentReviewWhere: () => ({}) } as never,
+      { logInTransaction: vi.fn() } as never,
+      { version: vi.fn() } as never,
+      {} as never,
+    );
+    await service.edit(
+      "doc",
+      1,
+      2,
+      {
+        lastNameLatin: "ALIYEV",
+        firstNameLatin: "ALI",
+        middleNameLatin: "VALIYEVICH",
+      },
+      principal,
+      "correlation",
+    );
+    expect(tx.documentVersionField.upsert).toHaveBeenCalledTimes(3);
+    expect(tx.documentVersionField.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          name: "middleNameLatin",
+          value: "VALIYEVICH",
+        }),
+      }),
+    );
+  });
   it("does not approve an IG passport without a number", async () => {
     const version = {
       id: "v1",

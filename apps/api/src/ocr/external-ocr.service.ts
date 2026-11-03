@@ -83,6 +83,7 @@ const mapping: Record<OcrProfile, Record<string, string>> = {
     pas_authority: "issuedBy",
     pas_surname: "lastNameLatin",
     pas_name: "firstNameLatin",
+    pas_patronymic: "middleNameLatin",
   },
   migration_card: {
     mg_series: "series",
