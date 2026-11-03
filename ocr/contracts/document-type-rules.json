@@ -27,7 +27,10 @@
         "\\b\\d{2}\\s*\\d{2}\\s*\\d{6}\\b",
         "\\bкод\\s*подразделения\\s*[:№]?\\s*\\d{3}-\\d{3}\\b"
       ],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "паспорт гражданина российской федерации"
+      ]
     },
     {
       "code": "RESIDENCE_PERMIT",
@@ -50,7 +53,11 @@
       "patterns": [
         "\\b\\d{2}\\s*№?\\s*\\d{7}\\b"
       ],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "вид на жительство",
+        "residence permit"
+      ]
     },
     {
       "code": "MIGRATION_CARD",
@@ -72,7 +79,11 @@
       "patterns": [
         "\\b\\d{4}\\s*№?\\s*\\d{7}\\b"
       ],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "миграционная карта",
+        "migration card"
+      ]
     },
     {
       "code": "WORK_PATENT",
@@ -96,7 +107,11 @@
       "patterns": [
         "\\b\\d{2}\\s*№?\\s*\\d{8,9}\\b"
       ],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "патент на право трудовой деятельности",
+        "территория действия патента"
+      ]
     },
     {
       "code": "REGISTRATION_NOTICE",
@@ -117,7 +132,10 @@
         "срок пребывания до"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "уведомление о прибытии иностранного гражданина"
+      ]
     },
     {
       "code": "PASSPORT_TRANSLATION",
@@ -138,7 +156,10 @@
         "переводчик"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "перевод паспорта"
+      ]
     },
     {
       "code": "RUSSIAN_LANGUAGE_CERTIFICATE",
@@ -159,7 +180,10 @@
         "государственному тестированию по русскому языку"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "сертификат о владении русским языком"
+      ]
     },
     {
       "code": "INN",
@@ -184,7 +208,11 @@
         "\\b\\d{12}\\b",
         "инн\\s*[:№]?\\s*\\d{10,12}"
       ],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "идентификационный номер налогоплательщика",
+        "свидетельство о постановке на учет в налоговом органе"
+      ]
     },
     {
       "code": "SNILS",
@@ -209,7 +237,11 @@
       "patterns": [
         "\\b\\d{3}[-\\s]\\d{3}[-\\s]\\d{3}[-\\s]\\d{2}\\b"
       ],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "страховое свидетельство обязательного пенсионного страхования",
+        "ади-рег"
+      ]
     },
     {
       "code": "MILITARY_ID",
@@ -232,7 +264,10 @@
         "справка взамен военного билета"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "военный билет"
+      ]
     },
     {
       "code": "POLICE_CLEARANCE",
@@ -254,7 +289,10 @@
         "справка об отсуствие судимости"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "справка об отсутствии судимости"
+      ]
     },
     {
       "code": "DRIVER_LICENSE",
@@ -278,7 +316,12 @@
         "\\b\\d{2}\\s*\\d{2}\\s*\\d{6}\\b",
         "\\b\\d{2}[а-яa-z]{2}\\d{6}\\b"
       ],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "водительское удостоверение",
+        "permis de conduire",
+        "driver licence"
+      ]
     },
     {
       "code": "TACHOGRAPH_CARD",
@@ -299,7 +342,10 @@
         "карта для цифрового тахографа"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "карта тахографа"
+      ]
     },
     {
       "code": "DOPOG",
@@ -320,7 +366,10 @@
         "базовый курс"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "подготовке водителей транспортных средств перевозящих опасные грузы"
+      ]
     },
     {
       "code": "NAKS",
@@ -341,7 +390,10 @@
         "национальное агентство контроля"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "национальное агентство контроля сварки"
+      ]
     },
     {
       "code": "EXCAVATOR_OPERATOR_CERTIFICATE",
@@ -362,7 +414,10 @@
         "тракторист"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "машинист экскаватора"
+      ]
     },
     {
       "code": "SAFE_WINTER_DRIVING_CERTIFICATE",
@@ -383,7 +438,11 @@
         "курс защитного вождения"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "защитное вождение",
+        "зимнее вождение"
+      ]
     },
     {
       "code": "PROFESSION_CERTIFICATE",
@@ -405,7 +464,10 @@
         "свидетельство о квалификации"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "свидетельство о профессии"
+      ]
     },
     {
       "code": "HIGHER_EDUCATION_DIPLOMA",
@@ -432,7 +494,10 @@
         "высшее образование"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "диплом о высшем образовании"
+      ]
     },
     {
       "code": "RETRAINING_DIPLOMA",
@@ -452,7 +517,10 @@
         "переподготовка"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "диплом о профессиональной переподготовке"
+      ]
     },
     {
       "code": "VOCATIONAL_DIPLOMA",
@@ -475,7 +543,10 @@
         "диплом о среднем профессиональном образовании"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "диплом о начальном профессиональном образовании"
+      ]
     },
     {
       "code": "PSYCHIATRIC_EVALUATION",
@@ -496,7 +567,10 @@
         "психоневрологический диспансер"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "обязательного психиатрического освидетельствования"
+      ]
     },
     {
       "code": "FOREIGN_MEDICAL_EXAMINATION",
@@ -517,7 +591,10 @@
         "медицинское заключение"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "медицинского освидетельствования иностранного гражданина"
+      ]
     },
     {
       "code": "MEASLES_ANTIBODIES_CERTIFICATE",
@@ -540,7 +617,10 @@
         "вирус кори"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "антитела к вирусу кори"
+      ]
     },
     {
       "code": "INSURANCE_POLICY",
@@ -565,7 +645,10 @@
       "patterns": [
         "\\b\\d{16}\\b"
       ],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "полис обязательного медицинского страхования"
+      ]
     },
     {
       "code": "MARRIAGE_CERTIFICATE",
@@ -585,7 +668,10 @@
         "актовая запись о браке"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "свидетельство о заключении брака"
+      ]
     },
     {
       "code": "BIRTH_CERTIFICATE",
@@ -607,7 +693,10 @@
         "орган загс"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "свидетельство о рождении"
+      ]
     },
     {
       "code": "BANK_DETAILS",
@@ -634,7 +723,10 @@
         "\\b\\d{20}\\b",
         "\\b04\\d{7}\\b"
       ],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "банковские реквизиты"
+      ]
     },
     {
       "code": "EMPLOYMENT_RECORD",
@@ -658,7 +750,11 @@
         "принят"
       ],
       "patterns": [],
-      "min_markers": 1
+      "min_markers": 1,
+      "strong_markers": [
+        "трудовая книжка",
+        "сведения о трудовой деятельности"
+      ]
     }
   ]
 }
