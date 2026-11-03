@@ -214,6 +214,10 @@ function renderWorkspace(
     readOnly?: boolean;
     allowAnnotation?: boolean;
     allowAnnotationClaim?: boolean;
+    onNavigationStateChange?: (state: {
+      hasUnsavedChanges: boolean;
+      busy: boolean;
+    }) => void;
   } = {},
 ) {
   const container = document.createElement("div");
@@ -336,6 +340,111 @@ describe("DocumentReviewWorkspace hover vs select", () => {
       expect(!!view.container.querySelector('[aria-label="Подтвердить документ"]')).toBe(allowed);
       expect(!!view.container.querySelector('[aria-label="Отклонить документ"]')).toBe(allowed);
     } finally { view.cleanup(); }
+  });
+  it("reports manual edits, incomplete dates and cancellation to the document navigator", () => {
+    const onNavigationStateChange = vi.fn();
+    const view = renderWorkspace(buildData(), { onNavigationStateChange });
+    try {
+      expect(onNavigationStateChange).toHaveBeenLastCalledWith({
+        hasUnsavedChanges: false,
+        busy: false,
+      });
+      const surname = view.container.querySelector<HTMLTextAreaElement>(
+        "#field-doc-1-last_name",
+      )!;
+      typeValue(surname, "Правка");
+      expect(onNavigationStateChange).toHaveBeenLastCalledWith({
+        hasUnsavedChanges: true,
+        busy: false,
+      });
+      click(
+        [...view.container.querySelectorAll("button")].find(
+          (b) => b.textContent === "Отменить правки",
+        )!,
+      );
+      expect(onNavigationStateChange).toHaveBeenLastCalledWith({
+        hasUnsavedChanges: false,
+        busy: false,
+      });
+      const date = view.container.querySelector<HTMLInputElement>(
+        "#field-doc-1-issued_at",
+      )!;
+      typeValue(date, "12");
+      expect(onNavigationStateChange).toHaveBeenLastCalledWith({
+        hasUnsavedChanges: true,
+        busy: false,
+      });
+      click(
+        [...view.container.querySelectorAll("button")].find(
+          (b) => b.textContent === "Отменить правки",
+        )!,
+      );
+      expect(date.value).toBe("01.01.2020");
+      expect(onNavigationStateChange).toHaveBeenLastCalledWith({
+        hasUnsavedChanges: false,
+        busy: false,
+      });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("reports pending mutations and does not treat untouched OCR suggestions as manual edits", () => {
+    const onNavigationStateChange = vi.fn();
+    const data = buildData();
+    Object.assign(data.fields[0], {
+      value: null,
+      submittedValue: null,
+      editedBy: null,
+    });
+    const view = renderWorkspace(data, { onNavigationStateChange });
+    try {
+      expect(onNavigationStateChange).toHaveBeenLastCalledWith({
+        hasUnsavedChanges: false,
+        busy: false,
+      });
+      vi.mocked(useRetryDocumentOcr).mockReturnValue({
+        mutate: vi.fn(),
+        isPending: true,
+      } as never);
+      view.rerender(data);
+      expect(onNavigationStateChange).toHaveBeenLastCalledWith({
+        hasUnsavedChanges: false,
+        busy: true,
+      });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("keeps a way to discard an incomplete date after another reviewer approves the document", () => {
+    const onNavigationStateChange = vi.fn();
+    const data = buildData();
+    const view = renderWorkspace(data, { onNavigationStateChange });
+    try {
+      typeValue(
+        view.container.querySelector<HTMLInputElement>(
+          "#field-doc-1-issued_at",
+        )!,
+        "12",
+      );
+      view.rerender({ ...data, revision: 4, status: "APPROVED" });
+      expect(onNavigationStateChange).toHaveBeenLastCalledWith({
+        hasUnsavedChanges: true,
+        busy: false,
+      });
+      const cancel = [...view.container.querySelectorAll("button")].find(
+        (b) => b.textContent === "Отменить правки",
+      );
+      expect(cancel).toBeDefined();
+      click(cancel!);
+      expect(onNavigationStateChange).toHaveBeenLastCalledWith({
+        hasUnsavedChanges: false,
+        busy: false,
+      });
+    } finally {
+      view.cleanup();
+    }
   });
   it("substitutes OCR only in the draft and retains the original yellow mismatch after saving", () => {
     const mutate = vi.fn();

@@ -245,6 +245,32 @@ describe("document catalog cached snapshot", () => {
     expect(syncedAt).toBe(previous);
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
+  it("keeps the previous snapshot when the new ERP format has an invalid project code", async () => {
+    const previous = syncedAt;
+    request.mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            uid,
+            name: "Passport",
+            stage: 3,
+            requirements: {
+              requiredForAll: false,
+              citizenship: { russian: true, foreign: false },
+              positions: [],
+              projectCodes: ["bad code"],
+              countryCodes: [],
+            },
+            fields: { required: ["number"], optional: [] },
+          },
+        ]),
+      ),
+    );
+    await service().list("001");
+    await vi.waitFor(() => expect(Logger.prototype.warn).toHaveBeenCalled());
+    expect(syncedAt).toBe(previous);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
   it("serves cached reads with Redis down and does not run an uncoordinated refresh", async () => {
     vi.spyOn(redis, "setNxPxStrict").mockRejectedValue(new Error("Redis down"));
     expect((await service().list("001")).items).toHaveLength(1);

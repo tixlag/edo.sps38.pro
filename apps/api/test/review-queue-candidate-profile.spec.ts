@@ -697,10 +697,10 @@ describe("reviewDocuments candidate progress", () => {
       approvedDocuments: 2,
       requiredDocuments: 2,
     });
-    // c2 without positionCode: citizenship still identifies applicable documents; an unknown type is not counted as approved.
+    // c2 without positionCode: approved still counts, required is null.
     expect(byId.get("c2")).toMatchObject({
-      approvedDocuments: 0,
-      requiredDocuments: 1,
+      approvedDocuments: 1,
+      requiredDocuments: null,
     });
     // c3 (kz + unknown POS9): only allForeign T3.
     expect(byId.get("c3")).toMatchObject({

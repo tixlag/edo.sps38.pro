@@ -23,6 +23,7 @@ import {
   useListCatalogManagers,
   getListCatalogManagersQueryKey,
   type CandidateDetailsDto,
+  type CandidateDocumentSummaryDto,
   type ReviewStageProgressDto,
   useGetDocumentInfo,
   useGetMe,
@@ -53,7 +54,11 @@ import {
   FileText,
   AlertTriangle,
 } from "lucide-react";
-import { DocumentReviewWorkspace } from "../components/DocumentReviewWorkspace";
+import {
+  DocumentReviewWorkspace,
+  type DocumentReviewNavigationState,
+} from "../components/DocumentReviewWorkspace";
+import { ReviewDocumentNavigation } from "../components/ReviewDocumentNavigation";
 import { useLiveDocumentVersion } from "../lib/use-live-document-version";
 import {
   SearchSelect,
@@ -1348,9 +1353,54 @@ export function ReviewDocumentPage({
         info.data?.currentVersion ??
         0));
   const version = useLiveDocumentVersion(documentId, number);
+  const [navigationState, setNavigationState] = useState<
+    DocumentReviewNavigationState & { documentId: string; version: number }
+  >();
+  const [navigationMessage, setNavigationMessage] = useState("");
+  const [documentListState, setDocumentListState] = useState<{
+    candidateId: string;
+    expanded: boolean;
+  }>();
+  const onNavigationStateChange = useCallback(
+    (state: DocumentReviewNavigationState) => {
+      setNavigationState({ ...state, documentId, version: number });
+      setNavigationMessage("");
+    },
+    [documentId, number],
+  );
+  useEffect(() => setNavigationMessage(""), [documentId, number]);
+  const activeNavigationState =
+    navigationState?.documentId === documentId &&
+    navigationState.version === number
+      ? navigationState
+      : undefined;
+  const canNavigate = () => {
+    if (activeNavigationState?.busy) return false;
+    if (activeNavigationState?.hasUnsavedChanges) {
+      setNavigationMessage(
+        "Сохраните или отмените правки текущего документа перед переходом.",
+      );
+      return false;
+    }
+    return true;
+  };
+  const selectDocument = (document: CandidateDocumentSummaryDto) => {
+    if (document.id === documentId && document.currentVersion === number)
+      return;
+    if (!canNavigate()) return;
+    void navigate({
+      to: group === "IG" ? "/review-ig/$documentId" : "/review/$documentId",
+      params: { documentId: document.id },
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        version: document.currentVersion,
+      }),
+    });
+  };
   const historic = isHistoricVersion(version.data?.version, currentVersion);
   const unknownVersionFallback = urlVersion === undefined;
   const chooseVersion = (next: number) => {
+    if (!canNavigate()) return;
     setSelectedVersion(next);
     void navigate({
       to: readOnly
@@ -1377,6 +1427,9 @@ export function ReviewDocumentPage({
       <Link
         to={readOnly ? "/history" : base}
         search={{ ...parseReviewSearchParams(search) }}
+        onClick={(event) => {
+          if (!readOnly && !canNavigate()) event.preventDefault();
+        }}
         className="mb-2 inline-block text-[13px] text-[var(--muted-foreground)] underline underline-offset-4 hover:text-[var(--foreground)]"
       >
         {readOnly ? "← История" : "← Очередь проверки"}
@@ -1408,6 +1461,32 @@ export function ReviewDocumentPage({
           )
         }
       />
+      {!readOnly && info.data?.candidateId && (
+        <ReviewDocumentNavigation
+          key={info.data.candidateId}
+          candidateId={info.data.candidateId}
+          documentId={documentId}
+          currentTitle={info.data.title}
+          currentDocument={version.data}
+          expanded={
+            documentListState?.candidateId === info.data.candidateId &&
+            documentListState.expanded
+          }
+          onExpandedChange={(expanded) =>
+            setDocumentListState({
+              candidateId: info.data!.candidateId!,
+              expanded,
+            })
+          }
+          busy={activeNavigationState?.busy ?? false}
+          onSelect={selectDocument}
+        />
+      )}
+      {navigationMessage && (
+        <p role="alert" className="mt-2 text-[13px] text-[var(--primary)]">
+          {navigationMessage}
+        </p>
+      )}
       {historic && version.data && (
         <div
           role="status"
@@ -1513,6 +1592,9 @@ export function ReviewDocumentPage({
                 ["APPROVED", "SIGNED"].includes(version.data.status))
             }
             allowAnnotationClaim={!readOnly && !historic}
+            onNavigationStateChange={
+              readOnly ? undefined : onNavigationStateChange
+            }
           />
         </div>
       )}

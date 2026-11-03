@@ -36,6 +36,39 @@ const rule = {
 };
 
 describe("ERP catalog applicability", () => {
+  it("accepts padded project codes and ignores blank position codes from ERP", () => {
+    const [doc] = erpCatalogSchema.parse([
+      {
+        ...item,
+        requirements: {
+          ...item.requirements,
+          positions: [
+            { code: "  ", required: false },
+            { code: "001", required: false },
+          ],
+          projectCodes: ["  project  ", "project"],
+        },
+      },
+    ]);
+    expect(doc.stageRules[0]).toMatchObject({
+      positions: ["001"],
+      optionalPositions: ["001"],
+      projectCodes: ["project"],
+    });
+    expect(
+      classifyRule(
+        {
+          ...rule,
+          projects: doc.stageRules[0].projectCodes.map((code1c) => ({
+            code1c,
+          })),
+        },
+        "none",
+        "ru",
+        "project",
+      ),
+    ).toBe("required");
+  });
   it("parses new response and keeps separate stage rules", () => {
     const [doc] = erpCatalogSchema.parse([item, { ...item, stage: 4 }]);
     expect(doc.stageRules).toMatchObject([
