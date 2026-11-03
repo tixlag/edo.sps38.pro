@@ -15609,6 +15609,14 @@
             "type": "string",
             "format": "uuid"
           },
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "nullable": true
+            },
+            "description": "Applicable stage numbers; null denotes a document without a stage"
+          },
           "fields": {
             "type": "array",
             "items": {
@@ -15620,6 +15628,7 @@
           "code",
           "title",
           "documentUid",
+          "stages",
           "fields"
         ]
       },

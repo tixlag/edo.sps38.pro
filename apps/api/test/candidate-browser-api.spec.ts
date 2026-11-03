@@ -68,6 +68,7 @@ describe("EDO candidate browser API with unified auth", () => {
       expiresAt: "later",
     })),
   };
+  const catalog = { list: vi.fn(async () => ({ items: [] as unknown[] })) };
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       imports: [
@@ -103,7 +104,7 @@ describe("EDO candidate browser API with unified auth", () => {
         { provide: LkCandidateIdentityService, useValue: identity },
         {
           provide: DocumentCatalogService,
-          useValue: { list: async () => ({ items: [] }) },
+          useValue: catalog,
         },
         { provide: DocumentReadService, useValue: reads },
         { provide: DocumentEventsService, useValue: events },
@@ -271,6 +272,17 @@ describe("EDO candidate browser API with unified auth", () => {
   it("returns forms and catalog from one canonical Unicode employee lookup", async () => {
     identity.byEmployee.mockClear();
     identity.byUuid.mockClear();
+    catalog.list.mockResolvedValueOnce({
+      items: [
+        {
+          code: "PASSPORT",
+          title: "Passport",
+          documentUid: uuid,
+          fields: [],
+          stages: [1, 3, null],
+        },
+      ],
+    });
     const response = await app.inject({
       method: "GET",
       url: "/api/candidate-documents/my/forms",
@@ -279,7 +291,7 @@ describe("EDO candidate browser API with unified auth", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       context: { code1c: "УП000123" },
-      catalog: { items: [] },
+      catalog: { items: [{ documentUid: uuid, stages: [1, 3, null] }] },
     });
     expect(identity.byEmployee).toHaveBeenCalledOnce();
     expect(identity.byUuid).not.toHaveBeenCalled();

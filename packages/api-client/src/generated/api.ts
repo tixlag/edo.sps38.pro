@@ -482,6 +482,8 @@ export interface CatalogDocumentTypeDto {
   code: string;
   title: string;
   documentUid: string;
+  /** Applicable stage numbers; null denotes a document without a stage */
+  stages: (number | null)[];
   fields: DocumentDefinitionDto[];
 }
 

@@ -488,6 +488,13 @@ export class DocumentDefinitionDto {
 }
 export class CatalogDocumentTypeDto extends DocumentTypeDto {
   @ApiProperty({ format: "uuid" }) documentUid!: string;
+  @ApiProperty({
+    type: "array",
+    items: { type: "integer", nullable: true },
+    description:
+      "Applicable stage numbers; null denotes a document without a stage",
+  })
+  stages!: (number | null)[];
   @ApiProperty({ type: [DocumentDefinitionDto] })
   fields!: DocumentDefinitionDto[];
 }
