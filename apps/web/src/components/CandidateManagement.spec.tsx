@@ -569,6 +569,8 @@ describe("candidate manager flows", () => {
           subdivisionCode: "770-002",
           gender: "Мужской",
           citizenship: "РФ",
+          recordDate: "2020-02-03",
+          isInvalid: false,
         },
         expiresAt: "2028-01-01",
         originalAvailable: false,
@@ -580,6 +582,8 @@ describe("candidate manager flows", () => {
     await render(<CandidateManagement candidateId="current-cycle" />);
     expect(view.textContent).toContain("Требует повторной проверки");
     expect(view.textContent).toContain("123456");
+    expect(view.textContent).toContain("03.02.2020");
+    expect(view.textContent).toContain("Отмечен недействительным в ERP");
     expect(view.textContent).not.toContain("hidden-person-code");
     expect(view.textContent).toContain("Код подразделения");
     expect(view.textContent).toContain("770-001");

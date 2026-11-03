@@ -11,6 +11,7 @@ import {
 import { Badge, Button } from "@edo/ui";
 import { ChevronDown } from "lucide-react";
 import { CANDIDATE_CONTROL, candidateError } from "./CandidateForm";
+import { formatDateRu } from "../lib/date-format";
 
 const RECHECK_LABELS: Record<CandidateRecheckStatus, string> = {
   REQUIRES_REVIEW: "Требует повторной проверки",
@@ -123,7 +124,18 @@ function PreviousDocument({
                   ? value
                     ? "Да"
                     : "Нет"
-                  : String(value) || "Не указано"}
+                  : typeof value === "string" &&
+                      [
+                        "recordDate",
+                        "issueDate",
+                        "issuedAt",
+                        "expiryDate",
+                        "expiresAt",
+                        "validUntil",
+                        "birthDate",
+                      ].includes(key)
+                    ? formatDateRu(value)
+                    : String(value) || "Не указано"}
               </dd>
             </div>
           ))}
@@ -131,9 +143,7 @@ function PreviousDocument({
       )}
       <p className="text-sm">
         Срок действия:{" "}
-        {document.expiresAt
-          ? new Date(document.expiresAt).toLocaleDateString("ru-RU")
-          : "Неизвестен"}
+        {document.expiresAt ? formatDateRu(document.expiresAt) : "Неизвестен"}
       </p>
       {document.reviewedAt && (
         <p className="text-xs text-[var(--muted-foreground)]">
