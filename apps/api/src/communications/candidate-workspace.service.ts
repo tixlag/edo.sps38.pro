@@ -18,6 +18,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
@@ -444,7 +445,12 @@ export class CandidateWorkspaceService {
           ? !doc.originalAvailable
             ? "ORIGINAL_UNAVAILABLE"
             : "REPLACE"
-          : undefined;
+          : old?.status === "CONFIRMED" &&
+              (!isDeepStrictEqual(oldFields, fields) ||
+                (old.expiresAt?.getTime() ?? null) !==
+                  (expiresAt?.getTime() ?? null))
+            ? "REQUIRES_REVIEW"
+            : undefined;
         await tx.candidatePreviousDocument.upsert({
           where: {
             candidateId_sourceId: { candidateId: id, sourceId: doc.id },
@@ -550,6 +556,9 @@ export class CandidateWorkspaceService {
     p: AuthPrincipal,
     body: CandidateRecheckRequestDto,
   ) {
+    // Refresh before granting confirmation: a failed ERP request must never
+    // leave a stale document confirmed in the local projection.
+    if (body.status === "CONFIRMED") await this.previous(id, p);
     const row = await this.previousOwner(id, p);
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${id} FOR UPDATE`;

@@ -199,6 +199,43 @@ describe("IG previous ERP documents", () => {
       }),
     );
   });
+  it("requires review again when ERP changes the fields of a confirmed document", async () => {
+    const { service, row, tx, erp } = setup();
+    tx.candidatePreviousDocument.findMany.mockResolvedValue([
+      {
+        id: "old",
+        sourceId: "source",
+        documentUid: personUid,
+        status: "CONFIRMED",
+        originalAvailable: true,
+        fields: { number: "A1" },
+        expiresAt: null,
+      },
+    ]);
+    erp.request.mockResolvedValue({
+      items: [
+        {
+          id: "source",
+          documentUid: personUid,
+          title: "Документ",
+          fields: { number: "A2" },
+          expiresAt: null,
+          originalAvailable: true,
+          recheckStatus: "REQUIRES_REVIEW",
+        },
+      ],
+    } as never);
+    await service.previous(row.id, actor({ "20011": [] }));
+    expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: "REQUIRES_REVIEW",
+          reviewedBy: null,
+          reviewedAt: null,
+        }),
+      }),
+    );
+  });
   it("marks a disappeared ERP original unavailable and withdraws confirmation", async () => {
     const { service, row, tx } = setup();
     tx.candidatePreviousDocument.findMany.mockResolvedValue([
@@ -228,6 +265,24 @@ describe("IG previous ERP documents", () => {
       service.previous(row.id, actor({ "20002": [] })),
     ).rejects.toThrow();
     expect(erp.identity).not.toHaveBeenCalled();
+  });
+  it("does not confirm a stale document when the ERP history cannot be refreshed", async () => {
+    const { service, row, tx, erp } = setup();
+    tx.candidatePreviousDocument.findFirst.mockResolvedValue({
+      id: "old",
+      documentUid: personUid,
+      originalAvailable: true,
+      fields: { isInvalid: false },
+      expiresAt: null,
+      status: "REQUIRES_REVIEW",
+    } as never);
+    erp.request.mockRejectedValueOnce(new Error("ERP unavailable"));
+    await expect(
+      service.recheck(row.id, "old", actor({ "20011": [] }), {
+        status: "CONFIRMED",
+      }),
+    ).rejects.toThrow("ERP unavailable");
+    expect(tx.candidatePreviousDocument.update).not.toHaveBeenCalled();
   });
   it.each([
     "39554ac3-6462-11ec-80cc-002590854e7f",
