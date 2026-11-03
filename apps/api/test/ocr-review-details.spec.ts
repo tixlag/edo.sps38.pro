@@ -68,6 +68,56 @@ function fixture() {
 }
 
 describe("OCR review data boundaries", () => {
+  it("shows only the passport number as required for an IG candidate, including existing versions", async () => {
+    const { row, reads } = fixture();
+    Object.assign(row.document, {
+      documentType: { code: "PASSPORT", erpUid: null },
+      candidate: { chatUuid: null, citizenship: "uz" },
+    });
+    row.fields.push({ ...row.fields[0], name: "number", required: false });
+    const result = await reads.version("document", 4);
+    expect(result.fields.map(({ name, required }) => [name, required])).toEqual(
+      [
+        ["issueDate", false],
+        ["optional", false],
+        ["number", true],
+      ],
+    );
+    expect(result.ocrFields).toEqual([]);
+    expect(result.fields[0].regions).toEqual([]);
+  });
+  it("allows a number to be entered when an existing IG passport has no number field", async () => {
+    const { row, reads } = fixture();
+    Object.assign(row.document, {
+      documentType: { code: "PASSPORT", erpUid: null },
+      candidate: { chatUuid: null, citizenship: "uz" },
+    });
+    const result = await reads.version("document", 4);
+    expect(
+      result.fields.find((field) => field.name === "number"),
+    ).toMatchObject({ required: true, value: null, kind: "text" });
+  });
+  it.each([
+    [
+      { code: "PASSPORT", erpUid: null },
+      { chatUuid: "chat", citizenship: "uz" },
+    ],
+    [
+      { code: "MIGRATION_CARD", erpUid: null },
+      { chatUuid: null, citizenship: "uz" },
+    ],
+  ])(
+    "preserves catalog requirements for other review groups and documents",
+    async (documentType, candidate) => {
+      const { row, reads } = fixture();
+      Object.assign(row.document, { documentType, candidate });
+      const result = await reads.version("document", 4);
+      expect(result.fields.map((field) => field.required)).toEqual([
+        true,
+        false,
+      ]);
+    },
+  );
   it("does not invent a mismatch when either source has no value", async () => {
     const { row, reads } = fixture();
     row.fields[0].ocrText = "";
