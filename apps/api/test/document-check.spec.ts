@@ -73,60 +73,73 @@ const fetchResponse = (result: unknown) => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("document presence before field OCR", () => {
-  it("returns a type mismatch only with complete consistent GLM evidence", async () => {
-    const body = {
-      ...response(),
-      policy_version: "document-check-v2",
-      expected_code: "INN",
-      expected_title: "ИНН",
-      expected_canonical_code: "INN",
-      detected_code: "PASSPORT",
-      detected_title: "Паспорт",
-      type_verdict: "MISMATCH",
-      rejection_reason: "не используется",
-      source: "GLM",
-      pages: [page(0, 1), page(1, 1), page(1, 2)],
-      type_pages: [
-        {
-          file_index: 0,
-          page_number: 1,
-          verdict: "MISMATCH",
-          detected_code: "PASSPORT",
-          source: "GLM",
-        },
-        {
-          file_index: 1,
-          page_number: 1,
-          verdict: "MISMATCH",
-          detected_code: "PASSPORT",
-          source: "GLM",
-        },
-        {
-          file_index: 1,
-          page_number: 2,
-          verdict: "MISMATCH",
-          detected_code: "PASSPORT",
-          source: "GLM",
-        },
-      ],
-    };
-    fetchResponse(body);
-    await expect(
-      service({ OCR_DOCUMENT_TYPE_AUTO_RETURN_ENABLED: "true" }).recognize(
+  it.each([undefined, "true", "false"])(
+    "handles type mismatch with auto-return setting %s",
+    async (setting) => {
+      const body = {
+        ...response(),
+        policy_version: "document-check-v2",
+        expected_code: "INN",
+        expected_title: "ИНН",
+        expected_canonical_code: "INN",
+        detected_code: "PASSPORT",
+        detected_title: "Паспорт",
+        type_verdict: "MISMATCH",
+        rejection_reason: "не используется",
+        source: "GLM",
+        pages: [page(0, 1), page(1, 1), page(1, 2)],
+        type_pages: [
+          {
+            file_index: 0,
+            page_number: 1,
+            verdict: "MISMATCH",
+            detected_code: "PASSPORT",
+            source: "GLM",
+          },
+          {
+            file_index: 1,
+            page_number: 1,
+            verdict: "MISMATCH",
+            detected_code: "PASSPORT",
+            source: "GLM",
+          },
+          {
+            file_index: 1,
+            page_number: 2,
+            verdict: "MISMATCH",
+            detected_code: "PASSPORT",
+            source: "GLM",
+          },
+        ],
+      };
+      fetchResponse(body);
+      const result = await service(
+        setting === undefined
+          ? {}
+          : { OCR_DOCUMENT_TYPE_AUTO_RETURN_ENABLED: setting },
+      ).recognize(
         { ...request, documentTypeCode: "INN" },
         new AbortController().signal,
-      ),
-    ).resolves.toMatchObject({
-      outcome: "REJECTED",
-      rejectionKind: "DOCUMENT_TYPE_MISMATCH",
-      issues: [
-        {
-          code: "DOCUMENT_TYPE_MISMATCH",
-          message: expect.stringContaining("Паспорт"),
-        },
-      ],
-    });
-  });
+      );
+      if (setting === "false") {
+        expect(result).toMatchObject({
+          outcome: "SUCCEEDED",
+          raw: { recognition: "TYPE_UNCERTAIN" },
+        });
+      } else {
+        expect(result).toMatchObject({
+          outcome: "REJECTED",
+          rejectionKind: "DOCUMENT_TYPE_MISMATCH",
+          issues: [
+            {
+              code: "DOCUMENT_TYPE_MISMATCH",
+              message: expect.stringContaining("Паспорт"),
+            },
+          ],
+        });
+      }
+    },
+  );
 
   it("does not reject a contradictory canonical code", async () => {
     const body = {

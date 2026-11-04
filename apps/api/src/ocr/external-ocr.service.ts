@@ -308,7 +308,7 @@ export class ExternalOcrService extends OcrService {
     const rejected = nonDocumentResult(documentCheck, request.files);
     if (rejected) return rejected;
     const mismatch =
-      this.config.get("OCR_DOCUMENT_TYPE_AUTO_RETURN_ENABLED") === "true"
+      this.config.get("OCR_DOCUMENT_TYPE_AUTO_RETURN_ENABLED") !== "false"
         ? typeMismatchResult(documentCheck)
         : null;
     if (mismatch) return mismatch;
