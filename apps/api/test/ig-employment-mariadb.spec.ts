@@ -83,13 +83,14 @@ describe.skipIf(!db)("IG cycles on disposable MariaDB", () => {
   });
   it("deduplicates concurrent grants, completes the case and starts a new cycle without moving its documents", async () => {
     const firstEvent = grant();
-    const [first, replay, concurrent] = await Promise.all([
+    const [firstRes, replayRes, concurrentRes] = await Promise.all([
       service.applyGrant(firstEvent),
       service.applyGrant(firstEvent),
       service.applyGrant(grant()),
     ]);
-    expect(replay).toBe(first);
-    expect(concurrent).toBe(first);
+    const first = firstRes.candidateId!;
+    expect(replayRes.candidateId).toBe(first);
+    expect(concurrentRes.candidateId).toBe(first);
     for (const documentTypeId of types)
       await prisma.document.create({
         data: { candidateId: first, documentTypeId, status: "APPROVED" },
@@ -103,11 +104,12 @@ describe.skipIf(!db)("IG cycles on disposable MariaDB", () => {
         .igCompletedAt,
     ).not.toBeNull();
     const delayed = { ...grant(), createdAt: firstEvent.createdAt };
-    expect(await service.applyGrant(delayed)).toBe(first);
-    const second = await service.applyGrant({
+    expect((await service.applyGrant(delayed)).candidateId).toBe(first);
+    const secondRes = await service.applyGrant({
       ...grant(),
       createdAt: new Date(Date.now() + 1000).toISOString(),
     });
+    const second = secondRes.candidateId!;
     expect(second).not.toBe(first);
     expect(await prisma.document.count({ where: { candidateId: first } })).toBe(
       3,
@@ -170,7 +172,8 @@ describe.skipIf(!db)("IG cycles on disposable MariaDB", () => {
       audit,
     );
     expect(
-      await other.applyGrant({ ...grant(), employeeCode1c: uploadCode }),
+      (await other.applyGrant({ ...grant(), employeeCode1c: uploadCode }))
+        .candidateId,
     ).toBe(uploaded.candidateId);
     expect(
       await prisma.candidate.count({ where: { code1c: uploadCode } }),
@@ -228,7 +231,7 @@ describe.skipIf(!db)("IG cycles on disposable MariaDB", () => {
       ),
       other.applyGrant({ ...grant(), employeeCode1c: concurrentCode }),
     ]);
-    expect(uploaded.candidateId).toBe(granted);
+    expect(uploaded.candidateId).toBe(granted.candidateId);
     expect(
       await prisma.candidate.count({ where: { code1c: concurrentCode } }),
     ).toBe(1);

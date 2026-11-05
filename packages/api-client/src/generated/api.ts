@@ -1441,6 +1441,8 @@ export interface AdaptationGrantResultItemDto {
   applied: boolean;
   /** Известен ли кандидат системе */
   known: boolean;
+  /** Сообщение об ошибке при applied=false */
+  errorMessage?: string;
 }
 
 export interface AdaptationGrantsResultDto {

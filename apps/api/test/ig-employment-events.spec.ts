@@ -34,7 +34,7 @@ describe("IG employment grant events", () => {
         citizenship: "UZ",
         createdAt: "2026-11-03T00:00:00.000Z",
       }),
-    ).resolves.toBe("existing");
+    ).resolves.toEqual({ candidateId: "existing", known: true });
     expect(tx.candidate.create).not.toHaveBeenCalled();
   });
   it("does not invent a new cycle from a later grant after completion", async () => {
@@ -87,7 +87,7 @@ describe("IG employment grant events", () => {
         citizenship: "UZ",
         createdAt: "2026-11-03T00:00:00.000Z",
       }),
-    ).resolves.toBe("old");
+    ).resolves.toEqual({ candidateId: "old", known: true });
     expect(tx.candidate.create).not.toHaveBeenCalled();
     expect(tx.igEmploymentState.update).toHaveBeenCalledWith({
       where: { code1c: "worker" },
@@ -142,7 +142,7 @@ describe("IG employment grant events", () => {
         citizenship: "UZ",
         createdAt: "2026-11-03T00:00:00.000Z",
       }),
-    ).resolves.toBe("from-upload");
+    ).resolves.toEqual({ candidateId: "from-upload", known: true });
     expect(tx.candidate.create).not.toHaveBeenCalled();
   });
   it("populates a new IG case from the verified ERP profile when LK projection is not available", async () => {
@@ -251,14 +251,14 @@ describe("IG employment grant events", () => {
     ).rejects.toThrow("ERP_PERSON_IDENTITY_MISMATCH");
   });
 
-  it("handles enabled=false without creating candidate if none exists", async () => {
+  it("handles enabled=false without creating candidate if none exists and records event with candidateId=null", async () => {
     const tx = {
       igEmploymentState: {
         upsert: vi.fn(),
         findUniqueOrThrow: vi.fn().mockResolvedValue({ currentCandidate: null }),
       },
       $queryRaw: vi.fn(),
-      igGrantEvent: { findUnique: vi.fn().mockResolvedValue(null) },
+      igGrantEvent: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() },
       candidate: { create: vi.fn(), delete: vi.fn() },
     };
     const prisma = { $transaction: vi.fn((fn) => fn(tx)) };
@@ -282,9 +282,19 @@ describe("IG employment grant events", () => {
       enabled: false,
       createdAt: "2026-11-03T00:00:00.000Z",
     });
-    expect(result).toBe("");
+    expect(result).toEqual({ candidateId: null, known: false });
     expect(tx.candidate.create).not.toHaveBeenCalled();
     expect(tx.candidate.delete).not.toHaveBeenCalled();
+    expect(tx.igGrantEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+          code1c: "worker",
+          candidateId: null,
+          enabled: false,
+        }),
+      }),
+    );
   });
 
   it("handles enabled=false without deleting existing candidate or documents", async () => {
@@ -334,15 +344,142 @@ describe("IG employment grant events", () => {
       enabled: false,
       createdAt: "2026-11-03T00:00:00.000Z",
     });
-    expect(result).toBe("cand-1");
+    expect(result).toEqual({ candidateId: "cand-1", known: true });
     expect(tx.candidate.delete).not.toHaveBeenCalled();
     expect(tx.document.delete).not.toHaveBeenCalled();
     expect(tx.document.deleteMany).not.toHaveBeenCalled();
+    expect(tx.igGrantEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+          code1c: "worker",
+          candidateId: "cand-1",
+          enabled: false,
+        }),
+      }),
+    );
     expect(audit.logInTransaction).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
         after: { source: "ADAPTATION_ACCESS", enabled: false },
       }),
     );
+  });
+
+  describe("idempotency and payload hash verification", () => {
+    it("rejects repeat grant when citizenship changes with identical operationId", async () => {
+      const tx = {
+        igEmploymentState: { upsert: vi.fn() },
+        $queryRaw: vi.fn(),
+        igGrantEvent: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+            code1c: "worker",
+            candidateId: "cand-1",
+            payloadHash: "hash-of-uz",
+          }),
+        },
+      };
+      const prisma = { $transaction: vi.fn((fn) => fn(tx)) };
+      const erp = {
+        identity: vi.fn().mockResolvedValue({
+          reviewGroup: "IG",
+          recipientType: "person",
+          personUid: "00000000-0000-4000-8000-000000000001",
+          code1C: "worker",
+        }),
+      };
+      const service = new IgEmploymentService(
+        prisma as never,
+        erp as never,
+        {} as never,
+      );
+      await expect(
+        service.applyGrant({
+          id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+          employeeCode1c: "worker",
+          citizenship: "TJ",
+          createdAt: "2026-11-03T00:00:00.000Z",
+        }),
+      ).rejects.toThrow("IG_GRANT_EVENT_CONFLICT");
+    });
+
+    it("rejects repeat grant when enabled status changes with identical operationId", async () => {
+      const tx = {
+        igEmploymentState: { upsert: vi.fn() },
+        $queryRaw: vi.fn(),
+        igGrantEvent: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+            code1c: "worker",
+            candidateId: "cand-1",
+            payloadHash: "hash-of-enabled-true",
+          }),
+        },
+      };
+      const prisma = { $transaction: vi.fn((fn) => fn(tx)) };
+      const erp = {
+        identity: vi.fn().mockResolvedValue({
+          reviewGroup: "IG",
+          recipientType: "person",
+          personUid: "00000000-0000-4000-8000-000000000001",
+          code1C: "worker",
+        }),
+      };
+      const service = new IgEmploymentService(
+        prisma as never,
+        erp as never,
+        {} as never,
+      );
+      await expect(
+        service.applyGrant({
+          id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+          employeeCode1c: "worker",
+          citizenship: "UZ",
+          enabled: false,
+          createdAt: "2026-11-03T00:00:00.000Z",
+        }),
+      ).rejects.toThrow("IG_GRANT_EVENT_CONFLICT");
+    });
+
+    it("rejects repeat grant on historical event (without payloadHash) when fields mismatch", async () => {
+      const tx = {
+        igEmploymentState: { upsert: vi.fn() },
+        $queryRaw: vi.fn(),
+        igGrantEvent: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+            code1c: "worker",
+            candidateId: "cand-1",
+            payloadHash: null,
+            citizenship: "uz",
+            enabled: true,
+          }),
+        },
+      };
+      const prisma = { $transaction: vi.fn((fn) => fn(tx)) };
+      const erp = {
+        identity: vi.fn().mockResolvedValue({
+          reviewGroup: "IG",
+          recipientType: "person",
+          personUid: "00000000-0000-4000-8000-000000000001",
+          code1C: "worker",
+        }),
+      };
+      const service = new IgEmploymentService(
+        prisma as never,
+        erp as never,
+        {} as never,
+      );
+      await expect(
+        service.applyGrant({
+          id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+          employeeCode1c: "worker",
+          citizenship: "UZ",
+          enabled: false,
+          createdAt: "2026-11-03T00:00:00.000Z",
+        }),
+      ).rejects.toThrow("IG_GRANT_EVENT_CONFLICT");
+    });
   });
 });

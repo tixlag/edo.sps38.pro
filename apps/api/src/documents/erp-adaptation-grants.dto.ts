@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
   ArrayMaxSize,
@@ -100,6 +100,12 @@ export class AdaptationGrantResultItemDto {
     example: true,
   })
   known!: boolean;
+
+  @ApiPropertyOptional({
+    description: "Сообщение об ошибке при applied=false",
+    example: "ERP_PERSON_IDENTITY_MISMATCH",
+  })
+  errorMessage?: string;
 }
 
 export class AdaptationGrantsResultDto {

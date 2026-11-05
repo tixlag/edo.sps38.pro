@@ -456,7 +456,11 @@ model IgEmploymentState {
 model IgGrantEvent {
   id String @id @db.VarChar(36)
   code1c String @db.VarChar(64)
-  candidateId String @db.VarChar(64)
+  candidateId String? @db.VarChar(64)
+  personUid String? @db.VarChar(36)
+  citizenship String? @db.VarChar(16)
+  enabled Boolean?
+  payloadHash String? @db.VarChar(64)
   receivedAt DateTime @default(now()) @db.DateTime(3)
   @@map("ig_grant_events")
 }

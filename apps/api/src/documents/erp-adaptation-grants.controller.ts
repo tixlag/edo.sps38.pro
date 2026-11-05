@@ -14,6 +14,7 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
+import { Public } from "../auth/public.decorator";
 import { LkInternalGuard } from "./lk-internal.guard";
 import { IgEmploymentService } from "./ig-employment.service";
 import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
@@ -24,6 +25,7 @@ import {
 
 @ApiTags("ERP Integration")
 @ApiBearerAuth("lk-service-token")
+@Public()
 @UseGuards(LkInternalGuard)
 @Controller("internal/erp/v1/adaptation-grants")
 export class ErpAdaptationGrantsController {
@@ -56,7 +58,7 @@ export class ErpAdaptationGrantsController {
 
     for (const item of dto.items) {
       try {
-        const candidateId = await this.employment.applyGrant({
+        const grantResult = await this.employment.applyGrant({
           id: item.operationId,
           employeeCode1c: item.code1c,
           citizenship: item.citizenship,
@@ -65,16 +67,16 @@ export class ErpAdaptationGrantsController {
           enabled: item.enabled,
         });
 
-        if (candidateId && this.previousDocsSync) {
+        if (grantResult.candidateId && this.previousDocsSync) {
           await this.previousDocsSync
             .syncPreviousDocuments(
-              candidateId,
+              grantResult.candidateId,
               "system:adaptation",
               item.operationId,
             )
             .catch((err) =>
               this.logger.warn(
-                `Previous documents sync failed for candidate ${candidateId}: ${err?.message ?? err}`,
+                `Previous documents sync failed for candidate ${grantResult.candidateId}: ${err?.message ?? err}`,
               ),
             );
         }
@@ -83,7 +85,7 @@ export class ErpAdaptationGrantsController {
           operationId: item.operationId,
           code1c: item.code1c,
           applied: true,
-          known: true,
+          known: grantResult.known,
         });
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -95,6 +97,7 @@ export class ErpAdaptationGrantsController {
           code1c: item.code1c,
           applied: false,
           known: false,
+          errorMessage: message,
         });
       }
     }

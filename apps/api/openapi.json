@@ -19021,6 +19021,11 @@
             "type": "boolean",
             "description": "Известен ли кандидат системе",
             "example": true
+          },
+          "errorMessage": {
+            "type": "string",
+            "description": "Сообщение об ошибке при applied=false",
+            "example": "ERP_PERSON_IDENTITY_MISMATCH"
           }
         },
         "required": [

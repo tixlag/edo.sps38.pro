@@ -1,4 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import "reflect-metadata";
+import { describe, expect, it, vi, beforeAll, afterAll } from "vitest";
+import { Test } from "@nestjs/testing";
+import { ConfigModule } from "@nestjs/config";
+import { ValidationPipe } from "@nestjs/common";
+import {
+  FastifyAdapter,
+  type NestFastifyApplication,
+} from "@nestjs/platform-fastify";
+import { sign } from "jsonwebtoken";
+import { AuthModule } from "../src/auth/auth.module";
 import { ErpAdaptationGrantsController } from "../src/documents/erp-adaptation-grants.controller";
 import { IgEmploymentService } from "../src/documents/ig-employment.service";
 import { CandidatePreviousDocumentsSyncService } from "../src/documents/candidate-previous-documents-sync.service";
@@ -19,7 +29,7 @@ describe("ErpAdaptationGrantsController", () => {
 
   it("applies a single adaptation grant and triggers previous documents sync", async () => {
     const service = createMockService();
-    service.applyGrant.mockResolvedValue("candidate-1");
+    service.applyGrant.mockResolvedValue({ candidateId: "candidate-1", known: true });
     const sync = createMockSync();
 
     const controller = new ErpAdaptationGrantsController(
@@ -69,7 +79,7 @@ describe("ErpAdaptationGrantsController", () => {
   it("processes batch items independently when one succeeds and another encounters an identity mismatch", async () => {
     const service = createMockService();
     service.applyGrant
-      .mockResolvedValueOnce("candidate-1")
+      .mockResolvedValueOnce({ candidateId: "candidate-1", known: true })
       .mockRejectedValueOnce(
         new ConflictException("ERP_PERSON_IDENTITY_MISMATCH"),
       );
@@ -110,6 +120,7 @@ describe("ErpAdaptationGrantsController", () => {
           code1c: "УП00000002",
           applied: false,
           known: false,
+          errorMessage: "ERP_PERSON_IDENTITY_MISMATCH",
         },
       ],
     });
@@ -117,7 +128,7 @@ describe("ErpAdaptationGrantsController", () => {
 
   it("handles repeated delivery safely (idempotent repeat)", async () => {
     const service = createMockService();
-    service.applyGrant.mockResolvedValue("candidate-1");
+    service.applyGrant.mockResolvedValue({ candidateId: "candidate-1", known: true });
 
     const controller = new ErpAdaptationGrantsController(
       service as unknown as IgEmploymentService,
@@ -175,12 +186,13 @@ describe("ErpAdaptationGrantsController", () => {
       code1c: "УП00099999",
       applied: false,
       known: false,
+      errorMessage: "IG_GRANT_EVENT_CONFLICT",
     });
   });
 
-  it("handles enabled=false safely without failing", async () => {
+  it("handles enabled=false safely when candidate exists", async () => {
     const service = createMockService();
-    service.applyGrant.mockResolvedValue("candidate-1");
+    service.applyGrant.mockResolvedValue({ candidateId: "candidate-1", known: true });
 
     const controller = new ErpAdaptationGrantsController(
       service as unknown as IgEmploymentService,
@@ -206,19 +218,47 @@ describe("ErpAdaptationGrantsController", () => {
     });
   });
 
+  it("handles enabled=false safely when candidate does NOT exist (known=false)", async () => {
+    const service = createMockService();
+    service.applyGrant.mockResolvedValue({ candidateId: null, known: false });
+
+    const controller = new ErpAdaptationGrantsController(
+      service as unknown as IgEmploymentService,
+    );
+
+    const result = await controller.apply({
+      items: [
+        {
+          operationId: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+          code1c: "УП00035198",
+          personUid: "00000000-0000-4000-8000-000000000001",
+          citizenship: "UZ",
+          enabled: false,
+        },
+      ],
+    });
+
+    expect(result.items[0]).toEqual({
+      operationId: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+      code1c: "УП00035198",
+      applied: true,
+      known: false,
+    });
+  });
+
   describe("guard and validation contracts", () => {
     it("is protected by LkInternalGuard requiring Bearer token matching EDO_LK_INTERNAL_TOKEN", () => {
       const guard = new LkInternalGuard({
         get: (k: string) =>
           k === "EDO_LK_INTERNAL_TOKEN" ? "secret-s2s-token" : undefined,
-      } as any);
+      } as never);
 
       const context = (authorization?: string) =>
         ({
           switchToHttp: () => ({
             getRequest: () => ({ headers: { authorization } }),
           }),
-        }) as any;
+        }) as never;
 
       expect(() => guard.canActivate(context())).toThrow();
       expect(() => guard.canActivate(context("Bearer wrong-token"))).toThrow();
@@ -257,6 +297,130 @@ describe("ErpAdaptationGrantsController", () => {
       });
       const validErrors = await validate(valid);
       expect(validErrors.length).toBe(0);
+    });
+  });
+
+  describe("full HTTP e2e with global JwtAuthGuard and LkInternalGuard", () => {
+    const jwtSecret = "erp-adaptation-synthetic-jwt-secret";
+    const s2sSecret = "shared-s2s-internal-token-123";
+    let app: NestFastifyApplication;
+
+    beforeAll(async () => {
+      const module = await Test.createTestingModule({
+        imports: [
+          ConfigModule.forRoot({
+            isGlobal: true,
+            ignoreEnvFile: true,
+            load: [
+              () => ({
+                JWT_SECRET: jwtSecret,
+                JWT_ISSUER: "lk-auth-service",
+                JWT_ALG: "HS256",
+                ALLOW_INSECURE_DEV_AUTH: false,
+                EDO_LK_INTERNAL_TOKEN: s2sSecret,
+              }),
+            ],
+          }),
+          AuthModule,
+        ],
+        controllers: [ErpAdaptationGrantsController],
+        providers: [
+          LkInternalGuard,
+          {
+            provide: IgEmploymentService,
+            useValue: {
+              applyGrant: vi
+                .fn()
+                .mockResolvedValue({ candidateId: "cand-1", known: true }),
+            },
+          },
+        ],
+      }).compile();
+
+      app = module.createNestApplication<NestFastifyApplication>(
+        new FastifyAdapter(),
+        { logger: false },
+      );
+      app.setGlobalPrefix("api");
+      app.useGlobalPipes(
+        new ValidationPipe({
+          transform: true,
+          whitelist: true,
+          forbidNonWhitelisted: true,
+        }),
+      );
+      await app.init();
+      await app.getHttpAdapter().getInstance().ready();
+    });
+
+    afterAll(async () => {
+      await app?.close();
+    });
+
+    const validPayload = {
+      items: [
+        {
+          operationId: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+          code1c: "УП00035198",
+          personUid: "00000000-0000-4000-8000-000000000001",
+          citizenship: "UZ",
+          enabled: true,
+        },
+      ],
+    };
+
+    it("rejects request with 401 when no Authorization header is provided", async () => {
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/internal/erp/v1/adaptation-grants",
+        payload: validPayload,
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it("rejects request with 401 when wrong S2S token is provided", async () => {
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/internal/erp/v1/adaptation-grants",
+        headers: { authorization: "Bearer invalid-s2s-token" },
+        payload: validPayload,
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it("rejects request with 401 when user JWT is provided instead of S2S token", async () => {
+      const userJwt = sign(
+        { uuid: "user-uuid", accessRules: { "20009": [] } },
+        jwtSecret,
+        { issuer: "lk-auth-service", algorithm: "HS256", expiresIn: 300 },
+      );
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/internal/erp/v1/adaptation-grants",
+        headers: { authorization: `Bearer ${userJwt}` },
+        payload: validPayload,
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it("accepts request with 200 when valid S2S token is provided", async () => {
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/internal/erp/v1/adaptation-grants",
+        headers: { authorization: `Bearer ${s2sSecret}` },
+        payload: validPayload,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        items: [
+          {
+            operationId: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+            code1c: "УП00035198",
+            applied: true,
+            known: true,
+          },
+        ],
+      });
     });
   });
 });
