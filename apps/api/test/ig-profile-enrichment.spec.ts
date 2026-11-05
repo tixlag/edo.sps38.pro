@@ -271,4 +271,155 @@ describe("IgProfileEnrichmentService", () => {
 
     await expect(service.enrichCandidate("cand-4")).rejects.toThrow("ERP_PERSON_IDENTITY_MISMATCH");
   });
+
+  it("does not consider profile complete when citizenship is missing", async () => {
+    const candidate = {
+      id: "cand-missing-cit",
+      reviewGroup: "IG",
+      code1c: "IG-005",
+      personUid: "55555555-5555-5555-5555-555555555555",
+      chatUuid: null,
+      fullName: null,
+      positionCode: null,
+      citizenship: null, // Initially null
+      profileSyncedAt: null,
+      previousDocumentsSyncedAt: null,
+    };
+
+    let updatedCandidateData: any = null;
+    const prisma = {
+      candidate: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(candidate),
+      },
+      $transaction: vi.fn().mockImplementation(async (cb) => {
+        const tx = {
+          $queryRaw: vi.fn().mockResolvedValue([]),
+          candidate: {
+            findUniqueOrThrow: vi.fn().mockResolvedValue(candidate),
+            update: vi.fn().mockImplementation(({ data }) => {
+              updatedCandidateData = data;
+              return { ...candidate, ...data };
+            }),
+          },
+        };
+        return cb(tx);
+      }),
+    };
+
+    const audit = { logInTransaction: vi.fn().mockResolvedValue(undefined) };
+    const erp = {
+      identity: vi.fn().mockResolvedValue({
+        recipientType: "person",
+        reviewGroup: "IG",
+        code1C: "IG-005",
+        personUid: "55555555-5555-5555-5555-555555555555",
+      }),
+    };
+    const candidates = {
+      findByEmployeeCode: vi.fn().mockResolvedValue({
+        code1C: "IG-005",
+        fullName: "Норов Носир",
+        position: { code: "POS-50", name: "Плотник" },
+        citizenship: "ru", // Defaulted ru
+        citizenshipProvided: false,
+      }),
+    };
+    const previousDocsSync = {
+      syncPreviousDocuments: vi.fn().mockResolvedValue({ items: [] }),
+    };
+    const config = { get: vi.fn().mockReturnValue("false") };
+
+    const service = new IgProfileEnrichmentService(
+      prisma as any,
+      audit as any,
+      erp as any,
+      config as any,
+      candidates as any,
+      previousDocsSync as any,
+    );
+
+    const result = await service.enrichCandidate("cand-missing-cit");
+    // Position was saved, but profile is NOT complete because citizenship is missing
+    expect(updatedCandidateData).toBeDefined();
+    expect(updatedCandidateData.positionCode).toBe("POS-50");
+    expect(updatedCandidateData.citizenship).toBeUndefined();
+    expect(updatedCandidateData.profileSyncedAt).toBeNull();
+    expect(result.profileSynced).toBe(false);
+    expect(result.documentsSynced).toBe(true);
+  });
+
+  it("prevents batch starvation by excluding candidates currently on cooldown from query", async () => {
+    // 21 candidates in DB: first 20 have profileSyncNextAttemptAt in the future (cooldown)
+    // 21st candidate is ready to be processed
+    const futureDate = new Date(Date.now() + 300_000);
+    const validCandidate = {
+      id: "cand-21",
+      reviewGroup: "IG",
+      code1c: "IG-021",
+      personUid: "21212121-2121-2121-2121-212121212121",
+      chatUuid: null,
+      citizenship: "uz",
+      positionCode: "POS-21",
+      profileSyncedAt: new Date(),
+      previousDocumentsSyncedAt: null,
+      profileSyncAttempts: 0,
+      profileSyncNextAttemptAt: null,
+    };
+
+    let findManyWhereClause: any = null;
+    const prisma = {
+      candidate: {
+        findMany: vi.fn().mockImplementation(({ where }) => {
+          findManyWhereClause = where;
+          // Returns only candidates whose retry time is null or <= now
+          return Promise.resolve([validCandidate]);
+        }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue(validCandidate),
+        update: vi.fn().mockResolvedValue({ ...validCandidate, previousDocumentsSyncedAt: new Date() }),
+      },
+    };
+
+    const erp = { identity: vi.fn() };
+    const candidates = { findByEmployeeCode: vi.fn() };
+    const previousDocsSync = {
+      syncPreviousDocuments: vi.fn().mockResolvedValue({ items: [] }),
+    };
+    const config = { get: vi.fn().mockReturnValue("false") };
+
+    const service = new IgProfileEnrichmentService(
+      prisma as any,
+      { logInTransaction: vi.fn() } as any,
+      erp as any,
+      config as any,
+      candidates as any,
+      previousDocsSync as any,
+    );
+
+    await service.sync();
+
+    // Verify DB query filters out records in cooldown at database level
+    expect(prisma.candidate.findMany).toHaveBeenCalledTimes(1);
+    expect(findManyWhereClause.AND).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          OR: [
+            { profileSyncNextAttemptAt: null },
+            { profileSyncNextAttemptAt: { lte: expect.any(Date) } },
+          ],
+        }),
+      ]),
+    );
+
+    // Verify valid candidate was successfully enriched
+    expect(previousDocsSync.syncPreviousDocuments).toHaveBeenCalledWith("cand-21", "system:profile-enrichment");
+    expect(prisma.candidate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "cand-21" },
+        data: expect.objectContaining({
+          profileSyncNextAttemptAt: null,
+          profileSyncAttempts: 0,
+        }),
+      }),
+    );
+  });
 });

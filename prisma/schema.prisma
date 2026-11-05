@@ -428,6 +428,8 @@ model Candidate {
   isReemployment  Boolean   @default(false)
   profileSyncedAt DateTime? @db.DateTime(3)
   previousDocumentsSyncedAt DateTime? @db.DateTime(3)
+  profileSyncNextAttemptAt DateTime? @db.DateTime(3)
+  profileSyncAttempts      Int       @default(0)
   createdAt  DateTime   @default(now()) @db.DateTime(3)
   updatedAt  DateTime   @updatedAt @db.DateTime(3)
   documents  Document[]
@@ -440,6 +442,7 @@ model Candidate {
   @@index([code1c])
   @@index([personUid])
   @@index([previousDocumentsSyncedAt])
+  @@index([profileSyncNextAttemptAt])
   @@map("candidates")
 }
 

@@ -12,17 +12,11 @@ import { ErpWorkspaceClient } from "./erp-workspace.client";
 import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
 import { snapshotUpdateInput } from "./candidate-profile";
 
-interface FailureState {
-  attempts: number;
-  retryAfter: number;
-}
-
 @Injectable()
 export class IgProfileEnrichmentService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(IgProfileEnrichmentService.name);
   private timer?: ReturnType<typeof setInterval>;
   private running?: Promise<void>;
-  private readonly failures = new Map<string, FailureState>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -60,6 +54,7 @@ export class IgProfileEnrichmentService implements OnModuleInit, OnModuleDestroy
   }
 
   private async run(): Promise<void> {
+    const now = new Date();
     const candidates = await this.prisma.candidate.findMany({
       where: {
         reviewGroup: "IG",
@@ -69,30 +64,53 @@ export class IgProfileEnrichmentService implements OnModuleInit, OnModuleDestroy
         OR: [
           { profileSyncedAt: null },
           { positionCode: null },
+          { citizenship: null },
           { previousDocumentsSyncedAt: null },
+        ],
+        AND: [
+          {
+            OR: [
+              { profileSyncNextAttemptAt: null },
+              { profileSyncNextAttemptAt: { lte: now } },
+            ],
+          },
         ],
       },
       take: 20,
       orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
     });
 
-    const now = Date.now();
     for (const candidate of candidates) {
-      const failure = this.failures.get(candidate.id);
-      if (failure && now < failure.retryAfter) {
-        continue;
-      }
-
       try {
-        await this.enrichCandidate(candidate.id);
-        this.failures.delete(candidate.id);
+        const { profileSynced, documentsSynced } = await this.enrichCandidate(candidate.id);
+        if (profileSynced && documentsSynced) {
+          await this.prisma.candidate.update({
+            where: { id: candidate.id },
+            data: {
+              profileSyncNextAttemptAt: null,
+              profileSyncAttempts: 0,
+            },
+          });
+        } else {
+          const attempts = (candidate.profileSyncAttempts ?? 0) + 1;
+          const backoffMs = Math.min(30_000 * Math.pow(2, Math.min(attempts - 1, 6)), 600_000);
+          await this.prisma.candidate.update({
+            where: { id: candidate.id },
+            data: {
+              profileSyncAttempts: attempts,
+              profileSyncNextAttemptAt: new Date(Date.now() + backoffMs),
+            },
+          });
+        }
       } catch (error) {
-        const attempts = (failure?.attempts ?? 0) + 1;
-        // Bounded backoff: 30s, 60s, 120s, up to 600s max
-        const backoffMs = Math.min(30_000 * Math.pow(2, attempts - 1), 600_000);
-        this.failures.set(candidate.id, {
-          attempts,
-          retryAfter: now + backoffMs,
+        const attempts = (candidate.profileSyncAttempts ?? 0) + 1;
+        const backoffMs = Math.min(30_000 * Math.pow(2, Math.min(attempts - 1, 6)), 600_000);
+        await this.prisma.candidate.update({
+          where: { id: candidate.id },
+          data: {
+            profileSyncAttempts: attempts,
+            profileSyncNextAttemptAt: new Date(Date.now() + backoffMs),
+          },
         });
         this.logger.warn(
           `Enrichment failed for candidate ${candidate.id} (attempt ${attempts}): ${
@@ -120,8 +138,21 @@ export class IgProfileEnrichmentService implements OnModuleInit, OnModuleDestroy
     let profileSynced = false;
     let documentsSynced = false;
 
-    // Step 1: Profile enrichment if not synced or position missing
-    if (!candidate.profileSyncedAt || !candidate.positionCode) {
+    const isProfileComplete = (c: {
+      citizenship: string | null;
+      positionCode: string | null;
+      profileSyncedAt: Date | null;
+    }) => {
+      return Boolean(
+        c.profileSyncedAt &&
+        c.positionCode &&
+        c.citizenship &&
+        c.citizenship.toLowerCase() !== "ru",
+      );
+    };
+
+    // Step 1: Profile enrichment if profile is incomplete
+    if (!isProfileComplete(candidate)) {
       if (this.candidates) {
         const identity = await this.erp.identity(candidate.code1c);
         if (
@@ -163,11 +194,19 @@ export class IgProfileEnrichmentService implements OnModuleInit, OnModuleDestroy
               throw new Error("ERP_PERSON_IDENTITY_MISMATCH");
             }
 
+            const effectiveCitizenship = updateData.citizenship ?? current.citizenship;
+            const effectivePositionCode = updateData.positionCode ?? current.positionCode;
+            const profileComplete = Boolean(
+              effectivePositionCode &&
+              effectiveCitizenship &&
+              effectiveCitizenship.toLowerCase() !== "ru",
+            );
+
             await tx.candidate.update({
               where: { id: candidateId },
               data: {
                 ...updateData,
-                profileSyncedAt: new Date(),
+                profileSyncedAt: profileComplete ? new Date() : null,
               },
             });
 
@@ -177,12 +216,13 @@ export class IgProfileEnrichmentService implements OnModuleInit, OnModuleDestroy
               entityType: "Candidate",
               entityId: candidateId,
               after: {
-                profileSyncedAt: true,
-                positionCode: updateData.positionCode ?? current.positionCode,
+                profileSyncedAt: profileComplete,
+                positionCode: effectivePositionCode,
+                citizenship: effectiveCitizenship,
               },
             });
+            profileSynced = profileComplete;
           });
-          profileSynced = true;
         }
       }
     } else {
