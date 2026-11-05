@@ -294,15 +294,71 @@ export class ErpWorkspaceClient {
       personUid,
       id,
     });
+    const mime = response.headers
+      .get("content-type")
+      ?.split(";")[0]
+      .trim()
+      .toLowerCase();
+    const allowed = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "application/octet-stream",
+    ];
+    const rawLength = response.headers.get("content-length");
+    if (
+      !mime ||
+      !allowed.includes(mime) ||
+      (rawLength !== null &&
+        (!/^\d+$/.test(rawLength) ||
+          Number(rawLength) <= 0 ||
+          Number(rawLength) > 100 * 1024 * 1024))
+    ) {
+      await response.body?.cancel().catch(() => undefined);
+      return false;
+    }
     if (!response.body) return false;
     const reader = response.body.getReader();
     let size = 0;
+    let prefix = Buffer.alloc(0);
     try {
       for (;;) {
         const part = await reader.read();
-        if (part.done) return size > 0;
+        if (part.done) {
+          const detected = prefix.subarray(0, 5).equals(Buffer.from("%PDF-"))
+            ? "application/pdf"
+            : prefix.length >= 3 &&
+                prefix[0] === 0xff &&
+                prefix[1] === 0xd8 &&
+                prefix[2] === 0xff
+              ? "image/jpeg"
+              : prefix
+                    .subarray(0, 8)
+                    .equals(
+                      Buffer.from([
+                        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+                      ]),
+                    )
+                ? "image/png"
+                : prefix.length >= 12 &&
+                    prefix.toString("ascii", 0, 4) === "RIFF" &&
+                    prefix.toString("ascii", 8, 12) === "WEBP"
+                  ? "image/webp"
+                  : null;
+          return (
+            !!detected &&
+            (mime === detected || mime === "application/octet-stream") &&
+            (rawLength === null || Number(rawLength) === size)
+          );
+        }
         size += part.value.length;
         if (size > 100 * 1024 * 1024) return false;
+        if (prefix.length < 12)
+          prefix = Buffer.concat([
+            prefix,
+            Buffer.from(part.value.subarray(0, 12 - prefix.length)),
+          ]);
       }
     } finally {
       await reader.cancel().catch(() => undefined);
