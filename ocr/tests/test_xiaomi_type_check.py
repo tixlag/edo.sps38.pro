@@ -119,6 +119,21 @@ class XiaomiPolicyTests(unittest.TestCase):
         text = 'Уведомление о прибытии иностранного гражданина. Место пребывания. Паспорт выдан'
         self.assertEqual(matcher.evaluate_text(text, 'REGISTRATION_NOTICE')['verdict'], 'MATCH')
 
+    def test_a_residence_permit_reference_does_not_classify_a_registration_form(self):
+        matcher = DocumentTypeMatcher(ROOT / 'contracts/document-type-rules-v2.json')
+        # The reader can damage the actual title while reading a referenced
+        # document name correctly. Generic fields are not proof of that type.
+        text = ('УВЕДОМЛЕНИЕ О ПРИЫБТИИ ИНОСТРАННОГО ГРАЖДАНИНА '
+                'ИЛИ ЛИЦА БЕЗ ГРАЖДАНСТВА В МЕСТО ПРЕБЫВАНИЯ. '
+                'Документ, подтверждающий право на пребывание: вид на жительство')
+        for expected in ('REGISTRATION_NOTICE', 'RESIDENCE_PERMIT', 'PASSPORT'):
+            self.assertEqual(matcher.evaluate_text(text, expected)['verdict'], 'UNCERTAIN')
+
+    def test_a_residence_permit_title_still_confirms_the_document(self):
+        matcher = DocumentTypeMatcher(ROOT / 'contracts/document-type-rules-v2.json')
+        text = 'ВИД НА ЖИТЕЛЬСТВО ИНОСТРАННОГО ГРАЖДАНИНА. Российская Федерация'
+        self.assertEqual(matcher.evaluate_text(text, 'RESIDENCE_PERMIT')['verdict'], 'MATCH')
+
     def test_two_corroborated_types_on_one_page_are_still_mixed(self):
         matcher = DocumentTypeMatcher(ROOT / 'contracts/document-type-rules-v2.json')
         result = matcher.evaluate_text(SNILS + ' ' + MIGRATION, 'SNILS')
