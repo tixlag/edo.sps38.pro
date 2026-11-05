@@ -51,4 +51,45 @@ describe("ERP workspace conflicts", () => {
     const client = new ErpWorkspaceClient(config);
     await expect(client.request("create", z.object({}), {}, {})).rejects.toThrow("ERP_RELATION_OR_OPERATION_CONFLICT");
   });
+
+  describe("HTTP 400 bad requests", () => {
+    it("throws BadRequestException('INVALID_CURSOR') when error is INVALID_CURSOR", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          Response.json({ error: "INVALID_CURSOR" }, { status: 400 }),
+        ),
+      );
+      const client = new ErpWorkspaceClient(config);
+      await expect(client.arrivalPage(10, "stale-cursor")).rejects.toThrow(
+        "INVALID_CURSOR",
+      );
+    });
+
+    it("throws BadRequestException('INVALID_CURSOR') when code is INVALID_CURSOR", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          Response.json({ code: "INVALID_CURSOR" }, { status: 400 }),
+        ),
+      );
+      const client = new ErpWorkspaceClient(config);
+      await expect(client.arrivalPage(10, "stale-cursor")).rejects.toThrow(
+        "INVALID_CURSOR",
+      );
+    });
+
+    it("throws ERP_UNAVAILABLE when 400 has other or unparseable body", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          Response.json({ error: "OTHER_ERROR" }, { status: 400 }),
+        ),
+      );
+      const client = new ErpWorkspaceClient(config);
+      await expect(client.arrivalPage(10, "stale-cursor")).rejects.toThrow(
+        "ERP_UNAVAILABLE",
+      );
+    });
+  });
 });

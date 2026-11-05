@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { BadRequestException } from "@nestjs/common";
 import { IgArrivalSyncWorker } from "../src/documents/ig-arrival-sync.worker";
 const personUid = "00000000-0000-4000-8000-000000000001",
   memberUid = "00000000-0000-4000-8000-000000000002";
@@ -25,6 +26,12 @@ function fixture() {
   };
   const projection = { apply: vi.fn(async () => true) };
   const updateMany = vi.fn(async () => ({ count: 1 }));
+  let syncStateRow: {
+    id: string;
+    cursor: string | null;
+    completedAt: Date | null;
+    updatedAt: Date;
+  } | null = null;
   const prisma = {
     igArrivalIssue: {
       createMany: vi.fn(async () => ({ count: 1 })),
@@ -33,6 +40,46 @@ function fixture() {
     igArrivalPerson: {
       findMany: vi.fn(async () => [] as unknown[]),
       updateMany,
+    },
+    igArrivalSyncState: {
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
+        if (where.id === "singleton") return syncStateRow;
+        return null;
+      }),
+      upsert: vi.fn(
+        async ({
+          where,
+          create,
+          update,
+        }: {
+          where: { id: string };
+          create: {
+            id: string;
+            cursor?: string | null;
+            completedAt?: Date | null;
+          };
+          update: { cursor?: string | null; completedAt?: Date | null };
+        }) => {
+          if (!syncStateRow) {
+            syncStateRow = {
+              id: where.id,
+              cursor: create.cursor ?? null,
+              completedAt: create.completedAt ?? null,
+              updatedAt: new Date(),
+            };
+          } else {
+            syncStateRow = {
+              ...syncStateRow,
+              ...(update.cursor !== undefined ? { cursor: update.cursor } : {}),
+              ...(update.completedAt !== undefined
+                ? { completedAt: update.completedAt }
+                : {}),
+              updatedAt: new Date(),
+            };
+          }
+          return syncStateRow;
+        },
+      ),
     },
   };
   const transaction = vi.fn(
@@ -57,7 +104,17 @@ function fixture() {
     config as never,
     audit as never,
   );
-  return { erp, projection, prisma, worker, audit };
+  return {
+    erp,
+    projection,
+    prisma,
+    worker,
+    audit,
+    getSyncState: () => syncStateRow,
+    setSyncState: (row: typeof syncStateRow) => {
+      syncStateRow = row;
+    },
+  };
 }
 describe("IG arrival synchronization", () => {
   it("continues valid people after an invalid source item and never archives missing people", async () => {
@@ -220,5 +277,159 @@ describe("IG arrival synchronization", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("continues from saved cursor when page limit is reached", async () => {
+    const { erp, worker, prisma, getSyncState } = fixture();
+    erp.arrivalPage.mockImplementation(
+      async (_limit: number, cursor?: string) => {
+        const idx = cursor ? parseInt(cursor.replace("cursor-", ""), 10) : 0;
+        return {
+          items: [value],
+          nextCursor: `cursor-${idx + 1}`,
+        };
+      },
+    );
+
+    await worker.sync();
+    expect(erp.arrivalPage).toHaveBeenCalledTimes(100);
+    expect(prisma.igArrivalSyncState.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "singleton" },
+        update: expect.objectContaining({ cursor: "cursor-100" }),
+      }),
+    );
+    expect(getSyncState()?.cursor).toBe("cursor-100");
+
+    // Next sync tick: should resume from cursor-100
+    erp.arrivalPage.mockClear();
+    erp.arrivalPage.mockResolvedValueOnce({
+      items: [value],
+      nextCursor: null,
+    });
+
+    await worker.sync();
+    expect(erp.arrivalPage).toHaveBeenCalledWith(100, "cursor-100");
+  });
+
+  it("continues from saved cursor when time limit (deadline) is reached", async () => {
+    const { erp, worker, prisma, getSyncState } = fixture();
+    let now = 1000000;
+    const dateSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+
+    erp.arrivalPage.mockImplementation(
+      async (_limit: number, cursor?: string) => {
+        const idx = cursor
+          ? parseInt(cursor.replace("time-cursor-", ""), 10)
+          : 0;
+        if (idx === 1) {
+          now += 300_001;
+        }
+        return {
+          items: [value],
+          nextCursor: `time-cursor-${idx + 1}`,
+        };
+      },
+    );
+
+    try {
+      await worker.sync();
+      expect(prisma.igArrivalSyncState.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "singleton" },
+          update: expect.objectContaining({ cursor: "time-cursor-1" }),
+        }),
+      );
+      expect(getSyncState()?.cursor).toBe("time-cursor-1");
+
+      // Next tick resumes from time-cursor-1
+      erp.arrivalPage.mockClear();
+      erp.arrivalPage.mockResolvedValueOnce({
+        items: [value],
+        nextCursor: null,
+      });
+
+      await worker.sync();
+      expect(erp.arrivalPage).toHaveBeenCalledWith(100, "time-cursor-1");
+    } finally {
+      dateSpy.mockRestore();
+    }
+  });
+
+  it("resets cursor to null and sets completedAt when stream end is reached", async () => {
+    const { erp, worker, prisma, setSyncState, getSyncState } = fixture();
+    setSyncState({
+      id: "singleton",
+      cursor: "existing-cursor",
+      completedAt: null,
+      updatedAt: new Date(),
+    });
+
+    erp.arrivalPage.mockResolvedValueOnce({
+      items: [value],
+      nextCursor: null,
+    });
+
+    await worker.sync();
+    expect(erp.arrivalPage).toHaveBeenCalledWith(100, "existing-cursor");
+    expect(prisma.igArrivalSyncState.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "singleton" },
+        create: expect.objectContaining({
+          cursor: null,
+          completedAt: expect.any(Date),
+        }),
+        update: expect.objectContaining({
+          cursor: null,
+          completedAt: expect.any(Date),
+        }),
+      }),
+    );
+    expect(getSyncState()?.cursor).toBeNull();
+    expect(getSyncState()?.completedAt).toBeInstanceOf(Date);
+
+    // Next sync starts from beginning (undefined cursor)
+    erp.arrivalPage.mockClear();
+    erp.arrivalPage.mockResolvedValueOnce({
+      items: [value],
+      nextCursor: null,
+    });
+    await worker.sync();
+    expect(erp.arrivalPage).toHaveBeenCalledWith(100, undefined);
+  });
+
+  it("catches INVALID_CURSOR error, resets saved cursor in db to null, and restarts from beginning", async () => {
+    const { erp, worker, prisma, setSyncState, projection } = fixture();
+    setSyncState({
+      id: "singleton",
+      cursor: "stale-cursor-400",
+      completedAt: null,
+      updatedAt: new Date(),
+    });
+
+    erp.arrivalPage.mockImplementation(
+      async (_limit: number, cursor?: string) => {
+        if (cursor === "stale-cursor-400") {
+          throw new BadRequestException("INVALID_CURSOR");
+        }
+        return {
+          items: [value],
+          nextCursor: null,
+        };
+      },
+    );
+
+    await worker.sync();
+
+    expect(erp.arrivalPage).toHaveBeenNthCalledWith(1, 100, "stale-cursor-400");
+    expect(erp.arrivalPage).toHaveBeenNthCalledWith(2, 100, undefined);
+
+    expect(prisma.igArrivalSyncState.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "singleton" },
+        update: expect.objectContaining({ cursor: null }),
+      }),
+    );
+    expect(projection.apply).toHaveBeenCalledWith(value);
   });
 });

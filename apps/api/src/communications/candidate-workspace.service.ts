@@ -375,10 +375,47 @@ export class CandidateWorkspaceService {
   }
   async previous(id: string, p: AuthPrincipal) {
     const row = await this.previousOwner(id, p);
+    return this.syncPreviousDocumentsInternal(id, p.uuid, "", row, p);
+  }
+
+  async syncPreviousDocumentsInternal(
+    id: string,
+    actorId: string,
+    correlationId = "",
+    preloadedRow?: any,
+    p?: AuthPrincipal,
+  ) {
+    const row =
+      preloadedRow ??
+      (await this.prisma.candidate.findUnique?.({ where: { id } })) ??
+      (await this.prisma.candidate.findFirst?.({ where: { id } }));
+    if (!row) throw new NotFoundException("CANDIDATE_NOT_FOUND");
     const isIg = candidateReviewGroup(row) === "IG";
+    let personUid = row.personUid;
+    if (isIg) {
+      if (!row.code1c)
+        throw new ConflictException("ERP_PERSON_IDENTITY_REQUIRED");
+      const identity = await this.erp.identity(row.code1c);
+      if (
+        identity.reviewGroup !== "IG" ||
+        identity.recipientType !== "person" ||
+        !identity.personUid ||
+        identity.code1C !== row.code1c ||
+        (row.personUid && row.personUid !== identity.personUid)
+      )
+        throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
+      personUid = identity.personUid;
+      row.personUid = personUid;
+      if (!row.personUid) {
+        await this.prisma.candidate?.update?.({
+          where: { id },
+          data: { personUid },
+        });
+      }
+    }
     const historyPromise = isIg
       ? this.erp
-          .employmentHistory(row.code1c!, row.personUid!)
+          .employmentHistory(row.code1c!, personUid!)
           .then((history) => ({ available: true, items: history.items }))
           .catch(() => ({ available: false, items: [] }))
       : undefined;
@@ -386,7 +423,7 @@ export class CandidateWorkspaceService {
       isIg ? "person-documents-by-code" : "person-documents",
       previousDocumentsSchema,
       isIg
-        ? { code1c: row.code1c!, personUid: row.personUid! }
+        ? { code1c: row.code1c!, personUid: personUid! }
         : { candidate: row.erpUid! },
     );
     const edoDocuments = isIg
@@ -399,7 +436,7 @@ export class CandidateWorkspaceService {
               chatUuid: null,
               AND: [
                 { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
-                { OR: [{ personUid: null }, { personUid: row.personUid }] },
+                { OR: [{ personUid: null }, { personUid: personUid }] },
               ],
             },
           },
@@ -531,7 +568,7 @@ export class CandidateWorkspaceService {
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${id} FOR UPDATE`;
       const current = await tx.candidate.findFirst({
-        where: { id, ...this.access.candidateWhere(p) },
+        where: { id, ...(p ? this.access.candidateWhere(p) : {}) },
       });
       if (
         !current ||
@@ -541,7 +578,7 @@ export class CandidateWorkspaceService {
         current.erpUid !== row.erpUid
       )
         throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
-      requireReviewGroup(p, candidateReviewGroup(current));
+      if (p) requireReviewGroup(p, candidateReviewGroup(current));
       const oldDocuments = await tx.candidatePreviousDocument.findMany({
         where: { candidateId: id },
       });
@@ -692,11 +729,11 @@ export class CandidateWorkspaceService {
         if (nextStatus && old)
           await this.audit.logInTransaction(tx, {
             actorId:
-              nextStatus === "CONFIRMED" ? "system:previous-document" : p.uuid,
+              nextStatus === "CONFIRMED" ? "system:previous-document" : actorId,
             action: "DOCUMENT_FIELDS_UPDATED",
             entityType: "CandidatePreviousDocument",
             entityId: old.id,
-            correlationId: "",
+            correlationId,
             before: { status: old.status },
             after: { status: nextStatus, source: "ERP_REVALIDATION" },
           });
@@ -721,11 +758,11 @@ export class CandidateWorkspaceService {
           },
         });
         await this.audit.logInTransaction(tx, {
-          actorId: p.uuid,
+          actorId,
           action: "DOCUMENT_FIELDS_UPDATED",
           entityType: "CandidatePreviousDocument",
           entityId: old.id,
-          correlationId: "",
+          correlationId,
           before: {
             status: old.status,
             originalAvailable: old.originalAvailable,
@@ -743,20 +780,24 @@ export class CandidateWorkspaceService {
           data: { igCompletionVerified: false },
         });
       }
+      await tx.candidate.update({
+        where: { id },
+        data: { previousDocumentsSyncedAt: new Date() },
+      });
       if (isIg && (completionChanged || completionInvalidated))
         await tryCompleteIgEmployment(
           tx,
           this.audit,
           id,
           "system:previous-document",
-          "",
+          correlationId,
         );
       await this.audit.logInTransaction(tx, {
-        actorId: p.uuid,
+        actorId,
         action: "DATA_IMPORTED",
         entityType: "CandidatePreviousDocuments",
         entityId: id,
-        correlationId: "",
+        correlationId,
         after: { count: allDocuments.length },
       });
     });
@@ -802,7 +843,7 @@ export class CandidateWorkspaceService {
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${id} FOR UPDATE`;
       const current = await tx.candidate.findFirst({
-        where: { id, ...this.access.candidateWhere(p) },
+        where: { id, ...(p ? this.access.candidateWhere(p) : {}) },
       });
       if (
         !current ||
@@ -812,7 +853,7 @@ export class CandidateWorkspaceService {
         current.erpUid !== row.erpUid
       )
         throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
-      requireReviewGroup(p, candidateReviewGroup(current));
+      if (p) requireReviewGroup(p, candidateReviewGroup(current));
       const doc = await tx.candidatePreviousDocument.findFirst({
         where: { id: documentId, candidateId: id },
       });

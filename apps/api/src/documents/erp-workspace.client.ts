@@ -1,5 +1,6 @@
 import { arrivalPageSchema } from "./ig-arrival-contract";
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -209,6 +210,32 @@ export class ErpWorkspaceClient {
           typeof code === "string" && safeConflictCodes.has(code)
             ? code
             : "ERP_RELATION_OR_OPERATION_CONFLICT: требуется точечная проверка связи или результата операции в ERP",
+        );
+      }
+      if (response.status === 400) {
+        let err: unknown;
+        try {
+          const bytes = await this.readBounded(response, 8192);
+          const parsed = JSON.parse(bytes.toString("utf8")) as {
+            error?: unknown;
+            code?: unknown;
+          };
+          err = parsed.error ?? parsed.code;
+          if (
+            typeof err === "object" &&
+            err !== null &&
+            (err as Record<string, unknown>).code === "INVALID_CURSOR"
+          ) {
+            err = "INVALID_CURSOR";
+          }
+        } catch {
+          // Unknown or oversized upstream bodies must never leak to the client.
+        }
+        if (err === "INVALID_CURSOR") {
+          throw new BadRequestException("INVALID_CURSOR");
+        }
+        throw new ServiceUnavailableException(
+          body === undefined ? "ERP_UNAVAILABLE" : "ERP_OPERATION_RESULT_UNKNOWN",
         );
       }
       await response.body?.cancel();

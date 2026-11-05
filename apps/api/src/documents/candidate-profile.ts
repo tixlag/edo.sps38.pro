@@ -121,8 +121,9 @@ export function snapshotUpdateInput(
   put("masterCode1c", snapshot.masterCode1c);
   put("supervisorName", snapshot.supervisorName);
   put("supervisorCode1c", snapshot.supervisorCode1c);
-  put("positionCode", snapshot.positionCode);
-  put("positionName", snapshot.positionName);
+  const rawPos = (snapshot as { position?: { code?: string; name?: string } }).position;
+  put("positionCode", rawPos?.code ?? snapshot.positionCode);
+  put("positionName", rawPos?.name ?? snapshot.positionName);
   put("projectCode", snapshot.projectCode);
   put("projectName", snapshot.projectName);
   put("managerName", snapshot.managerName);

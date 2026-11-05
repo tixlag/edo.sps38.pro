@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  BadRequestException,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -59,11 +60,29 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
     const deadline = Date.now() + 300_000;
     await this.deliverPending(deadline);
     try {
-      let cursor: string | undefined;
+      const syncState = await this.prisma.igArrivalSyncState.findUnique({
+        where: { id: "singleton" },
+      });
+      let cursor: string | undefined = syncState?.cursor?.trim() || undefined;
       const seen = new Set<string>();
       for (let pageNo = 0; pageNo < 100; pageNo++) {
-        if (Date.now() >= deadline) throw new Error("ARRIVAL_SYNC_DEADLINE");
-        const page = await this.erp.arrivalPage(100, cursor);
+        if (Date.now() >= deadline) {
+          await this.saveSyncState(cursor ?? null);
+          return;
+        }
+        let page;
+        try {
+          page = await this.erp.arrivalPage(100, cursor);
+        } catch (error) {
+          if (cursor !== undefined && this.isInvalidCursorError(error)) {
+            await this.saveSyncState(null);
+            cursor = undefined;
+            seen.clear();
+            page = await this.erp.arrivalPage(100, undefined);
+          } else {
+            throw error;
+          }
+        }
         const issues = (page.issues ?? []).map((raw) =>
           arrivalSourceIssueSchema.safeParse(raw),
         );
@@ -73,7 +92,10 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
           ),
         );
         for (const raw of page.items) {
-          if (Date.now() >= deadline) throw new Error("ARRIVAL_SYNC_DEADLINE");
+          if (Date.now() >= deadline) {
+            await this.saveSyncState(cursor ?? null);
+            return;
+          }
           const item = arrivalStateSchema.safeParse(raw);
           if (!item.success) {
             const candidate =
@@ -131,16 +153,52 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
               "ARRIVAL_SOURCE_ISSUE_INVALID",
             );
         }
-        if (page.nextCursor === null) return;
+        if (page.nextCursor === null) {
+          await this.saveSyncState(null, new Date());
+          return;
+        }
         if (seen.has(page.nextCursor) || page.nextCursor === cursor)
           throw new Error("ARRIVAL_CURSOR_REPEAT");
         seen.add(page.nextCursor);
         cursor = page.nextCursor;
       }
-      throw new Error("ARRIVAL_PAGE_LIMIT");
+      await this.saveSyncState(cursor ?? null);
     } finally {
       await this.deliverPending(deadline);
     }
+  }
+  private isInvalidCursorError(error: unknown): boolean {
+    if (
+      error instanceof BadRequestException &&
+      (error.message === "INVALID_CURSOR" ||
+        (typeof error.getResponse() === "object" &&
+          (error.getResponse() as Record<string, unknown>)?.message ===
+            "INVALID_CURSOR") ||
+        error.getResponse() === "INVALID_CURSOR")
+    ) {
+      return true;
+    }
+    if (error instanceof Error && error.message === "INVALID_CURSOR") {
+      return true;
+    }
+    return false;
+  }
+  private async saveSyncState(
+    cursor: string | null,
+    completedAt?: Date | null,
+  ): Promise<void> {
+    await this.prisma.igArrivalSyncState.upsert({
+      where: { id: "singleton" },
+      create: {
+        id: "singleton",
+        cursor,
+        completedAt: completedAt ?? null,
+      },
+      update: {
+        cursor,
+        ...(completedAt !== undefined ? { completedAt } : {}),
+      },
+    });
   }
   private personHash(personUid: string): string {
     return createHash("sha256").update(personUid.toLowerCase()).digest("hex");

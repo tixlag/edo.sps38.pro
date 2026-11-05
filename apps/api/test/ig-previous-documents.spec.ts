@@ -33,8 +33,8 @@ function setup() {
     igEmploymentState: { findFirst: vi.fn(async () => null) },
     candidate: {
       findFirst: vi.fn(async () => ({ ...row })),
-      update: vi.fn(async ({ data }: { data: { personUid: string } }) => {
-        row.personUid = data.personUid;
+      update: vi.fn(async ({ data }: { data: { personUid?: string } }) => {
+        if (data.personUid !== undefined) row.personUid = data.personUid;
         return { ...row };
       }),
     },
