@@ -60,6 +60,10 @@ export class HttpErrorFilter implements ExceptionFilter {
         ...documentError.diagnostic,
         correlationId: req.correlationId ?? null,
       });
+    } else if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
+      new Logger("HttpErrorFilter").error(
+        `${req.url ?? ""}: ${exception instanceof Error ? exception.stack : String(exception)}`,
+      );
     }
     reply.status(status).send({
       statusCode: status,
