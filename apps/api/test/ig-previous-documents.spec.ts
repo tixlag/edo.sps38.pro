@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConfigService } from "@nestjs/config";
 import { CandidateWorkspaceService } from "../src/communications/candidate-workspace.service";
+import { CandidatePreviousDocumentsSyncService } from "../src/documents/candidate-previous-documents-sync.service";
 import type { AuthPrincipal } from "../src/auth/auth-principal";
 import type { PrismaService } from "../src/prisma/prisma.service";
 import type { AuditService } from "../src/audit/audit.service";
@@ -76,6 +77,13 @@ function setup() {
       .fn()
       .mockResolvedValue({ bytes: Buffer.from("file"), mimeType: "image/png" }),
   };
+  const previousDocsSync = new CandidatePreviousDocumentsSyncService(
+    prisma as unknown as PrismaService,
+    erp as unknown as ErpWorkspaceClient,
+    access as unknown as DocumentAccessService,
+    audit as unknown as AuditService,
+    {} as DocumentCatalogService,
+  );
   const service = new CandidateWorkspaceService(
     prisma as unknown as PrismaService,
     erp as unknown as ErpWorkspaceClient,
@@ -83,6 +91,7 @@ function setup() {
     audit as unknown as AuditService,
     new ConfigService({ JWT_SECRET: "secret" }),
     {} as DocumentCatalogService,
+    previousDocsSync,
     ownHistory as never,
   );
   return { service, row, tx, erp, audit, prisma, ownHistory };
