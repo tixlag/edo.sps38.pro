@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   BadRequestException,
   Injectable,
@@ -23,6 +23,12 @@ const acknowledgement = z.object({
   state: z.enum(["CURRENT", "NONE", "CONFLICT"]),
   currentArrivalMemberUid: z.string().uuid().nullable(),
 });
+
+interface SyncLease {
+  lockToken: string;
+  generation: bigint;
+  cursor: string | null;
+}
 @Injectable()
 export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(IgArrivalSyncWorker.name);
@@ -58,16 +64,22 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
   }
   private async run(): Promise<void> {
     const deadline = Date.now() + 300_000;
-    await this.deliverPending(deadline);
+    const lease = await this.acquireLease();
+    if (!lease) {
+      this.logger.debug(
+        "Arrival sync lease is held by another worker; skipping run",
+      );
+      return;
+    }
+
     try {
-      const syncState = await this.prisma.igArrivalSyncState.findUnique({
-        where: { id: "singleton" },
-      });
-      let cursor: string | undefined = syncState?.cursor?.trim() || undefined;
+      await this.deliverPending(deadline);
+
+      let cursor: string | undefined = lease.cursor?.trim() || undefined;
       const seen = new Set<string>();
       for (let pageNo = 0; pageNo < 100; pageNo++) {
         if (Date.now() >= deadline) {
-          await this.saveSyncState(cursor ?? null);
+          await this.saveSyncState(lease, cursor ?? null);
           return;
         }
         let page;
@@ -75,7 +87,7 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
           page = await this.erp.arrivalPage(100, cursor);
         } catch (error) {
           if (cursor !== undefined && this.isInvalidCursorError(error)) {
-            await this.saveSyncState(null);
+            await this.saveSyncState(lease, null);
             cursor = undefined;
             seen.clear();
             page = await this.erp.arrivalPage(100, undefined);
@@ -93,7 +105,7 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
         );
         for (const raw of page.items) {
           if (Date.now() >= deadline) {
-            await this.saveSyncState(cursor ?? null);
+            await this.saveSyncState(lease, cursor ?? null);
             return;
           }
           const item = arrivalStateSchema.safeParse(raw);
@@ -154,7 +166,7 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
             );
         }
         if (page.nextCursor === null) {
-          await this.saveSyncState(null, new Date());
+          await this.saveSyncState(lease, null, new Date());
           return;
         }
         if (seen.has(page.nextCursor) || page.nextCursor === cursor)
@@ -162,10 +174,106 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
         seen.add(page.nextCursor);
         cursor = page.nextCursor;
       }
-      await this.saveSyncState(cursor ?? null);
+      await this.saveSyncState(lease, cursor ?? null);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith("ARRIVAL_SYNC_FENCING_CONFLICT")
+      ) {
+        this.logger.warn(error.message);
+        return;
+      }
+      throw error;
     } finally {
-      await this.deliverPending(deadline);
+      try {
+        await this.deliverPending(deadline);
+      } catch (e) {
+        this.logger.warn(
+          `Failed final deliverPending: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+      try {
+        await this.releaseLease(lease);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to release arrival sync lease: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
+  }
+  private async acquireLease(): Promise<SyncLease | null> {
+    const lockToken = randomUUID();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 300_000);
+
+    return await this.prisma.$transaction(async (tx) => {
+      let row = await tx.igArrivalSyncState.findUnique({
+        where: { id: "singleton" },
+      });
+
+      if (!row) {
+        row = await tx.igArrivalSyncState.create({
+          data: {
+            id: "singleton",
+            lockToken,
+            lockExpiresAt: expiresAt,
+            generation: 1n,
+          },
+        });
+        return {
+          lockToken,
+          generation: 1n,
+          cursor: row.cursor ?? null,
+        };
+      }
+
+      const isLocked =
+        row.lockToken !== null &&
+        row.lockExpiresAt !== null &&
+        row.lockExpiresAt > now &&
+        row.lockToken !== lockToken;
+
+      if (isLocked) {
+        return null;
+      }
+
+      const currentGen = BigInt(row.generation ?? 0n);
+      const nextGeneration = currentGen + 1n;
+      const updated = await tx.igArrivalSyncState.updateMany({
+        where: {
+          id: "singleton",
+          generation: currentGen,
+        },
+        data: {
+          lockToken,
+          lockExpiresAt: expiresAt,
+          generation: nextGeneration,
+        },
+      });
+
+      if (updated.count === 0) {
+        return null;
+      }
+
+      return {
+        lockToken,
+        generation: nextGeneration,
+        cursor: row.cursor ?? null,
+      };
+    });
+  }
+  private async releaseLease(lease: SyncLease): Promise<void> {
+    await this.prisma.igArrivalSyncState.updateMany({
+      where: {
+        id: "singleton",
+        lockToken: lease.lockToken,
+        generation: lease.generation,
+      },
+      data: {
+        lockToken: null,
+        lockExpiresAt: null,
+      },
+    });
   }
   private isInvalidCursorError(error: unknown): boolean {
     if (
@@ -184,21 +292,27 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
     return false;
   }
   private async saveSyncState(
+    lease: SyncLease,
     cursor: string | null,
     completedAt?: Date | null,
   ): Promise<void> {
-    await this.prisma.igArrivalSyncState.upsert({
-      where: { id: "singleton" },
-      create: {
+    const updated = await this.prisma.igArrivalSyncState.updateMany({
+      where: {
         id: "singleton",
-        cursor,
-        completedAt: completedAt ?? null,
+        lockToken: lease.lockToken,
+        generation: lease.generation,
       },
-      update: {
+      data: {
         cursor,
         ...(completedAt !== undefined ? { completedAt } : {}),
       },
     });
+
+    if (updated.count === 0) {
+      throw new Error(
+        `ARRIVAL_SYNC_FENCING_CONFLICT: sync lease (gen ${lease.generation}) lost or superseded`,
+      );
+    }
   }
   private personHash(personUid: string): string {
     return createHash("sha256").update(personUid.toLowerCase()).digest("hex");

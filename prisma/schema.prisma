@@ -1209,6 +1209,9 @@ model IgArrivalSyncState {
   id String @id @db.VarChar(32)
   cursor String? @db.VarChar(128)
   completedAt DateTime? @db.DateTime(3)
+  lockToken String? @db.VarChar(64)
+  lockExpiresAt DateTime? @db.DateTime(3)
+  generation BigInt @default(0)
   updatedAt DateTime @updatedAt @db.DateTime(3)
   @@map("ig_arrival_sync_state")
 }

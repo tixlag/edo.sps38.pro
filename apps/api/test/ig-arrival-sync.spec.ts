@@ -30,6 +30,9 @@ function fixture() {
     id: string;
     cursor: string | null;
     completedAt: Date | null;
+    lockToken: string | null;
+    lockExpiresAt: Date | null;
+    generation: bigint;
     updatedAt: Date;
   } | null = null;
   const prisma = {
@@ -46,6 +49,55 @@ function fixture() {
         if (where.id === "singleton") return syncStateRow;
         return null;
       }),
+      create: vi.fn(async ({ data }: { data: any }) => {
+        syncStateRow = {
+          id: data.id,
+          cursor: data.cursor ?? null,
+          completedAt: data.completedAt ?? null,
+          lockToken: data.lockToken ?? null,
+          lockExpiresAt: data.lockExpiresAt ?? null,
+          generation: BigInt(data.generation ?? 0n),
+          updatedAt: new Date(),
+        };
+        return syncStateRow;
+      }),
+      updateMany: vi.fn(
+        async ({ where, data }: { where: any; data: any }) => {
+          if (!syncStateRow || syncStateRow.id !== where.id) {
+            return { count: 0 };
+          }
+          if (
+            where.generation !== undefined &&
+            syncStateRow.generation !== BigInt(where.generation)
+          ) {
+            return { count: 0 };
+          }
+          if (
+            where.lockToken !== undefined &&
+            syncStateRow.lockToken !== where.lockToken
+          ) {
+            return { count: 0 };
+          }
+          syncStateRow = {
+            ...syncStateRow,
+            ...(data.cursor !== undefined ? { cursor: data.cursor } : {}),
+            ...(data.completedAt !== undefined
+              ? { completedAt: data.completedAt }
+              : {}),
+            ...(data.lockToken !== undefined
+              ? { lockToken: data.lockToken }
+              : {}),
+            ...(data.lockExpiresAt !== undefined
+              ? { lockExpiresAt: data.lockExpiresAt }
+              : {}),
+            ...(data.generation !== undefined
+              ? { generation: BigInt(data.generation) }
+              : {}),
+            updatedAt: new Date(),
+          };
+          return { count: 1 };
+        },
+      ),
       upsert: vi.fn(
         async ({
           where,
@@ -65,6 +117,9 @@ function fixture() {
               id: where.id,
               cursor: create.cursor ?? null,
               completedAt: create.completedAt ?? null,
+              lockToken: null,
+              lockExpiresAt: null,
+              generation: 0n,
               updatedAt: new Date(),
             };
           } else {
@@ -293,10 +348,10 @@ describe("IG arrival synchronization", () => {
 
     await worker.sync();
     expect(erp.arrivalPage).toHaveBeenCalledTimes(100);
-    expect(prisma.igArrivalSyncState.upsert).toHaveBeenCalledWith(
+    expect(prisma.igArrivalSyncState.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "singleton" },
-        update: expect.objectContaining({ cursor: "cursor-100" }),
+        where: expect.objectContaining({ id: "singleton" }),
+        data: expect.objectContaining({ cursor: "cursor-100" }),
       }),
     );
     expect(getSyncState()?.cursor).toBe("cursor-100");
@@ -334,10 +389,10 @@ describe("IG arrival synchronization", () => {
 
     try {
       await worker.sync();
-      expect(prisma.igArrivalSyncState.upsert).toHaveBeenCalledWith(
+      expect(prisma.igArrivalSyncState.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: "singleton" },
-          update: expect.objectContaining({ cursor: "time-cursor-1" }),
+          where: expect.objectContaining({ id: "singleton" }),
+          data: expect.objectContaining({ cursor: "time-cursor-1" }),
         }),
       );
       expect(getSyncState()?.cursor).toBe("time-cursor-1");
@@ -362,6 +417,9 @@ describe("IG arrival synchronization", () => {
       id: "singleton",
       cursor: "existing-cursor",
       completedAt: null,
+      lockToken: null,
+      lockExpiresAt: null,
+      generation: 0n,
       updatedAt: new Date(),
     });
 
@@ -372,14 +430,10 @@ describe("IG arrival synchronization", () => {
 
     await worker.sync();
     expect(erp.arrivalPage).toHaveBeenCalledWith(100, "existing-cursor");
-    expect(prisma.igArrivalSyncState.upsert).toHaveBeenCalledWith(
+    expect(prisma.igArrivalSyncState.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "singleton" },
-        create: expect.objectContaining({
-          cursor: null,
-          completedAt: expect.any(Date),
-        }),
-        update: expect.objectContaining({
+        where: expect.objectContaining({ id: "singleton" }),
+        data: expect.objectContaining({
           cursor: null,
           completedAt: expect.any(Date),
         }),
@@ -404,6 +458,9 @@ describe("IG arrival synchronization", () => {
       id: "singleton",
       cursor: "stale-cursor-400",
       completedAt: null,
+      lockToken: null,
+      lockExpiresAt: null,
+      generation: 0n,
       updatedAt: new Date(),
     });
 
@@ -424,12 +481,58 @@ describe("IG arrival synchronization", () => {
     expect(erp.arrivalPage).toHaveBeenNthCalledWith(1, 100, "stale-cursor-400");
     expect(erp.arrivalPage).toHaveBeenNthCalledWith(2, 100, undefined);
 
-    expect(prisma.igArrivalSyncState.upsert).toHaveBeenCalledWith(
+    expect(prisma.igArrivalSyncState.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "singleton" },
-        update: expect.objectContaining({ cursor: null }),
+        where: expect.objectContaining({ id: "singleton" }),
+        data: expect.objectContaining({ cursor: null }),
       }),
     );
     expect(projection.apply).toHaveBeenCalledWith(value);
+  });
+
+  it("skips run when lease is held by another worker", async () => {
+    const { erp, worker, setSyncState } = fixture();
+    setSyncState({
+      id: "singleton",
+      cursor: "cursor-active",
+      completedAt: null,
+      lockToken: "other-worker-token",
+      lockExpiresAt: new Date(Date.now() + 60_000),
+      generation: 1n,
+      updatedAt: new Date(),
+    });
+
+    await worker.sync();
+    expect(erp.arrivalPage).not.toHaveBeenCalled();
+  });
+
+  it("rejects cursor write when lease was stolen and generation bumped", async () => {
+    const { erp, worker, setSyncState, getSyncState } = fixture();
+    setSyncState({
+      id: "singleton",
+      cursor: "cursor-1",
+      completedAt: null,
+      lockToken: null,
+      lockExpiresAt: null,
+      generation: 1n,
+      updatedAt: new Date(),
+    });
+
+    erp.arrivalPage.mockImplementation(async () => {
+      setSyncState({
+        id: "singleton",
+        cursor: "cursor-stolen",
+        completedAt: null,
+        lockToken: "new-winner-token",
+        lockExpiresAt: new Date(Date.now() + 100_000),
+        generation: 3n,
+        updatedAt: new Date(),
+      });
+      return { items: [value], nextCursor: null };
+    });
+
+    await worker.sync();
+    expect(getSyncState()?.cursor).toBe("cursor-stolen");
+    expect(getSyncState()?.generation).toBe(3n);
   });
 });

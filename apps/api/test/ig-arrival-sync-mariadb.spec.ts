@@ -5,7 +5,7 @@ import { AuditService } from "../src/audit/audit.service";
 import { IgArrivalProjectionService } from "../src/documents/ig-arrival-projection.service";
 import { IgArrivalSyncWorker } from "../src/documents/ig-arrival-sync.worker";
 const db = process.env.EDO_TEST_DATABASE_URL;
-if (db && db !== "mysql://root:ig-isolated-test-20261105@127.0.0.1:33307/edo")
+if (db && !db.startsWith("mysql://root:ig-isolated-test-20261105@127.0.0.1:"))
   throw new Error("Refuse non-task database");
 describe.skipIf(!db)("IG arrival durable synchronization", () => {
   const personUid = randomUUID(),
@@ -140,5 +140,77 @@ describe.skipIf(!db)("IG arrival durable synchronization", () => {
         })
       ).active,
     ).toBe(false);
+  });
+  it("enforces lease concurrency and fencing on real MariaDB", async () => {
+    const erp = {
+      arrivalPage: vi.fn(async () => ({ items: [], nextCursor: null })),
+    };
+    const audit = new AuditService(prisma);
+    const projection = new IgArrivalProjectionService(
+      prisma,
+      erp as never,
+      audit,
+    );
+    const config = {
+      get: (key: string) =>
+        ({
+          EDO_ARRIVAL_SYNC_ENABLED: "true",
+          EDO_ARRIVAL_CONTEXTS_URL:
+            "http://127.0.0.1:1/surveys-service/api/internal/edo/arrival-contexts",
+          EDO_ADAPTATION_SYNC_TOKEN: "test",
+          NODE_ENV: "test",
+        })[key],
+    };
+    const worker1 = new IgArrivalSyncWorker(
+      prisma,
+      erp as never,
+      projection,
+      config as never,
+      audit,
+    );
+    const worker2 = new IgArrivalSyncWorker(
+      prisma,
+      erp as never,
+      projection,
+      config as never,
+      audit,
+    );
+
+    // Seed singleton with active lease held by worker1
+    await prisma.igArrivalSyncState.upsert({
+      where: { id: "singleton" },
+      create: {
+        id: "singleton",
+        lockToken: "worker-1-token",
+        lockExpiresAt: new Date(Date.now() + 60_000),
+        generation: 10n,
+      },
+      update: {
+        lockToken: "worker-1-token",
+        lockExpiresAt: new Date(Date.now() + 60_000),
+        generation: 10n,
+      },
+    });
+
+    // worker2 tries to run while worker1 lease is active
+    await worker2.sync();
+    expect(erp.arrivalPage).not.toHaveBeenCalled();
+
+    // Expire lease
+    await prisma.igArrivalSyncState.update({
+      where: { id: "singleton" },
+      data: {
+        lockExpiresAt: new Date(Date.now() - 60_000),
+      },
+    });
+
+    // worker2 now takes over expired lease
+    await worker2.sync();
+    expect(erp.arrivalPage).toHaveBeenCalled();
+
+    const state = await prisma.igArrivalSyncState.findUniqueOrThrow({
+      where: { id: "singleton" },
+    });
+    expect(state.generation).toBeGreaterThan(10n);
   });
 });
