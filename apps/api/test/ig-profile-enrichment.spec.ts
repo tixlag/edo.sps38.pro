@@ -53,8 +53,8 @@ describe("IgProfileEnrichmentService", () => {
         citizenshipProvided: true,
       }),
     };
-    const workspace = {
-      syncPreviousDocumentsInternal: vi.fn().mockResolvedValue({ items: [] }),
+    const previousDocsSync = {
+      syncPreviousDocuments: vi.fn().mockResolvedValue({ items: [] }),
     };
     const config = { get: vi.fn().mockReturnValue("false") };
 
@@ -64,14 +64,14 @@ describe("IgProfileEnrichmentService", () => {
       erp as any,
       config as any,
       candidates as any,
-      workspace as any,
+      previousDocsSync as any,
     );
 
     const result = await service.enrichCandidate("cand-1");
     expect(result.profileSynced).toBe(true);
     expect(result.documentsSynced).toBe(true);
     expect(candidates.findByEmployeeCode).toHaveBeenCalledWith("IG-001", expect.anything());
-    expect(workspace.syncPreviousDocumentsInternal).toHaveBeenCalledWith("cand-1", "system:profile-enrichment");
+    expect(previousDocsSync.syncPreviousDocuments).toHaveBeenCalledWith("cand-1", "system:profile-enrichment");
   });
 
   it("never overwrites IG candidate citizenship with default ru", async () => {
@@ -127,8 +127,8 @@ describe("IgProfileEnrichmentService", () => {
         citizenshipProvided: false, // Defaulted by ERP normalization
       }),
     };
-    const workspace = {
-      syncPreviousDocumentsInternal: vi.fn().mockResolvedValue({ items: [] }),
+    const previousDocsSync = {
+      syncPreviousDocuments: vi.fn().mockResolvedValue({ items: [] }),
     };
     const config = { get: vi.fn().mockReturnValue("false") };
 
@@ -138,7 +138,7 @@ describe("IgProfileEnrichmentService", () => {
       erp as any,
       config as any,
       candidates as any,
-      workspace as any,
+      previousDocsSync as any,
     );
 
     await service.enrichCandidate("cand-2");
@@ -205,8 +205,8 @@ describe("IgProfileEnrichmentService", () => {
         citizenshipProvided: true,
       }),
     };
-    const workspace = {
-      syncPreviousDocumentsInternal: vi
+    const previousDocsSync = {
+      syncPreviousDocuments: vi
         .fn()
         .mockRejectedValueOnce(new Error("ERP_DOCUMENTS_TIMEOUT"))
         .mockResolvedValueOnce({ items: [] }),
@@ -219,7 +219,7 @@ describe("IgProfileEnrichmentService", () => {
       erp as any,
       config as any,
       candidates as any,
-      workspace as any,
+      previousDocsSync as any,
     );
 
     // Run 1: Profile succeeds, document history fails
@@ -232,7 +232,7 @@ describe("IgProfileEnrichmentService", () => {
     expect(retryResult.profileSynced).toBe(true);
     expect(retryResult.documentsSynced).toBe(true);
     expect(candidates.findByEmployeeCode).toHaveBeenCalledTimes(1); // Not called a second time!
-    expect(workspace.syncPreviousDocumentsInternal).toHaveBeenCalledTimes(2);
+    expect(previousDocsSync.syncPreviousDocuments).toHaveBeenCalledTimes(2);
   });
 
   it("rejects enrichment on identity mismatch", async () => {

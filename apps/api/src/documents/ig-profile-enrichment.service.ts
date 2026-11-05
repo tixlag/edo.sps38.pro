@@ -3,14 +3,13 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
-  Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { ErpCandidateClient } from "./erp-candidate.client";
 import { ErpWorkspaceClient } from "./erp-workspace.client";
-import { CandidateWorkspaceService } from "../communications/candidate-workspace.service";
+import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
 import { snapshotUpdateInput } from "./candidate-profile";
 
 interface FailureState {
@@ -30,8 +29,8 @@ export class IgProfileEnrichmentService implements OnModuleInit, OnModuleDestroy
     private readonly audit: AuditService,
     private readonly erp: ErpWorkspaceClient,
     private readonly config: ConfigService,
-    @Optional() private readonly candidates?: ErpCandidateClient,
-    @Optional() private readonly workspace?: CandidateWorkspaceService,
+    private readonly candidates: ErpCandidateClient,
+    private readonly previousDocsSync: CandidatePreviousDocumentsSyncService,
   ) {}
 
   onModuleInit(): void {
@@ -191,13 +190,13 @@ export class IgProfileEnrichmentService implements OnModuleInit, OnModuleDestroy
     }
 
     // Step 2: Document history enrichment if not synced
-    if (!candidate.previousDocumentsSyncedAt && this.workspace) {
-      await this.workspace.syncPreviousDocumentsInternal(
+    if (!candidate.previousDocumentsSyncedAt) {
+      await this.previousDocsSync.syncPreviousDocuments(
         candidateId,
         "system:profile-enrichment",
       );
       documentsSynced = true;
-    } else if (candidate.previousDocumentsSyncedAt) {
+    } else {
       documentsSynced = true;
     }
 

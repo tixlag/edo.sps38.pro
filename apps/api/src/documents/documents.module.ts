@@ -49,6 +49,7 @@ import { IgArrivalQueueService } from "./ig-arrival-queue.service";
 import { IgArrivalProjectionService } from "./ig-arrival-projection.service";
 import { IgArrivalSyncWorker } from "./ig-arrival-sync.worker";
 import { IgProfileEnrichmentService } from "./ig-profile-enrichment.service";
+import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
 import { IgEmploymentService } from "./ig-employment.service";
 import { OwnDocumentHistoryService } from "./own-document-history.service";
 import { OwnDocumentHistoryController } from "./own-document-history.controller";
@@ -73,11 +74,13 @@ import { ExpirationModule } from "../expiration/expiration.module";
     OwnDocumentHistoryService,
     IgEmploymentService,
     IgProfileEnrichmentService,
+    CandidatePreviousDocumentsSyncService,
   ],
   providers: [
     ErpWorkspaceClient,
     CandidateDocumentsService,
     CandidateContextService,
+    CandidatePreviousDocumentsSyncService,
     LkCandidateIdentityService,
     ErpCandidateClient,
     IgEmploymentService,
