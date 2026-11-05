@@ -39,6 +39,21 @@ function render(properties: Partial<DocumentVersionDto>) {
   return container;
 }
 describe("OCR review details", () => {
+  it("shows the type mismatch on the third attempt", () => {
+    const node = render({
+      status: "IN_REVIEW",
+      issues: [
+        {
+          code: "DOCUMENT_TYPE_MISMATCH",
+          message: "Третья попытка загрузки. Паспорт вместо ИНН",
+          fileOrdinal: null,
+          pageNumber: null,
+        },
+      ],
+    });
+    expect(node.textContent).toContain("Третья попытка загрузки");
+    expect(node.textContent).toContain("Паспорт вместо ИНН");
+  });
   it("shows an automatic return reason without suggesting manual review of a returned document", () => {
     const node = render({
       status: "RETURNED",
