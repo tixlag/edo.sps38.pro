@@ -15,7 +15,8 @@ class EvaluationTests(unittest.TestCase):
         for code in codes:
             for i in range(3):
                 sample = {'id': code + str(i), 'code': code, 'source_url': 'https://example.org/' + code + str(i),
-                          'split': 'tuning' if i == 0 else 'heldout', 'sha256': code + str(i)}
+                          'split': 'tuning' if i == 0 else 'heldout', 'sha256': code + str(i),
+                          'independence_group': code + str(i)}
                 samples.append(sample)
                 rows.extend({'id': sample['id'], 'actual': code, 'expected': expected,
                              'verdict': 'MATCH' if expected == code else 'MISMATCH', 'detected': code}
@@ -29,6 +30,12 @@ class EvaluationTests(unittest.TestCase):
         samples, rows, codes = self.corpus()
         for sample in samples:
             sample['split'] = 'tuning'
+        self.assertFalse(evaluation.summarize(samples, rows, codes)['passed'])
+
+    def test_resized_copies_of_a_tuning_document_cannot_be_heldout(self):
+        samples, rows, codes = self.corpus()
+        for sample in samples:
+            sample['independence_group'] = sample['code']
         self.assertFalse(evaluation.summarize(samples, rows, codes)['passed'])
 
     def test_false_return_wrong_label_and_missing_cells_block_the_gate(self):

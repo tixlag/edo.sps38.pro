@@ -16,6 +16,7 @@ MANIFEST = json.loads((ROOT / 'models/xiaomi-manifest.json').read_text())
 MAX_UPLOAD = 10 * 1024 * 1024
 MAX_OUTPUT = 65536
 PROMPT = 'Extract the text in the image.'
+PIXEL_PROFILES = (786432, 1258291)
 
 
 class TextReader:
@@ -37,9 +38,9 @@ class TextReader:
         if not 0 < fraction <= 0.35:
             raise ValueError('Invalid GPU memory budget')
         torch.cuda.set_per_process_memory_fraction(fraction)
-        self.processor = AutoProcessor.from_pretrained(
+        self.processors = {pixels: AutoProcessor.from_pretrained(
             model_path, local_files_only=True, trust_remote_code=False,
-            min_pixels=65536, max_pixels=786432)
+            min_pixels=65536, max_pixels=pixels) for pixels in PIXEL_PROFILES}
         self.model = AutoModelForImageTextToText.from_pretrained(
             model_path, dtype=torch.bfloat16, local_files_only=True,
             trust_remote_code=False).to('cuda').eval()
@@ -52,7 +53,7 @@ class TextReader:
                 'peak_allocated_bytes': self.torch.cuda.max_memory_allocated(),
                 'gpu_free_bytes': free, 'gpu_total_bytes': total}
 
-    def recognize(self, data: bytes, deadline: float) -> dict:
+    def recognize(self, data: bytes, deadline: float, pixels: int = PIXEL_PROFILES[0]) -> dict:
         from PIL import Image, ImageOps
 
         Image.MAX_IMAGE_PIXELS = 40_000_000
@@ -61,13 +62,16 @@ class TextReader:
                 return {'reason': 'INPUT_LIMIT', 'text': '', 'truncated': False}
             image = ImageOps.exif_transpose(source).convert('RGB')
         # Preserve the whole page, including document titles. Bound visual tokens.
-        scale = min(1.0, (786432 / (image.width * image.height)) ** 0.5)
-        if scale < 1:
+        if pixels not in PIXEL_PROFILES:
+            return {'reason': 'INPUT_LIMIT', 'text': '', 'truncated': False}
+        scale = min(2.0, (pixels / (image.width * image.height)) ** 0.5)
+        if scale != 1:
             image = image.resize((max(1, int(image.width * scale)),
                                   max(1, int(image.height * scale))))
         messages = [{'role': 'user', 'content': [
             {'type': 'image', 'image': image}, {'type': 'text', 'text': PROMPT}]}]
-        inputs = self.processor.apply_chat_template(
+        processor = self.processors[pixels]
+        inputs = processor.apply_chat_template(
             messages, tokenize=True, add_generation_prompt=True,
             enable_thinking=False, return_dict=True, return_tensors='pt').to('cuda')
         prefix = inputs['input_ids'].shape[1]
@@ -83,7 +87,7 @@ class TextReader:
         eos = self.model.generation_config.eos_token_id
         eos = eos if isinstance(eos, list) else [eos]
         truncated = len(tokens) >= 2048 or time.time() >= deadline or not len(tokens) or int(tokens[-1]) not in eos
-        text = self.processor.decode(tokens, skip_special_tokens=True)
+        text = processor.decode(tokens, skip_special_tokens=True)
         if len(text.encode('utf-8')) > MAX_OUTPUT:
             truncated = True
         return {'text': '' if truncated else text, 'truncated': truncated,
@@ -116,7 +120,10 @@ def create_server(reader, port: int):
             try:
                 length = int(self.headers.get('Content-Length', '0'))
                 deadline = float(self.headers.get('X-Deadline-Unix', '0'))
+                pixels = int(self.headers.get('X-Image-Pixels', str(PIXEL_PROFILES[0])))
                 if not 0 < length <= MAX_UPLOAD:
+                    return self.reply(413, {'reason': 'INPUT_LIMIT'})
+                if pixels not in PIXEL_PROFILES:
                     return self.reply(413, {'reason': 'INPUT_LIMIT'})
                 if not time.time() < deadline <= time.time() + 55:
                     return self.reply(408, {'reason': 'TIMEOUT'})
@@ -124,9 +131,10 @@ def create_server(reader, port: int):
                 data = self.rfile.read(length)
                 if len(data) != length:
                     return self.reply(400, {'reason': 'INVALID_RESPONSE'})
-                result = reader.recognize(data, deadline)
+                result = reader.recognize(data, deadline, pixels)
                 self.reply(200, {**result, 'model': MANIFEST['repository'],
                                  'revision': MANIFEST['revision'],
+                                 'pixels': pixels,
                                  'elapsed_ms': round((time.monotonic() - started) * 1000, 2)})
             except Exception as error:
                 # Never log images, recognized text or exception bodies.

@@ -23,7 +23,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def recognize_page(image, deadline):
+def recognize_page(image, deadline, *, pixels=786432):
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise ReaderError('TIMEOUT')
@@ -33,6 +33,14 @@ def recognize_page(image, deadline):
             or parsed.username or parsed.password or parsed.query or parsed.fragment
             or parsed.path != '/recognize-text'):
         raise ReaderError('OCR_UNAVAILABLE')
+    if pixels not in {786432, 1258291}:
+        raise ReaderError('INPUT_LIMIT')
+    original_pixels = image.width * image.height
+    if original_pixels > 40_000_000:
+        raise ReaderError('INPUT_LIMIT')
+    scale = min(1.0, (pixels / max(1, original_pixels)) ** .5)
+    if scale < 1:
+        image = image.resize((max(1, int(image.width * scale)), max(1, int(image.height * scale))))
     with io.BytesIO() as buffer:
         image.save(buffer, format='PNG')
         data = buffer.getvalue()
@@ -42,7 +50,8 @@ def recognize_page(image, deadline):
     if remaining <= 0:
         raise ReaderError('TIMEOUT')
     request = urllib.request.Request(url, data=data, method='POST', headers={
-        'Content-Type': 'image/png', 'X-Deadline-Unix': str(time.time() + min(45, remaining))})
+        'Content-Type': 'image/png', 'X-Image-Pixels': str(pixels),
+        'X-Deadline-Unix': str(time.time() + min(45, remaining))})
     try:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
         with opener.open(request, timeout=min(45, remaining)) as response:
@@ -56,6 +65,7 @@ def recognize_page(image, deadline):
         if (result.get('model') != MANIFEST['repository']
                 or result.get('revision') != MANIFEST['revision']
                 or result.get('truncated') is not False
+                or result.get('pixels') != pixels
                 or not isinstance(result.get('text'), str)
                 or len(result['text'].encode('utf-8')) > 65536):
             raise ReaderError('INVALID_RESPONSE')

@@ -59,3 +59,11 @@ class XiaomiHttpTests(unittest.TestCase):
             self.post()
         self.assertEqual(caught.exception.code, 503)
         self.assertEqual(json.load(caught.exception), {'reason': 'OCR_UNAVAILABLE'})
+
+    def test_arbitrary_pixel_budget_is_not_allowed(self):
+        request = urllib.request.Request(self.url + '/recognize-text', data=b'image',
+            headers={'X-Deadline-Unix': str(time.time() + 40), 'X-Image-Pixels': '100000000'})
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request, timeout=3)
+        self.assertEqual(caught.exception.code, 413)
+        self.reader.recognize.assert_not_called()

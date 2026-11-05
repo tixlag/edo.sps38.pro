@@ -15,7 +15,8 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'services/uz'))
 from recognizeuz.quality.type_matcher import DocumentTypeMatcher
-from recognizeuz.quality.xiaomi_text import MANIFEST, ReaderError, recognize_page
+from recognizeuz.quality.xiaomi_text import MANIFEST, ReaderError
+from recognizeuz.quality.xiaomi_type_check import recognize_type_text
 
 
 def rules_digest(root=ROOT):
@@ -23,6 +24,7 @@ def rules_digest(root=ROOT):
         'contracts/document-type-rules.json', 'contracts/document-type-rules-v2.json',
         'services/uz/recognizeuz/quality/type_matcher.py',
         'services/uz/recognizeuz/quality/xiaomi_type_check.py',
+        'services/uz/recognizeuz/quality/xiaomi_text.py',
         'scripts/evaluate_typecheck.py',
         'services/typecheck/server.py'))).hexdigest()
 
@@ -32,12 +34,17 @@ def summarize(samples, rows, codes):
     for code in codes:
         labeled = [s for s in samples if s['code'] == code]
         sources = {s['source_url'] for s in labeled}
+        groups = {s.get('independence_group') for s in labeled if s.get('independence_group')}
         heldout = [s for s in labeled if s['split'] == 'heldout']
         heldout_sources = {s['source_url'] for s in heldout}
         tuning_sources = {s['source_url'] for s in labeled if s['split'] == 'tuning'}
-        if (len(sources) < 3 or len({s['sha256'] for s in labeled}) < 3
+        if (len(sources) < 3 or len(groups) < 3 or len({s['sha256'] for s in labeled}) < 3
                 or len(heldout_sources) < 2 or heldout_sources & tuning_sources):
             problems.append('INSUFFICIENT_INDEPENDENT_SAMPLES:' + code)
+        training_groups = {s.get('independence_group') for s in labeled if s['split'] == 'tuning'}
+        heldout_groups = {s.get('independence_group') for s in heldout}
+        if training_groups & heldout_groups or len(heldout_groups - {None}) < 2:
+            problems.append('SOURCE_LEAKAGE_OR_DUPLICATE:' + code)
     heldout_ids = {s['id'] for s in samples if s['split'] == 'heldout'}
     evaluated = [r for r in rows if r['id'] in heldout_ids]
     positives = [r for r in evaluated if r['expected'] == r['actual']]
@@ -64,6 +71,7 @@ def summarize(samples, rows, codes):
 def evaluate(manifest, output):
     from PIL import Image, ImageOps
 
+    policy_hash = rules_digest()
     matcher = DocumentTypeMatcher(ROOT / 'contracts/document-type-rules-v2.json')
     data = json.loads(manifest.read_text())
     samples = data['samples']
@@ -78,6 +86,7 @@ def evaluate(manifest, output):
     for sample in samples:
         url = urlsplit(sample['source_url'])
         if (sample['code'] not in matcher.rules or sample['split'] not in {'tuning', 'heldout'}
+                or not isinstance(sample.get('independence_group'), str) or not sample['independence_group']
                 or url.scheme != 'https' or not url.hostname or url.username or url.password):
             raise ValueError('Invalid public sample metadata')
         path = (manifest.parent / sample['path']).resolve()
@@ -93,13 +102,15 @@ def evaluate(manifest, output):
             with Image.open(path) as source:
                 if source.width * source.height > 40_000_000:
                     raise ValueError('Image pixel limit')
-                text = recognize_page(ImageOps.exif_transpose(source).convert('RGB'), time.monotonic() + 45)
+                text, angle, pixels = recognize_type_text(ImageOps.exif_transpose(source).convert('RGB'), time.monotonic() + 45, matcher)
             reason = None
         except ReaderError as error:
-            text, reason = '', error.reason
+            text, reason, angle, pixels = '', error.reason, None, None
         # Filename uses a digest rather than an untrusted corpus ID.
         (output / (digest + '.text.json')).write_text(json.dumps({
             'text': text, 'reason': reason, 'model_revision': MANIFEST['revision'],
+            'rotation': angle,
+            'reading_pixels': pixels,
             'elapsed_ms': round((time.monotonic() - started) * 1000, 2)}, ensure_ascii=False))
         for expected in matcher.rules:
             result = matcher.evaluate_text(text, expected)
@@ -108,8 +119,11 @@ def evaluate(manifest, output):
                          'reason': reason or result.get('reason'),
                          'matched_phrases': result['matched_phrases']})
     report = {**summarize(prepared, rows, set(matcher.rules)),
-              'model_revision': MANIFEST['revision'], 'rules_sha256': rules_digest(),
+              'model_revision': MANIFEST['revision'], 'rules_sha256': policy_hash,
               'samples': prepared}
+    if rules_digest() != policy_hash:
+        report['passed'] = False
+        report['problems'].append('POLICY_CHANGED_DURING_EVALUATION')
     (output / 'matrix.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2))
     (output / 'gate.json').write_text(json.dumps(report, ensure_ascii=False, indent=2))
     print(json.dumps({key: value for key, value in report.items() if key != 'samples'}))
