@@ -1111,8 +1111,10 @@ model IgArrivalPerson {
   syncedRevision BigInt @default(0)
   syncError String? @db.VarChar(64)
   bindingError String? @db.VarChar(64)
+  igVerified Boolean @default(false)
   updatedAt DateTime @updatedAt @db.DateTime(3)
   @@index([state, personUid])
+  @@index([igVerified, state, personUid])
   @@index([syncPending, updatedAt])
   @@map("ig_arrival_persons")
 }

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { ServiceUnavailableException } from "@nestjs/common";
 import { igUploadOwner } from "../src/documents/ig-upload-owner";
 import { IgArrivalQueueService } from "../src/documents/ig-arrival-queue.service";
 import { PrismaService } from "../src/prisma/prisma.service";
@@ -208,7 +209,13 @@ describe.skipIf(!db)("IG arrival projection on task MariaDB", () => {
       (await queue.groups(reviewer, { q: code1c })).items[0],
     ).toMatchObject({ completed: 1 });
     const candidateId = row.candidateId;
-    identity.mockRejectedValueOnce(new Error("unavailable"));
+    await prisma.igArrivalPerson.update({
+      where: { personUid },
+      data: { bindingError: "ERP_PERSON_IDENTITY_UNAVAILABLE" },
+    });
+    identity.mockRejectedValueOnce(
+      new ServiceUnavailableException("ERP_UNAVAILABLE"),
+    );
     await service.apply(source(1));
     row = await prisma.igArrivalPerson.findUniqueOrThrow({
       where: { personUid },
@@ -226,6 +233,10 @@ describe.skipIf(!db)("IG arrival projection on task MariaDB", () => {
     });
     expect(row.candidateId).toBe(candidateId);
     expect(row.bindingError).toBeNull();
+    await prisma.igArrivalPerson.update({
+      where: { personUid },
+      data: { bindingError: "ERP_PERSON_IDENTITY_UNAVAILABLE" },
+    });
     identity.mockResolvedValueOnce({
       personUid: randomUUID(),
       code1C: code1c,
@@ -241,9 +252,7 @@ describe.skipIf(!db)("IG arrival projection on task MariaDB", () => {
     });
     expect(row.candidateId).toBeNull();
     expect(row.bindingError).toBe("ERP_PERSON_IDENTITY_MISMATCH");
-    expect(
-      (await queue.groups(reviewer, { q: code1c })).items[0],
-    ).toMatchObject({ group: "assigned", needsAttention: 1 });
+    expect((await queue.groups(reviewer, { q: code1c })).items).toHaveLength(0);
     await service.apply(source(1));
     row = await prisma.igArrivalPerson.findUniqueOrThrow({
       where: { personUid },

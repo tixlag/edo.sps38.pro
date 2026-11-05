@@ -99,7 +99,7 @@ export class IgArrivalQueueService {
           SUM(CASE WHEN ${primaryStatus} = 'sending' THEN 1 ELSE 0 END) AS sending
    FROM ig_arrival_persons p LEFT JOIN ig_arrival_members m ON m.arrivalMemberUid = p.currentMemberUid
    LEFT JOIN candidates c ON c.id = p.candidateId
-   WHERE p.state IN ('CURRENT','CONFLICT') ${filter(q)}
+   WHERE p.igVerified = 1 AND p.state IN ('CURRENT','CONFLICT') ${filter(q)}
    GROUP BY CASE WHEN ${issue} THEN NULL ELSE m.arrivalDate END, CASE WHEN ${issue} THEN NULL ELSE m.locationUid END
    ORDER BY arrivalDate IS NULL DESC, arrivalDate ASC, locationUid ASC LIMIT ${limit + 1} OFFSET ${offset}`);
     return {
@@ -159,7 +159,7 @@ export class IgArrivalQueueService {
     ${primaryStatus} AS primaryStatus, CASE WHEN ${problem} THEN 1 ELSE 0 END AS needsAttention,
     CASE WHEN p.state = 'CONFLICT' THEN 'ARRIVAL_SOURCE_CONFLICT' WHEN p.bindingError IS NOT NULL THEN p.bindingError WHEN ${sourceIssue} THEN (SELECT i.code FROM ig_arrival_issues i WHERE i.personHash = SHA2(p.personUid, 256) AND i.active = 1 ORDER BY i.updatedAt DESC LIMIT 1) WHEN m.arrivalDate IS NULL OR m.locationUid IS NULL THEN 'ARRIVAL_GROUP_UNASSIGNED' WHEN c.igRequirementsConflict = 1 THEN 'ERP_IG_REQUIREMENTS_CONFLICT' WHEN ${returned} THEN 'DOCUMENT_RETURNED' WHEN ${deliveryProblem} THEN 'ERP_DELIVERY_NEEDS_ATTENTION' ELSE p.syncError END AS issueCode
    FROM ig_arrival_persons p LEFT JOIN ig_arrival_members m ON m.arrivalMemberUid = p.currentMemberUid LEFT JOIN candidates c ON c.id = p.candidateId
-   WHERE p.state IN ('CURRENT','CONFLICT') ${groupFilter} ${filter(q)}
+   WHERE p.igVerified = 1 AND p.state IN ('CURRENT','CONFLICT') ${groupFilter} ${filter(q)}
    ORDER BY COALESCE(m.fullName, c.fullName, ''), p.personUid LIMIT ${limit + 1} OFFSET ${offset}`);
     return {
       items: rows.slice(0, limit).map((r) => ({

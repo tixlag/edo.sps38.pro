@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
-import { ConflictException, Injectable } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { candidateIdentityTransaction } from "./candidate-identity";
@@ -21,12 +25,41 @@ export class IgArrivalProjectionService {
   async apply(input: PersonArrivalState): Promise<boolean> {
     const item = arrivalStateSchema.parse(input);
     const hash = arrivalStateHash(item);
-    const identity = await this.erp.identity(item.code1c).catch(() => null);
+    const known = await this.prisma.igArrivalPerson.findUnique({
+      where: { personUid: item.personUid },
+      select: {
+        code1c: true,
+        revision: true,
+        sourceHash: true,
+        igVerified: true,
+        bindingError: true,
+      },
+    });
+    if (known && known.code1c === item.code1c) {
+      if (BigInt(item.revision) < known.revision) return false;
+      if (
+        BigInt(item.revision) === known.revision &&
+        hash === known.sourceHash &&
+        known.igVerified &&
+        !known.bindingError
+      )
+        return true;
+    }
+    let identity: Awaited<ReturnType<ErpWorkspaceClient["identity"]>> | null =
+      null;
+    let transientUnavailable = false;
+    try {
+      identity = await this.erp.identity(item.code1c);
+    } catch (error) {
+      transientUnavailable =
+        error instanceof ServiceUnavailableException &&
+        error.message === "ERP_UNAVAILABLE";
+    }
     const verified =
       !!identity &&
       identity.recipientType === "person" &&
       identity.reviewGroup === "IG" &&
-      identity.personUid === item.personUid &&
+      identity.personUid?.toLowerCase() === item.personUid &&
       identity.code1C === item.code1c &&
       !identity.chatUuid &&
       !identity.erpUid;
@@ -128,7 +161,7 @@ export class IgArrivalProjectionService {
           after: { revision: item.revision, state: item.state },
         });
       if (!verified) {
-        if (identity && existing.candidateId)
+        if (!transientUnavailable && existing.igVerified)
           await this.audit.logInTransaction(tx, {
             actorId: "system:arrival-sync",
             action: "DATA_IMPORTED",
@@ -139,13 +172,28 @@ export class IgArrivalProjectionService {
         await tx.igArrivalPerson.update({
           where: { personUid: item.personUid },
           data: {
-            ...(identity ? { candidateId: null } : {}),
-            bindingError: identity
-              ? "ERP_PERSON_IDENTITY_MISMATCH"
-              : "ERP_PERSON_IDENTITY_UNAVAILABLE",
+            ...(!transientUnavailable
+              ? { candidateId: null, igVerified: false }
+              : {}),
+            bindingError: transientUnavailable
+              ? "ERP_PERSON_IDENTITY_UNAVAILABLE"
+              : "ERP_PERSON_IDENTITY_MISMATCH",
           },
         });
         return true;
+      }
+      if (!existing.igVerified) {
+        await tx.igArrivalPerson.update({
+          where: { personUid: item.personUid },
+          data: { igVerified: true },
+        });
+        await this.audit.logInTransaction(tx, {
+          actorId: "system:arrival-sync",
+          action: "DATA_IMPORTED",
+          entityType: "IgArrivalPerson",
+          entityId: createHash("sha256").update(item.personUid).digest("hex"),
+          after: { identity: "IG_VERIFIED", revision: item.revision },
+        });
       }
       const state = await tx.igEmploymentState.findUniqueOrThrow({
         where: { code1c: item.code1c },

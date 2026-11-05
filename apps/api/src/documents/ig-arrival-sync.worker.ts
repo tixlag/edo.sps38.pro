@@ -206,7 +206,12 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
       throw new Error("ARRIVAL_SYNC_URL_INVALID");
     }
     const rows = await this.prisma.igArrivalPerson.findMany({
-      where: { syncPending: true, bindingError: null, revision: { gt: 0 } },
+      where: {
+        syncPending: true,
+        igVerified: true,
+        bindingError: null,
+        revision: { gt: 0 },
+      },
       take: 100,
       orderBy: [{ updatedAt: "asc" }, { personUid: "asc" }],
     });
@@ -218,6 +223,7 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
         sourceHash: row.sourceHash,
         syncPending: true,
         bindingError: null,
+        igVerified: true,
       };
       try {
         const item = arrivalStateSchema.parse(row.sourcePayload);
@@ -234,7 +240,9 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
             Accept: "application/json",
           },
           body: JSON.stringify(item),
-          signal: AbortSignal.timeout(15_000),
+          signal: AbortSignal.timeout(
+            Math.max(1, Math.min(15_000, deadline - Date.now())),
+          ),
           redirect: "error",
         });
         if (!response.ok || !response.body) {
