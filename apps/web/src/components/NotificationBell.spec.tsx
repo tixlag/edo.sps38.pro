@@ -130,10 +130,19 @@ describe("NotificationBell", () => {
     expect(resolveNotificationTarget("javascript:alert(1)", "news", "https://edo.example", "https://lk.example")).toBeNull();
   });
 
-  it("builds correct WebSocket URL from lkBaseUrl", () => {
+  it("builds correct production WebSocket URL with port 8091 by default for lk.sps38.pro", () => {
     const wsUrl = getLkNotificationWsUrl("user-abc-123");
-    expect(wsUrl).toContain("/ws/notification?user_uuid=user-abc-123");
-    expect(wsUrl).toMatch(/^wss?:\/\//);
+    expect(wsUrl).toBe("wss://lk.sps38.pro:8091/ws/notification?user_uuid=user-abc-123");
+  });
+
+  it("honors VITE_LK_WS_URL when explicitly configured", () => {
+    const originalEnv = import.meta.env.VITE_LK_WS_URL;
+    try {
+      (import.meta.env as any).VITE_LK_WS_URL = "wss://custom.lk.domain:9000";
+      expect(getLkNotificationWsUrl("user-999")).toBe("wss://custom.lk.domain:9000/ws/notification?user_uuid=user-999");
+    } finally {
+      (import.meta.env as any).VITE_LK_WS_URL = originalEnv;
+    }
   });
 
   it("shows pending contracts when LK fails and opens them through the contract read endpoint", async () => {

@@ -29,20 +29,40 @@ export function resolveNotificationTarget(targetUrl: string, targetType: string 
 }
 
 export function getLkNotificationWsUrl(userUuid: string): string {
-  const raw = (
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_LK_BASE_URL as string | undefined) ||
-    lkBaseUrl()
-  ).trim();
-  const withoutSlash = raw.replace(/\/+$/, "");
+  const wsEnv = (
+    typeof import.meta !== "undefined"
+      ? (import.meta.env?.VITE_LK_WS_URL as string | undefined)
+      : undefined
+  )?.trim();
+
   let wsOrigin: string;
-  if (/^https:\/\//i.test(withoutSlash)) {
-    wsOrigin = withoutSlash.replace(/^https:\/\//i, "wss://");
-  } else if (/^http:\/\//i.test(withoutSlash)) {
-    wsOrigin = withoutSlash.replace(/^http:\/\//i, "ws://");
-  } else if (/^wss?:\/\//i.test(withoutSlash)) {
-    wsOrigin = withoutSlash;
+  if (wsEnv) {
+    const withoutSlash = wsEnv.replace(/\/+$/, "");
+    if (/^https:\/\//i.test(withoutSlash)) {
+      wsOrigin = withoutSlash.replace(/^https:\/\//i, "wss://");
+    } else if (/^http:\/\//i.test(withoutSlash)) {
+      wsOrigin = withoutSlash.replace(/^http:\/\//i, "ws://");
+    } else if (/^wss?:\/\//i.test(withoutSlash)) {
+      wsOrigin = withoutSlash;
+    } else {
+      wsOrigin = `wss://${withoutSlash}`;
+    }
   } else {
-    wsOrigin = `wss://${withoutSlash}`;
+    const raw = (
+      (typeof import.meta !== "undefined" && import.meta.env?.VITE_LK_BASE_URL as string | undefined) ||
+      lkBaseUrl()
+    ).trim();
+    const withoutSlash = raw.replace(/\/+$/, "");
+    try {
+      const url = new URL(withoutSlash.startsWith("http") ? withoutSlash : `https://${withoutSlash}`);
+      // Default production LK WebSocket runs on port 8091
+      const isLkProd = url.hostname === "lk.sps38.pro" && (!url.port || url.port === "443" || url.port === "80");
+      const port = isLkProd ? ":8091" : (url.port ? `:${url.port}` : "");
+      const scheme = url.protocol === "http:" ? "ws" : "wss";
+      wsOrigin = `${scheme}://${url.hostname}${port}`;
+    } catch {
+      wsOrigin = withoutSlash.replace(/^https?:\/\//i, "wss://");
+    }
   }
   return `${wsOrigin}/ws/notification?user_uuid=${encodeURIComponent(userUuid)}`;
 }
