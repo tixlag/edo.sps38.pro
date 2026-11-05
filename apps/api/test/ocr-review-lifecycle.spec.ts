@@ -102,6 +102,64 @@ function workerFixture() {
 afterEach(() => vi.useRealTimers());
 
 describe("manual review enrichment", () => {
+  it.each([0, 1, 2])(
+    "routes the third submitted type mismatch to review: %i",
+    async (previousCount) => {
+      const { worker, tx, job, version } = workerFixture();
+      job.status = "RUNNING";
+      job.leaseToken = "lease";
+      version.status = "OCR_PENDING";
+      tx.documentVersion.findMany.mockResolvedValue(
+        Array.from({ length: previousCount }, (_, index) => ({
+          status: "RETURNED",
+          reviewedBy: index === 0 ? "operator" : "ocr-document-check",
+        })) as never,
+      );
+      await worker.complete(
+        "job",
+        "lease",
+        {
+          outcome: "REJECTED",
+          rejectionKind: "DOCUMENT_TYPE_MISMATCH",
+          source: "EXTERNAL",
+          raw: {},
+          issues: [
+            {
+              code: "DOCUMENT_TYPE_MISMATCH",
+              message: "Паспорт вместо ИНН",
+              fileOrdinal: null,
+              pageNumber: null,
+            },
+          ],
+        },
+        {},
+      );
+      expect(tx.documentVersion.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: previousCount === 2 ? "IN_REVIEW" : "RETURNED",
+            ...(previousCount === 2
+              ? {
+                  ocrRaw: expect.objectContaining({
+                    automaticReturnLimitReached: true,
+                  }),
+                }
+              : { rejectionReason: "Паспорт вместо ИНН" }),
+          }),
+        }),
+      );
+      if (previousCount === 2)
+        expect(tx.ocrIssue.createMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: [
+              expect.objectContaining({
+                message: expect.stringContaining("Третья попытка"),
+              }),
+            ],
+          }),
+        );
+    },
+  );
   it("returns a confirmed non-document atomically with its reason and automatic decision audit", async () => {
     const { worker, tx, job, version, audit } = workerFixture();
     job.status = "RUNNING";

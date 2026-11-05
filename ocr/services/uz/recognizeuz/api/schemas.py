@@ -18,6 +18,15 @@ class DocumentCheckResponse(BaseModel):
     model_revision: str
     pages: list[DocumentCheckPage] = Field(max_length=100)
     elapsed_ms: float
+    expected_code: str | None = None
+    expected_title: str | None = None
+    expected_canonical_code: str | None = None
+    detected_code: str | None = None
+    detected_title: str | None = None
+    type_verdict: Literal['MATCH', 'MISMATCH', 'UNCERTAIN'] | None = None
+    rejection_reason: str | None = None
+    source: Literal['GLM', 'PADDLE_RULES'] | None = None
+    type_pages: list[dict] | None = None
 
 class Base64InputItem(BaseModel):
     filename: str

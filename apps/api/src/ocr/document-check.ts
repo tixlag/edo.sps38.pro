@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { OcrInputFile, OcrResult } from "./ocr.service";
 import { readOcrBody } from "./ocr-http";
+import {
+  canonicalDocumentType,
+  isKnownDocumentType,
+} from "./document-type-codes";
 
 export const NON_DOCUMENT_REASON = "Документ не надлежащего качества";
 
@@ -10,8 +14,8 @@ export function documentCheckEnabled(config?: {
   return config?.get("OCR_DOCUMENT_CHECK_ENABLED") !== "false";
 }
 
-const checkResponse = z.object({
-  policy_version: z.literal("document-check-v1"),
+const checkBase = z.object({
+  policy_version: z.enum(["document-check-v1", "document-check-v2"]),
   model: z.literal("google/siglip2-base-patch16-224"),
   model_revision: z.literal("75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2"),
   elapsed_ms: z.number().finite().nonnegative(),
@@ -34,7 +38,28 @@ const checkResponse = z.object({
     )
     .min(1)
     .max(100),
+  expected_code: z.string().min(1).max(128).optional(),
+  expected_title: z.string().max(512).nullable().optional(),
+  expected_canonical_code: z.string().max(128).nullable().optional(),
+  detected_code: z.string().max(128).nullable().optional(),
+  detected_title: z.string().max(512).nullable().optional(),
+  type_verdict: z.enum(["MATCH", "MISMATCH", "UNCERTAIN"]).optional(),
+  rejection_reason: z.string().max(1024).nullable().optional(),
+  source: z.enum(["GLM", "PADDLE_RULES"]).nullable().optional(),
+  type_pages: z
+    .array(
+      z.object({
+        file_index: z.number().int().nonnegative(),
+        page_number: z.number().int().positive(),
+        verdict: z.enum(["MATCH", "MISMATCH", "UNCERTAIN"]),
+        detected_code: z.string().max(128).nullable(),
+        source: z.enum(["GLM", "PADDLE_RULES"]).nullable(),
+      }),
+    )
+    .max(100)
+    .optional(),
 });
+const checkResponse = checkBase;
 
 type CheckResponse = z.infer<typeof checkResponse>;
 export type DocumentCheckResult =
@@ -44,8 +69,18 @@ export type DocumentCheckResult =
 export function validateDocumentCheck(
   input: unknown,
   files: OcrInputFile[],
+  expectedCode?: string,
 ): CheckResponse {
   const result = checkResponse.parse(input);
+  if (
+    result.policy_version === "document-check-v2" &&
+    (!expectedCode ||
+      result.expected_code !== expectedCode ||
+      !result.type_verdict ||
+      !result.type_pages ||
+      result.type_pages.length !== result.pages.length)
+  )
+    throw new Error("DOCUMENT_CHECK_INVALID");
   const expected = files.reduce((count, file) => count + file.pageCount, 0);
   const seen = new Set<string>();
   if (result.pages.length !== expected)
@@ -66,6 +101,15 @@ export function validateDocumentCheck(
     }
     seen.add(key);
   }
+  if (result.policy_version === "document-check-v2") {
+    const typeSeen = new Set<string>();
+    for (const page of result.type_pages ?? []) {
+      const key = `${page.file_index}:${page.page_number}`;
+      if (!seen.has(key) || typeSeen.has(key))
+        throw new Error("DOCUMENT_CHECK_INVALID");
+      typeSeen.add(key);
+    }
+  }
   return result;
 }
 
@@ -75,6 +119,7 @@ export async function checkDocumentPresence(
   files: OcrInputFile[],
   caller: AbortSignal,
   timeoutMs: number,
+  expectedCode?: string,
 ): Promise<DocumentCheckResult> {
   try {
     const url = new URL(baseUrl ?? "");
@@ -87,6 +132,7 @@ export async function checkDocumentPresence(
     )
       throw new Error("DOCUMENT_CHECK_NOT_CONFIGURED");
     url.pathname = `${url.pathname.replace(/\/$/, "")}/document-check`;
+    if (expectedCode) form.set("expected_code", expectedCode);
     const response = await fetch(url, {
       method: "POST",
       body: form,
@@ -100,13 +146,19 @@ export async function checkDocumentPresence(
     const bytes = await readOcrBody(response, 256 * 1024);
     return {
       status: "COMPLETED",
-      result: validateDocumentCheck(JSON.parse(bytes.toString("utf8")), files),
+      result: validateDocumentCheck(
+        JSON.parse(bytes.toString("utf8")),
+        files,
+        expectedCode,
+      ),
     };
   } catch {
     // Outages, missing endpoints and invalid/partial results do not consume
     // a candidate's automatic return attempts.
     caller.throwIfAborted();
     return { status: "UNAVAILABLE" };
+  } finally {
+    form.delete("expected_code");
   }
 }
 
@@ -116,7 +168,7 @@ export function nonDocumentResult(
 ): OcrResult | null {
   if (check.status !== "COMPLETED") return null;
   const pages = check.result.pages.filter(
-    (page) => page.verdict !== "DOCUMENT",
+    (page) => page.verdict === "NON_DOCUMENT",
   );
   if (!pages.length) return null;
   return {
@@ -130,6 +182,55 @@ export function nonDocumentResult(
       fileOrdinal: files[page.file_index].ordinal,
       pageNumber: page.page_number,
     })),
+  };
+}
+
+export function typeMismatchResult(
+  check: DocumentCheckResult,
+): OcrResult | null {
+  if (check.status !== "COMPLETED") return null;
+  const result = check.result;
+  if (
+    result.policy_version !== "document-check-v2" ||
+    result.type_verdict !== "MISMATCH" ||
+    !result.expected_title ||
+    !result.detected_title ||
+    !result.detected_code ||
+    !result.expected_canonical_code ||
+    !result.expected_code ||
+    result.expected_canonical_code !==
+      canonicalDocumentType(result.expected_code) ||
+    !isKnownDocumentType(result.expected_canonical_code) ||
+    !isKnownDocumentType(result.detected_code) ||
+    result.detected_code === result.expected_canonical_code ||
+    !result.type_pages?.length ||
+    result.type_pages.some(
+      (page) =>
+        page.verdict !== "MISMATCH" ||
+        page.detected_code !== result.detected_code ||
+        !page.source ||
+        !["GLM", "PADDLE_RULES"].includes(page.source),
+    )
+  )
+    return null;
+  const message =
+    `Загружен документ «${result.detected_title}» вместо ожидаемого «${result.expected_title}». Пожалуйста, прикрепите верный документ.`.slice(
+      0,
+      1024,
+    );
+  return {
+    outcome: "REJECTED",
+    rejectionKind: "DOCUMENT_TYPE_MISMATCH",
+    source: "EXTERNAL",
+    raw: { documentCheck: check },
+    issues: [
+      {
+        code: "DOCUMENT_TYPE_MISMATCH",
+        message,
+        fileOrdinal: null,
+        pageNumber: null,
+      },
+    ],
   };
 }
 
