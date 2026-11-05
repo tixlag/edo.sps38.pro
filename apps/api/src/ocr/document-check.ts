@@ -61,6 +61,8 @@ const checkBase = z.object({
         reason: z.string().max(64).nullable().optional(),
         matched_phrases: z.array(z.string().min(1).max(256)).max(8).optional(),
         elapsed_ms: z.number().finite().nonnegative().optional(),
+        rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
+        reading_pixels: z.union([z.literal(786432), z.literal(1258291)]).optional(),
       }),
     )
     .max(100)

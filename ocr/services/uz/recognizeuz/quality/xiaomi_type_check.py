@@ -6,6 +6,38 @@ from recognizeuz.quality.type_matcher import DocumentTypeMatcher, canonical_code
 from recognizeuz.quality.xiaomi_text import MANIFEST, ReaderError, recognize_page
 
 
+def recognize_type_text(image, deadline, matcher):
+    """Choose orientation using the same evidence for every expected type.
+
+    All candidates preserve the complete page. Neither its label nor the expected
+    document type is sent to the text reader or used to select an orientation.
+    """
+    first_text = None
+    observed_codes = set()
+    probe_code = next(iter(matcher.rules))
+    for angle, pixels in ((0, 786432), (0, 1258291), (270, 786432), (90, 786432), (180, 786432)):
+        if time.monotonic() >= deadline:
+            raise ReaderError('TIMEOUT')
+        candidate = image.rotate(angle, expand=True) if angle else image
+        try:
+            text = recognize_page(candidate, deadline, pixels=pixels)
+        finally:
+            if angle:
+                candidate.close()
+        if first_text is None:
+            first_text = text
+        detected = matcher.evaluate_text(text, probe_code)
+        if detected.get('reason') == 'MIXED_DOCUMENT_TYPES':
+            raise ReaderError('MIXED_DOCUMENT_TYPES')
+        if detected['detected_code']:
+            observed_codes.add(detected['detected_code'])
+        if len(observed_codes) > 1:
+            raise ReaderError('MIXED_DOCUMENT_TYPES')
+        if detected['verdict'] != 'UNCERTAIN':
+            return text, angle, pixels
+    return first_text or '', 0, 786432
+
+
 def aggregate(pages, expected_code, expected_pages):
     keys = [(p.get('file_index'), p.get('page_number')) for p in pages]
     if not expected_pages or len(keys) != len(set(keys)) or set(keys) != expected_pages:
@@ -57,9 +89,11 @@ def check_types(payload, expected_code, presence, *, deadline):
                         continue
                     started = time.monotonic()
                     try:
-                        text = recognize_page(image, deadline)
+                        text, angle, pixels = recognize_type_text(image, deadline, matcher)
                         matched = matcher.evaluate_text(text, canonical)
                         result.update(verdict=matched['verdict'], detected_code=matched['detected_code'],
+                                      rotation=angle,
+                                      reading_pixels=pixels,
                                       matched_phrases=matched['matched_phrases'][:8],
                                       source='XIAOMI_RULES', reason=None if matched['verdict'] != 'UNCERTAIN'
                                       else matched.get('reason', 'LOW_EVIDENCE'))

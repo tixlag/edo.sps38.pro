@@ -226,12 +226,17 @@ def prepare_typecheck(release, shared):
     if not marker.is_file():
         # A new environment requires ~10 GiB during installation. Never clean
         # shared caches or an active environment to make room automatically.
-        if shutil.disk_usage(shared).free < 10 * 1024 ** 3:
-            raise ValueError('Xiaomi environment preparation requires 10 GiB free disk space')
+        cached_wheels = (shared / 'wheels/document-type/.complete').is_file()
+        required_gib = 7 if cached_wheels else 10
+        if shutil.disk_usage(shared).free < required_gib * 1024 ** 3:
+            raise ValueError(f'Xiaomi environment preparation requires {required_gib} GiB free disk space')
         if environment.exists():
             shutil.rmtree(environment)
         run('bash', str(release / 'scripts/setup_typecheck.sh'),
-            env={**os.environ, 'SERVICE_VENV': str(environment)})
+            env={**os.environ, 'SERVICE_VENV': str(environment),
+                 'TYPECHECK_BUILD_DIR': str(shared / 'var/typecheck-build'),
+                 **({'TYPECHECK_WHEELHOUSE': str(shared / 'wheels/document-type')}
+                    if (shared / 'wheels/document-type').is_dir() else {})})
         marker.write_text(key + '\n')
     run(sys.executable, str(release / 'scripts/public_models.py'),
         '--manifest', str(manifest), '--models-dir', str(shared / 'models'))
