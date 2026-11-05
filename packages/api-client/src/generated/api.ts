@@ -1264,6 +1264,87 @@ export interface DocumentUploadGrantRequestDto {
   candidate_profile?: CandidateSnapshotDto;
 }
 
+export type IgArrivalGroupDtoGroup =
+  (typeof IgArrivalGroupDtoGroup)[keyof typeof IgArrivalGroupDtoGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalGroupDtoGroup = {
+  assigned: "assigned",
+  issues: "issues",
+} as const;
+
+export interface IgArrivalGroupDto {
+  group: IgArrivalGroupDtoGroup;
+  /** @nullable */
+  arrivalDate: string | null;
+  /** @nullable */
+  locationUid: string | null;
+  /** @nullable */
+  locationName: string | null;
+  total: number;
+  approved: number;
+  confirmed: number;
+  issues: number;
+  waitingDocuments: number;
+  inReview: number;
+  returned: number;
+  completed: number;
+  sending: number;
+  needsAttention: number;
+}
+
+export interface IgArrivalGroupsDto {
+  items: IgArrivalGroupDto[];
+  /** @nullable */
+  nextOffset: number | null;
+}
+
+export type IgArrivalPersonDtoState =
+  (typeof IgArrivalPersonDtoState)[keyof typeof IgArrivalPersonDtoState];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalPersonDtoState = {
+  CURRENT: "CURRENT",
+  CONFLICT: "CONFLICT",
+} as const;
+
+export type IgArrivalPersonDtoPrimaryStatus =
+  (typeof IgArrivalPersonDtoPrimaryStatus)[keyof typeof IgArrivalPersonDtoPrimaryStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalPersonDtoPrimaryStatus = {
+  waitingDocuments: "waitingDocuments",
+  inReview: "inReview",
+  returned: "returned",
+  completed: "completed",
+  sending: "sending",
+} as const;
+
+export interface IgArrivalPersonDto {
+  personUid: string;
+  code1c: string;
+  /** @nullable */
+  candidateId: string | null;
+  /** @nullable */
+  fullName: string | null;
+  /** @nullable */
+  arrivalMemberUid: string | null;
+  state: IgArrivalPersonDtoState;
+  approvedDocuments: number;
+  confirmedDocuments: number;
+  employmentConfirmed: boolean;
+  primaryStatus: IgArrivalPersonDtoPrimaryStatus;
+  needsAttention: boolean;
+  /** @nullable */
+  issueCode: string | null;
+}
+
+export interface IgArrivalPeopleDto {
+  items: IgArrivalPersonDto[];
+  /** @nullable */
+  nextOffset: number | null;
+}
+
 export interface CandidateReviewQueueDto {
   items: CandidateDetailsDto[];
   /**
@@ -2321,6 +2402,30 @@ export type GetCandidateDocumentDraftParams = {
   chat_uuid?: string;
   code_1c?: string;
 };
+
+export type ListIgArrivalGroupsParams = {
+  limit?: number;
+  offset?: number;
+  q?: string;
+};
+
+export type ListIgArrivalPeopleParams = {
+  limit?: number;
+  offset?: number;
+  q?: string;
+  group: ListIgArrivalPeopleGroup;
+  arrivalDate?: string;
+  locationUid?: string;
+};
+
+export type ListIgArrivalPeopleGroup =
+  (typeof ListIgArrivalPeopleGroup)[keyof typeof ListIgArrivalPeopleGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalPeopleGroup = {
+  assigned: "assigned",
+  issues: "issues",
+} as const;
 
 export type ListCandidateReviewQueueParams = {
   /**
@@ -6467,6 +6572,179 @@ export const useCreateCandidateDocumentUploadGrant = <
 
   return useMutation(mutationOptions);
 };
+
+/**
+ * Person counts use one primary status: completed, returned, inReview, sending, then waitingDocuments. needsAttention may overlap any status. Technical issues do not move a person with a known date and object into the unassigned group.
+ * @summary IG review groups by arrival calendar date and ERP object
+ */
+export const listIgArrivalGroups = (
+  params?: ListIgArrivalGroupsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<IgArrivalGroupsDto>({
+    url: `/api/v1/candidate-review-queue/ig-arrival-groups`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListIgArrivalGroupsQueryKey = (
+  params?: ListIgArrivalGroupsParams,
+) => {
+  return [
+    `/api/v1/candidate-review-queue/ig-arrival-groups`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListIgArrivalGroupsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listIgArrivalGroups>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListIgArrivalGroupsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listIgArrivalGroups>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListIgArrivalGroupsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listIgArrivalGroups>>
+  > = ({ signal }) => listIgArrivalGroups(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listIgArrivalGroups>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListIgArrivalGroupsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listIgArrivalGroups>>
+>;
+export type ListIgArrivalGroupsQueryError = ApiErrorDto;
+
+/**
+ * @summary IG review groups by arrival calendar date and ERP object
+ */
+
+export function useListIgArrivalGroups<
+  TData = Awaited<ReturnType<typeof listIgArrivalGroups>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListIgArrivalGroupsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listIgArrivalGroups>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListIgArrivalGroupsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Paginated people in one IG arrival group
+ */
+export const listIgArrivalPeople = (
+  params: ListIgArrivalPeopleParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<IgArrivalPeopleDto>({
+    url: `/api/v1/candidate-review-queue/ig-arrival-people`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListIgArrivalPeopleQueryKey = (
+  params: ListIgArrivalPeopleParams,
+) => {
+  return [
+    `/api/v1/candidate-review-queue/ig-arrival-people`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListIgArrivalPeopleQueryOptions = <
+  TData = Awaited<ReturnType<typeof listIgArrivalPeople>>,
+  TError = ApiErrorDto,
+>(
+  params: ListIgArrivalPeopleParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listIgArrivalPeople>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListIgArrivalPeopleQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listIgArrivalPeople>>
+  > = ({ signal }) => listIgArrivalPeople(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listIgArrivalPeople>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListIgArrivalPeopleQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listIgArrivalPeople>>
+>;
+export type ListIgArrivalPeopleQueryError = ApiErrorDto;
+
+/**
+ * @summary Paginated people in one IG arrival group
+ */
+
+export function useListIgArrivalPeople<
+  TData = Awaited<ReturnType<typeof listIgArrivalPeople>>,
+  TError = ApiErrorDto,
+>(
+  params: ListIgArrivalPeopleParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listIgArrivalPeople>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListIgArrivalPeopleQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
 
 /**
  * Profile filters select candidates; status and documentTypeCode select their nested documents. RETURNED includes documents with any returned version, even after a newer upload; returnedVersions contains the history. Progress counts all accessible approved documents across tabs. Reviewers can access every candidate and document in their confirmed RU or IG direction without location permissions; other administrative access retains its location scope.

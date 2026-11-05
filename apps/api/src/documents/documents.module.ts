@@ -45,6 +45,9 @@ import { CandidateContextService } from "./candidate-context.service";
 import { LkCandidateIdentityService } from "./lk-candidate-identity.service";
 import { ErpCandidateClient } from "./erp-candidate.client";
 import { CandidateCardCache } from "./candidate-card-cache";
+import { IgArrivalQueueService } from "./ig-arrival-queue.service";
+import { IgArrivalProjectionService } from "./ig-arrival-projection.service";
+import { IgArrivalSyncWorker } from "./ig-arrival-sync.worker";
 import { IgEmploymentService } from "./ig-employment.service";
 import { OwnDocumentHistoryService } from "./own-document-history.service";
 import { OwnDocumentHistoryController } from "./own-document-history.controller";
@@ -75,6 +78,9 @@ import { OwnDocumentHistoryController } from "./own-document-history.controller"
     LkCandidateIdentityService,
     ErpCandidateClient,
     IgEmploymentService,
+    IgArrivalProjectionService,
+    IgArrivalSyncWorker,
+    IgArrivalQueueService,
     OwnDocumentHistoryService,
     CandidateCardCache,
     DocumentAccessService,

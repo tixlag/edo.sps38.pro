@@ -1,3 +1,4 @@
+import { arrivalPageSchema } from "./ig-arrival-contract";
 import {
   ConflictException,
   Injectable,
@@ -254,6 +255,19 @@ export class ErpWorkspaceClient {
       await reader.cancel().catch(() => undefined);
     }
     return Buffer.concat(chunks);
+  }
+  arrivalPage(limit: number, cursor?: string) {
+    if (
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 200 ||
+      (cursor !== undefined && (!cursor || cursor.length > 1024))
+    )
+      throw new Error("INVALID_ARRIVAL_PAGE");
+    return this.request("ig-arrivals", arrivalPageSchema, {
+      limit: String(limit),
+      ...(cursor ? { cursor } : {}),
+    });
   }
   async identity(code1c: string) {
     const identity = await this.request("identity", erpIdentitySchema, {

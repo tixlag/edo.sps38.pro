@@ -19,6 +19,30 @@ describe("optional communications configuration", () => {
       }).EDO_ADAPTATION_SYNC_ENABLED,
     ).toBe("true");
   });
+  it("requires explicit independent arrival configuration and HTTPS in production", () => {
+    expect(validateEnv(required).EDO_ARRIVAL_SYNC_ENABLED).toBe("false");
+    expect(() =>
+      validateEnv({ ...required, EDO_ARRIVAL_SYNC_ENABLED: "true" }),
+    ).toThrow("EDO_ARRIVAL_CONTEXTS_URL");
+    const enabled = {
+      ...required,
+      EDO_ARRIVAL_SYNC_ENABLED: "true",
+      ERP_COMMUNICATIONS_URL: "https://erp.example.test/api",
+      EDO_ARRIVAL_CONTEXTS_URL:
+        "http://localhost/surveys-service/api/internal/edo/arrival-contexts",
+      EDO_ADAPTATION_SYNC_TOKEN: "test",
+    };
+    expect(validateEnv(enabled).EDO_ARRIVAL_SYNC_ENABLED).toBe("true");
+    expect(() => validateEnv({ ...enabled, NODE_ENV: "production" })).toThrow(
+      "HTTPS",
+    );
+    expect(() =>
+      validateEnv({
+        ...enabled,
+        EDO_ARRIVAL_CONTEXTS_URL: "https://example.test/wrong",
+      }),
+    ).toThrow("approved Surveys endpoint");
+  });
   it.each([undefined, "", "   "])(
     "treats %j URLs as an unconfigured integration",
     (value) => {

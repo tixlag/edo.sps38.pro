@@ -1989,6 +1989,16 @@
               }
             }
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
           "401": {
             "description": "",
             "content": {
@@ -2019,7 +2029,47 @@
               }
             }
           },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
           "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
             "description": "",
             "content": {
               "application/json": {
@@ -2074,6 +2124,16 @@
             },
             "description": ""
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
           "401": {
             "description": "",
             "content": {
@@ -2104,7 +2164,47 @@
               }
             }
           },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
           "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
             "description": "",
             "content": {
               "application/json": {
@@ -2151,6 +2251,16 @@
             },
             "description": ""
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
           "401": {
             "description": "",
             "content": {
@@ -2181,7 +2291,47 @@
               }
             }
           },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
           "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDocumentErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
             "description": "",
             "content": {
               "application/json": {
@@ -5223,6 +5373,335 @@
         "summary": "Mint a five-minute upload grant bound to owner, document and bundle key",
         "tags": [
           "candidate-documents"
+        ]
+      }
+    },
+    "/api/v1/candidate-review-queue/ig-arrival-groups": {
+      "get": {
+        "description": "Person counts use one primary status: completed, returned, inReview, sending, then waitingDocuments. needsAttention may overlap any status. Technical issues do not move a person with a known date and object into the unassigned group.",
+        "operationId": "listIgArrivalGroups",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IgArrivalGroupsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "IG review groups by arrival calendar date and ERP object",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/candidate-review-queue/ig-arrival-people": {
+      "get": {
+        "operationId": "listIgArrivalPeople",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "name": "group",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "assigned",
+                "issues"
+              ]
+            }
+          },
+          {
+            "name": "arrivalDate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationUid",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IgArrivalPeopleDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Paginated people in one IG arrival group",
+        "tags": [
+          "documents"
         ]
       }
     },
@@ -17663,6 +18142,188 @@
           "documentUid",
           "idempotencyKey",
           "position_code_1c"
+        ]
+      },
+      "IgArrivalGroupDto": {
+        "type": "object",
+        "properties": {
+          "group": {
+            "type": "string",
+            "enum": [
+              "assigned",
+              "issues"
+            ]
+          },
+          "arrivalDate": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          },
+          "locationUid": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "total": {
+            "type": "number"
+          },
+          "approved": {
+            "type": "number"
+          },
+          "confirmed": {
+            "type": "number"
+          },
+          "issues": {
+            "type": "number"
+          },
+          "waitingDocuments": {
+            "type": "number"
+          },
+          "inReview": {
+            "type": "number"
+          },
+          "returned": {
+            "type": "number"
+          },
+          "completed": {
+            "type": "number"
+          },
+          "sending": {
+            "type": "number"
+          },
+          "needsAttention": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "group",
+          "arrivalDate",
+          "locationUid",
+          "locationName",
+          "total",
+          "approved",
+          "confirmed",
+          "issues",
+          "waitingDocuments",
+          "inReview",
+          "returned",
+          "completed",
+          "sending",
+          "needsAttention"
+        ]
+      },
+      "IgArrivalGroupsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IgArrivalGroupDto"
+            }
+          },
+          "nextOffset": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextOffset"
+        ]
+      },
+      "IgArrivalPersonDto": {
+        "type": "object",
+        "properties": {
+          "personUid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code1c": {
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string",
+            "nullable": true
+          },
+          "fullName": {
+            "type": "string",
+            "nullable": true
+          },
+          "arrivalMemberUid": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "CURRENT",
+              "CONFLICT"
+            ]
+          },
+          "approvedDocuments": {
+            "type": "number"
+          },
+          "confirmedDocuments": {
+            "type": "number"
+          },
+          "employmentConfirmed": {
+            "type": "boolean"
+          },
+          "primaryStatus": {
+            "type": "string",
+            "enum": [
+              "waitingDocuments",
+              "inReview",
+              "returned",
+              "completed",
+              "sending"
+            ]
+          },
+          "needsAttention": {
+            "type": "boolean"
+          },
+          "issueCode": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "personUid",
+          "code1c",
+          "candidateId",
+          "fullName",
+          "arrivalMemberUid",
+          "state",
+          "approvedDocuments",
+          "confirmedDocuments",
+          "employmentConfirmed",
+          "primaryStatus",
+          "needsAttention",
+          "issueCode"
+        ]
+      },
+      "IgArrivalPeopleDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IgArrivalPersonDto"
+            }
+          },
+          "nextOffset": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextOffset"
         ]
       },
       "CandidateReviewQueueDto": {

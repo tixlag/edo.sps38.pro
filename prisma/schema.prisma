@@ -379,6 +379,7 @@ model LkSyncState {
 }
 
 model Candidate {
+  igArrivalPerson IgArrivalPerson?
   igCompletedAt DateTime? @db.DateTime(3)
   igCompletionVerified Boolean @default(false)
   igRequirementsConflict Boolean @default(false)
@@ -431,6 +432,7 @@ model Candidate {
 
   @@index([locationId])
   @@index([code1c])
+  @@index([personUid])
   @@map("candidates")
 }
 
@@ -1091,4 +1093,55 @@ model CandidatePreviousDocument {
   updatedAt DateTime @updatedAt @db.DateTime(3)
   @@unique([candidateId, sourceId])
   @@map("candidate_previous_documents")
+}
+
+model IgArrivalPerson {
+  personUid String @id @db.VarChar(36)
+  code1c String @unique @db.VarChar(64)
+  revision BigInt @default(0)
+  state String @db.VarChar(16)
+  currentMemberUid String? @unique @db.VarChar(36)
+  currentMember IgArrivalMember? @relation("IgArrivalCurrent", fields: [currentMemberUid], references: [arrivalMemberUid], onDelete: SetNull)
+  members IgArrivalMember[] @relation("IgArrivalOwner")
+  candidateId String? @unique @db.VarChar(64)
+  candidate Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  sourceHash String @db.VarChar(64)
+  sourcePayload Json
+  syncPending Boolean @default(true)
+  syncedRevision BigInt @default(0)
+  syncError String? @db.VarChar(64)
+  bindingError String? @db.VarChar(64)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  @@index([state, personUid])
+  @@index([syncPending, updatedAt])
+  @@map("ig_arrival_persons")
+}
+model IgArrivalMember {
+  arrivalMemberUid String @id @db.VarChar(36)
+  personUid String @db.VarChar(36)
+  owner IgArrivalPerson @relation("IgArrivalOwner", fields: [personUid], references: [personUid], onDelete: Cascade)
+  currentFor IgArrivalPerson? @relation("IgArrivalCurrent")
+  arrivalDate String? @db.Char(10)
+  locationUid String? @db.VarChar(36)
+  locationCode1c String? @db.VarChar(512)
+  locationName String? @db.VarChar(512)
+  fullName String? @db.VarChar(512)
+  citizenship String? @db.VarChar(2)
+  managerCode1c String? @db.VarChar(512)
+  cancelled Boolean
+  @@index([arrivalDate, locationUid])
+  @@index([personUid])
+  @@map("ig_arrival_members")
+}
+
+model IgArrivalIssue {
+  id String @id @db.Char(64)
+  personHash String @db.Char(64)
+  revision BigInt?
+  code String @db.VarChar(64)
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  @@index([personHash, active])
+  @@map("ig_arrival_issues")
 }
