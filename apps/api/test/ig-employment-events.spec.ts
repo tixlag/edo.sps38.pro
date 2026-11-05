@@ -201,4 +201,148 @@ describe("IG employment grant events", () => {
       }),
     );
   });
+
+  it("rejects grant when request personUid mismatches ERP identity", async () => {
+    const erp = {
+      identity: vi.fn().mockResolvedValue({
+        reviewGroup: "IG",
+        recipientType: "person",
+        personUid: "00000000-0000-4000-8000-000000000001",
+        code1C: "worker",
+      }),
+    };
+    const service = new IgEmploymentService(
+      {} as never,
+      erp as never,
+      {} as never,
+    );
+    await expect(
+      service.applyGrant({
+        id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+        employeeCode1c: "worker",
+        citizenship: "UZ",
+        personUid: "00000000-0000-4000-8000-999999999999",
+        createdAt: "2026-11-03T00:00:00.000Z",
+      }),
+    ).rejects.toThrow("ERP_PERSON_IDENTITY_MISMATCH");
+  });
+
+  it("rejects grant when citizenship is RU", async () => {
+    const erp = {
+      identity: vi.fn().mockResolvedValue({
+        reviewGroup: "IG",
+        recipientType: "person",
+        personUid: "00000000-0000-4000-8000-000000000001",
+        code1C: "worker",
+      }),
+    };
+    const service = new IgEmploymentService(
+      {} as never,
+      erp as never,
+      {} as never,
+    );
+    await expect(
+      service.applyGrant({
+        id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+        employeeCode1c: "worker",
+        citizenship: "RU",
+        createdAt: "2026-11-03T00:00:00.000Z",
+      }),
+    ).rejects.toThrow("ERP_PERSON_IDENTITY_MISMATCH");
+  });
+
+  it("handles enabled=false without creating candidate if none exists", async () => {
+    const tx = {
+      igEmploymentState: {
+        upsert: vi.fn(),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ currentCandidate: null }),
+      },
+      $queryRaw: vi.fn(),
+      igGrantEvent: { findUnique: vi.fn().mockResolvedValue(null) },
+      candidate: { create: vi.fn(), delete: vi.fn() },
+    };
+    const prisma = { $transaction: vi.fn((fn) => fn(tx)) };
+    const erp = {
+      identity: vi.fn().mockResolvedValue({
+        reviewGroup: "IG",
+        recipientType: "person",
+        personUid: "00000000-0000-4000-8000-000000000001",
+        code1C: "worker",
+      }),
+    };
+    const service = new IgEmploymentService(
+      prisma as never,
+      erp as never,
+      { logInTransaction: vi.fn() } as never,
+    );
+    const result = await service.applyGrant({
+      id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+      employeeCode1c: "worker",
+      citizenship: "UZ",
+      enabled: false,
+      createdAt: "2026-11-03T00:00:00.000Z",
+    });
+    expect(result).toBe("");
+    expect(tx.candidate.create).not.toHaveBeenCalled();
+    expect(tx.candidate.delete).not.toHaveBeenCalled();
+  });
+
+  it("handles enabled=false without deleting existing candidate or documents", async () => {
+    const candidate = {
+      id: "cand-1",
+      code1c: "worker",
+      personUid: "00000000-0000-4000-8000-000000000001",
+      reviewGroup: "IG",
+    };
+    const tx = {
+      igEmploymentState: {
+        upsert: vi.fn(),
+        findUniqueOrThrow: vi
+          .fn()
+          .mockResolvedValue({ currentCandidate: candidate }),
+      },
+      $queryRaw: vi.fn(),
+      igGrantEvent: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn(),
+      },
+      candidate: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(candidate),
+        delete: vi.fn(),
+      },
+      document: { delete: vi.fn(), deleteMany: vi.fn() },
+    };
+    const prisma = { $transaction: vi.fn((fn) => fn(tx)) };
+    const erp = {
+      identity: vi.fn().mockResolvedValue({
+        reviewGroup: "IG",
+        recipientType: "person",
+        personUid: "00000000-0000-4000-8000-000000000001",
+        code1C: "worker",
+      }),
+    };
+    const audit = { logInTransaction: vi.fn() };
+    const service = new IgEmploymentService(
+      prisma as never,
+      erp as never,
+      audit as never,
+    );
+    const result = await service.applyGrant({
+      id: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+      employeeCode1c: "worker",
+      citizenship: "UZ",
+      enabled: false,
+      createdAt: "2026-11-03T00:00:00.000Z",
+    });
+    expect(result).toBe("cand-1");
+    expect(tx.candidate.delete).not.toHaveBeenCalled();
+    expect(tx.document.delete).not.toHaveBeenCalled();
+    expect(tx.document.deleteMany).not.toHaveBeenCalled();
+    expect(audit.logInTransaction).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        after: { source: "ADAPTATION_ACCESS", enabled: false },
+      }),
+    );
+  });
 });

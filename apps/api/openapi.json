@@ -7571,6 +7571,49 @@
         ]
       }
     },
+    "/api/internal/erp/v1/adaptation-grants": {
+      "put": {
+        "operationId": "applyErpAdaptationGrants",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdaptationGrantsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Элементы обработаны",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdaptationGrantsResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некорректный запрос / DTO"
+          },
+          "401": {
+            "description": "Не авторизован (неверный токен)"
+          }
+        },
+        "security": [
+          {
+            "lk-service-token": []
+          }
+        ],
+        "summary": "Прямой прием выдачи доступа иностранным сотрудникам из 1С. Повтор безопасен",
+        "tags": [
+          "ERP Integration"
+        ]
+      }
+    },
     "/api/v1/expirations/summary": {
       "get": {
         "operationId": "getExpirationsSummary",
@@ -18897,6 +18940,109 @@
         "required": [
           "revision",
           "reason"
+        ]
+      },
+      "AdaptationGrantItemDto": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "description": "UUID операции для подтверждения и идемпотентности",
+            "format": "uuid",
+            "example": "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9"
+          },
+          "code1c": {
+            "type": "string",
+            "description": "Код 1С сотрудника",
+            "example": "УП00035198",
+            "maxLength": 64
+          },
+          "personUid": {
+            "type": "string",
+            "description": "UUID физлица в 1С",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          },
+          "citizenship": {
+            "type": "string",
+            "description": "Код гражданства сотрудника (ИГ)",
+            "example": "UZ",
+            "maxLength": 16
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "true — доступ открыт, false — доступ закрыт",
+            "example": true
+          }
+        },
+        "required": [
+          "operationId",
+          "code1c",
+          "personUid",
+          "citizenship",
+          "enabled"
+        ]
+      },
+      "AdaptationGrantsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Пакет операций выдачи доступа",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdaptationGrantItemDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "AdaptationGrantResultItemDto": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "description": "UUID операции",
+            "format": "uuid",
+            "example": "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9"
+          },
+          "code1c": {
+            "type": "string",
+            "description": "Код 1С сотрудника",
+            "example": "УП00035198"
+          },
+          "applied": {
+            "type": "boolean",
+            "description": "Применен ли допуск в ЭДО",
+            "example": true
+          },
+          "known": {
+            "type": "boolean",
+            "description": "Известен ли кандидат системе",
+            "example": true
+          }
+        },
+        "required": [
+          "operationId",
+          "code1c",
+          "applied",
+          "known"
+        ]
+      },
+      "AdaptationGrantsResultDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Результаты обработки элементов пакета",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdaptationGrantResultItemDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "ExpirationSummaryResponseDto": {

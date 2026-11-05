@@ -53,6 +53,7 @@ import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-docu
 import { IgEmploymentService } from "./ig-employment.service";
 import { OwnDocumentHistoryService } from "./own-document-history.service";
 import { OwnDocumentHistoryController } from "./own-document-history.controller";
+import { ErpAdaptationGrantsController } from "./erp-adaptation-grants.controller";
 import { ExpirationModule } from "../expiration/expiration.module";
 
 @Module({
@@ -67,6 +68,7 @@ import { ExpirationModule } from "../expiration/expiration.module";
     ManualDocumentReviewController,
     CandidateDocumentEventsController,
     CandidateDocumentUploadController,
+    ErpAdaptationGrantsController,
   ],
   exports: [
     CandidateContextService,

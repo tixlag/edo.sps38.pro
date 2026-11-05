@@ -17,7 +17,6 @@ import { CandidateCatalogService } from "./candidate-catalog.service";
 import { CommunicationEventsService } from "./communication-events.service";
 import { ErpCommunicationsClient } from "./erp-communications.client";
 import { LkChatClient } from "./lk-chat.client";
-import { IgGrantPoller } from "../documents/ig-grant-poller";
 @Module({
   imports: [
     PrismaModule,
@@ -33,7 +32,6 @@ import { IgGrantPoller } from "../documents/ig-grant-poller";
   ],
   providers: [
     CandidateWorkspaceService,
-    IgGrantPoller,
     ErpWorkspaceClient,
     CommunicationsService,
     CandidateCatalogService,

@@ -52,10 +52,8 @@ const envSchema = z.object({
   LK_CHAT_BASE_URL: optionalUrl,
   LK_PUBLIC_BASE_URL: z.string().url().default('https://lk.sps38.pro'),
   CANDIDATE_CATALOG_SYNC_ENABLED: z.enum(['true', 'false']).default('true'),
-  EDO_ADAPTATION_SYNC_ENABLED: z.enum(['true', 'false']).default('false'),
   EDO_ARRIVAL_SYNC_ENABLED: z.enum(['true', 'false']).default('false'),
   EDO_ARRIVAL_CONTEXTS_URL: optionalUrl,
-  EDO_ADAPTATION_EVENTS_URL: optionalUrl,
   EDO_ADAPTATION_SYNC_TOKEN: z.string().optional(),
   DOCUMENT_WORKER_ENABLED: z.enum(['true', 'false']).default('true'),
   EDO_PUBLIC_API_URL: z.string().url().default('http://localhost:3001/api'),
@@ -80,9 +78,6 @@ export type AppEnv = z.infer<typeof envSchema>;
 
 export function validateEnv(config: Record<string, unknown>): AppEnv {
   const parsed = envSchema.parse(config);
-  if (parsed.EDO_ADAPTATION_SYNC_ENABLED === 'true' && (!parsed.EDO_ADAPTATION_EVENTS_URL || !parsed.EDO_ADAPTATION_SYNC_TOKEN?.trim())) {
-    throw new Error('EDO_ADAPTATION_EVENTS_URL and EDO_ADAPTATION_SYNC_TOKEN are required when EDO_ADAPTATION_SYNC_ENABLED=true');
-  }
   if (parsed.EDO_ARRIVAL_SYNC_ENABLED === 'true' && !parsed.ERP_COMMUNICATIONS_URL) {
     throw new Error('ERP_COMMUNICATIONS_URL is required when EDO_ARRIVAL_SYNC_ENABLED=true');
   }

@@ -1408,6 +1408,46 @@ export interface RejectDocumentDto {
   reason: string;
 }
 
+export interface AdaptationGrantItemDto {
+  /** UUID операции для подтверждения и идемпотентности */
+  operationId: string;
+  /**
+   * Код 1С сотрудника
+   * @maxLength 64
+   */
+  code1c: string;
+  /** UUID физлица в 1С */
+  personUid: string;
+  /**
+   * Код гражданства сотрудника (ИГ)
+   * @maxLength 16
+   */
+  citizenship: string;
+  /** true — доступ открыт, false — доступ закрыт */
+  enabled: boolean;
+}
+
+export interface AdaptationGrantsDto {
+  /** Пакет операций выдачи доступа */
+  items: AdaptationGrantItemDto[];
+}
+
+export interface AdaptationGrantResultItemDto {
+  /** UUID операции */
+  operationId: string;
+  /** Код 1С сотрудника */
+  code1c: string;
+  /** Применен ли допуск в ЭДО */
+  applied: boolean;
+  /** Известен ли кандидат системе */
+  known: boolean;
+}
+
+export interface AdaptationGrantsResultDto {
+  /** Результаты обработки элементов пакета */
+  items: AdaptationGrantResultItemDto[];
+}
+
 export interface ExpirationSummaryResponseDto {
   /** Общее число документов с истекающим сроком */
   totalExpiring: number;
@@ -7910,6 +7950,87 @@ export const useSubmitCandidateDocumentDirect = <
 > => {
   const mutationOptions =
     getSubmitCandidateDocumentDirectMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Прямой прием выдачи доступа иностранным сотрудникам из 1С. Повтор безопасен
+ */
+export const applyErpAdaptationGrants = (
+  adaptationGrantsDto: AdaptationGrantsDto,
+) => {
+  return customInstance<AdaptationGrantsResultDto>({
+    url: `/api/internal/erp/v1/adaptation-grants`,
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    data: adaptationGrantsDto,
+  });
+};
+
+export const getApplyErpAdaptationGrantsMutationOptions = <
+  TError = void,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof applyErpAdaptationGrants>>,
+    TError,
+    { data: AdaptationGrantsDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof applyErpAdaptationGrants>>,
+  TError,
+  { data: AdaptationGrantsDto },
+  TContext
+> => {
+  const mutationKey = ["applyErpAdaptationGrants"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof applyErpAdaptationGrants>>,
+    { data: AdaptationGrantsDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return applyErpAdaptationGrants(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ApplyErpAdaptationGrantsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof applyErpAdaptationGrants>>
+>;
+export type ApplyErpAdaptationGrantsMutationBody = AdaptationGrantsDto;
+export type ApplyErpAdaptationGrantsMutationError = void;
+
+/**
+ * @summary Прямой прием выдачи доступа иностранным сотрудникам из 1С. Повтор безопасен
+ */
+export const useApplyErpAdaptationGrants = <
+  TError = void,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof applyErpAdaptationGrants>>,
+    TError,
+    { data: AdaptationGrantsDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof applyErpAdaptationGrants>>,
+  TError,
+  { data: AdaptationGrantsDto },
+  TContext
+> => {
+  const mutationOptions = getApplyErpAdaptationGrantsMutationOptions(options);
 
   return useMutation(mutationOptions);
 };

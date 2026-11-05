@@ -11,6 +11,8 @@ export interface IgGrantEvent {
   employeeCode1c: string;
   citizenship: string;
   createdAt: string;
+  personUid?: string;
+  enabled?: boolean;
 }
 
 @Injectable()
@@ -29,7 +31,10 @@ export class IgEmploymentService {
       identity.reviewGroup !== "IG" ||
       identity.recipientType !== "person" ||
       !identity.personUid ||
-      identity.code1C !== code1c
+      identity.code1C !== code1c ||
+      (event.personUid &&
+        identity.personUid.toLowerCase() !== event.personUid.toLowerCase()) ||
+      event.citizenship.toLowerCase() === "ru"
     )
       throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
     const profile = await this.candidates
@@ -61,6 +66,20 @@ export class IgEmploymentService {
       if (processed) {
         if (processed.code1c !== code1c)
           throw new ConflictException("IG_GRANT_EVENT_CONFLICT");
+        const existingCandidate =
+          processed.candidateId && tx.candidate?.findUnique
+            ? await tx.candidate.findUnique({
+                where: { id: processed.candidateId },
+              })
+            : null;
+        if (
+          existingCandidate &&
+          event.personUid &&
+          existingCandidate.personUid &&
+          existingCandidate.personUid.toLowerCase() !==
+            event.personUid.toLowerCase()
+        )
+          throw new ConflictException("IG_GRANT_EVENT_CONFLICT");
         return processed.candidateId;
       }
       const state = await tx.igEmploymentState.findUniqueOrThrow({
@@ -78,9 +97,29 @@ export class IgEmploymentService {
         current &&
         (candidateReviewGroup(current) !== "IG" ||
           current.code1c !== code1c ||
-          (current.personUid && current.personUid !== identity.personUid))
+          (current.personUid && current.personUid !== identity.personUid) ||
+          (event.personUid &&
+            current.personUid &&
+            current.personUid.toLowerCase() !== event.personUid.toLowerCase()))
       )
         throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
+      if (event.enabled === false) {
+        if (current) {
+          await tx.igGrantEvent.create({
+            data: { id: event.id, code1c, candidateId: current.id },
+          });
+          await this.audit.logInTransaction(tx, {
+            actorId: "system:adaptation",
+            action: "DATA_IMPORTED",
+            entityType: "Candidate",
+            entityId: current.id,
+            correlationId: event.id,
+            after: { source: "ADAPTATION_ACCESS", enabled: false },
+          });
+          return current.id;
+        }
+        return "";
+      }
       if (!current) {
         const projection = await tx.lkEmployee.findUnique({
           where: { code1c },
