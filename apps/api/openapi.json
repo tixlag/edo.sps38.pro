@@ -7574,7 +7574,17 @@
     "/api/internal/erp/v1/adaptation-grants": {
       "put": {
         "operationId": "applyErpAdaptationGrants",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "x-adaptation-token",
+            "in": "header",
+            "description": "Секрет adaptation из 1С HTTP_OUT_TOKEN_06",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {

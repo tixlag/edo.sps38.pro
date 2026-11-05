@@ -16,6 +16,7 @@ import { DocumentOcrRetryService } from "./document-ocr-retry.service";
 import { DocumentIngestionService } from "./document-ingestion.service";
 import { DocumentUploadService } from "./document-upload.service";
 import { LkInternalGuard } from "./lk-internal.guard";
+import { ErpAdaptationGuard } from "./erp-adaptation.guard";
 
 import { ManualDocumentService } from "./manual-document.service";
 import { DocumentCatalogService } from "./document-catalog.service";
@@ -99,6 +100,7 @@ import { ExpirationModule } from "../expiration/expiration.module";
     DocumentIngestionService,
     DocumentUploadService,
     LkInternalGuard,
+    ErpAdaptationGuard,
     ManualDocumentService,
     DocumentCatalogService,
     DocumentPdfService,

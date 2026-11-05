@@ -33,6 +33,8 @@ const envSchema = z.object({
   EDO_LK_QUEUE: z.string().default('edo.lk-reference-sync'),
   REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
   EDO_LK_INTERNAL_TOKEN: z.string().optional(),
+  EDO_ERP_ADAPTATION_TOKEN: z.string().optional(),
+  ERP_ADAPTATION_TOKEN: z.string().optional(),
   ERP_DOCUMENTS_BASE_URL: z.string().url().default('https://api-erp.sps38.pro/ERP/hs/api/'),
   ERP_DOCUMENTS_TRANSPORT: z.literal('multipart-v2').default('multipart-v2'),
   // Enable only after idempotency acceptance on the target 1C publication.

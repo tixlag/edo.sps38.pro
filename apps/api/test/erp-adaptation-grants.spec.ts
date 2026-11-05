@@ -13,6 +13,10 @@ import { ErpAdaptationGrantsController } from "../src/documents/erp-adaptation-g
 import { IgEmploymentService } from "../src/documents/ig-employment.service";
 import { CandidatePreviousDocumentsSyncService } from "../src/documents/candidate-previous-documents-sync.service";
 import { LkInternalGuard } from "../src/documents/lk-internal.guard";
+import {
+  ErpAdaptationGuard,
+  ADAPTATION_ACCESS_TOKEN_HEADER,
+} from "../src/documents/erp-adaptation.guard";
 import { AdaptationGrantsDto } from "../src/documents/erp-adaptation-grants.dto";
 import { validate } from "class-validator";
 import { plainToInstance } from "class-transformer";
@@ -247,22 +251,54 @@ describe("ErpAdaptationGrantsController", () => {
   });
 
   describe("guard and validation contracts", () => {
-    it("is protected by LkInternalGuard requiring Bearer token matching EDO_LK_INTERNAL_TOKEN", () => {
-      const guard = new LkInternalGuard({
+    it("is protected by ErpAdaptationGuard requiring token matching EDO_ERP_ADAPTATION_TOKEN via Bearer or x-adaptation-token", () => {
+      const guard = new ErpAdaptationGuard({
         get: (k: string) =>
-          k === "EDO_LK_INTERNAL_TOKEN" ? "secret-s2s-token" : undefined,
+          k === "EDO_ERP_ADAPTATION_TOKEN" ? "adaptation-secret-token" : undefined,
       } as never);
 
-      const context = (authorization?: string) =>
+      const context = (authorization?: string, customHeader?: string) =>
         ({
           switchToHttp: () => ({
-            getRequest: () => ({ headers: { authorization } }),
+            getRequest: () => ({
+              headers: {
+                authorization,
+                [ADAPTATION_ACCESS_TOKEN_HEADER]: customHeader,
+              },
+            }),
+          }),
+        }) as never;
+
+      // Missing header -> throws 401
+      expect(() => guard.canActivate(context())).toThrow();
+      // Wrong Bearer token -> throws 401
+      expect(() => guard.canActivate(context("Bearer wrong-token"))).toThrow();
+      // Wrong custom header -> throws 401
+      expect(() => guard.canActivate(context(undefined, "wrong-token"))).toThrow();
+      // Valid Bearer token -> passes
+      expect(guard.canActivate(context("Bearer adaptation-secret-token"))).toBe(true);
+      // Valid custom header -> passes
+      expect(guard.canActivate(context(undefined, "adaptation-secret-token"))).toBe(true);
+    });
+
+    it("fails closed when EDO_ERP_ADAPTATION_TOKEN is not configured on server", () => {
+      const guard = new ErpAdaptationGuard({
+        get: () => undefined,
+      } as never);
+
+      const context = () =>
+        ({
+          switchToHttp: () => ({
+            getRequest: () => ({
+              headers: {
+                authorization: "Bearer any-token",
+                [ADAPTATION_ACCESS_TOKEN_HEADER]: "any-token",
+              },
+            }),
           }),
         }) as never;
 
       expect(() => guard.canActivate(context())).toThrow();
-      expect(() => guard.canActivate(context("Bearer wrong-token"))).toThrow();
-      expect(guard.canActivate(context("Bearer secret-s2s-token"))).toBe(true);
     });
 
     it("validates DTO structure strictly", async () => {
@@ -300,9 +336,10 @@ describe("ErpAdaptationGrantsController", () => {
     });
   });
 
-  describe("full HTTP e2e with global JwtAuthGuard and LkInternalGuard", () => {
+  describe("full HTTP e2e with global JwtAuthGuard and ErpAdaptationGuard", () => {
     const jwtSecret = "erp-adaptation-synthetic-jwt-secret";
-    const s2sSecret = "shared-s2s-internal-token-123";
+    const adaptationSecret = "shared-adaptation-token-123";
+    const lkSecret = "lk-different-internal-token-456";
     let app: NestFastifyApplication;
 
     beforeAll(async () => {
@@ -317,7 +354,8 @@ describe("ErpAdaptationGrantsController", () => {
                 JWT_ISSUER: "lk-auth-service",
                 JWT_ALG: "HS256",
                 ALLOW_INSECURE_DEV_AUTH: false,
-                EDO_LK_INTERNAL_TOKEN: s2sSecret,
+                EDO_ERP_ADAPTATION_TOKEN: adaptationSecret,
+                EDO_LK_INTERNAL_TOKEN: lkSecret,
               }),
             ],
           }),
@@ -325,7 +363,7 @@ describe("ErpAdaptationGrantsController", () => {
         ],
         controllers: [ErpAdaptationGrantsController],
         providers: [
-          LkInternalGuard,
+          ErpAdaptationGuard,
           {
             provide: IgEmploymentService,
             useValue: {
@@ -369,7 +407,7 @@ describe("ErpAdaptationGrantsController", () => {
       ],
     };
 
-    it("rejects request with 401 when no Authorization header is provided", async () => {
+    it("rejects request with 401 when no credentials are provided", async () => {
       const res = await app.inject({
         method: "PUT",
         url: "/api/internal/erp/v1/adaptation-grants",
@@ -378,17 +416,27 @@ describe("ErpAdaptationGrantsController", () => {
       expect(res.statusCode).toBe(401);
     });
 
-    it("rejects request with 401 when wrong S2S token is provided", async () => {
+    it("rejects request with 401 when wrong token is provided", async () => {
       const res = await app.inject({
         method: "PUT",
         url: "/api/internal/erp/v1/adaptation-grants",
-        headers: { authorization: "Bearer invalid-s2s-token" },
+        headers: { authorization: "Bearer invalid-token" },
         payload: validPayload,
       });
       expect(res.statusCode).toBe(401);
     });
 
-    it("rejects request with 401 when user JWT is provided instead of S2S token", async () => {
+    it("rejects request with 401 when LK internal token is provided instead of adaptation token", async () => {
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/internal/erp/v1/adaptation-grants",
+        headers: { authorization: `Bearer ${lkSecret}` },
+        payload: validPayload,
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it("rejects request with 401 when user JWT is provided instead of adaptation token", async () => {
       const userJwt = sign(
         { uuid: "user-uuid", accessRules: { "20009": [] } },
         jwtSecret,
@@ -403,11 +451,31 @@ describe("ErpAdaptationGrantsController", () => {
       expect(res.statusCode).toBe(401);
     });
 
-    it("accepts request with 200 when valid S2S token is provided", async () => {
+    it("accepts request with 200 when valid Bearer token is provided", async () => {
       const res = await app.inject({
         method: "PUT",
         url: "/api/internal/erp/v1/adaptation-grants",
-        headers: { authorization: `Bearer ${s2sSecret}` },
+        headers: { authorization: `Bearer ${adaptationSecret}` },
+        payload: validPayload,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        items: [
+          {
+            operationId: "58da5ed9-5eaa-4a36-9aa1-87379cc2bce9",
+            code1c: "УП00035198",
+            applied: true,
+            known: true,
+          },
+        ],
+      });
+    });
+
+    it("accepts request with 200 when valid x-adaptation-token header is provided", async () => {
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/internal/erp/v1/adaptation-grants",
+        headers: { [ADAPTATION_ACCESS_TOKEN_HEADER]: adaptationSecret },
         payload: validPayload,
       });
       expect(res.statusCode).toBe(200);

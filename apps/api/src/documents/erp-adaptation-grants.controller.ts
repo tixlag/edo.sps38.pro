@@ -10,12 +10,13 @@ import {
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
+  ApiHeader,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
 import { Public } from "../auth/public.decorator";
-import { LkInternalGuard } from "./lk-internal.guard";
+import { ErpAdaptationGuard, ADAPTATION_ACCESS_TOKEN_HEADER } from "./erp-adaptation.guard";
 import { IgEmploymentService } from "./ig-employment.service";
 import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
 import {
@@ -25,8 +26,13 @@ import {
 
 @ApiTags("ERP Integration")
 @ApiBearerAuth("lk-service-token")
+@ApiHeader({
+  name: ADAPTATION_ACCESS_TOKEN_HEADER,
+  description: "Секрет adaptation из 1С HTTP_OUT_TOKEN_06",
+  required: false,
+})
 @Public()
-@UseGuards(LkInternalGuard)
+@UseGuards(ErpAdaptationGuard)
 @Controller("internal/erp/v1/adaptation-grants")
 export class ErpAdaptationGrantsController {
   private readonly logger = new Logger(ErpAdaptationGrantsController.name);
