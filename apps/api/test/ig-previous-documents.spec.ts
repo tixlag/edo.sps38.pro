@@ -30,6 +30,7 @@ function setup() {
   };
   const tx = {
     $queryRaw: vi.fn(),
+    igEmploymentState: { findFirst: vi.fn(async () => null) },
     candidate: {
       findFirst: vi.fn(async () => ({ ...row })),
       update: vi.fn(async ({ data }: { data: { personUid: string } }) => {
@@ -67,8 +68,10 @@ function setup() {
     })),
     request: vi.fn(async () => ({ items: [] })),
     employmentHistory: vi.fn(async () => ({ items: [] })),
+    probePersonOriginal: vi.fn(async () => true),
   };
   const ownHistory = {
+    probeOriginal: vi.fn(async () => true),
     edoFile: vi
       .fn()
       .mockResolvedValue({ bytes: Buffer.from("file"), mimeType: "image/png" }),
@@ -96,6 +99,7 @@ describe("IG previous ERP documents", () => {
           fields: {},
           expiresAt: null,
           originalAvailable: true,
+          isInvalid: false,
           recheckStatus: "REQUIRES_REVIEW",
         },
       ],
@@ -109,7 +113,175 @@ describe("IG previous ERP documents", () => {
         }),
       }),
     );
+    expect(tx.igEmploymentState.findFirst).toHaveBeenCalled();
   });
+  it.each([null, undefined])(
+    "does not auto-confirm ERP record with unknown invalidity %s",
+    async (isInvalid) => {
+      const { service, row, tx, erp } = setup();
+      erp.request.mockResolvedValue({
+        items: [
+          {
+            id: "old",
+            documentUid: personUid,
+            title: "Passport",
+            fields: {},
+            expiresAt: null,
+            originalAvailable: true,
+            isInvalid,
+            recheckStatus: "REQUIRES_REVIEW",
+          },
+        ],
+      } as never);
+      await service.previous(row.id, actor({ "20011": [] }));
+      expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ status: "REQUIRES_REVIEW" }),
+        }),
+      );
+    },
+  );
+  it("does not auto-confirm contradictory ERP invalidity fields", async () => {
+    const { service, row, tx, erp } = setup();
+    erp.request.mockResolvedValue({
+      items: [
+        {
+          id: "old",
+          documentUid: personUid,
+          title: "Passport",
+          fields: { isInvalid: true },
+          expiresAt: null,
+          originalAvailable: true,
+          isInvalid: false,
+          recheckStatus: "REQUIRES_REVIEW",
+        },
+      ],
+    } as never);
+    await service.previous(row.id, actor({ "20011": [] }));
+    expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          status: "REQUIRES_REVIEW",
+          originalVerified: false,
+        }),
+      }),
+    );
+  });
+  it("does not auto-confirm when ERP advertises an original that cannot be read", async () => {
+    const { service, row, tx, erp } = setup();
+    erp.probePersonOriginal.mockResolvedValue(false);
+    erp.request.mockResolvedValue({
+      items: [
+        {
+          id: "old",
+          documentUid: personUid,
+          title: "Passport",
+          fields: {},
+          expiresAt: null,
+          originalAvailable: true,
+          isInvalid: false,
+          recheckStatus: "REQUIRES_REVIEW",
+        },
+      ],
+    } as never);
+    await service.previous(row.id, actor({ "20011": [] }));
+    expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ status: "REQUIRES_REVIEW" }),
+      }),
+    );
+  });
+  it.each([
+    { person: null, expiry: "2029-01-01", label: "ambiguous person" },
+    {
+      person: "00000000-0000-4000-8000-000000000002",
+      expiry: "2029-01-01",
+      label: "different person",
+    },
+    { person: personUid, expiry: "2029-02-30", label: "malformed expiry" },
+  ])(
+    "does not auto-confirm a prior local record with $label",
+    async ({ person, expiry }) => {
+      const { service, row, tx, prisma } = setup();
+      prisma.document.findMany.mockResolvedValue([
+        {
+          id: "doc",
+          currentVersion: 1,
+          status: "APPROVED",
+          candidate: { personUid: person },
+          documentType: { erpUid: personUid, title: "Passport" },
+          versions: [
+            {
+              id: "version",
+              version: 1,
+              status: "APPROVED",
+              fields: [{ name: "expiryDate", kind: "date", value: expiry }],
+              files: [
+                {
+                  deletedAt: null,
+                  storageKey: "private",
+                  sizeBytes: 4,
+                  sha256: "a".repeat(64),
+                },
+              ],
+              delivery: {
+                status: "SENT",
+                transport: "multipart-v2",
+                attempts: [
+                  {
+                    receiptValidated: true,
+                    finishedAt: new Date(),
+                    errorCode: null,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ] as never);
+      await service.previous(row.id, actor({ "20011": [] }));
+      expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            status: "REQUIRES_REVIEW",
+            originalVerified: false,
+          }),
+        }),
+      );
+    },
+  );
+  it.each(["DRAFT", "RETURNED"])(
+    "does not auto-confirm prior local %s document",
+    async (status) => {
+      const { service, row, tx, prisma } = setup();
+      prisma.document.findMany.mockResolvedValue([
+        {
+          id: "doc",
+          currentVersion: 1,
+          status,
+          candidate: { personUid },
+          documentType: { erpUid: personUid, title: "Passport" },
+          versions: [
+            {
+              id: "version",
+              version: 1,
+              status,
+              fields: [],
+              files: [{ deletedAt: null, storageKey: "private" }],
+              storageKey: "private",
+              delivery: null,
+            },
+          ],
+        },
+      ] as never);
+      await service.previous(row.id, actor({ "20011": [] }));
+      expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ status: "REQUIRES_REVIEW" }),
+        }),
+      );
+    },
+  );
   it.each([
     {
       documentUid: "39554ac3-6462-11ec-80cc-002590854e7f",
@@ -339,6 +511,7 @@ describe("IG previous ERP documents", () => {
           fields: {},
           expiresAt: "2000-01-01",
           originalAvailable: true,
+          isInvalid: false,
           recheckStatus: "REQUIRES_REVIEW",
         },
       ],
@@ -357,7 +530,7 @@ describe("IG previous ERP documents", () => {
       }),
     );
   });
-  it("requires review again when ERP changes the fields of a confirmed document", async () => {
+  it("automatically confirms changed valid ERP fields without manual review", async () => {
     const { service, row, tx, erp } = setup();
     tx.candidatePreviousDocument.findMany.mockResolvedValue([
       {
@@ -379,6 +552,7 @@ describe("IG previous ERP documents", () => {
           fields: { number: "A2" },
           expiresAt: null,
           originalAvailable: true,
+          isInvalid: false,
           recheckStatus: "REQUIRES_REVIEW",
         },
       ],
@@ -387,9 +561,9 @@ describe("IG previous ERP documents", () => {
     expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.objectContaining({
-          status: "REQUIRES_REVIEW",
-          reviewedBy: null,
-          reviewedAt: null,
+          status: "CONFIRMED",
+          reviewedBy: "system:previous-document",
+          reviewedAt: expect.any(Date),
         }),
       }),
     );

@@ -56,12 +56,6 @@ export function classifyStageType(
     (item) => (item.stage ?? null) === stage,
   );
   if (!rule) return null;
-  if (
-    profile.citizenship.toLowerCase() !== "ru" &&
-    needsNewIgDocument(type.erpUid ?? null) &&
-    rule === (type.stageRules?.length ? type.stageRules[0] : type)
-  )
-    return "required";
   const category = classifyRule(
     rule,
     profile.positionCode,

@@ -112,6 +112,8 @@ export class DocumentIngestionService {
         );
       }
       await this.prisma.$transaction(async (tx) => {
+        const candidateId = reserved.accepted.candidateId;
+        await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${candidateId} FOR UPDATE`;
         const changed = await tx.ocrJob.updateMany({
           where: {
             id: reserved.job.id,
@@ -126,7 +128,7 @@ export class DocumentIngestionService {
           where: { id: reserved.job.versionId },
           data: { status: "OCR_PENDING", submittedAt: new Date() },
         });
-        await tx.document.updateMany({
+        const currentVersionChanged = await tx.document.updateMany({
           where: {
             id: reserved.accepted.documentId,
             currentVersion: { lt: reserved.accepted.version },
@@ -136,6 +138,11 @@ export class DocumentIngestionService {
             status: "OCR_PENDING",
           },
         });
+        if (currentVersionChanged.count)
+          await tx.candidate.updateMany({
+            where: { id: candidateId, igCompletionVerified: true },
+            data: { igCompletionVerified: false },
+          });
         await tx.ocrOutbox.create({ data: { jobId: reserved.job.id } });
         await this.audit.logInTransaction(tx, {
           actorId: "lk-service",

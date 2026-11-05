@@ -56,6 +56,7 @@ function fixture(status: DocumentStatus, externalOcr = false) {
     $queryRaw: vi.fn(async () => []),
     candidate: {
       upsert: vi.fn(async () => ({ id: "owner" })),
+      updateMany: vi.fn(async () => ({ count: 0 })),
       findUniqueOrThrow: vi.fn(async () => ({
         code1c: null,
         locationId: null,

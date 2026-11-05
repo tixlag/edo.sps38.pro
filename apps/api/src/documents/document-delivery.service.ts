@@ -4,6 +4,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomUUID } from "node:crypto";
@@ -23,6 +24,9 @@ import {
   nextDeliveryAttempt,
 } from "./erp-multipart";
 import { erpDocumentHeaders } from "./erp-document-auth";
+import { tryCompleteIgEmployment } from "./ig-completion";
+import { isIgRecipient, matchesIgRecipient } from "./ig-recipient";
+import { ErpWorkspaceClient } from "./erp-workspace.client";
 import type { ErpDeliveryResponse } from "./erp-delivery-response";
 
 @Injectable()
@@ -40,6 +44,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
     private readonly manual: ManualDocumentService,
     private readonly pdf: DocumentPdfService,
     private readonly uploads: DocumentUploadService,
+    @Optional() private readonly erp?: ErpWorkspaceClient,
   ) {}
   onModuleInit(): void {
     if (this.config.get<string>("DOCUMENT_WORKER_ENABLED") === "false") return;
@@ -70,8 +75,83 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
     await this.access.document(documentId, principal);
     const row = await this.prisma.erpDocumentDelivery.findFirst({
       where: { version: { documentId, version, status: "APPROVED" } },
+      include: {
+        version: { include: { document: { include: { candidate: true } } } },
+      },
     });
     if (!row) throw new ConflictException("Document has no ERP delivery");
+    if (row.status === "WAITING_CONTRACT") {
+      const candidate = row.version.document.candidate;
+      if (!candidate?.code1c || !this.erp || !isIgRecipient(candidate))
+        throw new ConflictException("ERP_PERSON_IDENTITY_UNAVAILABLE");
+      const identity = await this.erp
+        .identity(candidate.code1c)
+        .catch(() => undefined);
+      if (!matchesIgRecipient(candidate, identity))
+        throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${candidate.id} FOR UPDATE`;
+        const current = await tx.erpDocumentDelivery.findUnique({
+          where: { id: row.id },
+          include: {
+            version: {
+              include: { document: { include: { candidate: true } } },
+            },
+          },
+        });
+        const doc = current?.version.document;
+        if (
+          !current ||
+          current.status !== "WAITING_CONTRACT" ||
+          current.transport !== "multipart-v2" ||
+          !doc ||
+          current.version.status !== "APPROVED" ||
+          doc.currentVersion !== version ||
+          !doc.candidate ||
+          !matchesIgRecipient(doc.candidate, identity) ||
+          !(await tx.document.findFirst({
+            where: {
+              id: documentId,
+              ...this.access.documentReviewWhere(principal),
+            },
+          }))
+        )
+          throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
+        const payload = current.payload as Prisma.JsonObject;
+        if (
+          typeof payload.documentUid !== "string" ||
+          !payload.documentUid ||
+          payload.recipientType ||
+          payload.personUid ||
+          payload.code1c ||
+          payload.chatUid
+        )
+          throw new ConflictException("ERP_DELIVERY_CONTRACT_INVALID");
+        const changed = await tx.erpDocumentDelivery.updateMany({
+          where: { id: row.id, status: "WAITING_CONTRACT" },
+          data: {
+            status: "PENDING",
+            errorCode: null,
+            payload: {
+              ...payload,
+              recipientType: "person",
+              personUid: identity!.personUid!,
+              code1c: identity!.code1C,
+            },
+          },
+        });
+        if (changed.count !== 1)
+          throw new ConflictException("ERP delivery has changed");
+        await this.audit.logInTransaction(tx, {
+          actorId: principal.uuid,
+          action: "DOCUMENT_ERP_SEND_REQUESTED",
+          entityType: "Document",
+          entityId: documentId,
+          correlationId,
+          after: { version, reason: "ERP_PERSON_IDENTITY_REPAIRED" },
+        });
+      });
+    }
     await this.send(row.id, principal.uuid, correlationId, principal);
     return this.reads.version(documentId, version);
   }
@@ -223,6 +303,23 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
         : "REQUIRES_MANUAL"
       : "SENT";
     await this.prisma.$transaction(async (tx) => {
+      const doc = await tx.document.findUnique({
+        where: { id: attempt.row.version.documentId },
+        select: {
+          candidateId: true,
+          candidate: {
+            select: {
+              chatUuid: true,
+              citizenship: true,
+              reviewGroup: true,
+              code1c: true,
+              personUid: true,
+            },
+          },
+        },
+      });
+      if (doc?.candidateId)
+        await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${doc.candidateId} FOR UPDATE`;
       const changed = await tx.erpDocumentDelivery.updateMany({
         where: { id, status: "SENDING", leaseToken: token },
         data: {
@@ -236,8 +333,26 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
       if (!changed.count) return;
       await tx.erpDocumentAttempt.update({
         where: { id: attempt.record.id },
-        data: { finishedAt: new Date(), errorCode, ...(erpResponse ?? {}) },
+        data: {
+          finishedAt: new Date(),
+          errorCode,
+          receiptValidated: status === "SENT",
+          ...(erpResponse ?? {}),
+        },
       });
+      if (
+        status === "SENT" &&
+        doc?.candidateId &&
+        doc.candidate &&
+        isIgRecipient(doc.candidate)
+      )
+        await tryCompleteIgEmployment(
+          tx,
+          this.audit,
+          doc.candidateId,
+          actorId,
+          correlationId,
+        );
       await this.audit.logInTransaction(tx, {
         actorId,
         action: "DOCUMENT_ERP_SEND_COMPLETED",

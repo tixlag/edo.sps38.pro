@@ -284,6 +284,30 @@ export class ErpWorkspaceClient {
         response.headers.get("content-type") ?? "application/octet-stream",
     };
   }
+  async probePersonOriginal(
+    code1c: string,
+    personUid: string,
+    id: string,
+  ): Promise<boolean> {
+    const response = await this.response("person-document-original-by-code", {
+      code1c,
+      personUid,
+      id,
+    });
+    if (!response.body) return false;
+    const reader = response.body.getReader();
+    let size = 0;
+    try {
+      for (;;) {
+        const part = await reader.read();
+        if (part.done) return size > 0;
+        size += part.value.length;
+        if (size > 100 * 1024 * 1024) return false;
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined);
+    }
+  }
   async personOriginal(code1c: string, personUid: string, id: string) {
     const response = await this.response("person-document-original-by-code", {
       code1c,

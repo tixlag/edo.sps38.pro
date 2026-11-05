@@ -1100,7 +1100,10 @@ export class DocumentReadService {
                       { id: { in: ids } },
                       {
                         igEmploymentState: { isNot: null },
-                        igCompletedAt: null,
+                        OR: [
+                          { igCompletedAt: null },
+                          { igCompletionVerified: false },
+                        ],
                       },
                     ],
                   },
@@ -1468,7 +1471,10 @@ export class DocumentReadService {
                     {
                       ...reviewGroupWhere("IG"),
                       igEmploymentState: { isNot: null },
-                      igCompletedAt: null,
+                      OR: [
+                        { igCompletedAt: null },
+                        { igCompletionVerified: false },
+                      ],
                     },
                   ],
                 },

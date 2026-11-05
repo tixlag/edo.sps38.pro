@@ -95,7 +95,7 @@ describe("candidate review queue", () => {
         OR: expect.arrayContaining([
           expect.objectContaining({
             igEmploymentState: { isNot: null },
-            igCompletedAt: null,
+            OR: [{ igCompletedAt: null }, { igCompletionVerified: false }],
           }),
         ]),
       }),

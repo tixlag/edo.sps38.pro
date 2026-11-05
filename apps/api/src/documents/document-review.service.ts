@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -14,7 +15,8 @@ import { DocumentReadService } from "./document-read.service";
 import type { ApprovedArtifact } from "./approved-artifact";
 import { DocumentPdfService } from "./document-pdf.service";
 import { IG_PASSPORT_LATIN_FIELDS, isForeignPassport } from "./review-group";
-import { tryCompleteIgEmployment } from "./ig-completion";
+import { ErpWorkspaceClient, type ErpIdentity } from "./erp-workspace.client";
+import { isIgRecipient, matchesIgRecipient } from "./ig-recipient";
 import {
   formatDateForErp,
   shouldOmitPositionUid,
@@ -42,6 +44,7 @@ export class DocumentReviewService {
     private readonly audit: AuditService,
     private readonly reads: DocumentReadService,
     private readonly pdf: DocumentPdfService,
+    @Optional() private readonly erp?: ErpWorkspaceClient,
   ) {}
 
   async edit(
@@ -75,7 +78,11 @@ export class DocumentReviewService {
     await this.access.document(documentId, principal);
     const version = await this.prisma.documentVersion.findUnique({
       where: { documentId_version: { documentId, version: number } },
-      include: { fields: true, submission: true },
+      include: {
+        fields: true,
+        submission: true,
+        document: { include: { candidate: true } },
+      },
     });
     if (
       !version ||
@@ -97,6 +104,15 @@ export class DocumentReviewService {
         version.fields.map((f) => [f.name, typedValue(f.value, f.kind)]),
       ),
     );
+    let identity: ErpIdentity | undefined;
+    const candidate = version.document?.candidate;
+    if (candidate && isIgRecipient(candidate) && candidate.code1c) {
+      try {
+        identity = await this.erp?.identity(candidate.code1c);
+      } catch {
+        /* park delivery until identity is available */
+      }
+    }
     const artifact = await this.pdf.prepare(version.id, revision);
     const key = artifact.key;
     try {
@@ -108,6 +124,8 @@ export class DocumentReviewService {
         correlationId,
         undefined,
         artifact,
+        undefined,
+        identity,
       );
     } catch (error) {
       const current = await this.prisma.documentVersion.findUnique({
@@ -149,6 +167,7 @@ export class DocumentReviewService {
     edits?: Record<string, string | boolean | null>,
     artifact?: ApprovedArtifact,
     rejectionReason?: string,
+    identity?: ErpIdentity,
   ) {
     const approvedKey = artifact?.key;
     await this.prisma.$transaction(
@@ -315,7 +334,11 @@ export class DocumentReviewService {
           });
           if (approvedKey) {
             const uid = version.document.documentType?.erpUid;
-            const chatUid = version.document.candidate?.chatUuid;
+            const candidate = version.document.candidate;
+            const chatUid = candidate?.chatUuid;
+            const ig = !!candidate && isIgRecipient(candidate);
+            const validPerson =
+              !!candidate && matchesIgRecipient(candidate, identity);
             const documentFields = Object.fromEntries(
               version.fields
                 .filter(
@@ -350,8 +373,30 @@ export class DocumentReviewService {
               data: {
                 versionId: version.id,
                 transport: artifact!.transport,
-                status: uid && chatUid ? "PENDING" : "WAITING_CONTRACT",
-                payload: { documentUid: uid, chatUid, documentFields },
+                status:
+                  uid && (ig ? validPerson : !!chatUid)
+                    ? "PENDING"
+                    : "WAITING_CONTRACT",
+                ...(ig && !validPerson
+                  ? {
+                      errorCode: identity
+                        ? "ERP_PERSON_IDENTITY_MISMATCH"
+                        : "ERP_PERSON_IDENTITY_UNAVAILABLE",
+                    }
+                  : {}),
+                payload: {
+                  documentUid: uid,
+                  ...(ig
+                    ? validPerson
+                      ? {
+                          recipientType: "person",
+                          personUid: identity!.personUid,
+                          code1c: identity!.code1C,
+                        }
+                      : {}
+                    : { chatUid }),
+                  documentFields,
+                },
               },
             });
           }
@@ -384,21 +429,6 @@ export class DocumentReviewService {
                 }),
           },
         });
-        if (
-          !edits &&
-          !rejectionReason &&
-          version.document?.candidateId &&
-          version.document.candidate?.code1c &&
-          version.document.candidate.citizenship?.toLowerCase() !== "ru" &&
-          !version.document.candidate.chatUuid
-        )
-          await tryCompleteIgEmployment(
-            tx,
-            this.audit,
-            version.document.candidateId,
-            principal.uuid,
-            correlationId,
-          );
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );

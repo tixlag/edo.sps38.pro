@@ -14,7 +14,6 @@ import {
 import { CandidateDocumentError } from "./candidate-document.error";
 import { CandidateDocumentErrorCode as Code } from "./dto/candidate-error.dto";
 import { erpDocumentHeaders } from "./erp-document-auth";
-import { needsNewIgDocument } from "./reemployment-document-policy";
 
 const CATALOG_TTL_MS = 24 * 60 * 60_000;
 const RETRY_MS = 90_000;
@@ -310,10 +309,7 @@ export class DocumentCatalogService {
               (t.stageRules?.length ? t.stageRules : [t])
                 .filter(
                   (rule) =>
-                    classifyRule(rule, position, citizenship, project) !== null ||
-                    (citizenship.toLowerCase() !== "ru" &&
-                      needsNewIgDocument(t.erpUid) &&
-                      rule === (t.stageRules?.length ? t.stageRules[0] : t)),
+                    classifyRule(rule, position, citizenship, project) !== null,
                 )
                 .map((rule) => rule.stage ?? null),
             ),

@@ -81,10 +81,7 @@ export class IgEmploymentService {
           (current.personUid && current.personUid !== identity.personUid))
       )
         throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
-      const sentBeforeCompletion =
-        !!current?.igCompletedAt &&
-        new Date(event.createdAt).getTime() <= current.igCompletedAt.getTime();
-      if (!current || (current.igCompletedAt && !sentBeforeCompletion)) {
+      if (!current) {
         const projection = await tx.lkEmployee.findUnique({
           where: { code1c },
         });

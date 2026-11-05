@@ -15,14 +15,12 @@ describe("IG employment grant events", () => {
     };
     const prisma = { $transaction: vi.fn((fn) => fn(tx)) };
     const erp = {
-      identity: vi
-        .fn()
-        .mockResolvedValue({
-          reviewGroup: "IG",
-          recipientType: "person",
-          personUid: "00000000-0000-4000-8000-000000000001",
-          code1C: "worker",
-        }),
+      identity: vi.fn().mockResolvedValue({
+        reviewGroup: "IG",
+        recipientType: "person",
+        personUid: "00000000-0000-4000-8000-000000000001",
+        code1C: "worker",
+      }),
     };
     const service = new IgEmploymentService(
       prisma as never,
@@ -39,7 +37,7 @@ describe("IG employment grant events", () => {
     ).resolves.toBe("existing");
     expect(tx.candidate.create).not.toHaveBeenCalled();
   });
-  it("creates a new cycle after the previous one was completed", async () => {
+  it("does not invent a new cycle from a later grant after completion", async () => {
     const previous = {
       id: "old",
       code1c: "worker",
@@ -69,14 +67,12 @@ describe("IG employment grant events", () => {
     };
     const prisma = { $transaction: vi.fn((fn) => fn(tx)) };
     const erp = {
-      identity: vi
-        .fn()
-        .mockResolvedValue({
-          reviewGroup: "IG",
-          recipientType: "person",
-          personUid: previous.personUid,
-          code1C: "worker",
-        }),
+      identity: vi.fn().mockResolvedValue({
+        reviewGroup: "IG",
+        recipientType: "person",
+        personUid: previous.personUid,
+        code1C: "worker",
+      }),
     };
     const audit = { logInTransaction: vi.fn() };
     const service = new IgEmploymentService(
@@ -91,18 +87,11 @@ describe("IG employment grant events", () => {
         citizenship: "UZ",
         createdAt: "2026-11-03T00:00:00.000Z",
       }),
-    ).resolves.toBe("new");
-    expect(tx.candidate.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          personUid: previous.personUid,
-          isReemployment: true,
-        }),
-      }),
-    );
+    ).resolves.toBe("old");
+    expect(tx.candidate.create).not.toHaveBeenCalled();
     expect(tx.igEmploymentState.update).toHaveBeenCalledWith({
       where: { code1c: "worker" },
-      data: { currentCandidateId: "new" },
+      data: { currentCandidateId: "old" },
     });
   });
   it("attaches a later access grant to an open cycle started by an upload", async () => {
@@ -134,14 +123,12 @@ describe("IG employment grant events", () => {
     };
     const prisma = { $transaction: vi.fn((fn) => fn(tx)) };
     const erp = {
-      identity: vi
-        .fn()
-        .mockResolvedValue({
-          reviewGroup: "IG",
-          recipientType: "person",
-          personUid: current.personUid,
-          code1C: "worker",
-        }),
+      identity: vi.fn().mockResolvedValue({
+        reviewGroup: "IG",
+        recipientType: "person",
+        personUid: current.personUid,
+        code1C: "worker",
+      }),
     };
     const service = new IgEmploymentService(
       prisma as never,
@@ -180,22 +167,18 @@ describe("IG employment grant events", () => {
     };
     const prisma = { $transaction: vi.fn((fn) => fn(tx)) };
     const erp = {
-      identity: vi
-        .fn()
-        .mockResolvedValue({
-          reviewGroup: "IG",
-          recipientType: "person",
-          personUid: "00000000-0000-4000-8000-000000000001",
-          code1C: "worker",
-        }),
+      identity: vi.fn().mockResolvedValue({
+        reviewGroup: "IG",
+        recipientType: "person",
+        personUid: "00000000-0000-4000-8000-000000000001",
+        code1C: "worker",
+      }),
     };
     const candidateClient = {
-      findByEmployeeCode: vi
-        .fn()
-        .mockResolvedValue({
-          name: "Тестовый сотрудник",
-          position: { code: "pos", name: "Сварщик" },
-        }),
+      findByEmployeeCode: vi.fn().mockResolvedValue({
+        name: "Тестовый сотрудник",
+        position: { code: "pos", name: "Сварщик" },
+      }),
     };
     const service = new IgEmploymentService(
       prisma as never,

@@ -88,6 +88,7 @@ export class CandidateWorkspaceService {
       identity.reviewGroup !== "IG" ||
       identity.recipientType !== "person" ||
       !identity.personUid ||
+      identity.code1C !== row.code1c ||
       (row.personUid && row.personUid !== identity.personUid)
     )
       throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
@@ -404,7 +405,18 @@ export class CandidateWorkspaceService {
           },
           include: {
             documentType: true,
-            versions: { include: { fields: true, files: true } },
+            candidate: { select: { personUid: true } },
+            versions: {
+              include: {
+                fields: true,
+                files: true,
+                delivery: {
+                  include: {
+                    attempts: { orderBy: { startedAt: "desc" }, take: 1 },
+                  },
+                },
+              },
+            },
           },
           orderBy: { createdAt: "desc" },
         })
@@ -436,15 +448,25 @@ export class CandidateWorkspaceService {
       return [
         {
           id: `edo:${document.id}:${version.id}`,
+          verifiedOwner:
+            document.candidate?.personUid === row.personUid &&
+            ["APPROVED", "SIGNED"].includes(document.status) &&
+            ["APPROVED", "SIGNED"].includes(version.status) &&
+            version.delivery?.status === "SENT" &&
+            version.delivery.transport === "multipart-v2" &&
+            !!version.delivery.attempts[0]?.receiptValidated &&
+            !!version.delivery.attempts[0]?.finishedAt &&
+            !version.delivery.attempts[0]?.errorCode,
+          originalFiles: version.files.filter((file) => !file.deletedAt),
+          malformedExpiry:
+            expiry != null &&
+            (typeof expiry !== "string" || (!!expiry.trim() && !parsedExpiry)),
           documentUid: document.documentType?.erpUid ?? null,
           title: document.documentType?.title ?? "Документ",
           fields,
           expiresAt: parsedExpiry,
           originalAvailable,
-          isInvalid:
-            typeof fields.isInvalid === "boolean"
-              ? fields.isInvalid
-              : undefined,
+          isInvalid: fields.isInvalid,
           recordDate: undefined,
           recheckStatus: originalAvailable
             ? ("REQUIRES_REVIEW" as const)
@@ -452,7 +474,60 @@ export class CandidateWorkspaceService {
         },
       ];
     });
-    const allDocuments = [...result.items, ...edoHistory];
+    const candidates = [
+      ...result.items.map((doc) => ({
+        ...doc,
+        verifiedOwner: true,
+        originalFiles: null,
+        malformedExpiry: false,
+      })),
+      ...edoHistory,
+    ];
+    const allDocuments: ((typeof candidates)[number] & {
+      verifiedOriginal: boolean;
+    })[] = [];
+    for (let offset = 0; offset < candidates.length; offset += 4) {
+      const batch = candidates.slice(offset, offset + 4);
+      allDocuments.push(
+        ...(await Promise.all(
+          batch.map(async (doc) => {
+            let verifiedOriginal = false;
+            if (
+              doc.originalAvailable &&
+              doc.verifiedOwner &&
+              !doc.malformedExpiry
+            ) {
+              try {
+                if (doc.originalFiles) {
+                  verifiedOriginal =
+                    !!this.ownHistory &&
+                    doc.originalFiles.length > 0 &&
+                    (
+                      await Promise.all(
+                        doc.originalFiles.map((file) =>
+                          this.ownHistory!.probeOriginal(
+                            file.storageKey,
+                            file.sizeBytes,
+                            file.sha256,
+                          ),
+                        ),
+                      )
+                    ).every(Boolean);
+                } else if (isIg)
+                  verifiedOriginal = await this.erp.probePersonOriginal(
+                    row.code1c!,
+                    row.personUid!,
+                    doc.id,
+                  );
+              } catch {
+                verifiedOriginal = false;
+              }
+            }
+            return { ...doc, verifiedOriginal };
+          }),
+        )),
+      );
+    }
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${id} FOR UPDATE`;
       const current = await tx.candidate.findFirst({
@@ -474,6 +549,8 @@ export class CandidateWorkspaceService {
         oldDocuments.map((doc) => [doc.sourceId, doc]),
       );
       const seen = new Set<string>();
+      let completionChanged = false;
+      let completionInvalidated = false;
       for (const doc of allDocuments) {
         if (seen.has(doc.id))
           throw new ConflictException("ERP_DOCUMENT_DUPLICATE_SOURCE");
@@ -491,20 +568,37 @@ export class CandidateWorkspaceService {
           !Array.isArray(old.fields)
             ? old.fields
             : {};
-        const isInvalid =
-          doc.isInvalid !== undefined ? doc.isInvalid : oldFields.isInvalid;
+        const isInvalid = isIg
+          ? doc.isInvalid
+          : doc.isInvalid !== undefined
+            ? doc.isInvalid
+            : oldFields.isInvalid;
+        const knownValid =
+          !isIg ||
+          (doc.originalFiles
+            ? isInvalid === undefined || isInvalid === false
+            : isInvalid === false &&
+              (doc.fields.isInvalid === undefined ||
+                doc.fields.isInvalid === false));
         const recordDate =
           doc.recordDate !== undefined ? doc.recordDate : oldFields.recordDate;
         const fields = {
           ...doc.fields,
           ...(recordDate !== undefined ? { recordDate } : {}),
-          ...(isInvalid !== undefined ? { isInvalid } : {}),
+          ...(isInvalid !== undefined &&
+          (doc.fields.isInvalid === undefined ||
+            doc.fields.isInvalid === isInvalid)
+            ? { isInvalid }
+            : {}),
         } as Prisma.InputJsonObject;
         const expiresAt = doc.expiresAt
           ? new Date(`${doc.expiresAt}T00:00:00Z`)
           : null;
         const automaticallyConfirmed =
           !!doc.documentUid &&
+          doc.verifiedOwner &&
+          knownValid &&
+          (!isIg || doc.verifiedOriginal) &&
           (!isIg || !needsNewIgDocument(doc.documentUid)) &&
           doc.originalAvailable &&
           isInvalid !== true &&
@@ -512,22 +606,40 @@ export class CandidateWorkspaceService {
         const confirmedInvalid =
           old?.status === "CONFIRMED" &&
           (!doc.originalAvailable ||
+            (isIg && !doc.verifiedOriginal) ||
             isInvalid === true ||
             (expiresAt !== null && isPreviousDocumentExpired(expiresAt)) ||
             (isIg &&
               (!doc.documentUid || needsNewIgDocument(doc.documentUid))));
-        const nextStatus = confirmedInvalid
-          ? !doc.originalAvailable
-            ? "ORIGINAL_UNAVAILABLE"
-            : "REPLACE"
-          : old?.status === "REQUIRES_REVIEW" && automaticallyConfirmed
-            ? "CONFIRMED"
-            : old?.status === "CONFIRMED" &&
-                (!isDeepStrictEqual(oldFields, fields) ||
-                  (old.expiresAt?.getTime() ?? null) !==
-                    (expiresAt?.getTime() ?? null))
-              ? "REQUIRES_REVIEW"
-              : undefined;
+        const nextStatus =
+          old?.status === "CONFIRMED" && !knownValid && isInvalid !== true
+            ? "REQUIRES_REVIEW"
+            : confirmedInvalid
+              ? !doc.originalAvailable || (isIg && !doc.verifiedOriginal)
+                ? "ORIGINAL_UNAVAILABLE"
+                : "REPLACE"
+              : old?.status === "REQUIRES_REVIEW" && automaticallyConfirmed
+                ? "CONFIRMED"
+                : old?.status === "CONFIRMED" &&
+                    (!isDeepStrictEqual(oldFields, fields) ||
+                      (old.expiresAt?.getTime() ?? null) !==
+                        (expiresAt?.getTime() ?? null))
+                  ? automaticallyConfirmed
+                    ? "CONFIRMED"
+                    : "REQUIRES_REVIEW"
+                  : undefined;
+        if (
+          isIg &&
+          ((!old && automaticallyConfirmed) || nextStatus === "CONFIRMED")
+        )
+          completionChanged = true;
+        if (
+          isIg &&
+          old?.status === "CONFIRMED" &&
+          nextStatus &&
+          nextStatus !== "CONFIRMED"
+        )
+          completionInvalidated = true;
         await tx.candidatePreviousDocument.upsert({
           where: {
             candidateId_sourceId: { candidateId: id, sourceId: doc.id },
@@ -540,6 +652,7 @@ export class CandidateWorkspaceService {
             fields,
             expiresAt,
             originalAvailable: doc.originalAvailable,
+            originalVerified: isIg && doc.verifiedOriginal && knownValid,
             status: automaticallyConfirmed ? "CONFIRMED" : doc.recheckStatus,
             ...(automaticallyConfirmed
               ? {
@@ -554,6 +667,7 @@ export class CandidateWorkspaceService {
             fields,
             expiresAt,
             originalAvailable: doc.originalAvailable,
+            originalVerified: isIg && doc.verifiedOriginal && knownValid,
             ...(nextStatus
               ? {
                   status: nextStatus,
@@ -577,7 +691,8 @@ export class CandidateWorkspaceService {
           });
         if (nextStatus && old)
           await this.audit.logInTransaction(tx, {
-            actorId: p.uuid,
+            actorId:
+              nextStatus === "CONFIRMED" ? "system:previous-document" : p.uuid,
             action: "DOCUMENT_FIELDS_UPDATED",
             entityType: "CandidatePreviousDocument",
             entityId: old.id,
@@ -594,6 +709,7 @@ export class CandidateWorkspaceService {
           continue;
         const nextStatus =
           old.status === "CONFIRMED" ? "ORIGINAL_UNAVAILABLE" : old.status;
+        if (isIg && old.status === "CONFIRMED") completionInvalidated = true;
         await tx.candidatePreviousDocument.update({
           where: { id: old.id },
           data: {
@@ -621,6 +737,20 @@ export class CandidateWorkspaceService {
           },
         });
       }
+      if (completionInvalidated && current.igCompletionVerified) {
+        await tx.candidate.update({
+          where: { id },
+          data: { igCompletionVerified: false },
+        });
+      }
+      if (isIg && (completionChanged || completionInvalidated))
+        await tryCompleteIgEmployment(
+          tx,
+          this.audit,
+          id,
+          "system:previous-document",
+          "",
+        );
       await this.audit.logInTransaction(tx, {
         actorId: p.uuid,
         action: "DATA_IMPORTED",
@@ -694,6 +824,14 @@ export class CandidateWorkspaceService {
       )
         throw new ConflictException(
           "Для этого оформления нужна новая миграционная карта или патент. Если вид документа неизвестен, подтвердить его нельзя.",
+        );
+      if (
+        body.status === "CONFIRMED" &&
+        candidateReviewGroup(current) === "IG" &&
+        !doc.originalVerified
+      )
+        throw new ConflictException(
+          "Оригинал или действительность документа не подтверждены",
         );
       if (body.status === "CONFIRMED" && !doc.originalAvailable)
         throw new ConflictException("Оригинал недоступен для проверки");

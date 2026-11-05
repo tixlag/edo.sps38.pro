@@ -19,7 +19,7 @@ const item = {
   optionalFields: [],
 };
 describe("review stage progress", () => {
-  it("requires a new IG patent even when the ERP catalog does not mark it required", () => {
+  it("does not override ERP when patent is not required", () => {
     const type = {
       id: "patent",
       erpUid: EMPLOYMENT_PATENT_UID,
@@ -31,8 +31,8 @@ describe("review stage progress", () => {
       positions: [],
     };
     const profile = { positionCode: "001", citizenship: "uz", sex: null };
-    expect(applicable(type, "001", "uz")).toBe(true);
-    expect(classifyStageType(type, 1, profile)).toBe("required");
+    expect(applicable(type, "001", "uz")).toBe(false);
+    expect(classifyStageType(type, 1, profile)).toBeNull();
     expect(
       classifyStageType(type, 1, { ...profile, citizenship: "ru" }),
     ).toBeNull();

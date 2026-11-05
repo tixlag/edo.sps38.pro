@@ -151,7 +151,9 @@ export class ManualDocumentService {
         );
       }
       const jobId = await this.prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${reserved.submission.version.document.candidateId} FOR UPDATE`;
+        const candidateId = reserved.submission.version.document.candidateId;
+        if (candidateId)
+          await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${candidateId} FOR UPDATE`;
         const changed = await tx.documentSubmission.updateMany({
           where: {
             id: reserved.submission.id,
@@ -190,7 +192,7 @@ export class ManualDocumentService {
           });
           queuedJobId = job.id;
         }
-        await tx.document.updateMany({
+        const currentVersionChanged = await tx.document.updateMany({
           where: {
             id: reserved.submission.version.documentId,
             currentVersion: { lt: reserved.submission.version.version },
@@ -200,6 +202,11 @@ export class ManualDocumentService {
             status: acceptedStatus,
           },
         });
+        if (candidateId && currentVersionChanged.count)
+          await tx.candidate.updateMany({
+            where: { id: candidateId, igCompletionVerified: true },
+            data: { igCompletionVerified: false },
+          });
         await this.audit.logInTransaction(tx, {
           actorId: "lk-service",
           action: "DOCUMENT_UPLOADED",

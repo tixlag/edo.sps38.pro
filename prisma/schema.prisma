@@ -380,6 +380,8 @@ model LkSyncState {
 
 model Candidate {
   igCompletedAt DateTime? @db.DateTime(3)
+  igCompletionVerified Boolean @default(false)
+  igRequirementsConflict Boolean @default(false)
   igEmploymentState IgEmploymentState?
   reviewGroup ReviewGroup?
   personUid String? @db.VarChar(36)
@@ -737,6 +739,7 @@ model ErpDocumentDelivery {
 }
 
 model ErpDocumentAttempt {
+  receiptValidated Boolean @default(false)
   id String @id @default(cuid()) @db.VarChar(64)
   deliveryId String @db.VarChar(64)
   actorId String @db.VarChar(64)
@@ -1072,6 +1075,7 @@ enum CandidateRecheckStatus {
 }
 
 model CandidatePreviousDocument {
+  originalVerified Boolean @default(false)
   id String @id @default(cuid()) @db.VarChar(64)
   candidateId String @db.VarChar(64)
   candidate Candidate @relation(fields: [candidateId], references: [id], onUpdate: Restrict)

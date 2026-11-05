@@ -989,7 +989,7 @@ export function DocumentReviewWorkspace({
                 {canDebug && data.delivery.attempts[0] && (
                   <ErpAttemptResponse attempt={data.delivery.attempts[0]} />
                 )}
-                {canSend && data.delivery.status === "REQUIRES_MANUAL" && (
+                {canSend && (data.delivery.status === "REQUIRES_MANUAL" || (data.reviewGroup === "IG" && data.delivery.status === "WAITING_CONTRACT")) && (
                   <Button
                     size="sm"
                     variant="outline"

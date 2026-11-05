@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
@@ -122,6 +123,37 @@ export class OwnDocumentHistoryService {
       };
     } catch {
       return { erpAvailable: false, items };
+    }
+  }
+
+  async probeOriginal(
+    key: string,
+    size: number,
+    sha256: string | null,
+  ): Promise<boolean> {
+    if (
+      !sha256 ||
+      !/^[0-9a-f]{64}$/.test(sha256) ||
+      size <= 0 ||
+      size > 100 * 1024 * 1024
+    )
+      return false;
+    const stream = await this.storage.openRead(
+      key,
+      AbortSignal.timeout(30_000),
+      100 * 1024 * 1024,
+    );
+    let length = 0;
+    const hash = createHash("sha256");
+    try {
+      for await (const chunk of stream) {
+        length += chunk.length;
+        if (length > size) return false;
+        hash.update(chunk);
+      }
+      return length === size && hash.digest("hex") === sha256;
+    } finally {
+      stream.destroy();
     }
   }
 

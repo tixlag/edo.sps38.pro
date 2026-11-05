@@ -1,6 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
 import { z } from "zod";
-import { needsNewIgDocument } from "./reemployment-document-policy";
 
 export const FIELD_LABELS: Record<string, string> = {
   series: "Серия",
@@ -595,11 +594,6 @@ export function applicable(
   sex?: "male" | "female" | null,
   project?: string | null,
 ): boolean {
-  if (
-    citizenship.toLowerCase() !== "ru" &&
-    needsNewIgDocument(type.erpUid ?? null)
-  )
-    return true;
   if (excludedForSex(type.code, sex)) return false;
   return (type.stageRules?.length ? type.stageRules : [type]).some(
     (rule) => classifyRule(rule, position, citizenship, project) !== null,
@@ -617,11 +611,6 @@ export function requiredApplicable(
   sex?: "male" | "female" | null,
   project?: string | null,
 ): boolean {
-  if (
-    citizenship.toLowerCase() !== "ru" &&
-    needsNewIgDocument(type.erpUid ?? null)
-  )
-    return true;
   if (excludedForSex(type.code, sex)) return false;
   return (type.stageRules?.length ? type.stageRules : [type]).some(
     (rule) => classifyRule(rule, position, citizenship, project) === "required",

@@ -7,69 +7,94 @@ import {
 import { EMPLOYMENT_PATENT_UID } from "../src/documents/reemployment-document-policy";
 import { MIGRATION_UID } from "../src/ocr/ocr-profile";
 
+const receipt = () => ({
+  receiptValidated: true,
+  finishedAt: new Date(),
+  errorCode: null,
+});
+const approved = (documentTypeId: string) => ({
+  documentTypeId,
+  status: "APPROVED",
+  currentVersion: 1,
+  versions: [
+    {
+      version: 1,
+      status: "APPROVED",
+      delivery: {
+        status: "SENT",
+        transport: "multipart-v2",
+        attempts: [receipt()],
+      },
+    },
+  ],
+});
+const types = [
+  { id: "migration", erpUid: MIGRATION_UID },
+  { id: "patent", erpUid: EMPLOYMENT_PATENT_UID },
+  { id: "passport", erpUid: "6ffb1fd5-8341-11eb-ba8b-00259002db81" },
+];
 describe("IG completion", () => {
-  const types = [
-    { id: "migration", erpUid: MIGRATION_UID },
-    { id: "patent", erpUid: EMPLOYMENT_PATENT_UID },
-    { id: "passport", erpUid: "6ffb1fd5-8341-11eb-ba8b-00259002db81" },
-  ];
-  it("requires fresh approved migration and patent even when old copies were confirmed", () => {
-    const documents = [
-      { documentTypeId: "migration", status: "APPROVED" },
-      { documentTypeId: "passport", status: "APPROVED" },
-    ];
-    expect(
-      igRequiredDocumentsComplete(types, documents, [EMPLOYMENT_PATENT_UID]),
-    ).toBe(false);
+  it("requires confirmed latest version, not a stale or missing receipt", () => {
+    const doc = approved("passport");
+    doc.currentVersion = 2;
+    expect(igRequiredDocumentsComplete([types[2]], [doc], [])).toBe(false);
+    doc.versions.push({
+      version: 2,
+      status: "APPROVED",
+      delivery: {
+        status: "SENT",
+        transport: "multipart-v2",
+        attempts: [receipt()],
+      },
+    });
+    expect(igRequiredDocumentsComplete([types[2]], [doc], [])).toBe(true);
+    doc.versions[1].delivery.attempts[0].receiptValidated = false;
+    expect(igRequiredDocumentsComplete([types[2]], [doc], [])).toBe(false);
+    doc.versions[1].delivery.attempts = [];
+    expect(igRequiredDocumentsComplete([types[2]], [doc], [])).toBe(false);
+  });
+  it("does not accept old patent or migration but permits a valid ordinary document", () => {
     expect(
       igRequiredDocumentsComplete(
         types,
-        [...documents, { documentTypeId: "patent", status: "APPROVED" }],
-        [],
-      ),
-    ).toBe(true);
-  });
-  it("does not complete with an unavailable mandatory catalog type", () => {
-    expect(
-      igRequiredDocumentsComplete(
-        types.slice(0, 1),
-        [{ documentTypeId: "migration", status: "APPROVED" }],
-        [],
-      ),
-    ).toBe(false);
-  });
-  it("allows a checked historical ordinary document", () => {
-    expect(
-      igRequiredDocumentsComplete(
-        types,
-        [
-          { documentTypeId: "migration", status: "APPROVED" },
-          { documentTypeId: "patent", status: "APPROVED" },
-        ],
+        [approved("migration"), approved("patent")],
         [types[2].erpUid],
       ),
     ).toBe(true);
-  });
-  it("does not hide an unfinished replacement behind an older confirmed document", () => {
     expect(
       igRequiredDocumentsComplete(
         types,
-        [
-          { documentTypeId: "migration", status: "APPROVED" },
-          { documentTypeId: "patent", status: "APPROVED" },
-          { documentTypeId: "passport", status: "RETURNED" },
-        ],
+        [approved("migration")],
+        [EMPLOYMENT_PATENT_UID, types[2].erpUid],
+      ),
+    ).toBe(false);
+    expect(
+      igRequiredDocumentsComplete(
+        types,
+        [approved("patent")],
+        [MIGRATION_UID, types[2].erpUid],
+      ),
+    ).toBe(false);
+    expect(
+      igRequiredDocumentsComplete(
+        [types[2]],
+        [{ ...approved("passport"), status: "RETURNED" }],
         [types[2].erpUid],
       ),
     ).toBe(false);
   });
-  it("excludes old patents, expired and invalid records from reusable documents", () => {
+  it("does not invent a mandatory patent or migration when ERP did not require them", () => {
+    expect(
+      igRequiredDocumentsComplete([types[2]], [approved("passport")], []),
+    ).toBe(true);
+  });
+  it("excludes expired, invalid and fresh-only prior records", () => {
     expect(
       usablePreviousUids([
         { documentUid: EMPLOYMENT_PATENT_UID, expiresAt: null, fields: {} },
         {
           documentUid: "expired",
-          expiresAt: new Date("2000-01-01T00:00:00Z"),
+          expiresAt: new Date("2000-01-01"),
           fields: {},
         },
         {
@@ -81,10 +106,12 @@ describe("IG completion", () => {
       ]),
     ).toEqual(["valid"]);
   });
-  it("records completion and its audit together after all required documents are approved", async () => {
+  it("blocks whole employment and records a catalog conflict when required patent or migration is absent", async () => {
     const candidate = {
       id: "current",
       igCompletedAt: null,
+      igCompletionVerified: false,
+      igRequirementsConflict: false,
       positionCode: "1",
       citizenship: "uz",
       sexKnown: false,
@@ -97,25 +124,70 @@ describe("IG completion", () => {
       documentType: {
         findMany: vi
           .fn()
-          .mockResolvedValue(
-            types.map((type) => ({
-              ...type,
+          .mockResolvedValue([
+            {
+              ...types[2],
               requiredForAll: true,
               allRu: false,
               allForeign: false,
               positions: [],
-            })),
-          ),
+            },
+          ]),
+      },
+      document: { findMany: vi.fn().mockResolvedValue([approved("passport")]) },
+      candidatePreviousDocument: { findMany: vi.fn().mockResolvedValue([]) },
+      candidate: { update: vi.fn() },
+    };
+    const audit = { logInTransaction: vi.fn() };
+    await tryCompleteIgEmployment(
+      tx as never,
+      audit as never,
+      "current",
+      "reviewer",
+      "request",
+    );
+    expect(tx.candidate.update).toHaveBeenCalledWith({
+      where: { id: "current" },
+      data: { igRequirementsConflict: true },
+    });
+    expect(audit.logInTransaction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        after: expect.objectContaining({
+          reason: "ERP_IG_REQUIREMENTS_CONFLICT",
+        }),
+      }),
+    );
+  });
+  it("records completion and its audit atomically after valid receipts", async () => {
+    const candidate = {
+      id: "current",
+      igCompletedAt: new Date("2026-01-01"),
+      igCompletionVerified: false,
+      positionCode: "1",
+      citizenship: "uz",
+      sexKnown: false,
+      projectCode: null,
+    };
+    const tx = {
+      igEmploymentState: {
+        findFirst: vi.fn().mockResolvedValue({ currentCandidate: candidate }),
+      },
+      documentType: {
+        findMany: vi.fn().mockResolvedValue(
+          types.map((type) => ({
+            ...type,
+            requiredForAll: true,
+            allRu: false,
+            allForeign: false,
+            positions: [],
+          })),
+        ),
       },
       document: {
         findMany: vi
           .fn()
-          .mockResolvedValue(
-            types.map((type) => ({
-              documentTypeId: type.id,
-              status: "APPROVED",
-            })),
-          ),
+          .mockResolvedValue(types.map((type) => approved(type.id))),
       },
       candidatePreviousDocument: { findMany: vi.fn().mockResolvedValue([]) },
       candidate: { update: vi.fn() },
@@ -130,8 +202,29 @@ describe("IG completion", () => {
     );
     expect(tx.candidate.update).toHaveBeenCalledWith({
       where: { id: "current" },
-      data: { igCompletedAt: expect.any(Date) },
+      data: { igCompletedAt: expect.any(Date), igCompletionVerified: true },
     });
     expect(audit.logInTransaction).toHaveBeenCalled();
+    expect(tx.candidatePreviousDocument.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ originalVerified: true }),
+      }),
+    );
+  });
+});
+
+describe("ERP catalog owns applicability", () => {
+  it("does not force patent into the requirements when ERP marks it inapplicable", async () => {
+    const { requiredApplicable, applicable } =
+      await import("../src/documents/document-contract");
+    const type = {
+      erpUid: EMPLOYMENT_PATENT_UID,
+      requiredForAll: false,
+      allRu: false,
+      allForeign: false,
+      positions: [],
+    };
+    expect(requiredApplicable(type, "other", "uz")).toBe(false);
+    expect(applicable(type, "other", "uz")).toBe(false);
   });
 });
