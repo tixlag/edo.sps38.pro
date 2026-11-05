@@ -266,7 +266,7 @@ export class DocumentExpirationService {
     // time, since a long batch may reach a notification minutes later.
     const leaseExpiresAt = new Date(Date.now() + ALERT_LEASE_MS);
     const leaseToken = randomUUID();
-    let claim: { id: string; attemptCount: number } | null = null;
+    let claim: { id: string; attemptCount: number; payload?: unknown } | null = null;
 
     try {
       claim = await this.prisma.documentExpirationAlert.create({
@@ -276,8 +276,9 @@ export class DocumentExpirationService {
           attemptCount: 1,
           leaseExpiresAt,
           leaseToken,
+          payload: notification as unknown as Prisma.InputJsonValue,
         },
-        select: { id: true, attemptCount: true },
+        select: { id: true, attemptCount: true, payload: true },
       });
     } catch (error) {
       if (
@@ -298,7 +299,7 @@ export class DocumentExpirationService {
             ? { documentId: data.documentId }
             : { previousDocId: data.previousDocId }),
         },
-        select: { id: true, status: true, attemptCount: true },
+        select: { id: true, status: true, attemptCount: true, payload: true },
       });
       if (!existing || existing.status === "SENT") return false;
 
@@ -321,10 +322,11 @@ export class DocumentExpirationService {
           leaseToken,
           nextAttemptAt: null,
           lastError: null,
+          ...(existing.payload == null ? { payload: notification as unknown as Prisma.InputJsonValue } : {}),
         },
       });
       if (reclaimed.count !== 1) return false;
-      claim = { id: existing.id, attemptCount: existing.attemptCount + 1 };
+      claim = { id: existing.id, attemptCount: existing.attemptCount + 1, payload: existing.payload ?? notification };
     }
 
     if (!claim) return false;
@@ -338,10 +340,12 @@ export class DocumentExpirationService {
       return false;
     }
 
+    const payloadToSend = (claim.payload as SendLkNotificationInput | null) ?? notification;
     let result: Awaited<ReturnType<LkNotificationService["sendNotification"]>>;
     try {
       result = await this.lkNotifications.sendNotification({
-        ...notification,
+        ...payloadToSend,
+        recipientCodes1c: [data.recipientCode1c],
         idempotencyKey: `document-expiration:${claim.id}`,
       });
     } catch (error) {
@@ -431,18 +435,35 @@ export class DocumentExpirationService {
           data: { status: "SUPERSEDED", leaseToken: null, leaseExpiresAt: null, nextAttemptAt: null } });
         continue;
       }
-      const days = computeDaysRemaining(source.expiresAt!, now);
-      const date = source.expiresAt!.toISOString().slice(0, 10);
-      const daysText = days < 0 ? `**срок истёк** (${date})` : days === 0 ? `истекает **сегодня** (${date})` : `истекает через **${days} дн.** (${date})`;
-      const title = current.document?.documentType?.title ?? current.previousDoc?.title ?? current.documentTitle;
+      const storedPayload = current.payload as SendLkNotificationInput | null;
+      let notificationToSend: SendLkNotificationInput;
+      if (storedPayload) {
+        notificationToSend = storedPayload;
+      } else {
+        const days = computeDaysRemaining(source.expiresAt!, now);
+        const date = source.expiresAt!.toISOString().slice(0, 10);
+        const daysText = days < 0 ? `**срок истёк** (${date})` : days === 0 ? `истекает **сегодня** (${date})` : `истекает через **${days} дн.** (${date})`;
+        const title = current.document?.documentType?.title ?? current.previousDoc?.title ?? current.documentTitle;
+        notificationToSend = {
+          recipientCodes1c: [current.recipientCode1c],
+          title: `Срок документа: ${title}`,
+          content: `У сотрудника **${candidate.fullName ?? "Кандидат"}** по документу «${title}» ${daysText}.`,
+          type: "toast",
+          targetType: "document_expiration",
+          targetUrl: current.candidateId ? this.candidateUrl(current.candidateId, candidateReviewGroup(candidate)) : "/review",
+          targetMeta: { documentId: current.documentId, candidateId: current.candidateId, daysRemaining: days, threshold: current.thresholdDays },
+        };
+        await this.prisma.documentExpirationAlert.updateMany({
+          where: { id: current.id },
+          data: { payload: notificationToSend as unknown as Prisma.InputJsonValue },
+        });
+      }
+
       let response: Awaited<ReturnType<LkNotificationService["sendNotification"]>>;
       try {
         response = await this.lkNotifications.sendNotification({
-          recipientCodes1c: [current.recipientCode1c], title: `Срок документа: ${title}`,
-          content: `У сотрудника **${candidate.fullName ?? "Кандидат"}** по документу «${title}» ${daysText}.`,
-          type: "toast", targetType: "document_expiration",
-          targetUrl: current.candidateId ? this.candidateUrl(current.candidateId, candidateReviewGroup(candidate)) : "/review",
-          targetMeta: { documentId: current.documentId, candidateId: current.candidateId, daysRemaining: days, threshold: current.thresholdDays },
+          ...notificationToSend,
+          recipientCodes1c: [current.recipientCode1c],
           idempotencyKey: `document-expiration:${current.id}`,
         });
       } catch { response = { success: false, error: "LK request failed" }; }

@@ -311,4 +311,102 @@ describe("DocumentExpirationService", () => {
       where: expect.objectContaining({ id: "stale" }), data: expect.objectContaining({ status: "SUPERSEDED" }),
     }));
   });
+
+  it("preserves immutable payload across day boundary on retry ensuring fingerprint match in LK (FIX-03)", async () => {
+    const day1 = new Date("2026-11-03T04:00:00.000Z"); // Asia/Irkutsk: 2026-11-03 12:00
+    const day2 = new Date("2026-11-04T04:00:00.000Z"); // Asia/Irkutsk: 2026-11-04 12:00 (next day)
+    const expiresAt = new Date("2026-11-10T00:00:00.000Z"); // 7 days remaining on day1, 6 days remaining on day2
+
+    const document = {
+      id: "doc-immut-1",
+      expiresAt,
+      documentType: { title: "Разрешение на работу" },
+      candidate: {
+        id: "cand-immut-1",
+        code1c: "КАНД-IMMUT",
+        fullName: "Хасанов Хасан",
+        managerCode1c: "HR-IMMUT",
+        chatUuid: null,
+        citizenship: "uz",
+      },
+    };
+
+    let savedAlert: any = null;
+    prismaMock.document.findMany.mockResolvedValueOnce([document]);
+    prismaMock.candidatePreviousDocument.findMany.mockResolvedValueOnce([]);
+
+    prismaMock.documentExpirationAlert.create.mockImplementation(({ data }: any) => {
+      savedAlert = {
+        id: "alert-immut-1",
+        ...data,
+      };
+      return Promise.resolve(savedAlert);
+    });
+
+    // Step 1: Day 1 - initial send fails due to lost HTTP response
+    lkNotificationMock.sendNotification.mockResolvedValueOnce({
+      success: false,
+      error: "HTTP response lost (ETIMEDOUT)",
+    });
+
+    await service.scanAndDispatchAlerts(day1);
+
+    expect(savedAlert).toBeDefined();
+    expect(savedAlert.payload).toBeDefined();
+    expect(savedAlert.payload.targetMeta.daysRemaining).toBe(7);
+    expect(savedAlert.payload.content).toContain("7 дн.");
+    expect(lkNotificationMock.sendNotification).toHaveBeenCalledTimes(1);
+
+    // Step 2: Day 2 - next calendar day arrives, retry is triggered
+    savedAlert.status = "RETRY";
+    savedAlert.document = {
+      ...document,
+      candidate: document.candidate,
+      documentType: document.documentType,
+      status: "APPROVED",
+    };
+    savedAlert.previousDoc = null;
+
+    prismaMock.documentExpirationAlert.findMany.mockResolvedValueOnce([savedAlert]);
+    let leaseToken = "";
+    prismaMock.documentExpirationAlert.updateMany.mockImplementation(async ({ data }: any) => {
+      if (data.leaseToken) leaseToken = data.leaseToken;
+      if (data.status) savedAlert.status = data.status;
+      return { count: 1 };
+    });
+    prismaMock.documentExpirationAlert.findUnique.mockImplementation(async () => ({
+      ...savedAlert,
+      status: "CLAIMED",
+      leaseToken,
+    }));
+
+    // LK receives identical fingerprint and confirms existing broadcast
+    lkNotificationMock.sendNotification.mockResolvedValueOnce({
+      success: true,
+      broadcastUuid: "bcast-existing-uuid-123",
+    });
+
+    const retryResult = await service.retryDueAlerts(day2);
+
+    expect(retryResult.sent).toBe(1);
+    expect(lkNotificationMock.sendNotification).toHaveBeenCalledTimes(2);
+
+    // Verify the second call used identical idempotencyKey, identical content, and identical daysRemaining (7, NOT 6)
+    const secondCallArg = lkNotificationMock.sendNotification.mock.calls[1][0];
+    expect(secondCallArg.idempotencyKey).toBe("document-expiration:alert-immut-1");
+    expect(secondCallArg.recipientCodes1c).toEqual(["HR-IMMUT"]);
+    expect(secondCallArg.content).toContain("7 дн."); // NOT 6 дн.
+    expect(secondCallArg.targetMeta.daysRemaining).toBe(7); // NOT 6
+
+    // Verify alert is marked SENT with broadcast UUID
+    expect(prismaMock.documentExpirationAlert.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: "alert-immut-1", leaseToken: expect.any(String) }),
+        data: expect.objectContaining({
+          status: "SENT",
+          broadcastUuid: "bcast-existing-uuid-123",
+        }),
+      }),
+    );
+  });
 });

@@ -1136,6 +1136,7 @@ model DocumentExpirationAlert {
   lastError       String?  @db.Text
   broadcastUuid   String?  @db.VarChar(36)
   sentAt          DateTime? @db.DateTime(3)
+  payload         Json?
   createdAt       DateTime @default(now()) @db.DateTime(3)
   updatedAt       DateTime @default(now()) @updatedAt @db.DateTime(3)
 
