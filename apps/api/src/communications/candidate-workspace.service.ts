@@ -21,8 +21,6 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
-import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
@@ -40,7 +38,6 @@ import {
 import {
   ErpWorkspaceClient,
   erpCardSchema,
-  previousDocumentsSchema,
   referencesSchema,
   personMatchesSchema,
   type ErpCard,
