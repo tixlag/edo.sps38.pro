@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Search } from "lucide-react";
-import { ContractNotifications } from "./ContractNotifications";
+import { NotificationBell } from "./NotificationBell";
 import { formatDateRu } from "../lib/date-format";
 import type { MeResponseDto } from "@edo/api-client";
 import {
@@ -88,14 +88,10 @@ export function AppHeader({
         >
           <Search size={18} />
         </button>
-        {(Object.prototype.hasOwnProperty.call(
-          profile?.permissions ?? {},
-          "20003",
-        ) ||
-          Object.prototype.hasOwnProperty.call(
-            profile?.permissions ?? {},
-            "20009",
-          )) && <ContractNotifications />}
+        {profile && <NotificationBell canReadContracts={
+          Object.prototype.hasOwnProperty.call(profile.permissions ?? {}, "20003") ||
+          Object.prototype.hasOwnProperty.call(profile.permissions ?? {}, "20009")
+        } />}
         <span
           className="hidden max-w-[140px] truncate text-sm font-semibold sm:inline"
           title={fullName}

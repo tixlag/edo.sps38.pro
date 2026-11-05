@@ -32,6 +32,9 @@ async function main() {
     '/api/internal/edo/v1/departments',
     '/api/internal/edo/v1/candidate-chats/{chatUuid}',
     '/api/internal/edo/v1/employees/{code1c}/candidate-chat',
+    '/api/internal/edo/v1/notifications',
+    '/api/internal/edo/v1/users/{userUuid}/notifications',
+    '/api/internal/edo/v1/users/{userUuid}/notifications/read',
   ];
   for (const p of paths) {
     if (!allowed.includes(p)) {

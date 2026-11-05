@@ -33,6 +33,8 @@ import {
   ContractErrorDto,
   ContractNotificationDto,
   ContractNotificationsDto,
+  ContractNotificationsQueryDto,
+  ContractNotificationsReadAllDto,
   ContractsDto,
   ContractTypesDto,
   CreateContractDto,
@@ -83,11 +85,18 @@ export class ContractsController {
   @Get("notifications")
   @ApiOperation({
     operationId: "listSigningNotifications",
-    summary: "Own contract notifications",
+    summary: "Own unread pending contract notifications",
   })
   @ApiResponse({ status: 200, type: ContractNotificationsDto })
-  notifications(@CurrentPrincipal() actor: AuthPrincipal) {
-    return this.contracts.notifications(actor);
+  notifications(@CurrentPrincipal() actor: AuthPrincipal, @Query() query: ContractNotificationsQueryDto) {
+    return this.contracts.notifications(actor, query);
+  }
+
+  @Post("notifications/read-all")
+  @ApiOperation({ operationId: "readAllSigningNotifications", summary: "Mark all own contract notifications read" })
+  @ApiResponse({ status: 201, type: ContractNotificationsReadAllDto })
+  readAllNotifications(@CurrentPrincipal() actor: AuthPrincipal) {
+    return this.contracts.readAllNotifications(actor);
   }
 
   @Post("notifications/:id/read")

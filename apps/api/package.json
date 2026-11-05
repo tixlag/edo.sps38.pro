@@ -20,7 +20,9 @@
     "lk:recover": "ts-node --transpile-only src/lk-sync/run-recover.ts",
     "lk:queues:reset": "ts-node --transpile-only scripts/reset-edo-queues.ts",
     "infra:check": "ts-node --transpile-only scripts/infra-check.ts",
-    "candidates:sync": "ts-node --transpile-only src/communications/run-catalog-sync.ts"
+    "candidates:sync": "ts-node --transpile-only src/communications/run-catalog-sync.ts",
+    "expiration:check": "ts-node --transpile-only src/expiration/run-check-expirations.ts",
+    "expiration:backfill": "ts-node --transpile-only src/expiration/run-expiration-backfill.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1148.0",

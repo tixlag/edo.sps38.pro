@@ -1408,6 +1408,194 @@ export interface RejectDocumentDto {
   reason: string;
 }
 
+export interface ExpirationSummaryResponseDto {
+  /** Общее число документов с истекающим сроком */
+  totalExpiring: number;
+  /** Истекают в пределах 30 дней (предупреждение) */
+  warning30d: number;
+  /** Истекают в пределах 15 дней (внимание) */
+  urgent15d: number;
+  /** Истекают в пределах 7 дней (критично) */
+  critical7d: number;
+  /** Истекают в пределах 1 дня (экстренно) */
+  emergency1d: number;
+  /** Срок действия уже истёк */
+  expired: number;
+}
+
+/**
+ * Тип источника
+ */
+export type ExpirationItemDtoSourceType =
+  (typeof ExpirationItemDtoSourceType)[keyof typeof ExpirationItemDtoSourceType];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ExpirationItemDtoSourceType = {
+  DOCUMENT: "DOCUMENT",
+  PREVIOUS_DOCUMENT: "PREVIOUS_DOCUMENT",
+} as const;
+
+/**
+ * Уровень критичности
+ */
+export type ExpirationItemDtoSeverity =
+  (typeof ExpirationItemDtoSeverity)[keyof typeof ExpirationItemDtoSeverity];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ExpirationItemDtoSeverity = {
+  NORMAL: "NORMAL",
+  WARNING: "WARNING",
+  URGENT: "URGENT",
+  CRITICAL: "CRITICAL",
+  EMERGENCY: "EMERGENCY",
+  EXPIRED: "EXPIRED",
+} as const;
+
+export interface ExpirationItemDto {
+  /** Уникальный составной идентификатор элемента */
+  id: string;
+  /** Тип источника */
+  sourceType: ExpirationItemDtoSourceType;
+  /** ID документа или предыдущего документа */
+  documentId: string;
+  /** Название документа */
+  documentTitle: string;
+  /**
+   * ID кандидата
+   * @nullable
+   */
+  candidateId: string | null;
+  /**
+   * ФИО кандидата
+   * @nullable
+   */
+  candidateName: string | null;
+  /**
+   * Код 1C кандидата
+   * @nullable
+   */
+  candidateCode1c: string | null;
+  /**
+   * Код 1C руководителя/менеджера
+   * @nullable
+   */
+  managerCode1c: string | null;
+  /**
+   * ФИО руководителя/менеджера
+   * @nullable
+   */
+  managerName: string | null;
+  /**
+   * Группа проверки (RU / IG)
+   * @nullable
+   */
+  reviewGroup: string | null;
+  /** Дата окончания срока (YYYY-MM-DD) */
+  expiresAt: string;
+  /** Осталось дней (отрицательное число = просрочен) */
+  daysRemaining: number;
+  /** Уровень критичности */
+  severity: ExpirationItemDtoSeverity;
+  /**
+   * Сработавший порог алерта в днях (30, 15, 7, 1, 0)
+   * @nullable
+   */
+  thresholdDays: number | null;
+}
+
+export interface ExpirationItemsResponseDto {
+  /** Список документов с истекающим сроком */
+  items: ExpirationItemDto[];
+  /** Общее количество записей под фильтром */
+  total: number;
+}
+
+/**
+ * Метаданные цели
+ */
+export type NotificationTargetDtoMeta = { [key: string]: unknown };
+
+export interface NotificationTargetDto {
+  /** Тип цели */
+  type?: string;
+  /** URL перехода */
+  url?: string;
+  /** Метаданные цели */
+  meta?: NotificationTargetDtoMeta;
+}
+
+/**
+ * Тип отображения
+ */
+export type NotificationItemDtoType =
+  (typeof NotificationItemDtoType)[keyof typeof NotificationItemDtoType];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const NotificationItemDtoType = {
+  toast: "toast",
+  modal: "modal",
+} as const;
+
+/**
+ * Целевое действие
+ * @nullable
+ */
+export type NotificationItemDtoTarget = NotificationTargetDto | null;
+
+export interface NotificationItemDto {
+  /** UUID уведомления */
+  uuid: string;
+  /** Заголовок */
+  title: string;
+  /** Текст (поддерживает Markdown) */
+  content: string;
+  /** Тип отображения */
+  type: NotificationItemDtoType;
+  /** Дата создания (ISO 8601) */
+  createdAt: string;
+  /**
+   * Дата прочтения (ISO 8601 или null)
+   * @nullable
+   */
+  readAt: string | null;
+  /**
+   * Имя автора
+   * @nullable
+   */
+  authorName?: string | null;
+  /**
+   * URL аватара автора
+   * @nullable
+   */
+  authorAvatarUrl?: string | null;
+  /**
+   * Целевое действие
+   * @nullable
+   */
+  target?: NotificationItemDtoTarget;
+}
+
+export interface NotificationsListResponseDto {
+  /** Список уведомлений */
+  items: NotificationItemDto[];
+  /** Количество непрочитанных уведомлений */
+  unreadCount: number;
+  /** Общее количество уведомлений */
+  total: number;
+}
+
+export interface MarkNotificationsReadDto {
+  /** Список UUID уведомлений для отметки прочитанными */
+  notificationUuids?: string[];
+  /** Отметить все уведомления пользователя прочитанными */
+  all?: boolean;
+}
+
+export interface MarkNotificationsReadResponseDto {
+  /** Количество обновлённых записей */
+  updated: number;
+}
+
 export interface AnnotationPreferenceDto {
   enabled: boolean;
 }
@@ -1802,6 +1990,11 @@ export interface ContractNotificationDto {
 
 export interface ContractNotificationsDto {
   items: ContractNotificationDto[];
+  total: number;
+}
+
+export interface ContractNotificationsReadAllDto {
+  updated: number;
 }
 
 export type ContractState = (typeof ContractState)[keyof typeof ContractState];
@@ -2607,6 +2800,61 @@ export type SubmitCandidateDocumentDirectBody = {
   "files[]": Blob[];
 };
 
+export type GetExpiringItemsParams = {
+  limit?: number;
+  offset?: number;
+  /**
+   * Фильтр по порогу (дней)
+   */
+  threshold?: GetExpiringItemsThreshold;
+  /**
+   * Фильтр по группе проверки
+   */
+  reviewGroup?: GetExpiringItemsReviewGroup;
+  /**
+   * Фильтр по коду 1C менеджера
+   */
+  managerCode1c?: string;
+};
+
+export type GetExpiringItemsThreshold =
+  (typeof GetExpiringItemsThreshold)[keyof typeof GetExpiringItemsThreshold];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetExpiringItemsThreshold = {
+  NUMBER_30: 30,
+  NUMBER_15: 15,
+  NUMBER_7: 7,
+  NUMBER_1: 1,
+  NUMBER_0: 0,
+} as const;
+
+export type GetExpiringItemsReviewGroup =
+  (typeof GetExpiringItemsReviewGroup)[keyof typeof GetExpiringItemsReviewGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetExpiringItemsReviewGroup = {
+  RU: "RU",
+  IG: "IG",
+  ALL: "ALL",
+} as const;
+
+export type GetMyNotificationsParams = {
+  limit?: number;
+  offset?: number;
+  status?: GetMyNotificationsStatus;
+};
+
+export type GetMyNotificationsStatus =
+  (typeof GetMyNotificationsStatus)[keyof typeof GetMyNotificationsStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetMyNotificationsStatus = {
+  all: "all",
+  unread: "unread",
+  read: "read",
+} as const;
+
 export type ListAnnotationsParams = {
   documentId?: string;
   version?: number;
@@ -2627,6 +2875,11 @@ export type GetAnnotationCatalogDefaultsParams = {
 
 export type DeleteAnnotationCatalogParams = {
   revision: number;
+};
+
+export type ListSigningNotificationsParams = {
+  limit?: number;
+  offset?: number;
 };
 
 export type ListSigningContractsParams = {
@@ -7648,6 +7901,325 @@ export const useSubmitCandidateDocumentDirect = <
 };
 
 /**
+ * @summary Получить сводку по истекающим срокам документов
+ */
+export const getExpirationsSummary = (signal?: AbortSignal) => {
+  return customInstance<ExpirationSummaryResponseDto>({
+    url: `/api/v1/expirations/summary`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetExpirationsSummaryQueryKey = () => {
+  return [`/api/v1/expirations/summary`] as const;
+};
+
+export const getGetExpirationsSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getExpirationsSummary>>,
+  TError = unknown,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getExpirationsSummary>>,
+    TError,
+    TData
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetExpirationsSummaryQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getExpirationsSummary>>
+  > = ({ signal }) => getExpirationsSummary(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getExpirationsSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetExpirationsSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getExpirationsSummary>>
+>;
+export type GetExpirationsSummaryQueryError = unknown;
+
+/**
+ * @summary Получить сводку по истекающим срокам документов
+ */
+
+export function useGetExpirationsSummary<
+  TData = Awaited<ReturnType<typeof getExpirationsSummary>>,
+  TError = unknown,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getExpirationsSummary>>,
+    TError,
+    TData
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetExpirationsSummaryQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Получить список документов с истекающим сроком действия
+ */
+export const getExpiringItems = (
+  params?: GetExpiringItemsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ExpirationItemsResponseDto>({
+    url: `/api/v1/expirations/items`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetExpiringItemsQueryKey = (
+  params?: GetExpiringItemsParams,
+) => {
+  return [`/api/v1/expirations/items`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetExpiringItemsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getExpiringItems>>,
+  TError = unknown,
+>(
+  params?: GetExpiringItemsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getExpiringItems>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetExpiringItemsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getExpiringItems>>
+  > = ({ signal }) => getExpiringItems(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getExpiringItems>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetExpiringItemsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getExpiringItems>>
+>;
+export type GetExpiringItemsQueryError = unknown;
+
+/**
+ * @summary Получить список документов с истекающим сроком действия
+ */
+
+export function useGetExpiringItems<
+  TData = Awaited<ReturnType<typeof getExpiringItems>>,
+  TError = unknown,
+>(
+  params?: GetExpiringItemsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getExpiringItems>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetExpiringItemsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Получить список уведомлений текущего пользователя из ЛК
+ */
+export const getMyNotifications = (
+  params?: GetMyNotificationsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<NotificationsListResponseDto>({
+    url: `/api/v1/notifications/my`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetMyNotificationsQueryKey = (
+  params?: GetMyNotificationsParams,
+) => {
+  return [`/api/v1/notifications/my`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetMyNotificationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyNotifications>>,
+  TError = unknown,
+>(
+  params?: GetMyNotificationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyNotifications>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMyNotificationsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyNotifications>>
+  > = ({ signal }) => getMyNotifications(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyNotifications>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyNotificationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyNotifications>>
+>;
+export type GetMyNotificationsQueryError = unknown;
+
+/**
+ * @summary Получить список уведомлений текущего пользователя из ЛК
+ */
+
+export function useGetMyNotifications<
+  TData = Awaited<ReturnType<typeof getMyNotifications>>,
+  TError = unknown,
+>(
+  params?: GetMyNotificationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyNotifications>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyNotificationsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Отметить уведомления текущего пользователя как прочитанные
+ */
+export const markNotificationsRead = (
+  markNotificationsReadDto: MarkNotificationsReadDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<MarkNotificationsReadResponseDto>({
+    url: `/api/v1/notifications/read`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: markNotificationsReadDto,
+    signal,
+  });
+};
+
+export const getMarkNotificationsReadMutationOptions = <
+  TError = unknown,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof markNotificationsRead>>,
+    TError,
+    { data: MarkNotificationsReadDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof markNotificationsRead>>,
+  TError,
+  { data: MarkNotificationsReadDto },
+  TContext
+> => {
+  const mutationKey = ["markNotificationsRead"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof markNotificationsRead>>,
+    { data: MarkNotificationsReadDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return markNotificationsRead(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MarkNotificationsReadMutationResult = NonNullable<
+  Awaited<ReturnType<typeof markNotificationsRead>>
+>;
+export type MarkNotificationsReadMutationBody = MarkNotificationsReadDto;
+export type MarkNotificationsReadMutationError = unknown;
+
+/**
+ * @summary Отметить уведомления текущего пользователя как прочитанные
+ */
+export const useMarkNotificationsRead = <
+  TError = unknown,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof markNotificationsRead>>,
+    TError,
+    { data: MarkNotificationsReadDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof markNotificationsRead>>,
+  TError,
+  { data: MarkNotificationsReadDto },
+  TContext
+> => {
+  const mutationOptions = getMarkNotificationsReadMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
  * @summary Read annotation participation preference
  */
 export const getAnnotationPreference = (signal?: AbortSignal) => {
@@ -9655,38 +10227,47 @@ export function useGetSigningCandidate<
 }
 
 /**
- * @summary Own contract notifications
+ * @summary Own unread pending contract notifications
  */
-export const listSigningNotifications = (signal?: AbortSignal) => {
+export const listSigningNotifications = (
+  params?: ListSigningNotificationsParams,
+  signal?: AbortSignal,
+) => {
   return customInstance<ContractNotificationsDto>({
     url: `/api/contracts/notifications`,
     method: "GET",
+    params,
     signal,
   });
 };
 
-export const getListSigningNotificationsQueryKey = () => {
-  return [`/api/contracts/notifications`] as const;
+export const getListSigningNotificationsQueryKey = (
+  params?: ListSigningNotificationsParams,
+) => {
+  return [`/api/contracts/notifications`, ...(params ? [params] : [])] as const;
 };
 
 export const getListSigningNotificationsQueryOptions = <
   TData = Awaited<ReturnType<typeof listSigningNotifications>>,
   TError = ContractErrorDto,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listSigningNotifications>>,
-    TError,
-    TData
-  >;
-}) => {
+>(
+  params?: ListSigningNotificationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSigningNotifications>>,
+      TError,
+      TData
+    >;
+  },
+) => {
   const { query: queryOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ?? getListSigningNotificationsQueryKey();
+    queryOptions?.queryKey ?? getListSigningNotificationsQueryKey(params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof listSigningNotifications>>
-  > = ({ signal }) => listSigningNotifications(signal);
+  > = ({ signal }) => listSigningNotifications(params, signal);
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listSigningNotifications>>,
@@ -9701,20 +10282,23 @@ export type ListSigningNotificationsQueryResult = NonNullable<
 export type ListSigningNotificationsQueryError = ContractErrorDto;
 
 /**
- * @summary Own contract notifications
+ * @summary Own unread pending contract notifications
  */
 
 export function useListSigningNotifications<
   TData = Awaited<ReturnType<typeof listSigningNotifications>>,
   TError = ContractErrorDto,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listSigningNotifications>>,
-    TError,
-    TData
-  >;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListSigningNotificationsQueryOptions(options);
+>(
+  params?: ListSigningNotificationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSigningNotifications>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSigningNotificationsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -9724,6 +10308,83 @@ export function useListSigningNotifications<
 
   return query;
 }
+
+/**
+ * @summary Mark all own contract notifications read
+ */
+export const readAllSigningNotifications = (signal?: AbortSignal) => {
+  return customInstance<ContractNotificationsReadAllDto>({
+    url: `/api/contracts/notifications/read-all`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getReadAllSigningNotificationsMutationOptions = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof readAllSigningNotifications>>,
+    TError,
+    void,
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof readAllSigningNotifications>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["readAllSigningNotifications"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof readAllSigningNotifications>>,
+    void
+  > = () => {
+    return readAllSigningNotifications();
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReadAllSigningNotificationsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof readAllSigningNotifications>>
+>;
+
+export type ReadAllSigningNotificationsMutationError = ContractErrorDto;
+
+/**
+ * @summary Mark all own contract notifications read
+ */
+export const useReadAllSigningNotifications = <
+  TError = ContractErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof readAllSigningNotifications>>,
+    TError,
+    void,
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof readAllSigningNotifications>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationOptions =
+    getReadAllSigningNotificationsMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
 
 /**
  * @summary Mark own notification read

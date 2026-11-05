@@ -130,18 +130,21 @@ model Document {
   documentTypeId String?        @db.VarChar(64)
   status         DocumentStatus @default(DRAFT)
   currentVersion Int            @default(1)
+  expiresAt      DateTime?      @db.Date
   createdAt      DateTime       @default(now()) @db.DateTime(3)
   updatedAt      DateTime       @updatedAt @db.DateTime(3)
 
-  employee     Employee?         @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: Restrict)
-  candidate    Candidate?        @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: Restrict)
-  documentType DocumentType?     @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
-  versions     DocumentVersion[]
-  auditLogs    AuditLog[]        @relation("AuditEntityDocument")
+  employee         Employee?                 @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  candidate        Candidate?                @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  documentType     DocumentType?             @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+  versions         DocumentVersion[]
+  expirationAlerts DocumentExpirationAlert[]
+  auditLogs        AuditLog[]                @relation("AuditEntityDocument")
 
   @@unique([candidateId, documentTypeId])
   @@index([employeeId])
   @@index([status])
+  @@index([expiresAt])
   @@map("documents")
 }
 
@@ -183,11 +186,13 @@ model DocumentVersion {
   fields     DocumentVersionField[]
   issues     OcrIssue[]
   job        OcrJob?
+  expiresAt  DateTime?              @db.Date
   createdAt  DateTime               @default(now()) @db.DateTime(3)
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, version])
+  @@index([expiresAt])
   @@map("document_versions")
 }
 
@@ -422,6 +427,7 @@ model Candidate {
   mentorCode1c    String?   @db.VarChar(64)
   isReemployment  Boolean   @default(false)
   profileSyncedAt DateTime? @db.DateTime(3)
+  previousDocumentsSyncedAt DateTime? @db.DateTime(3)
   createdAt  DateTime   @default(now()) @db.DateTime(3)
   updatedAt  DateTime   @updatedAt @db.DateTime(3)
   documents  Document[]
@@ -433,6 +439,7 @@ model Candidate {
   @@index([locationId])
   @@index([code1c])
   @@index([personUid])
+  @@index([previousDocumentsSyncedAt])
   @@map("candidates")
 }
 
@@ -534,8 +541,17 @@ model SigningContractNotification {
   message String @db.VarChar(512)
   createdAt DateTime @default(now()) @db.DateTime(3)
   readAt DateTime? @db.DateTime(3)
+  deliveredAt DateTime? @db.DateTime(3)
+  deliveryCancelledAt DateTime? @db.DateTime(3)
+  lkBroadcastUuid String? @db.VarChar(36)
+  lkReadSyncedAt DateTime? @db.DateTime(3)
+  deliveryLeaseToken String? @db.VarChar(36)
+  deliveryLeaseUntil DateTime? @db.DateTime(3)
+  deliveryRetryAt DateTime? @db.DateTime(3)
+  deliveryAttempts Int @default(0)
   @@unique([contractId, kind])
   @@index([recipientId, createdAt])
+  @@index([deliveredAt, deliveryRetryAt])
   @@map("signing_contract_notifications")
 }
 
@@ -1091,8 +1107,45 @@ model CandidatePreviousDocument {
   reviewedBy String? @db.VarChar(64)
   reviewedAt DateTime? @db.DateTime(3)
   updatedAt DateTime @updatedAt @db.DateTime(3)
+  expirationAlerts DocumentExpirationAlert[]
+
   @@unique([candidateId, sourceId])
+  @@index([expiresAt])
   @@map("candidate_previous_documents")
+}
+
+model DocumentExpirationAlert {
+  id              String   @id @default(cuid()) @db.VarChar(64)
+  documentId      String?  @db.VarChar(64)
+  previousDocId   String?  @db.VarChar(64)
+  candidateId     String?  @db.VarChar(64)
+  employeeId      String?  @db.VarChar(64)
+  documentTitle   String   @db.VarChar(255)
+  expiresAt       DateTime @db.Date
+  thresholdDays   Int
+  recipientCode1c String   @db.VarChar(64)
+  recipientRole   String   @db.VarChar(32)
+  status          String   @default("CLAIMED") @db.VarChar(16)
+  attemptCount    Int      @default(1)
+  nextAttemptAt   DateTime? @db.DateTime(3)
+  leaseExpiresAt  DateTime? @db.DateTime(3)
+  leaseToken      String?  @db.VarChar(36)
+  lastError       String?  @db.Text
+  broadcastUuid   String?  @db.VarChar(36)
+  sentAt          DateTime? @db.DateTime(3)
+  createdAt       DateTime @default(now()) @db.DateTime(3)
+  updatedAt       DateTime @default(now()) @updatedAt @db.DateTime(3)
+
+  document        Document?                  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  previousDoc     CandidatePreviousDocument? @relation(fields: [previousDocId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, expiresAt, thresholdDays, recipientCode1c], map: "uniq_doc_alert")
+  @@unique([previousDocId, expiresAt, thresholdDays, recipientCode1c], map: "uniq_prevdoc_alert")
+  @@index([expiresAt])
+  @@index([thresholdDays])
+  @@index([status, nextAttemptAt])
+  @@index([status, leaseExpiresAt])
+  @@map("document_expiration_alerts")
 }
 
 model IgArrivalPerson {
@@ -1146,4 +1199,12 @@ model IgArrivalIssue {
   updatedAt DateTime @updatedAt @db.DateTime(3)
   @@index([personHash, active])
   @@map("ig_arrival_issues")
+}
+
+model IgArrivalSyncState {
+  id String @id @db.VarChar(32)
+  cursor String? @db.VarChar(128)
+  completedAt DateTime? @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  @@map("ig_arrival_sync_state")
 }

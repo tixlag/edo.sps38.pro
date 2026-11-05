@@ -17,6 +17,7 @@ import { DocumentPdfService } from "./document-pdf.service";
 import { IG_PASSPORT_LATIN_FIELDS, isForeignPassport } from "./review-group";
 import { ErpWorkspaceClient, type ErpIdentity } from "./erp-workspace.client";
 import { isIgRecipient, matchesIgRecipient } from "./ig-recipient";
+import { DocumentExpirationService } from "../expiration/document-expiration.service";
 import {
   formatDateForErp,
   shouldOmitPositionUid,
@@ -45,6 +46,7 @@ export class DocumentReviewService {
     private readonly reads: DocumentReadService,
     private readonly pdf: DocumentPdfService,
     @Optional() private readonly erp?: ErpWorkspaceClient,
+    @Optional() private readonly expiration?: DocumentExpirationService,
   ) {}
 
   async edit(
@@ -309,6 +311,11 @@ export class DocumentReviewService {
               update: { value: textValue(value), editedBy: principal.uuid },
             });
           }
+          const allFields = {
+            ...Object.fromEntries(version.fields.map((f) => [f.name, f.value])),
+            ...edits,
+          };
+          await this.expiration?.syncDocumentExpiresAt(tx, documentId, version.id, allFields);
         } else {
           if (
             version.job &&
@@ -332,6 +339,17 @@ export class DocumentReviewService {
             where: { id: documentId },
             data: { status: rejectionReason ? "RETURNED" : "APPROVED" },
           });
+          if (!rejectionReason) {
+            const allFields = Object.fromEntries(
+              version.fields.map((f) => [f.name, f.value]),
+            );
+            await this.expiration?.syncDocumentExpiresAt(
+              tx,
+              documentId,
+              version.id,
+              allFields,
+            );
+          }
           if (approvedKey) {
             const uid = version.document.documentType?.erpUid;
             const candidate = version.document.candidate;

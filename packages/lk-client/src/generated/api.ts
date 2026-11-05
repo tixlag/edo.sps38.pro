@@ -26,6 +26,61 @@ export interface EdoEmployeePage {
   nextCursor: EdoEmployeePageNextCursor;
 }
 
+export type EdoNotificationTargetUrl = string | null;
+
+export type EdoNotificationTargetMetaAnyOf = { [key: string]: unknown };
+
+export type EdoNotificationTargetMeta = EdoNotificationTargetMetaAnyOf | null;
+
+export interface EdoNotificationTarget {
+  type?: string;
+  url?: EdoNotificationTargetUrl;
+  meta?: EdoNotificationTargetMeta;
+}
+
+export type EdoUserNotificationType =
+  (typeof EdoUserNotificationType)[keyof typeof EdoUserNotificationType];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const EdoUserNotificationType = {
+  toast: "toast",
+  modal: "modal",
+} as const;
+
+export type EdoUserNotificationCreatedAt = string | null;
+
+export type EdoUserNotificationDeliveredAt = string | null;
+
+export type EdoUserNotificationReadAt = string | null;
+
+export type EdoUserNotificationTarget = EdoNotificationTarget | null;
+
+export type EdoUserNotificationAuthorName = string | null;
+
+export type EdoUserNotificationAuthorAvatarUrl = string | null;
+
+export interface EdoUserNotification {
+  uuid: string;
+  title: string;
+  content: string;
+  cleanContent: string;
+  type: EdoUserNotificationType;
+  createdAt?: EdoUserNotificationCreatedAt;
+  deliveredAt?: EdoUserNotificationDeliveredAt;
+  readAt?: EdoUserNotificationReadAt;
+  target?: EdoUserNotificationTarget;
+  authorName?: EdoUserNotificationAuthorName;
+  authorAvatarUrl?: EdoUserNotificationAuthorAvatarUrl;
+}
+
+export interface EdoUserNotificationsList {
+  items: EdoUserNotification[];
+  total: number;
+  limit: number;
+  offset: number;
+  unreadCount: number;
+}
+
 export type EdoLocationGeneralUnitCode = string | null;
 
 export type EdoLocationUpdatedAt = string | null;
@@ -83,6 +138,72 @@ export interface EdoNamedCode {
   name: EdoNamedCodeName;
 }
 
+/**
+ * code_1c автора уведомления
+ */
+export type CreateEdoNotificationAuthorCode1c = string | null;
+
+/**
+ * Тип уведомления (toast | modal)
+ */
+export type CreateEdoNotificationType =
+  (typeof CreateEdoNotificationType)[keyof typeof CreateEdoNotificationType];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CreateEdoNotificationType = {
+  toast: "toast",
+  modal: "modal",
+} as const;
+
+/**
+ * URL для перехода
+ */
+export type CreateEdoNotificationTargetUrl = string | null;
+
+/**
+ * Метаданные цели
+ */
+export type CreateEdoNotificationTargetMetaAnyOf = { [key: string]: unknown };
+
+/**
+ * Метаданные цели
+ */
+export type CreateEdoNotificationTargetMeta =
+  CreateEdoNotificationTargetMetaAnyOf | null;
+
+/**
+ * Стабильный ключ запроса для защиты от повторной отправки
+ * @maxLength 191
+ */
+export type CreateEdoNotificationIdempotencyKey = string | null;
+
+/**
+ * DTO для входящих уведомлений от EDO
+ */
+export interface CreateEdoNotification {
+  /** Коды 1C получателей */
+  recipientCodes1c?: string[];
+  /** code_1c автора уведомления */
+  authorCode1c?: CreateEdoNotificationAuthorCode1c;
+  /** Заголовок */
+  title: string;
+  /** Контент (поддерживает Markdown) */
+  content: string;
+  /** Тип уведомления (toast | modal) */
+  type?: CreateEdoNotificationType;
+  /** Тип цели */
+  targetType?: string;
+  /** URL для перехода */
+  targetUrl?: CreateEdoNotificationTargetUrl;
+  /** Метаданные цели */
+  targetMeta?: CreateEdoNotificationTargetMeta;
+  /**
+   * Стабильный ключ запроса для защиты от повторной отправки
+   * @maxLength 191
+   */
+  idempotencyKey?: CreateEdoNotificationIdempotencyKey;
+}
+
 export type EdoReferenceUpdatedAt = string | null;
 
 export interface EdoReference {
@@ -95,6 +216,41 @@ export interface EdoReference {
 export type EdoListEmployeesParams = {
   limit?: number;
   cursor?: string;
+};
+
+export type EdoSendNotification201 = {
+  success?: boolean;
+  broadcastUuid?: string;
+};
+
+export type EdoListUserNotificationsParams = {
+  limit?: number;
+  offset?: number;
+  status?: EdoListUserNotificationsStatus;
+};
+
+export type EdoListUserNotificationsStatus =
+  (typeof EdoListUserNotificationsStatus)[keyof typeof EdoListUserNotificationsStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const EdoListUserNotificationsStatus = {
+  all: "all",
+  read: "read",
+  unread: "unread",
+} as const;
+
+export type EdoMarkUserNotificationsReadBodyUuids = string[] | null;
+
+export type EdoMarkUserNotificationsReadBodyAll = boolean | null;
+
+export type EdoMarkUserNotificationsReadBody = {
+  uuids?: EdoMarkUserNotificationsReadBodyUuids;
+  all?: EdoMarkUserNotificationsReadBodyAll;
+};
+
+export type EdoMarkUserNotificationsRead200 = {
+  success?: boolean;
+  updated?: number;
 };
 
 export const getEdoGetCandidateChatUrl = (chatUuid: string) => {
@@ -214,6 +370,91 @@ export const edoListDepartments = async (
 
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
   const data: EdoReference[] = body ? JSON.parse(body) : {};
+
+  return data;
+};
+
+/**
+ * @summary Отправить уведомление от EDO
+ */
+export const getEdoSendNotificationUrl = () => {
+  return `/api/internal/edo/v1/notifications`;
+};
+
+export const edoSendNotification = async (
+  createEdoNotification: CreateEdoNotification,
+  options?: RequestInit,
+): Promise<EdoSendNotification201> => {
+  const res = await fetch(getEdoSendNotificationUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createEdoNotification),
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+  const data: EdoSendNotification201 = body ? JSON.parse(body) : {};
+
+  return data;
+};
+
+/**
+ * @summary Список уведомлений пользователя
+ */
+export const getEdoListUserNotificationsUrl = (
+  userUuid: string,
+  params?: EdoListUserNotificationsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  return normalizedParams.size
+    ? `/api/internal/edo/v1/users/${userUuid}/notifications?${normalizedParams.toString()}`
+    : `/api/internal/edo/v1/users/${userUuid}/notifications`;
+};
+
+export const edoListUserNotifications = async (
+  userUuid: string,
+  params?: EdoListUserNotificationsParams,
+  options?: RequestInit,
+): Promise<EdoUserNotificationsList> => {
+  const res = await fetch(getEdoListUserNotificationsUrl(userUuid, params), {
+    ...options,
+    method: "GET",
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+  const data: EdoUserNotificationsList = body ? JSON.parse(body) : {};
+
+  return data;
+};
+
+/**
+ * @summary Отметить уведомления пользователя прочитанными
+ */
+export const getEdoMarkUserNotificationsReadUrl = (userUuid: string) => {
+  return `/api/internal/edo/v1/users/${userUuid}/notifications/read`;
+};
+
+export const edoMarkUserNotificationsRead = async (
+  userUuid: string,
+  edoMarkUserNotificationsReadBody: EdoMarkUserNotificationsReadBody,
+  options?: RequestInit,
+): Promise<EdoMarkUserNotificationsRead200> => {
+  const res = await fetch(getEdoMarkUserNotificationsReadUrl(userUuid), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(edoMarkUserNotificationsReadBody),
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+  const data: EdoMarkUserNotificationsRead200 = body ? JSON.parse(body) : {};
 
   return data;
 };

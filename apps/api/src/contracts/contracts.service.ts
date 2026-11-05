@@ -4,6 +4,7 @@ import {
   HttpException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import {
   Prisma,
@@ -19,6 +20,7 @@ import { ownContractWhere, signingCandidateWhere } from "./contract-access";
 import { ZupDocumentsClient } from "./zup-documents.client";
 import { ContractFileService } from "./contract-file.service";
 import { ContractObjectsService } from "./contract-objects.service";
+import { ContractNotificationDeliveryService } from "./contract-notification-delivery.service";
 import {
   ConfirmationRole,
   ContractActionDto,
@@ -54,6 +56,7 @@ export class ContractsService {
     private readonly zup: ZupDocumentsClient,
     private readonly files: ContractFileService,
     private readonly objects: ContractObjectsService,
+    @Optional() private readonly notificationDelivery?: ContractNotificationDeliveryService,
   ) {}
 
   async types() {
@@ -452,8 +455,10 @@ export class ContractsService {
     const row = await this.record(id, actor);
     const requestKey = key(actor, body.requestId);
     const employer = row.confirmations.find((c) => c.role === "employer");
-    if (employer?.requestKey === requestKey && employer.actorId === actor.uuid)
+    if (employer?.requestKey === requestKey && employer.actorId === actor.uuid) {
+      this.notificationDelivery?.wake(id);
       return this.detail(id, actor);
+    }
     if (row.status !== "DRAFT" || row.revision !== body.revision)
       throw conflict();
     const file = this.version(row);
@@ -503,6 +508,17 @@ export class ContractsService {
             confirmedAt: now,
           },
         });
+        // Persist delivery in the same transaction as the transition to
+        // WAITING_EMPLOYEE. For this kind recipientId contains the frozen
+        // employee code, so delivery does not depend on an LK projection.
+        await tx.signingContractNotification.create({
+          data: {
+            contractId: id,
+            recipientId: candidate.code1c,
+            kind: "sent",
+            message: "Вам направлен договор на подписание",
+          },
+        });
         await this.audit.logInTransaction(tx, {
           actorId: actor.uuid,
           action: "CONTRACT_SENT",
@@ -529,6 +545,7 @@ export class ContractsService {
       )
         throw error;
     }
+    this.notificationDelivery?.wake(id);
     return this.detail(id, actor);
   }
 
@@ -545,8 +562,10 @@ export class ContractsService {
       replay?.requestKey === requestKey &&
       replay.actorId === actor.uuid &&
       replay.bank === body.bank
-    )
+    ) {
+      this.notificationDelivery?.wake(id);
       return this.detail(id, actor, true);
+    }
     if (row.status !== "WAITING_EMPLOYEE" || row.revision !== body.revision)
       throw conflict();
     const file = this.version(row);
@@ -660,6 +679,7 @@ export class ContractsService {
       )
         throw error;
     }
+    this.notificationDelivery?.wake(id);
     return this.detail(id, actor, true);
   }
 
@@ -671,8 +691,10 @@ export class ContractsService {
   ) {
     const row = await this.record(id, actor, true);
     const requestKey = key(actor, body.requestId);
-    if (row.declineRequestKey === requestKey)
+    if (row.declineRequestKey === requestKey) {
+      this.notificationDelivery?.wake(id);
       return this.detail(id, actor, true);
+    }
     if (row.status !== "WAITING_EMPLOYEE" || row.revision !== body.revision)
       throw conflict();
     try {
@@ -719,16 +741,23 @@ export class ContractsService {
       });
       if (replay?.declineRequestKey !== requestKey) throw error;
     }
+    this.notificationDelivery?.wake(id);
     return this.detail(id, actor, true);
   }
 
-  async notifications(actor: Actor) {
-    const rows = await this.prisma.signingContractNotification.findMany({
-      where: { recipientId: actor.uuid, contract: this.scope(actor) },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    });
+  async notifications(actor: Actor, query: { limit?: number; offset?: number } = {}) {
+    const where = { recipientId: actor.uuid, kind: { not: "sent" }, deliveredAt: null, readAt: null, contract: this.scope(actor) };
+    const [rows, total] = await Promise.all([
+      this.prisma.signingContractNotification.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: query.limit ?? 30,
+        skip: query.offset ?? 0,
+      }),
+      this.prisma.signingContractNotification.count({ where }),
+    ]);
     return {
+      total,
       items: rows.map((row) => ({
         id: row.id,
         contractId: row.contractId,
@@ -738,8 +767,18 @@ export class ContractsService {
       })),
     };
   }
+  async readAllNotifications(actor: Actor) {
+    // Include delivered rows to cover a delivery racing with the LK read-all request.
+    // The delivery worker propagates local readAt to LK for those rows.
+    const updated = await this.prisma.signingContractNotification.updateMany({
+      where: { recipientId: actor.uuid, kind: { not: "sent" }, readAt: null, contract: this.scope(actor) },
+      data: { readAt: new Date() },
+    });
+    if (updated.count) this.notificationDelivery?.wake();
+    return { updated: updated.count };
+  }
   async readNotification(id: string, actor: Actor) {
-    const where = { id, recipientId: actor.uuid, contract: this.scope(actor) };
+    const where = { id, recipientId: actor.uuid, kind: { not: "sent" }, contract: this.scope(actor) };
     const updated = await this.prisma.signingContractNotification.updateMany({
       where: { ...where, readAt: null },
       data: { readAt: new Date() },
@@ -748,6 +787,7 @@ export class ContractsService {
       where,
     });
     if (!row) throw new NotFoundException("Уведомление не найдено");
+    if (updated.count) this.notificationDelivery?.wake(row.contractId);
     void updated;
     return {
       id: row.id,

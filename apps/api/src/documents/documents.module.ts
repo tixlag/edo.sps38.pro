@@ -48,12 +48,14 @@ import { CandidateCardCache } from "./candidate-card-cache";
 import { IgArrivalQueueService } from "./ig-arrival-queue.service";
 import { IgArrivalProjectionService } from "./ig-arrival-projection.service";
 import { IgArrivalSyncWorker } from "./ig-arrival-sync.worker";
+import { IgProfileEnrichmentService } from "./ig-profile-enrichment.service";
 import { IgEmploymentService } from "./ig-employment.service";
 import { OwnDocumentHistoryService } from "./own-document-history.service";
 import { OwnDocumentHistoryController } from "./own-document-history.controller";
+import { ExpirationModule } from "../expiration/expiration.module";
 
 @Module({
-  imports: [PrismaModule, AuditModule, StorageModule, OcrModule, RedisModule],
+  imports: [PrismaModule, AuditModule, StorageModule, OcrModule, RedisModule, ExpirationModule],
   controllers: [
     BrowserCandidateDocumentsController,
     MyCandidateDocumentsController,
@@ -70,6 +72,7 @@ import { OwnDocumentHistoryController } from "./own-document-history.controller"
     DocumentCatalogService,
     OwnDocumentHistoryService,
     IgEmploymentService,
+    IgProfileEnrichmentService,
   ],
   providers: [
     ErpWorkspaceClient,
@@ -80,6 +83,7 @@ import { OwnDocumentHistoryController } from "./own-document-history.controller"
     IgEmploymentService,
     IgArrivalProjectionService,
     IgArrivalSyncWorker,
+    IgProfileEnrichmentService,
     IgArrivalQueueService,
     OwnDocumentHistoryService,
     CandidateCardCache,

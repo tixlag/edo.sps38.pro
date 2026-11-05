@@ -32,7 +32,7 @@ describe("lk-client (compact, backend-only)", () => {
     expect(authHeader).toBe("Bearer svc-secret");
   });
 
-  it("pins the narrow EDO spec (6 paths only)", () => {
+  it("pins the narrow EDO spec (9 paths only)", () => {
     const spec = JSON.parse(
       readFileSync(join(here, "..", "openapi", "edo.json"), "utf8"),
     );
@@ -45,6 +45,9 @@ describe("lk-client (compact, backend-only)", () => {
         "/api/internal/edo/v1/employees",
         "/api/internal/edo/v1/locations",
         "/api/internal/edo/v1/positions",
+        "/api/internal/edo/v1/notifications",
+        "/api/internal/edo/v1/users/{userUuid}/notifications",
+        "/api/internal/edo/v1/users/{userUuid}/notifications/read",
       ].sort(),
     );
   });

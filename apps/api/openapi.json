@@ -7555,6 +7555,221 @@
         ]
       }
     },
+    "/api/v1/expirations/summary": {
+      "get": {
+        "operationId": "getExpirationsSummary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Сводка KPI по истекающим срокам",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpirationSummaryResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Получить сводку по истекающим срокам документов",
+        "tags": [
+          "expirations"
+        ]
+      }
+    },
+    "/api/v1/expirations/items": {
+      "get": {
+        "operationId": "getExpiringItems",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "threshold",
+            "required": false,
+            "in": "query",
+            "description": "Фильтр по порогу (дней)",
+            "schema": {
+              "type": "number",
+              "enum": [
+                30,
+                15,
+                7,
+                1,
+                0
+              ]
+            }
+          },
+          {
+            "name": "reviewGroup",
+            "required": false,
+            "in": "query",
+            "description": "Фильтр по группе проверки",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "RU",
+                "IG",
+                "ALL"
+              ]
+            }
+          },
+          {
+            "name": "managerCode1c",
+            "required": false,
+            "in": "query",
+            "description": "Фильтр по коду 1C менеджера",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Список документов с истекающим сроком действия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpirationItemsResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Получить список документов с истекающим сроком действия",
+        "tags": [
+          "expirations"
+        ]
+      }
+    },
+    "/api/v1/notifications/my": {
+      "get": {
+        "operationId": "getMyNotifications",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "all",
+              "type": "string",
+              "enum": [
+                "all",
+                "unread",
+                "read"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Список уведомлений с количеством непрочитанных",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Получить список уведомлений текущего пользователя из ЛК",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/read": {
+      "post": {
+        "operationId": "markNotificationsRead",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkNotificationsReadDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Количество отмеченных уведомлений",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkNotificationsReadResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Отметить уведомления текущего пользователя как прочитанные",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
     "/api/v1/annotations/preference": {
       "get": {
         "operationId": "getAnnotationPreference",
@@ -10720,7 +10935,29 @@
     "/api/contracts/notifications": {
       "get": {
         "operationId": "listSigningNotifications",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -10848,7 +11085,144 @@
             "access-jwt": []
           }
         ],
-        "summary": "Own contract notifications",
+        "summary": "Own unread pending contract notifications",
+        "tags": [
+          "signing-contracts"
+        ]
+      }
+    },
+    "/api/contracts/notifications/read-all": {
+      "post": {
+        "operationId": "readAllSigningNotifications",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractNotificationsReadAllDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractErrorDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractErrorDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractErrorDto"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Mark all own contract notifications read",
         "tags": [
           "signing-contracts"
         ]
@@ -18509,6 +18883,290 @@
           "reason"
         ]
       },
+      "ExpirationSummaryResponseDto": {
+        "type": "object",
+        "properties": {
+          "totalExpiring": {
+            "type": "number",
+            "description": "Общее число документов с истекающим сроком"
+          },
+          "warning30d": {
+            "type": "number",
+            "description": "Истекают в пределах 30 дней (предупреждение)"
+          },
+          "urgent15d": {
+            "type": "number",
+            "description": "Истекают в пределах 15 дней (внимание)"
+          },
+          "critical7d": {
+            "type": "number",
+            "description": "Истекают в пределах 7 дней (критично)"
+          },
+          "emergency1d": {
+            "type": "number",
+            "description": "Истекают в пределах 1 дня (экстренно)"
+          },
+          "expired": {
+            "type": "number",
+            "description": "Срок действия уже истёк"
+          }
+        },
+        "required": [
+          "totalExpiring",
+          "warning30d",
+          "urgent15d",
+          "critical7d",
+          "emergency1d",
+          "expired"
+        ]
+      },
+      "ExpirationItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Уникальный составной идентификатор элемента"
+          },
+          "sourceType": {
+            "type": "string",
+            "enum": [
+              "DOCUMENT",
+              "PREVIOUS_DOCUMENT"
+            ],
+            "description": "Тип источника"
+          },
+          "documentId": {
+            "type": "string",
+            "description": "ID документа или предыдущего документа"
+          },
+          "documentTitle": {
+            "type": "string",
+            "description": "Название документа"
+          },
+          "candidateId": {
+            "type": "string",
+            "nullable": true,
+            "description": "ID кандидата"
+          },
+          "candidateName": {
+            "type": "string",
+            "nullable": true,
+            "description": "ФИО кандидата"
+          },
+          "candidateCode1c": {
+            "type": "string",
+            "nullable": true,
+            "description": "Код 1C кандидата"
+          },
+          "managerCode1c": {
+            "type": "string",
+            "nullable": true,
+            "description": "Код 1C руководителя/менеджера"
+          },
+          "managerName": {
+            "type": "string",
+            "nullable": true,
+            "description": "ФИО руководителя/менеджера"
+          },
+          "reviewGroup": {
+            "type": "string",
+            "nullable": true,
+            "description": "Группа проверки (RU / IG)"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "Дата окончания срока (YYYY-MM-DD)"
+          },
+          "daysRemaining": {
+            "type": "number",
+            "description": "Осталось дней (отрицательное число = просрочен)"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "NORMAL",
+              "WARNING",
+              "URGENT",
+              "CRITICAL",
+              "EMERGENCY",
+              "EXPIRED"
+            ],
+            "description": "Уровень критичности"
+          },
+          "thresholdDays": {
+            "type": "number",
+            "nullable": true,
+            "description": "Сработавший порог алерта в днях (30, 15, 7, 1, 0)"
+          }
+        },
+        "required": [
+          "id",
+          "sourceType",
+          "documentId",
+          "documentTitle",
+          "candidateId",
+          "candidateName",
+          "candidateCode1c",
+          "managerCode1c",
+          "managerName",
+          "reviewGroup",
+          "expiresAt",
+          "daysRemaining",
+          "severity",
+          "thresholdDays"
+        ]
+      },
+      "ExpirationItemsResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Список документов с истекающим сроком",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExpirationItemDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "Общее количество записей под фильтром"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ]
+      },
+      "NotificationTargetDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Тип цели"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL перехода"
+          },
+          "meta": {
+            "type": "object",
+            "description": "Метаданные цели"
+          }
+        }
+      },
+      "NotificationItemDto": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "description": "UUID уведомления"
+          },
+          "title": {
+            "type": "string",
+            "description": "Заголовок"
+          },
+          "content": {
+            "type": "string",
+            "description": "Текст (поддерживает Markdown)"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "toast",
+              "modal"
+            ],
+            "description": "Тип отображения"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "Дата создания (ISO 8601)"
+          },
+          "readAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Дата прочтения (ISO 8601 или null)"
+          },
+          "authorName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Имя автора"
+          },
+          "authorAvatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL аватара автора"
+          },
+          "target": {
+            "nullable": true,
+            "description": "Целевое действие",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationTargetDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "uuid",
+          "title",
+          "content",
+          "type",
+          "createdAt",
+          "readAt"
+        ]
+      },
+      "NotificationsListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Список уведомлений",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationItemDto"
+            }
+          },
+          "unreadCount": {
+            "type": "number",
+            "description": "Количество непрочитанных уведомлений"
+          },
+          "total": {
+            "type": "number",
+            "description": "Общее количество уведомлений"
+          }
+        },
+        "required": [
+          "items",
+          "unreadCount",
+          "total"
+        ]
+      },
+      "MarkNotificationsReadDto": {
+        "type": "object",
+        "properties": {
+          "notificationUuids": {
+            "description": "Список UUID уведомлений для отметки прочитанными",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "all": {
+            "type": "boolean",
+            "description": "Отметить все уведомления пользователя прочитанными"
+          }
+        }
+      },
+      "MarkNotificationsReadResponseDto": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "number",
+            "description": "Количество обновлённых записей"
+          }
+        },
+        "required": [
+          "updated"
+        ]
+      },
       "AnnotationPreferenceDto": {
         "type": "object",
         "properties": {
@@ -19509,10 +20167,25 @@
             "items": {
               "$ref": "#/components/schemas/ContractNotificationDto"
             }
+          },
+          "total": {
+            "type": "number"
           }
         },
         "required": [
-          "items"
+          "items",
+          "total"
+        ]
+      },
+      "ContractNotificationsReadAllDto": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "updated"
         ]
       },
       "ContractState": {
