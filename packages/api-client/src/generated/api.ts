@@ -2609,6 +2609,7 @@ export type ListIgArrivalPeopleParams = {
   group: ListIgArrivalPeopleGroup;
   arrivalDate?: string;
   locationUid?: string;
+  status?: ListIgArrivalPeopleStatus;
 };
 
 export type ListIgArrivalPeopleGroup =
@@ -2618,6 +2619,19 @@ export type ListIgArrivalPeopleGroup =
 export const ListIgArrivalPeopleGroup = {
   assigned: "assigned",
   issues: "issues",
+} as const;
+
+export type ListIgArrivalPeopleStatus =
+  (typeof ListIgArrivalPeopleStatus)[keyof typeof ListIgArrivalPeopleStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalPeopleStatus = {
+  waitingDocuments: "waitingDocuments",
+  inReview: "inReview",
+  returned: "returned",
+  completed: "completed",
+  sending: "sending",
+  needsAttention: "needsAttention",
 } as const;
 
 export type ListCandidateReviewQueueParams = {

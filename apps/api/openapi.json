@@ -5590,6 +5590,22 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "waitingDocuments",
+                "inReview",
+                "returned",
+                "completed",
+                "sending",
+                "needsAttention"
+              ]
+            }
           }
         ],
         "responses": {

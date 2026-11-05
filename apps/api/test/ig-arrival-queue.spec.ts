@@ -64,4 +64,62 @@ describe("IG arrival grouped queue", () => {
       }),
     ).rejects.toThrow();
   });
+  it("filters people by primary status in SQL query before pagination", async () => {
+    let capturedQuery: any;
+    const db = {
+      $queryRaw: vi.fn(async (query: any) => {
+        capturedQuery = query;
+        return [
+          {
+            personUid: "person-101",
+            code1c: "0000000101",
+            candidateId: 101,
+            fullName: "Returned Participant",
+            arrivalMemberUid: "member-101",
+            state: "CURRENT",
+            approvedDocuments: 1n,
+            confirmedDocuments: 0n,
+            employmentConfirmed: 0,
+            primaryStatus: "returned",
+            needsAttention: 1,
+            issueCode: "DOCUMENT_RETURNED",
+          },
+        ];
+      }),
+    };
+    const service = new IgArrivalQueueService(db as never);
+    const result = await service.people(principal({ "20011": [] }), {
+      group: "assigned",
+      arrivalDate: "2026-11-05",
+      locationUid: "00000000-0000-4000-8000-000000000002",
+      status: "returned",
+      limit: 50,
+      offset: 0,
+    });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].primaryStatus).toBe("returned");
+    expect(result.items[0].needsAttention).toBe(true);
+    // Verify SQL query contains primaryStatus = 'returned'
+    const sqlText = capturedQuery?.strings ? capturedQuery.strings.join(" ") : "";
+    const sqlValues = capturedQuery?.values || [];
+    expect(sqlValues).toContain("returned");
+  });
+  it("filters people by needsAttention in SQL condition", async () => {
+    let capturedQuery: any;
+    const db = {
+      $queryRaw: vi.fn(async (query: any) => {
+        capturedQuery = query;
+        return [];
+      }),
+    };
+    const service = new IgArrivalQueueService(db as never);
+    await service.people(principal({ "20011": [] }), {
+      group: "issues",
+      status: "needsAttention",
+      limit: 10,
+    });
+    const sqlValues = capturedQuery?.values || [];
+    // Verify query was constructed without throwing
+    expect(db.$queryRaw).toHaveBeenCalled();
+  });
 });

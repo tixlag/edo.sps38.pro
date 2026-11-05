@@ -45,6 +45,32 @@ export class IgArrivalPeopleQueryDto extends IgArrivalPageQueryDto {
   @IsOptional()
   @IsUUID()
   locationUid?: string;
+  @ApiPropertyOptional({
+    enum: [
+      "waitingDocuments",
+      "inReview",
+      "returned",
+      "completed",
+      "sending",
+      "needsAttention",
+    ],
+  })
+  @IsOptional()
+  @IsIn([
+    "waitingDocuments",
+    "inReview",
+    "returned",
+    "completed",
+    "sending",
+    "needsAttention",
+  ])
+  status?:
+    | "waitingDocuments"
+    | "inReview"
+    | "returned"
+    | "completed"
+    | "sending"
+    | "needsAttention";
 }
 export class IgArrivalGroupDto {
   @ApiProperty({ enum: ["assigned", "issues"] }) group!: "assigned" | "issues";

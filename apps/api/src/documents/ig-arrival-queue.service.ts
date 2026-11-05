@@ -151,6 +151,12 @@ export class IgArrivalQueueService {
       q.group === "issues"
         ? Prisma.sql`AND ${issue}`
         : Prisma.sql`AND NOT ${issue} AND m.arrivalDate = ${q.arrivalDate} AND m.locationUid = ${q.locationUid}`;
+    const statusCondition =
+      q.status === "needsAttention"
+        ? Prisma.sql`AND (${problem})`
+        : q.status
+          ? Prisma.sql`AND (${primaryStatus} = ${q.status})`
+          : Prisma.empty;
     const rows = await this.prisma.$queryRaw<PersonRow[]>(Prisma.sql`
    SELECT p.personUid, p.code1c, p.candidateId, COALESCE(m.fullName, c.fullName) AS fullName, p.currentMemberUid AS arrivalMemberUid, p.state,
     (SELECT COUNT(*) FROM documents d WHERE d.candidateId = p.candidateId AND d.status IN ('APPROVED','SIGNED')) AS approvedDocuments,
@@ -159,7 +165,7 @@ export class IgArrivalQueueService {
     ${primaryStatus} AS primaryStatus, CASE WHEN ${problem} THEN 1 ELSE 0 END AS needsAttention,
     CASE WHEN p.state = 'CONFLICT' THEN 'ARRIVAL_SOURCE_CONFLICT' WHEN p.bindingError IS NOT NULL THEN p.bindingError WHEN ${sourceIssue} THEN (SELECT i.code FROM ig_arrival_issues i WHERE i.personHash = SHA2(p.personUid, 256) AND i.active = 1 ORDER BY i.updatedAt DESC LIMIT 1) WHEN m.arrivalDate IS NULL OR m.locationUid IS NULL THEN 'ARRIVAL_GROUP_UNASSIGNED' WHEN c.igRequirementsConflict = 1 THEN 'ERP_IG_REQUIREMENTS_CONFLICT' WHEN ${returned} THEN 'DOCUMENT_RETURNED' WHEN ${deliveryProblem} THEN 'ERP_DELIVERY_NEEDS_ATTENTION' ELSE p.syncError END AS issueCode
    FROM ig_arrival_persons p LEFT JOIN ig_arrival_members m ON m.arrivalMemberUid = p.currentMemberUid LEFT JOIN candidates c ON c.id = p.candidateId
-   WHERE p.igVerified = 1 AND p.state IN ('CURRENT','CONFLICT') ${groupFilter} ${filter(q)}
+   WHERE p.igVerified = 1 AND p.state IN ('CURRENT','CONFLICT') ${groupFilter} ${filter(q)} ${statusCondition}
    ORDER BY COALESCE(m.fullName, c.fullName, ''), p.personUid LIMIT ${limit + 1} OFFSET ${offset}`);
     return {
       items: rows.slice(0, limit).map((r) => ({

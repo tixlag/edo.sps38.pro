@@ -98,6 +98,7 @@ export function IgArrivalReviewQueue({
     group: (selectedGroup?.group ?? "assigned") as "assigned" | "issues",
     arrivalDate: selectedGroup?.arrivalDate ?? undefined,
     locationUid: selectedGroup?.locationUid ?? undefined,
+    status: statusFilter === "ALL" ? undefined : (statusFilter as any),
     q: peopleSearch.trim() || undefined,
     limit: PEOPLE_PAGE_SIZE,
     offset: peopleOffset,
@@ -131,15 +132,8 @@ export function IgArrivalReviewQueue({
     return Array.from(map.entries());
   }, [assignedGroups]);
 
-  // Filtered people
-  const rawPeople = peopleQuery.data?.items ?? [];
-  const filteredPeople = useMemo(() => {
-    if (statusFilter === "ALL") return rawPeople;
-    if (statusFilter === "needsAttention") {
-      return rawPeople.filter((p) => p.needsAttention || p.state === "CONFLICT");
-    }
-    return rawPeople.filter((p) => p.primaryStatus === statusFilter);
-  }, [rawPeople, statusFilter]);
+  // People returned from server (already filtered by status on backend)
+  const filteredPeople = peopleQuery.data?.items ?? [];
 
   if (!hasIgAccess) {
     return (
@@ -252,7 +246,10 @@ export function IgArrivalReviewQueue({
                 key={tab.id}
                 size="sm"
                 variant={statusFilter === tab.id ? "default" : "outline"}
-                onClick={() => setStatusFilter(tab.id)}
+                onClick={() => {
+                  setStatusFilter(tab.id);
+                  setPeopleOffset(0);
+                }}
                 className="text-xs"
               >
                 {tab.label}
@@ -310,6 +307,7 @@ export function IgArrivalReviewQueue({
                     onClick={() => {
                       setPeopleSearch("");
                       setStatusFilter("ALL");
+                      setPeopleOffset(0);
                     }}
                   >
                     Сбросить фильтры
