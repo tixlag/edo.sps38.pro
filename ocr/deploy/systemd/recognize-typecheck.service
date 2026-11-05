@@ -1,0 +1,21 @@
+[Unit]
+Description=EDO Xiaomi document text reader
+After=network.target
+ConditionPathExists=/opt/edo.sps38.pro/ocr/services/typecheck/.venv/bin/python
+
+[Service]
+Type=simple
+User=ocr
+Group=ocr
+WorkingDirectory=/opt/edo.sps38.pro/ocr
+ExecStart=/bin/bash /opt/edo.sps38.pro/ocr/scripts/run_typecheck.sh
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=15
+Environment=PYTHONUNBUFFERED=1
+Environment=HF_HUB_OFFLINE=1
+Environment=TRANSFORMERS_OFFLINE=1
+Environment=TOKENIZERS_PARALLELISM=false
+
+[Install]
+WantedBy=multi-user.target

@@ -15,7 +15,7 @@ export function documentCheckEnabled(config?: {
 }
 
 const checkBase = z.object({
-  policy_version: z.enum(["document-check-v1", "document-check-v2"]),
+  policy_version: z.enum(["document-check-v1", "document-check-v2", "document-check-v3"]),
   model: z.literal("google/siglip2-base-patch16-224"),
   model_revision: z.literal("75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2"),
   elapsed_ms: z.number().finite().nonnegative(),
@@ -45,7 +45,11 @@ const checkBase = z.object({
   detected_title: z.string().max(512).nullable().optional(),
   type_verdict: z.enum(["MATCH", "MISMATCH", "UNCERTAIN"]).optional(),
   rejection_reason: z.string().max(1024).nullable().optional(),
-  source: z.enum(["GLM", "PADDLE_RULES"]).nullable().optional(),
+  source: z.enum(["GLM", "PADDLE_RULES", "XIAOMI_RULES"]).nullable().optional(),
+  type_model: z.string().max(128).nullable().optional(),
+  type_model_revision: z.string().max(128).nullable().optional(),
+  type_reason: z.string().max(64).nullable().optional(),
+  type_rules_version: z.string().max(64).nullable().optional(),
   type_pages: z
     .array(
       z.object({
@@ -53,7 +57,10 @@ const checkBase = z.object({
         page_number: z.number().int().positive(),
         verdict: z.enum(["MATCH", "MISMATCH", "UNCERTAIN"]),
         detected_code: z.string().max(128).nullable(),
-        source: z.enum(["GLM", "PADDLE_RULES"]).nullable(),
+        source: z.enum(["GLM", "PADDLE_RULES", "XIAOMI_RULES"]).nullable(),
+        reason: z.string().max(64).nullable().optional(),
+        matched_phrases: z.array(z.string().min(1).max(256)).max(8).optional(),
+        elapsed_ms: z.number().finite().nonnegative().optional(),
       }),
     )
     .max(100)
@@ -73,7 +80,7 @@ export function validateDocumentCheck(
 ): CheckResponse {
   const result = checkResponse.parse(input);
   if (
-    result.policy_version === "document-check-v2" &&
+    result.policy_version !== "document-check-v1" &&
     (!expectedCode ||
       result.expected_code !== expectedCode ||
       !result.type_verdict ||
@@ -101,7 +108,7 @@ export function validateDocumentCheck(
     }
     seen.add(key);
   }
-  if (result.policy_version === "document-check-v2") {
+  if (result.policy_version !== "document-check-v1") {
     const typeSeen = new Set<string>();
     for (const page of result.type_pages ?? []) {
       const key = `${page.file_index}:${page.page_number}`;
@@ -110,7 +117,55 @@ export function validateDocumentCheck(
       typeSeen.add(key);
     }
   }
+  if (result.policy_version === "document-check-v3") validateXiaomiCheck(result);
+  else if (result.source === "XIAOMI_RULES" || result.type_pages?.some(page => page.source === "XIAOMI_RULES"))
+    throw new Error("DOCUMENT_CHECK_INVALID");
   return result;
+}
+
+function validateXiaomiCheck(result: CheckResponse): void {
+  const invalid = () => { throw new Error("DOCUMENT_CHECK_INVALID"); };
+  if (
+    result.type_model !== "xiaomi-research/Xiaomi-OCR-0" ||
+    result.type_model_revision !== "bbd8cf8d21f256b3644b44cb860f3a7cecb93c30" ||
+    result.type_rules_version !== "document-type-rules-v2" ||
+    result.type_reason === undefined ||
+    (result.source !== null && result.source !== "XIAOMI_RULES")
+  ) invalid();
+  for (const page of result.type_pages ?? []) {
+    if (page.reason === undefined || !page.matched_phrases ||
+        (page.source !== null && page.source !== "XIAOMI_RULES")) invalid();
+    if (page.verdict !== "UNCERTAIN" && (
+      page.source !== "XIAOMI_RULES" || page.reason !== null ||
+      !page.detected_code || !isKnownDocumentType(page.detected_code) ||
+      !hasIndependentEvidence(page.matched_phrases ?? []) ||
+      (page.verdict === "MATCH") !== (page.detected_code === result.expected_canonical_code)
+    )) invalid();
+  }
+  const pages = result.type_pages ?? [];
+  const matches = pages.filter(page => page.verdict === "MATCH");
+  const mismatches = pages.filter(page => page.verdict === "MISMATCH");
+  if (result.type_verdict !== "UNCERTAIN" && (
+    result.type_reason !== null || result.source !== "XIAOMI_RULES" ||
+    !result.expected_code ||
+    result.expected_canonical_code !== canonicalDocumentType(result.expected_code) ||
+    !isKnownDocumentType(result.expected_canonical_code ?? "") ||
+    (result.type_verdict === "MATCH" && (!matches.length || mismatches.length > 0 ||
+      result.detected_code !== result.expected_canonical_code)) ||
+    (result.type_verdict === "MISMATCH" && (mismatches.length !== pages.length ||
+      mismatches.some(page => page.detected_code !== result.detected_code)))
+  )) invalid();
+}
+
+function hasIndependentEvidence(phrases: string[]): boolean {
+  const normalized = [...new Set(phrases.map(phrase => phrase.normalize("NFKC")
+    .toLowerCase().replace(/ё/g, "е").replace(/[^\p{L}\p{N}_]+/gu, " ").trim()))]
+    .filter(Boolean).sort((a, b) => b.length - a.length);
+  const independent: string[] = [];
+  for (const phrase of normalized) {
+    if (!independent.some(other => ` ${other} `.includes(` ${phrase} `))) independent.push(phrase);
+  }
+  return independent.length >= 2;
 }
 
 export async function checkDocumentPresence(
@@ -191,7 +246,7 @@ export function typeMismatchResult(
   if (check.status !== "COMPLETED") return null;
   const result = check.result;
   if (
-    result.policy_version !== "document-check-v2" ||
+    !["document-check-v2", "document-check-v3"].includes(result.policy_version) ||
     result.type_verdict !== "MISMATCH" ||
     !result.expected_title ||
     !result.detected_title ||
@@ -209,7 +264,7 @@ export function typeMismatchResult(
         page.verdict !== "MISMATCH" ||
         page.detected_code !== result.detected_code ||
         !page.source ||
-        !["GLM", "PADDLE_RULES"].includes(page.source),
+        !["GLM", "PADDLE_RULES", "XIAOMI_RULES"].includes(page.source),
     )
   )
     return null;

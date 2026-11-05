@@ -314,7 +314,7 @@ export class ExternalOcrService extends OcrService {
     if (mismatch) return mismatch;
     if (
       documentCheck.status === "COMPLETED" &&
-      documentCheck.result.policy_version === "document-check-v2" &&
+      documentCheck.result.policy_version !== "document-check-v1" &&
       documentCheck.result.type_verdict !== "MATCH"
     )
       return {
@@ -324,8 +324,9 @@ export class ExternalOcrService extends OcrService {
         issues: [
           {
             code: "DOCUMENT_TYPE_MISMATCH",
-            message:
-              "Не удалось уверенно определить тип документа. Проверьте его вручную.",
+            message: documentCheck.result.type_reason === "MIXED_DOCUMENT_TYPES"
+              ? "В пакете обнаружены разные типы документов. Проверьте все страницы вручную."
+              : "Не удалось уверенно определить тип документа. Проверьте его вручную.",
             fileOrdinal: null,
             pageNumber: null,
           },

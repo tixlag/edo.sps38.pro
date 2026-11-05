@@ -56,11 +56,17 @@ class DocumentTypeMatcher:
     def __init__(self, rules_path: Path | None = None):
         path = rules_path or ROOT / 'contracts/document-type-rules.json'
         data = json.loads(path.read_text(encoding='utf-8'))
+        additions = {}
+        if data.get('version') == 'document-type-rules-v2' and data.get('extends') == 'document-type-rules.json':
+            additions = data['supporting_markers']
+            data = json.loads((path.parent / data['extends']).read_text(encoding='utf-8'))
         if data.get('version') != 'document-type-rules-v1':
             raise ValueError('Unsupported document type rules version')
         self.rules = {rule['code']: rule for rule in data['rules']}
         if len(self.rules) != len(data['rules']):
             raise ValueError('Duplicate document type code')
+        for code, phrases in additions.items():
+            self.rules[code]['supporting_markers'].extend(phrases)
 
     def evaluate_text(self, text: str, expected_code: str) -> dict:
         result = {'verdict': 'UNCERTAIN', 'detected_code': None,
@@ -77,6 +83,8 @@ class DocumentTypeMatcher:
                 hits[code] = phrases
         # A document may mention other documents. Contradictory evidence needs review.
         if len(hits) != 1:
+            if len(hits) > 1:
+                result['reason'] = 'MIXED_DOCUMENT_TYPES'
             return result
         code, phrases = next(iter(hits.items()))
         result.update(detected_code=code, matched_phrases=phrases)
@@ -86,9 +94,11 @@ class DocumentTypeMatcher:
         for phrase in normalized_phrases:
             if not any(' ' + phrase + ' ' in ' ' + other + ' ' for other in independent):
                 independent.append(phrase)
-        corroborated = any(' ' + normalize(p) + ' ' in normalized
-                           for p in self.rules[code].get('supporting_markers', [])
-                           if normalize(p) and not any(normalize(p) in anchor for anchor in independent))
+        supporting = [p for p in self.rules[code].get('supporting_markers', [])
+                      if normalize(p) and ' ' + normalize(p) + ' ' in normalized
+                      and not any(normalize(p) in anchor for anchor in independent)]
+        corroborated = bool(supporting)
         if len(independent) >= 2 or corroborated:
             result['verdict'] = 'MATCH' if code == expected_code else 'MISMATCH'
+            result['matched_phrases'] = phrases + supporting
         return result

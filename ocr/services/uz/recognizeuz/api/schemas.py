@@ -25,7 +25,11 @@ class DocumentCheckResponse(BaseModel):
     detected_title: str | None = None
     type_verdict: Literal['MATCH', 'MISMATCH', 'UNCERTAIN'] | None = None
     rejection_reason: str | None = None
-    source: Literal['GLM', 'PADDLE_RULES'] | None = None
+    source: Literal['GLM', 'PADDLE_RULES', 'XIAOMI_RULES'] | None = None
+    type_model: str | None = None
+    type_model_revision: str | None = None
+    type_reason: str | None = None
+    type_rules_version: str | None = None
     type_pages: list[dict] | None = None
 
 class Base64InputItem(BaseModel):

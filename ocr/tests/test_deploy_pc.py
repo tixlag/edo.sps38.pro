@@ -50,6 +50,27 @@ class DeploymentTests(unittest.TestCase):
             self.module.prepare_classifier(self.old, self.root / 'shared')
         run.assert_not_called()
 
+    def test_legacy_provider_does_not_prepare_an_extra_gpu_runtime(self):
+        with patch.object(self.module, 'run') as run:
+            self.assertIsNone(self.module.prepare_typecheck(self.old, self.root / 'shared'))
+        run.assert_not_called()
+
+    def test_invalid_provider_fails_before_switching_current(self):
+        config = self.root / 'shared/config'
+        config.mkdir(parents=True)
+        (config / 'uz.env').write_text('DOCUMENT_TYPE_PROVIDER=unknown\n')
+        with self.assertRaisesRegex(ValueError, 'DOCUMENT_TYPE_PROVIDER'):
+            self.module.prepare_typecheck(self.new, self.root / 'shared')
+        self.assertEqual((self.root / 'current').resolve(), self.old)
+
+    def test_enabled_provider_requires_support_in_the_release(self):
+        config = self.root / 'shared/config'
+        config.mkdir(parents=True)
+        (config / 'uz.env').write_text('DOCUMENT_TYPE_PROVIDER=shadow\n')
+        with self.assertRaisesRegex(ValueError, 'does not support Xiaomi'):
+            self.module.prepare_typecheck(self.old, self.root / 'shared')
+        self.assertEqual((self.root / 'current').resolve(), self.old)
+
     def test_failed_health_restores_previous_release_and_propagates_failure(self):
         def health():
             if (self.root / 'current').resolve() == self.new:

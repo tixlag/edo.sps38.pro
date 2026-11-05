@@ -6,6 +6,7 @@
 /models/*
 !/models/manifest.json
 !/models/public-manifest.json
+!/models/xiaomi-manifest.json
 !/models/README.md
 /vendor/
 /var/
