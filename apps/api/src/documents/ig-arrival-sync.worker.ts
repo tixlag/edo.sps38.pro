@@ -63,7 +63,8 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
     return this.running;
   }
   private async run(): Promise<void> {
-    const deadline = Date.now() + 300_000;
+    const totalDeadline = Date.now() + 300_000;
+    const erpDeadline = totalDeadline - 30_000;
     const lease = await this.acquireLease();
     if (!lease) {
       this.logger.debug(
@@ -73,12 +74,10 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      await this.deliverPending(deadline);
-
       let cursor: string | undefined = lease.cursor?.trim() || undefined;
       const seen = new Set<string>();
       for (let pageNo = 0; pageNo < 100; pageNo++) {
-        if (Date.now() >= deadline) {
+        if (Date.now() >= erpDeadline) {
           await this.saveSyncState(lease, cursor ?? null);
           return;
         }
@@ -104,7 +103,7 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
           ),
         );
         for (const raw of page.items) {
-          if (Date.now() >= deadline) {
+          if (Date.now() >= erpDeadline) {
             await this.saveSyncState(lease, cursor ?? null);
             return;
           }
@@ -186,7 +185,7 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
       throw error;
     } finally {
       try {
-        await this.deliverPending(deadline);
+        await this.deliverPending(totalDeadline);
       } catch (e) {
         this.logger.warn(
           `Failed final deliverPending: ${e instanceof Error ? e.message : String(e)}`,
@@ -355,9 +354,9 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
     });
   }
   private async deliverPending(deadline: number): Promise<void> {
-    const endpoint = this.config.get<string>("EDO_ARRIVAL_CONTEXTS_URL"),
-      token = this.config.get<string>("EDO_ADAPTATION_SYNC_TOKEN");
-    if (!endpoint || !token) throw new Error("ARRIVAL_SYNC_NOT_CONFIGURED");
+    const endpoint = this.config.get<string>("EDO_ARRIVAL_CONTEXTS_URL")?.trim(),
+      token = this.config.get<string>("EDO_ADAPTATION_SYNC_TOKEN")?.trim();
+    if (!endpoint || !token) return;
     let url: URL;
     try {
       url = new URL(endpoint);
@@ -373,9 +372,12 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
             this.config.get("NODE_ENV") !== "production"
           ))
       )
-        throw new Error();
-    } catch {
-      throw new Error("ARRIVAL_SYNC_URL_INVALID");
+        throw new Error("ARRIVAL_SYNC_URL_INVALID");
+    } catch (err) {
+      this.logger.warn(
+        `Arrival context endpoint invalid: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
     }
     const rows = await this.prisma.igArrivalPerson.findMany({
       where: {
@@ -404,22 +406,44 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
           item.personUid !== row.personUid
         )
           throw new Error("ARRIVAL_PAYLOAD_MISMATCH");
-        const response = await fetch(url, {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify(item),
-          signal: AbortSignal.timeout(
-            Math.max(1, Math.min(15_000, deadline - Date.now())),
-          ),
-          redirect: "error",
-        });
+        let response: Response;
+        try {
+          response = await fetch(url, {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify(item),
+            signal: AbortSignal.timeout(
+              Math.max(1, Math.min(10_000, deadline - Date.now())),
+            ),
+            redirect: "error",
+          });
+        } catch (fetchErr) {
+          await this.prisma.igArrivalPerson.updateMany({
+            where,
+            data: { syncError: "ARRIVAL_SURVEYS_UNCONFIRMED" },
+          });
+          this.logger.warn(
+            `Surveys service unreachable during arrival context delivery: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`,
+          );
+          break;
+        }
         if (!response.ok || !response.body) {
           await response.body?.cancel();
-          throw new Error("ARRIVAL_SURVEYS_UNAVAILABLE");
+          await this.prisma.igArrivalPerson.updateMany({
+            where,
+            data: { syncError: "ARRIVAL_SURVEYS_UNCONFIRMED" },
+          });
+          this.logger.warn(
+            `Surveys service returned HTTP ${response.status} during arrival context delivery`,
+          );
+          if (response.status >= 500) {
+            break;
+          }
+          continue;
         }
         const reader = response.body.getReader();
         let length = 0;
@@ -458,11 +482,14 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
             syncError: null,
           },
         });
-      } catch {
+      } catch (err) {
         await this.prisma.igArrivalPerson.updateMany({
           where,
           data: { syncError: "ARRIVAL_SURVEYS_UNCONFIRMED" },
         });
+        this.logger.warn(
+          `Failed to confirm arrival context for ${row.personUid}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
   }

@@ -23,11 +23,23 @@ describe("optional communications configuration", () => {
     expect(validateEnv(required).EDO_ARRIVAL_SYNC_ENABLED).toBe("false");
     expect(() =>
       validateEnv({ ...required, EDO_ARRIVAL_SYNC_ENABLED: "true" }),
-    ).toThrow("EDO_ARRIVAL_CONTEXTS_URL");
-    const enabled = {
+    ).toThrow("ERP_COMMUNICATIONS_URL");
+    const standalone = {
       ...required,
       EDO_ARRIVAL_SYNC_ENABLED: "true",
       ERP_COMMUNICATIONS_URL: "https://erp.example.test/api",
+    };
+    expect(validateEnv(standalone).EDO_ARRIVAL_SYNC_ENABLED).toBe("true");
+    expect(validateEnv(standalone).EDO_ARRIVAL_CONTEXTS_URL).toBeUndefined();
+    expect(() =>
+      validateEnv({
+        ...standalone,
+        EDO_ARRIVAL_CONTEXTS_URL:
+          "http://localhost/surveys-service/api/internal/edo/arrival-contexts",
+      }),
+    ).toThrow("EDO_ADAPTATION_SYNC_TOKEN");
+    const enabled = {
+      ...standalone,
       EDO_ARRIVAL_CONTEXTS_URL:
         "http://localhost/surveys-service/api/internal/edo/arrival-contexts",
       EDO_ADAPTATION_SYNC_TOKEN: "test",

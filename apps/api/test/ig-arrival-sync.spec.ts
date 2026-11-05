@@ -20,7 +20,7 @@ const value = {
     },
   ],
 };
-function fixture() {
+function fixture(customConfig?: Record<string, string | undefined>) {
   const erp = {
     arrivalPage: vi.fn(async () => ({ items: [value], nextCursor: null })),
   };
@@ -142,14 +142,17 @@ function fixture() {
   );
   Object.assign(prisma, { $transaction: transaction });
   const config = {
-    get: (key: string) =>
-      ({
+    get: (key: string) => {
+      const merged: Record<string, string | undefined> = {
         EDO_ARRIVAL_SYNC_ENABLED: "true",
         EDO_ARRIVAL_CONTEXTS_URL:
           "http://127.0.0.1:1/surveys-service/api/internal/edo/arrival-contexts",
         EDO_ADAPTATION_SYNC_TOKEN: "test",
         NODE_ENV: "test",
-      })[key],
+        ...customConfig,
+      };
+      return merged[key];
+    },
   };
   const audit = { logInTransaction: vi.fn(async () => undefined) };
   const worker = new IgArrivalSyncWorker(
@@ -534,5 +537,132 @@ describe("IG arrival synchronization", () => {
     await worker.sync();
     expect(getSyncState()?.cursor).toBe("cursor-stolen");
     expect(getSyncState()?.generation).toBe(3n);
+  });
+
+  describe("FIX-07: surveys decoupling", () => {
+    it("imports arrivals from ERP when surveys is completely unconfigured", async () => {
+      const { erp, projection, worker, prisma } = fixture({
+        EDO_ARRIVAL_CONTEXTS_URL: undefined,
+        EDO_ADAPTATION_SYNC_TOKEN: undefined,
+      });
+
+      await expect(worker.sync()).resolves.toBeUndefined();
+      expect(erp.arrivalPage).toHaveBeenCalledTimes(1);
+      expect(projection.apply).toHaveBeenCalledWith(value);
+      // No surveys fetch attempt made, no rows updated by delivery
+      expect(prisma.igArrivalPerson.findMany).not.toHaveBeenCalled();
+    });
+
+    it("continues importing from ERP when surveys delivery encounters network error", async () => {
+      const { erp, projection, worker, prisma } = fixture();
+      prisma.igArrivalPerson.findMany.mockResolvedValueOnce([
+        { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value },
+      ] as never);
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          throw new Error("Connection refused (ECONNREFUSED)");
+        }),
+      );
+
+      try {
+        await expect(worker.sync()).resolves.toBeUndefined();
+        expect(erp.arrivalPage).toHaveBeenCalledTimes(1);
+        expect(projection.apply).toHaveBeenCalledWith(value);
+        expect(prisma.igArrivalPerson.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({ personUid, revision: 1n }),
+            data: { syncError: "ARRIVAL_SURVEYS_UNCONFIRMED" },
+          }),
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("breaks delivery loop without blocking ERP import when surveys returns HTTP 500", async () => {
+      const { erp, projection, worker, prisma } = fixture();
+      prisma.igArrivalPerson.findMany.mockResolvedValueOnce([
+        { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value },
+        {
+          personUid: "00000000-0000-4000-8000-000000000099",
+          revision: 1n,
+          sourceHash: "hash2",
+          sourcePayload: { ...value, personUid: "00000000-0000-4000-8000-000000000099" },
+        },
+      ] as never);
+
+      const fetchMock = vi.fn(
+        async () => new Response("Internal Server Error", { status: 500 }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      try {
+        await expect(worker.sync()).resolves.toBeUndefined();
+        expect(erp.arrivalPage).toHaveBeenCalledTimes(1);
+        expect(projection.apply).toHaveBeenCalledWith(value);
+        // Only 1 attempt made before breaking out of the delivery loop on 500
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(prisma.igArrivalPerson.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({ personUid, revision: 1n }),
+            data: { syncError: "ARRIVAL_SURVEYS_UNCONFIRMED" },
+          }),
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("clears syncError and marks syncPending false once surveys recovers", async () => {
+      const { worker, prisma } = fixture();
+      prisma.igArrivalPerson.findMany.mockResolvedValueOnce([
+        { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value },
+      ] as never);
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                personUid,
+                revision: 1,
+                state: "CURRENT",
+                currentArrivalMemberUid: memberUid,
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+        ),
+      );
+
+      try {
+        await worker.sync();
+        expect(prisma.igArrivalPerson.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({ personUid, revision: 1n }),
+            data: {
+              syncPending: false,
+              syncedRevision: 1n,
+              syncError: null,
+            },
+          }),
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("safely skips delivery and completes ERP sync if surveys URL is invalid", async () => {
+      const { erp, projection, worker, prisma } = fixture({
+        EDO_ARRIVAL_CONTEXTS_URL: "http://example.test/invalid/path",
+      });
+
+      await expect(worker.sync()).resolves.toBeUndefined();
+      expect(erp.arrivalPage).toHaveBeenCalledTimes(1);
+      expect(projection.apply).toHaveBeenCalledWith(value);
+      expect(prisma.igArrivalPerson.findMany).not.toHaveBeenCalled();
+    });
   });
 });

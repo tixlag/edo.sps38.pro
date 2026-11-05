@@ -83,11 +83,14 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
   if (parsed.EDO_ADAPTATION_SYNC_ENABLED === 'true' && (!parsed.EDO_ADAPTATION_EVENTS_URL || !parsed.EDO_ADAPTATION_SYNC_TOKEN?.trim())) {
     throw new Error('EDO_ADAPTATION_EVENTS_URL and EDO_ADAPTATION_SYNC_TOKEN are required when EDO_ADAPTATION_SYNC_ENABLED=true');
   }
-  if (parsed.EDO_ARRIVAL_SYNC_ENABLED === 'true' && (!parsed.EDO_ARRIVAL_CONTEXTS_URL || !parsed.EDO_ADAPTATION_SYNC_TOKEN?.trim() || !parsed.ERP_COMMUNICATIONS_URL)) {
-    throw new Error('EDO_ARRIVAL_CONTEXTS_URL, EDO_ADAPTATION_SYNC_TOKEN and ERP_COMMUNICATIONS_URL are required when EDO_ARRIVAL_SYNC_ENABLED=true');
+  if (parsed.EDO_ARRIVAL_SYNC_ENABLED === 'true' && !parsed.ERP_COMMUNICATIONS_URL) {
+    throw new Error('ERP_COMMUNICATIONS_URL is required when EDO_ARRIVAL_SYNC_ENABLED=true');
   }
-  if (parsed.EDO_ARRIVAL_SYNC_ENABLED === 'true') {
-    const url = new URL(parsed.EDO_ARRIVAL_CONTEXTS_URL!);
+  if (parsed.EDO_ARRIVAL_CONTEXTS_URL) {
+    if (!parsed.EDO_ADAPTATION_SYNC_TOKEN?.trim()) {
+      throw new Error('EDO_ADAPTATION_SYNC_TOKEN is required when EDO_ARRIVAL_CONTEXTS_URL is configured');
+    }
+    const url = new URL(parsed.EDO_ARRIVAL_CONTEXTS_URL);
     if (url.username || url.password || url.search || url.hash || url.pathname !== '/surveys-service/api/internal/edo/arrival-contexts' || (url.protocol !== 'https:' && !(url.protocol === 'http:' && parsed.NODE_ENV !== 'production'))) {
       throw new Error('EDO_ARRIVAL_CONTEXTS_URL must be the approved Surveys endpoint over HTTPS in production');
     }

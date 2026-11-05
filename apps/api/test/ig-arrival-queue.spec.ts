@@ -122,4 +122,42 @@ describe("IG arrival grouped queue", () => {
     // Verify query was constructed without throwing
     expect(db.$queryRaw).toHaveBeenCalled();
   });
+  it("does not flag candidate with needsAttention or issueCode for technical surveys errors", async () => {
+    let capturedQuery: any;
+    const db = {
+      $queryRaw: vi.fn(async (query: any) => {
+        capturedQuery = query;
+        return [
+          {
+            personUid: "person-ok",
+            code1c: "0000000201",
+            candidateId: "cand-201",
+            fullName: "Valid Participant",
+            arrivalMemberUid: "member-201",
+            state: "CURRENT",
+            approvedDocuments: 0n,
+            confirmedDocuments: 0n,
+            employmentConfirmed: 0,
+            primaryStatus: "waitingDocuments",
+            needsAttention: 0,
+            issueCode: null,
+          },
+        ];
+      }),
+    };
+    const service = new IgArrivalQueueService(db as never);
+    const result = await service.people(principal({ "20011": [] }), {
+      group: "assigned",
+      arrivalDate: "2026-11-05",
+      locationUid: "00000000-0000-4000-8000-000000000002",
+      limit: 10,
+    });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].needsAttention).toBe(false);
+    expect(result.items[0].issueCode).toBeNull();
+
+    // Verify SQL query does not contain p.syncError in problem definition
+    const sqlText = capturedQuery?.strings ? capturedQuery.strings.join(" ") : "";
+    expect(sqlText).not.toContain("p.syncError");
+  });
 });
