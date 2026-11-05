@@ -53,3 +53,17 @@ class PublicModelsTests(unittest.TestCase):
         with patch.object(public_models.time, 'sleep'), self.assertRaises(OSError):
             public_models.install(self.manifest, self.models, lambda *a, **kw: (_ for _ in ()).throw(OSError('offline')))
         self.assertFalse((self.models / 'document-check' / self.revision).exists())
+
+    def test_xiaomi_is_isolated_from_the_presence_model(self):
+        data = json.loads(self.manifest.read_text())
+        data['repository'] = 'xiaomi-research/Xiaomi-OCR-0'
+        self.manifest.write_text(json.dumps(data))
+        destination = public_models.install(self.manifest, self.models, lambda *a, **kw: io.BytesIO(self.payload))
+        self.assertEqual(destination, self.models / 'document-type' / self.revision)
+
+    def test_unknown_repository_is_not_downloaded(self):
+        data = json.loads(self.manifest.read_text())
+        data['repository'] = 'unknown/model'
+        self.manifest.write_text(json.dumps(data))
+        with self.assertRaises(ValueError):
+            public_models.install(self.manifest, self.models, lambda *a, **kw: self.fail('must not fetch'))

@@ -129,6 +129,13 @@ def check_http(url, timeout, validate=None):
 
 
 def services_healthy(root):
+    text_reader = root / 'current/services/typecheck/.venv/bin/python'
+    if text_reader.is_file():
+        manifest = json.loads((root / 'current/models/xiaomi-manifest.json').read_text())
+        check_http('http://127.0.0.1:8084/health', 120,
+                   lambda data: data.get('status') == 'ok'
+                   and data.get('model') == manifest['repository']
+                   and data.get('revision') == manifest['revision'])
     classifier = root / 'current/contracts/document-check-v1.json'
     def loaded(data):
         keys = ('doc_model', 'passport_fields_model', 'migration_fields_model',
@@ -177,6 +184,68 @@ def prepare_classifier(release, shared):
         '--private-dir', str(shared / 'var/regression'))
 
 
+def type_provider(shared):
+    configuration = shared / 'config/uz.env'
+    provider = 'legacy'
+    if configuration.is_file():
+        for line in configuration.read_text().splitlines():
+            line = line.strip().removeprefix('export ')
+            if line.startswith('DOCUMENT_TYPE_PROVIDER='):
+                provider = line.split('=', 1)[1].strip().strip("\"'")
+    if provider not in ('legacy', 'shadow', 'xiaomi'):
+        raise ValueError('DOCUMENT_TYPE_PROVIDER must be legacy, shadow or xiaomi')
+    return provider
+
+
+def prepare_typecheck(release, shared):
+    provider = type_provider(shared)
+    if provider == 'legacy':
+        return None
+    manifest = release / 'models/xiaomi-manifest.json'
+    if not manifest.is_file():
+        raise ValueError('This release does not support Xiaomi')
+    if provider == 'xiaomi':
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('typecheck_evaluation', release / 'scripts/evaluate_typecheck.py')
+        evaluation = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(evaluation)
+        gate_file = shared / 'var/verification/typecheck/gate.json'
+        gate = json.loads(gate_file.read_text()) if gate_file.is_file() else {}
+        pinned = json.loads(manifest.read_text())
+        if (gate.get('passed') is not True or gate.get('model_revision') != pinned['revision']
+                or gate.get('rules_sha256') != evaluation.rules_digest(release)):
+            raise ValueError('Xiaomi requires a passing held-out corpus gate for this model and policy')
+    unit = Path('/etc/systemd/system/recognize-typecheck.service')
+    wrapper = Path('/usr/local/sbin/edo-ocr-systemctl')
+    if not unit.is_file() or 'recognize-typecheck.service' not in wrapper.read_text():
+        raise ValueError('Install the optional Xiaomi systemd unit and control wrapper before enabling it')
+    service = release / 'services/typecheck'
+    key = fingerprint(service / 'requirements.lock', release / 'scripts/setup_typecheck.sh')
+    environment = shared / 'venvs' / ('typecheck-' + key)
+    marker = environment / '.ready'
+    if not marker.is_file():
+        # A new environment requires ~10 GiB during installation. Never clean
+        # shared caches or an active environment to make room automatically.
+        if shutil.disk_usage(shared).free < 10 * 1024 ** 3:
+            raise ValueError('Xiaomi environment preparation requires 10 GiB free disk space')
+        if environment.exists():
+            shutil.rmtree(environment)
+        run('bash', str(release / 'scripts/setup_typecheck.sh'),
+            env={**os.environ, 'SERVICE_VENV': str(environment)})
+        marker.write_text(key + '\n')
+    run(sys.executable, str(release / 'scripts/public_models.py'),
+        '--manifest', str(manifest), '--models-dir', str(shared / 'models'))
+    link = service / '.venv'
+    if not link.exists():
+        link.symlink_to(environment)
+    elif link.resolve() != environment:
+        raise ValueError('Xiaomi environment does not match this release')
+    configuration = shared / 'config/typecheck.env'
+    if configuration.is_file() and not (service / '.env').exists():
+        (service / '.env').symlink_to(configuration)
+    return key
+
+
 def prepare_release(repo, commit, root, bootstrap=False):
     shared = root / 'shared'
     for fixture in ('uz.jpg', 'migration.png', 'ru.pdf'):
@@ -188,6 +257,12 @@ def prepare_release(repo, commit, root, bootstrap=False):
         run(sys.executable, str(release / 'scripts/models.py'), 'verify',
             '--models-dir', str(root / 'shared/models'))
         prepare_classifier(release, shared)
+        recorded = json.loads((release / 'release.json').read_text()).get('environments', {}).get('typecheck')
+        if (type_provider(shared) != 'legacy') != bool(recorded):
+            raise ValueError('Provider changed for a prepared release; prepare a new commit')
+        key = prepare_typecheck(release, shared)
+        if key != recorded:
+            raise ValueError('Provider changed for a prepared release; prepare a new commit')
         return release
     if release.exists():
         shutil.rmtree(release)
@@ -203,6 +278,9 @@ def prepare_release(repo, commit, root, bootstrap=False):
     vendor.mkdir(parents=True, exist_ok=True)
     (release / 'vendor').symlink_to(vendor)
     environment_keys = {}
+    typecheck_key = prepare_typecheck(release, shared)
+    if typecheck_key:
+        environment_keys['typecheck'] = typecheck_key
     for service in ('uz', 'ru'):
         service_dir = release / 'services' / service
         key = fingerprint(service_dir / 'requirements.lock', release / 'scripts/setup_service.sh')

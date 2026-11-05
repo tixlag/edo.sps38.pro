@@ -1,5 +1,7 @@
 # CI/CD OCR на рабочий компьютер
 
+Необязательная проверка типа через Xiaomi, дополнительный systemd unit и этапы legacy → shadow → xiaomi описаны в [xiaomi-typecheck.md](xiaomi-typecheck.md). По умолчанию сохраняется legacy; включение нового процесса требует отдельной подготовки и проверки качества.
+
 Входная конфигурация проекта остаётся `edo.yml@webdevs/ci-templates`. Она подключает `ocr/.gitlab-ci.yml` именно из коммита pipeline, с проверкой существования файла в проекте ЭДО. Это важно: include:local во внешнем шаблоне искал бы файл в ci-templates.
 
 Автоматические задания `ocr-validate` и `ocr-deploy-pc` создаются только при push в защищённую ветку `main` с изменениями `ocr/**/*`. Runner: `deploy-ocr-pc`, тег `deploy-ocr-pc`, shell/bash, пользователь заданий `neuro`, `concurrent=1`. В GitLab у runner должны быть выключены Run untagged jobs и включён Protected. Не назначайте этот runner другим проектам.

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExternalOcrService } from "../src/ocr/external-ocr.service";
 import {
   documentReturnReason,
+  typeMismatchResult,
   validateDocumentCheck,
 } from "../src/ocr/document-check";
 import type { OcrRequest } from "../src/ocr/ocr.service";
@@ -73,6 +74,80 @@ const fetchResponse = (result: unknown) => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("document presence before field OCR", () => {
+  const xiaomi = (expected = "NAKS", verdict = "MISMATCH") => ({
+    ...response(),
+    policy_version: "document-check-v3",
+    expected_code: expected,
+    expected_canonical_code: expected,
+    expected_title: expected === "NAKS" ? "НАКС" : "СНИЛС",
+    detected_code: "SNILS",
+    detected_title: "СНИЛС",
+    type_verdict: verdict,
+    source: "XIAOMI_RULES",
+    type_model: "xiaomi-research/Xiaomi-OCR-0",
+    type_model_revision: "bbd8cf8d21f256b3644b44cb860f3a7cecb93c30",
+    type_rules_version: "document-type-rules-v2",
+    type_reason: null as string | null,
+    pages: [page(0, 1), page(1, 1), page(1, 2)],
+    type_pages: [[0, 1], [1, 1], [1, 2]].map(([file_index, page_number]) => ({
+      file_index, page_number, verdict, detected_code: "SNILS",
+      source: "XIAOMI_RULES", reason: null as string | null,
+      matched_phrases: ["ади-рег", "страховой номер индивидуального"],
+    })),
+  });
+
+  it("returns a v3 foreign document with the expected and actual names", async () => {
+    fetchResponse(xiaomi());
+    const result = await service().recognize({ ...request, documentTypeCode: "NAKS" }, new AbortController().signal);
+    expect(result).toMatchObject({ outcome: "REJECTED", rejectionKind: "DOCUMENT_TYPE_MISMATCH",
+      issues: [{ message: expect.stringContaining("«СНИЛС» вместо ожидаемого «НАКС»") }] });
+  });
+
+  it("keeps a matching SNILS available for human review", async () => {
+    fetchResponse(xiaomi("SNILS", "MATCH"));
+    expect(await service().recognize({ ...request, documentTypeCode: "SNILS" }, new AbortController().signal))
+      .toMatchObject({ outcome: "SUCCEEDED", fields: {}, raw: { documentCheck: { status: "COMPLETED" } } });
+  });
+
+  it("warns about a mixed package and avoids an automatic return", async () => {
+    const body = xiaomi("SNILS", "UNCERTAIN");
+    body.type_reason = "MIXED_DOCUMENT_TYPES";
+    body.type_pages[0].verdict = "MATCH";
+    body.type_pages[1] = { ...body.type_pages[1], verdict: "MISMATCH", detected_code: "MIGRATION_CARD",
+      matched_phrases: ["миграционная карта", "migration card"] };
+    fetchResponse(body);
+    expect(await service().recognize({ ...request, documentTypeCode: "SNILS" }, new AbortController().signal))
+      .toMatchObject({ outcome: "SUCCEEDED", fields: {}, issues: [{ message: expect.stringContaining("разные типы") }] });
+  });
+
+  it.each([
+    (body: ReturnType<typeof xiaomi>) => { body.type_model_revision = "unknown"; },
+    (body: ReturnType<typeof xiaomi>) => { body.type_rules_version = "unknown"; },
+    (body: ReturnType<typeof xiaomi>) => { body.type_pages[1] = body.type_pages[0]; },
+    (body: ReturnType<typeof xiaomi>) => { body.type_pages.pop(); },
+    (body: ReturnType<typeof xiaomi>) => { body.type_pages[0].reason = "TRUNCATED"; },
+    (body: ReturnType<typeof xiaomi>) => { body.type_pages[0].source = "GLM"; },
+    (body: ReturnType<typeof xiaomi>) => { body.type_pages[0].verdict = "MATCH"; },
+    (body: ReturnType<typeof xiaomi>) => { body.type_pages[0].matched_phrases = ["ади-рег"]; },
+    (body: ReturnType<typeof xiaomi>) => { body.type_pages[0].matched_phrases = ["форма ади-рег", "ади-рег"]; },
+    (body: ReturnType<typeof xiaomi>) => { body.expected_canonical_code = "INN"; },
+    (body: ReturnType<typeof xiaomi>) => { body.policy_version = "document-check-v2"; },
+  ])("rejects malformed Xiaomi evidence before making an automatic decision", change => {
+    const body = xiaomi();
+    change(body);
+    expect(() => validateDocumentCheck(body, request.files, "NAKS")).toThrow();
+  });
+
+  it("does not return unreadable pages even when another page is foreign", () => {
+    const body = xiaomi();
+    body.type_verdict = "UNCERTAIN";
+    body.type_reason = "TIMEOUT";
+    body.type_pages[1].verdict = "UNCERTAIN";
+    body.type_pages[1].reason = "TIMEOUT";
+    const result = validateDocumentCheck(body, request.files, "NAKS");
+    expect(typeMismatchResult({ status: "COMPLETED", result })).toBeNull();
+  });
+
   it.each([undefined, "true", "false"])(
     "handles type mismatch with auto-return setting %s",
     async (setting) => {

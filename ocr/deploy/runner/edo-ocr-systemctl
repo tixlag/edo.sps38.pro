@@ -2,6 +2,11 @@
 set -eu
 [ "$#" -eq 1 ] || exit 2
 case "$1" in
-  start|stop|restart) exec /usr/bin/systemctl "$1" recognize-uz.service recognize-ru.service ;;
+  start|stop|restart)
+    # Older installations/releases may predate the optional text reader.
+    if [ -f /etc/systemd/system/recognize-typecheck.service ]; then
+      exec /usr/bin/systemctl "$1" recognize-uz.service recognize-ru.service recognize-typecheck.service
+    fi
+    exec /usr/bin/systemctl "$1" recognize-uz.service recognize-ru.service ;;
   *) echo 'Allowed actions: start, stop, restart' >&2; exit 2 ;;
 esac
