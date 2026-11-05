@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   queueItems: [] as unknown[],
   drawer: vi.fn(),
   workspace: vi.fn(),
+  arrivalQueue: vi.fn(),
   params: { documentId: "document-1" },
   documentList: [] as unknown[],
 }));
@@ -75,6 +76,19 @@ vi.mock("../components/DocumentReviewWorkspace", () => ({
   DocumentReviewWorkspace: (props: unknown) => {
     state.workspace(props);
     return null;
+  },
+}));
+vi.mock("../components/IgArrivalReviewQueue", () => ({
+  IgArrivalReviewQueue: (props: { onSelectCandidate: (id: string) => void }) => {
+    state.arrivalQueue(props);
+    return (
+      <div data-testid="ig-arrival-review-queue">
+        <span>Списочные заезды ИГ</span>
+        <button onClick={() => props.onSelectCandidate("cand-arrival-1")}>
+          Выбрать кандидата из заезда
+        </button>
+      </div>
+    );
   },
 }));
 vi.mock("../lib/use-live-document-version", () => ({
@@ -401,6 +415,56 @@ describe("RU and IG review pages", () => {
         }),
       );
     }
+  });
+
+  it("renders the view switcher on IG review and navigates between list and arrivals", async () => {
+    state.permissions = { "20011": [] };
+    const view = await render("IG");
+
+    const arrivalsBtn = [...view.querySelectorAll("button")].find(
+      (b) => b.textContent === "Списочные заезды",
+    );
+    const listBtn = [...view.querySelectorAll("button")].find(
+      (b) => b.textContent === "Обычный список",
+    );
+    expect(arrivalsBtn).toBeDefined();
+    expect(listBtn).toBeDefined();
+
+    await act(async () => arrivalsBtn!.click());
+    const navCall = state.navigate.mock.calls.at(-1)![0];
+    expect(navCall.to).toBe("/review-ig");
+    expect(navCall.search({})).toEqual({ view: "arrivals" });
+  });
+
+  it("renders IgArrivalReviewQueue when view=arrivals in IG and opens candidate drawer on selection", async () => {
+    state.permissions = { "20011": [] };
+    state.search = { view: "arrivals" };
+    const view = await render("IG");
+
+    expect(view.textContent).toContain("Списочные заезды ИГ");
+
+    const selectCandBtn = [...view.querySelectorAll("button")].find(
+      (b) => b.textContent === "Выбрать кандидата из заезда",
+    );
+    expect(selectCandBtn).toBeDefined();
+
+    await act(async () => selectCandBtn!.click());
+    const navCall = state.navigate.mock.calls.at(-1)![0];
+    expect(navCall.to).toBe("/review-ig");
+    expect(navCall.search({ view: "arrivals" })).toEqual({
+      view: "arrivals",
+      candidate: "cand-arrival-1",
+    });
+  });
+
+  it("does not render the view switcher in RU review", async () => {
+    state.permissions = { "20002": [] };
+    const view = await render("RU");
+
+    const arrivalsBtn = [...view.querySelectorAll("button")].find(
+      (b) => b.textContent === "Списочные заезды",
+    );
+    expect(arrivalsBtn).toBeUndefined();
   });
 });
 

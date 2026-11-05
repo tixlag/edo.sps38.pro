@@ -60,12 +60,10 @@ import {
 } from "../components/DocumentReviewWorkspace";
 import { ReviewDocumentNavigation } from "../components/ReviewDocumentNavigation";
 import { useLiveDocumentVersion } from "../lib/use-live-document-version";
-import {
-  SearchSelect,
-  type SearchSelectOption,
-} from "../components/SearchSelect";
+import { SearchSelect, type SearchSelectOption } from "../components/SearchSelect";
 import { CandidateDrawer } from "../components/CandidateDrawer";
 import { CreateCandidate } from "../components/CreateCandidate";
+import { IgArrivalReviewQueue } from "../components/IgArrivalReviewQueue";
 import { DateFilter } from "../components/DateFilter";
 import { LkLink } from "../components/LkLink";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
@@ -667,6 +665,7 @@ export function ReviewPage({
       filters.birthDateTo &&
       filters.birthDateFrom > filters.birthDateTo)
   );
+  const igView = (rawSearch.view as string) === "arrivals" ? "arrivals" : "list";
 
   // Functional search update: selector commits always apply on top of the
   // latest URL, so concurrent changes cannot drop each other (stale-closure
@@ -833,7 +832,8 @@ export function ReviewPage({
   const list = useListCandidateReviewQueue(queryParams, {
     query: {
       queryKey: getListCandidateReviewQueueQueryKey(queryParams),
-      enabled: canReview && !dateRangeInvalid,
+      enabled:
+        canReview && !dateRangeInvalid && (reviewGroup === "RU" || igView === "list"),
       refetchInterval: 30_000,
     },
   });
@@ -984,7 +984,31 @@ export function ReviewPage({
           <CreateCandidate onCancel={() => setCreatingCandidate(false)} />
         </div>
       )}
-      <div className="my-4 flex flex-wrap gap-2">
+      {reviewGroup === "IG" && (
+        <div className="my-4 flex items-center gap-2 border-b border-[var(--border)] pb-3">
+          <Button
+            size="sm"
+            variant={igView === "arrivals" ? "default" : "outline"}
+            onClick={() => setFilters({ view: "arrivals" })}
+          >
+            Списочные заезды
+          </Button>
+          <Button
+            size="sm"
+            variant={igView === "list" ? "default" : "outline"}
+            onClick={() => setFilters({ view: undefined })}
+          >
+            Обычный список
+          </Button>
+        </div>
+      )}
+      {reviewGroup === "IG" && igView === "arrivals" ? (
+        <IgArrivalReviewQueue
+          onSelectCandidate={(candidateId) => openCandidate(candidateId)}
+        />
+      ) : (
+        <>
+          <div className="my-4 flex flex-wrap gap-2">
         {TABS.filter((tab) => reviewGroup === "RU" || tab.value !== "ALL").map(
           (tab) => (
             <Button
@@ -1306,6 +1330,8 @@ export function ReviewPage({
           )}
         </div>
       </div>
+      </>
+      )}
       {drawerCandidateId && (
         <CandidateDrawer
           key={drawerCandidateId}
