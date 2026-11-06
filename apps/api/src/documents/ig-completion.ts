@@ -14,12 +14,13 @@ export function usablePreviousUids(
     expiresAt: Date | null;
     fields: Prisma.JsonValue;
   }[],
+  isIg = true,
 ): string[] {
   return previous
     .filter(
       (doc) =>
         !!doc.documentUid &&
-        !needsNewIgDocument(doc.documentUid) &&
+        (!isIg || !needsNewIgDocument(doc.documentUid)) &&
         (!doc.expiresAt || !isPreviousDocumentExpired(doc.expiresAt)) &&
         !(
           doc.fields &&
@@ -60,7 +61,7 @@ export function igRequiredDocumentsComplete(
     required.length > 0 &&
     required.every((type) => {
       const current = documents.find((doc) => doc.documentTypeId === type.id);
-      if (current) {
+      if (current && current.status !== "DRAFT") {
         const version = current.versions.find(
           (v) => v.version === current.currentVersion,
         );

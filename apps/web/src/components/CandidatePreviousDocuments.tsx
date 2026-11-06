@@ -1,9 +1,12 @@
-import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   getCandidatePreviousDocumentOriginal,
   getListCandidatePreviousDocumentsQueryKey,
+  getGetCandidateDetailsQueryKey,
+  getListCandidateReviewQueueQueryKey,
+  getListReviewDocumentsQueryKey,
   useListCandidatePreviousDocuments,
   useRecheckCandidatePreviousDocument,
   type CandidatePreviousDocumentDto,
@@ -21,6 +24,18 @@ const RECHECK_LABELS: Record<CandidateRecheckStatus, string> = {
   MISSING: "Отсутствует",
   ORIGINAL_UNAVAILABLE: "Оригинал недоступен",
 };
+
+function refreshDocumentViews(cache: QueryClient, candidateId: string) {
+  return Promise.all([
+    cache.invalidateQueries({
+      queryKey: getGetCandidateDetailsQueryKey(candidateId),
+    }),
+    cache.invalidateQueries({
+      queryKey: getListCandidateReviewQueueQueryKey(),
+    }),
+    cache.invalidateQueries({ queryKey: getListReviewDocumentsQueryKey() }),
+  ]);
+}
 const FIELD_LABELS: Record<string, string> = {
   series: "Серия",
   number: "Номер",
@@ -169,6 +184,7 @@ function PreviousDocument({
                 getListCandidatePreviousDocumentsQueryKey(candidateId),
                 saved,
               );
+              await refreshDocumentViews(cache, candidateId);
               setMessage("Результат повторной проверки сохранён.");
             })
             .catch((cause) => setError(candidateError(cause)));
@@ -225,6 +241,12 @@ export function CandidatePreviousDocuments({
   candidateId: string;
 }) {
   const documents = useListCandidatePreviousDocuments(candidateId);
+  const cache = useQueryClient();
+  useEffect(() => {
+    if (!documents.data) return;
+    // The history GET can import and automatically confirm former originals.
+    void refreshDocumentViews(cache, candidateId);
+  }, [cache, candidateId, documents.data, documents.dataUpdatedAt]);
   const navigate = useNavigate();
   const itemsCount = documents.data
     ? documents.data.items.length + (documents.data.edoDocuments?.length ?? 0)
@@ -241,7 +263,7 @@ export function CandidatePreviousDocuments({
       >
         <summary className="flex cursor-pointer select-none items-center justify-between text-base font-semibold list-none [&::-webkit-details-marker]:hidden">
           <div className="flex items-center gap-2">
-            <h2>Прежние документы физлица</h2>
+            <h2>История документов</h2>
             {typeof itemsCount === "number" && (
               <Badge tone="default">{itemsCount}</Badge>
             )}
@@ -252,6 +274,10 @@ export function CandidatePreviousDocuments({
           />
         </summary>
         <div className="space-y-3 pt-3">
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Прежние документы физлица и результаты проверки для текущего
+            оформления.
+          </p>
           {documents.data?.employmentHistory &&
             (documents.data.employmentHistory.available ? (
               <details className="text-sm">

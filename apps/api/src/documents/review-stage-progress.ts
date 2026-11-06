@@ -70,8 +70,13 @@ export function reviewStageProgress(
   documents: { documentTypeId: string | null; status: string }[],
   profile: Profile,
   previousUids: string[] = [],
+  isIg = true,
 ): StageProgress[] {
-  const states = new Map(documents.map((d) => [d.documentTypeId, d.status]));
+  const states = new Map(
+    documents
+      .filter((d) => d.status !== "DRAFT")
+      .map((d) => [d.documentTypeId, d.status]),
+  );
   const reused = new Set(previousUids.map((uid) => uid.toLowerCase()));
   const stages = new Map<number | null, StageProgress>();
   for (const type of types) {
@@ -89,7 +94,7 @@ export function reviewStageProgress(
       const status =
         states.get(type.id) ??
         (type.erpUid &&
-        !needsNewIgDocument(type.erpUid) &&
+        (!isIg || !needsNewIgDocument(type.erpUid)) &&
         reused.has(type.erpUid.toLowerCase())
           ? "APPROVED"
           : undefined);

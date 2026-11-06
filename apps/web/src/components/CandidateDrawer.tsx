@@ -10,6 +10,7 @@ import { Badge, Button, StatusBadge } from "@edo/ui";
 import { ChevronRight, X } from "lucide-react";
 import { LkLink } from "./LkLink";
 import { CandidatePreviousDocuments } from "./CandidatePreviousDocuments";
+import { PreviousDocumentAvailability } from "./PreviousDocumentAvailability";
 import {
   candidateInitials,
   documentProgressPercent,
@@ -77,6 +78,14 @@ export function CandidateDrawer({
   const makeItems = (documents: CandidateDocumentSummaryDto[]) =>
     [...documents]
       .filter((doc) => !stage || returnedHistory || doc.status !== "DRAFT")
+      .filter(
+        (doc) =>
+          returnedHistory ||
+          doc.status !== "DRAFT" ||
+          !(docs.data?.previousDocuments ?? []).some(
+            (previous) => previous.documentTypeCode === doc.documentTypeCode,
+          ),
+      )
       .sort((a, b) => a.title.localeCompare(b.title, "ru"))
       .flatMap<{
         doc: CandidateDocumentSummaryDto;
@@ -95,11 +104,21 @@ export function CandidateDrawer({
     ? [
         {
           label: "Обязательные",
+          previous: returnedHistory
+            ? []
+            : (docs.data?.previousDocuments ?? []).filter(
+                (doc) => doc.category === "required",
+              ),
           items: makeItems(groupData.required.documents),
           missing: returnedHistory ? [] : groupData.required.missingDocuments,
         },
         {
           label: "Дополнительные",
+          previous: returnedHistory
+            ? []
+            : (docs.data?.previousDocuments ?? []).filter(
+                (doc) => doc.category === "additional",
+              ),
           items: makeItems(groupData.additional.documents),
           missing: returnedHistory ? [] : groupData.additional.missingDocuments,
         },
@@ -109,12 +128,27 @@ export function CandidateDrawer({
       : [
           {
             label: "",
+            previous: returnedHistory
+              ? []
+              : (docs.data?.previousDocuments ?? []),
             items: makeItems(docs.data?.documents ?? []),
             missing: returnedHistory ? [] : (docs.data?.missingDocuments ?? []),
           },
         ];
+  for (const section of sections) {
+    const represented = new Set(
+      section.previous.map((doc) => doc.documentTypeCode),
+    );
+    section.missing = section.missing.filter(
+      (doc) => !represented.has(doc.code),
+    );
+  }
   const count = sections.reduce(
-    (sum, section) => sum + section.items.length + section.missing.length,
+    (sum, section) =>
+      sum +
+      section.items.length +
+      section.missing.length +
+      section.previous.length,
     0,
   );
 
@@ -317,10 +351,14 @@ export function CandidateDrawer({
                   {section.label && (
                     <h4 className="mb-2 text-sm font-semibold">
                       {section.label} (
-                      {section.items.length + section.missing.length})
+                      {section.items.length +
+                        section.missing.length +
+                        section.previous.length}
+                      )
                     </h4>
                   )}
                   {section.items.length === 0 &&
+                    section.previous.length === 0 &&
                     section.missing.length === 0 && (
                       <p className="mb-2 text-[13px] text-[var(--muted-foreground)]">
                         {returnedHistory
@@ -340,6 +378,17 @@ export function CandidateDrawer({
                           </span>
                           <Badge>Не загружен</Badge>
                         </li>
+                      ))}
+                    </ul>
+                  )}
+                  {section.previous.length > 0 && (
+                    <ul className="mb-2 space-y-2">
+                      {section.previous.map((document) => (
+                        <PreviousDocumentAvailability
+                          key={document.id}
+                          candidateId={candidateId}
+                          document={document}
+                        />
                       ))}
                     </ul>
                   )}

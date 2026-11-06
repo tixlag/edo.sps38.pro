@@ -450,10 +450,49 @@ export class EmployeeDocumentListDto extends DocumentListDto {
   })
   missingDocuments!: MissingDocumentTypeDto[] | null;
 }
+export const previousDocumentAvailabilityStates = [
+  "REUSED",
+  "EXPIRED",
+  "REPLACE_REQUIRED",
+  "REQUIRES_REVIEW",
+  "ORIGINAL_UNAVAILABLE",
+] as const;
+export class PreviousDocumentAvailabilityDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() documentUid!: string;
+  @ApiProperty() documentTypeCode!: string;
+  @ApiProperty() title!: string;
+  @ApiProperty({ enum: ["required", "additional"] }) category!:
+    | "required"
+    | "additional";
+  @ApiProperty({
+    enum: previousDocumentAvailabilityStates,
+    enumName: "PreviousDocumentAvailabilityState",
+  })
+  state!: (typeof previousDocumentAvailabilityStates)[number];
+  @ApiProperty({ type: String, nullable: true, format: "date" }) expiresAt!:
+    | string
+    | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    format: "date",
+    description:
+      "Date of the source record; not an inferred former admission or upload date",
+  })
+  recordedAt!: string | null;
+  @ApiProperty() originalAvailable!: boolean;
+}
 export class CandidateDetailsDto {
   @ApiProperty({ type: CandidateProfileDto }) candidate!: CandidateProfileDto;
   @ApiProperty({ type: [CandidateDocumentSummaryDto] })
   documents!: CandidateDocumentSummaryDto[];
+  @ApiPropertyOptional({
+    type: [PreviousDocumentAvailabilityDto],
+    description:
+      "Applicable previous-employment documents without a submitted current replacement; eligibility is decided by the backend",
+  })
+  previousDocuments?: PreviousDocumentAvailabilityDto[];
   @ApiPropertyOptional({
     type: [MissingDocumentTypeDto],
     nullable: true,

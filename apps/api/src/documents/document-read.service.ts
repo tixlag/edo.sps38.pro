@@ -16,6 +16,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { usablePreviousUids } from "./ig-completion";
+import { previousDocumentAvailability } from "./previous-document-availability";
 import { documentCheckEnabled } from "../ocr/document-check";
 import {
   canRetryDocumentOcr,
@@ -294,19 +295,26 @@ export class DocumentReadService {
     });
     const candidate = toCandidateProfile(owner)!;
     await this.enrichReviewCandidates(principal, [candidate]);
+    const previous =
+      owner.code1c ||
+      owner.personUid ||
+      owner.isReemployment ||
+      owner.previousDocumentsSyncedAt
+        ? await this.prisma.candidatePreviousDocument.findMany({
+            where: { candidateId: id },
+          })
+        : [];
+    const isIg = candidateReviewGroup(owner) === "IG";
     const previousUids = new Set(
-      owner.code1c && candidateReviewGroup(owner) === "IG"
-        ? usablePreviousUids(
-            await this.prisma.candidatePreviousDocument.findMany({
-              where: {
-                candidateId: id,
-                status: "CONFIRMED",
-                originalAvailable: true,
-              },
-            }),
-          )
-        : [],
+      usablePreviousUids(
+        previous.filter(
+          (doc) => doc.status === "CONFIRMED" && doc.originalAvailable,
+        ),
+        isIg,
+      ),
     );
+    const applicableTypes: Parameters<typeof previousDocumentAvailability>[0] =
+      [];
     let stageDocuments: CandidateDetailsDto["stageDocuments"];
     if (stage !== undefined) {
       stageDocuments = null;
@@ -340,6 +348,7 @@ export class DocumentReadService {
           for (const type of types) {
             const category = classifyStageType(type, selectedStage, profile);
             if (!category) continue;
+            applicableTypes.push({ ...type, category });
             const doc = rows.find((row) => row.documentTypeId === type.id);
             if (doc)
               stageDocuments[category].documents.push(
@@ -350,7 +359,8 @@ export class DocumentReadService {
                 !(
                   type.erpUid && previousUids.has(type.erpUid.toLowerCase())
                 )) ||
-              doc?.status === "DRAFT"
+              (doc?.status === "DRAFT" &&
+                !(type.erpUid && previousUids.has(type.erpUid.toLowerCase())))
             )
               stageDocuments[category].missingDocuments.push({
                 code: type.code,
@@ -409,11 +419,6 @@ export class DocumentReadService {
           }
           const uploaded = new Set(rows.map((row) => row.documentTypeId));
           for (const type of types) {
-            if (
-              uploaded.has(type.id) ||
-              (type.erpUid && previousUids.has(type.erpUid.toLowerCase()))
-            )
-              continue;
             const rules = type.stageRules?.length ? type.stageRules : [type];
             const category = requiredIds.has(type.id)
               ? "required"
@@ -424,6 +429,12 @@ export class DocumentReadService {
                   )
                 ? "additional"
                 : null;
+            if (category) applicableTypes.push({ ...type, category });
+            if (
+              uploaded.has(type.id) ||
+              (type.erpUid && previousUids.has(type.erpUid.toLowerCase()))
+            )
+              continue;
             if (category)
               documentGroups[category].missingDocuments.push({
                 code: type.code,
@@ -436,6 +447,12 @@ export class DocumentReadService {
     return {
       candidate,
       documents: rows.map((row) => this.documentSummary(row)),
+      previousDocuments: previousDocumentAvailability(
+        applicableTypes,
+        previous,
+        rows,
+        isIg,
+      ),
       missingDocuments: await this.missingDocumentTypes(
         owner,
         rows.map((row) => row.documentType?.code),
@@ -1602,7 +1619,7 @@ export class DocumentReadService {
       }),
     ]);
     const igIds = profiles
-      .filter((profile) => profile.reviewGroup === "IG" && profile.code1c)
+      .filter((profile) => profile.code1c || profile.isReemployment)
       .map((profile) => profile.id);
     const historical = igIds.length
       ? await this.prisma.candidatePreviousDocument.findMany({
@@ -1650,6 +1667,7 @@ export class DocumentReadService {
     for (const profile of profiles) {
       const previousUids = usablePreviousUids(
         historical.filter((doc) => doc.candidateId === profile.id),
+        profile.reviewGroup === "IG",
       );
       const reusedTypes = catalog.filter(
         (type) =>
@@ -1657,7 +1675,9 @@ export class DocumentReadService {
           previousUids.includes(type.erpUid.toLowerCase()) &&
           !grouped.some(
             (row) =>
-              row.candidateId === profile.id && row.documentTypeId === type.id,
+              row.candidateId === profile.id &&
+              row.documentTypeId === type.id &&
+              row.status !== "DRAFT",
           ),
       );
       const hasProfile = !!(
@@ -1679,6 +1699,7 @@ export class DocumentReadService {
                 sex: profile.sexKnown ? profile.sex : null,
               },
               previousUids,
+              profile.reviewGroup === "IG",
             )
           : null;
       profile.approvedDocuments =
