@@ -24,6 +24,7 @@ import {
 import { changedProfileFields, snapshotUpdateInput } from "./candidate-profile";
 import type { StagedUpload } from "./document-upload.service";
 import { igUploadOwner } from "./ig-upload-owner";
+import { DocumentNotificationService } from "./document-notification.service";
 
 @Injectable()
 export class ManualDocumentService {
@@ -33,6 +34,7 @@ export class ManualDocumentService {
     private readonly audit: AuditService,
     private readonly catalog: DocumentCatalogService,
     @Optional() private readonly config?: ConfigService,
+    @Optional() private readonly notifications?: DocumentNotificationService,
   ) {}
 
   async upload(
@@ -228,6 +230,13 @@ export class ManualDocumentService {
         });
         return queuedJobId;
       });
+      if (this.notifications) {
+        await this.notifications.notifyDocumentUploaded({
+          documentId: reserved.submission.version.documentId,
+          version: reserved.submission.version.version,
+          candidateId: reserved.submission.version.document.candidateId,
+        });
+      }
       return { ...this.accepted(reserved.submission, acceptedStatus), jobId };
     } catch (error) {
       await this.fail(reserved.submission.id, token);

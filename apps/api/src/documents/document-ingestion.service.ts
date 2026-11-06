@@ -17,6 +17,7 @@ import { resolveCandidateIdentity } from "./candidate-identity";
 import type { StagedUpload } from "./document-upload.service";
 import type { UploadAcceptedDto } from "./dto/document.dto";
 import { DocumentReadService } from "./document-read.service";
+import { DocumentNotificationService } from "./document-notification.service";
 
 @Injectable()
 export class DocumentIngestionService {
@@ -27,6 +28,7 @@ export class DocumentIngestionService {
     private readonly audit: AuditService,
     private readonly reads: DocumentReadService,
     @Optional() private readonly erp?: ErpCandidateClient,
+    @Optional() private readonly notifications?: DocumentNotificationService,
   ) {}
 
   ensureAvailable(): void {
@@ -165,6 +167,13 @@ export class DocumentIngestionService {
           },
         });
       });
+      if (this.notifications) {
+        await this.notifications.notifyDocumentUploaded({
+          documentId: reserved.accepted.documentId,
+          version: reserved.accepted.version,
+          candidateId: reserved.accepted.candidateId,
+        });
+      }
       return reserved.accepted;
     } catch {
       await this.failUpload(reserved.job.id, token, correlation);
