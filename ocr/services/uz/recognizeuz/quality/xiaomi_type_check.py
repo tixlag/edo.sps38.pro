@@ -1,9 +1,11 @@
 """Version 3: independent full-page text extraction followed by explicit rules."""
 import logging
+import os
 import time
 
 from recognizeuz.quality.type_matcher import DocumentTypeMatcher, canonical_code, ROOT
 from recognizeuz.quality.xiaomi_text import MANIFEST, ReaderError, recognize_page
+from recognizeuz.quality.type_release import resolve_codes
 
 
 def recognize_type_text(image, deadline, matcher):
@@ -47,7 +49,7 @@ def aggregate(pages, expected_code, expected_pages):
     if any(p['detected_code'] != expected_code for p in matches) or any(
             not p['detected_code'] or p['detected_code'] == expected_code for p in mismatches):
         return 'UNCERTAIN', None, 'INVALID_RESPONSE'
-    if matches and mismatches:
+    if matches and (mismatches or any(p.get('reason') == 'TYPE_NOT_ENABLED' for p in pages)):
         return 'UNCERTAIN', None, 'MIXED_DOCUMENT_TYPES'
     if matches:
         return 'MATCH', expected_code, None
@@ -62,6 +64,7 @@ def check_types(payload, expected_code, presence, *, deadline):
     from recognizeuz.quality.document_check import pages
 
     matcher = DocumentTypeMatcher(ROOT / 'contracts/document-type-rules-v2.json')
+    enabled_codes = resolve_codes(os.getenv('DOCUMENT_TYPE_AUTORETURN_CODES'), matcher.rules)
     canonical = canonical_code(expected_code)
     rule = matcher.rules.get(canonical)
     results = [{
@@ -97,6 +100,8 @@ def check_types(payload, expected_code, presence, *, deadline):
                                       matched_phrases=matched['matched_phrases'][:8],
                                       source='XIAOMI_RULES', reason=None if matched['verdict'] != 'UNCERTAIN'
                                       else matched.get('reason', 'LOW_EVIDENCE'))
+                        if result['verdict'] == 'MISMATCH' and result['detected_code'] not in enabled_codes:
+                            result.update(verdict='UNCERTAIN', reason='TYPE_NOT_ENABLED')
                     except ReaderError as error:
                         result['reason'] = error.reason
                     except Exception as error:
