@@ -78,6 +78,10 @@ export function formatDateTimeRu(value: string | null | undefined): string {
   return `${datePart} ${timePart}`;
 }
 
+export function formatNotificationDateTime(value?: string | null): string {
+  return formatDateTimeRu(value);
+}
+
 /** Keeps an editable date value visibly in dd.mm.yyyy order while typing. */
 export function maskDateRuInput(value: string): string {
   const digits = value.replace(/\D/g, "").slice(0, 8);

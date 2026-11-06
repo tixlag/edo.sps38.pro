@@ -56,9 +56,11 @@ import { OwnDocumentHistoryService } from "./own-document-history.service";
 import { OwnDocumentHistoryController } from "./own-document-history.controller";
 import { ErpAdaptationGrantsController } from "./erp-adaptation-grants.controller";
 import { ExpirationModule } from "../expiration/expiration.module";
+import { LkModule } from "../lk/lk.module";
+import { DocumentNotificationService } from "./document-notification.service";
 
 @Module({
-  imports: [PrismaModule, AuditModule, StorageModule, OcrModule, RedisModule, ExpirationModule],
+  imports: [PrismaModule, AuditModule, StorageModule, OcrModule, RedisModule, ExpirationModule, LkModule],
   controllers: [
     BrowserCandidateDocumentsController,
     MyCandidateDocumentsController,
@@ -78,6 +80,7 @@ import { ExpirationModule } from "../expiration/expiration.module";
     IgEmploymentService,
     IgProfileEnrichmentService,
     CandidatePreviousDocumentsSyncService,
+    DocumentNotificationService,
   ],
   providers: [
     ErpWorkspaceClient,
@@ -109,6 +112,7 @@ import { ExpirationModule } from "../expiration/expiration.module";
     DocumentStreamGuard,
     DocumentUploadGrantService,
     DocumentUploadGrantGuard,
+    DocumentNotificationService,
   ],
 })
 export class DocumentsModule {}
