@@ -16,6 +16,7 @@ import type { PrismaService } from "../src/prisma/prisma.service";
 import type { ErpWorkspaceClient } from "../src/documents/erp-workspace.client";
 import type { DocumentAccessService } from "../src/documents/document-access.service";
 import type { AuditService } from "../src/audit/audit.service";
+import type { OwnDocumentHistoryService } from "../src/documents/own-document-history.service";
 import type { StorageService } from "../src/storage/storage.service";
 import type { AuthPrincipal } from "../src/auth/auth-principal";
 
@@ -73,6 +74,7 @@ function setupLifecycleTest() {
   const candidateUpsertedVersions: any[] = [];
   const candidatePreviousDocumentsUpserted: any[] = [];
   const auditLogs: any[] = [];
+  const extraHistoricalDocuments: any[] = [];
 
   const tx: any = {
     $queryRaw: vi.fn().mockResolvedValue([]),
@@ -120,14 +122,17 @@ function setupLifecycleTest() {
         }
         return existing;
       }),
-      findMany: vi.fn(async () =>
-        candidateUpsertedDocuments.map((d) => ({
+      findMany: vi.fn(async (args?: any) => {
+        if (args?.where?.candidate?.id?.not) {
+          return extraHistoricalDocuments;
+        }
+        return candidateUpsertedDocuments.map((d) => ({
           ...d,
           versions: candidateUpsertedVersions.filter(
             (v) => v.documentId === d.id,
           ),
-        })),
-      ),
+        }));
+      }),
     },
     documentVersion: {
       upsert: vi.fn(async ({ where, create, update }) => {
@@ -294,12 +299,16 @@ function setupLifecycleTest() {
     }),
   };
 
+  const ownHistory: any = {
+    probeOriginal: vi.fn(async () => true),
+  };
+
   const syncService = new CandidatePreviousDocumentsSyncService(
     prisma as unknown as PrismaService,
     erp as unknown as ErpWorkspaceClient,
     access as unknown as DocumentAccessService,
     audit as unknown as AuditService,
-    undefined,
+    ownHistory as unknown as OwnDocumentHistoryService,
     storage as unknown as StorageService,
   );
 
@@ -307,12 +316,15 @@ function setupLifecycleTest() {
     syncService,
     row,
     tx,
+    prisma,
     erp,
     storage,
     storedObjects,
     candidateUpsertedDocuments,
     candidateUpsertedVersions,
     candidatePreviousDocumentsUpserted,
+    extraHistoricalDocuments,
+    ownHistory,
     auditLogs,
   };
 }
@@ -1287,36 +1299,68 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
       storage,
       storedObjects,
       candidateUpsertedVersions,
+      extraHistoricalDocuments,
+      ownHistory,
     } = setupLifecycleTest();
 
     // Source EDO patent file exists in storage
     const edoSourceKey = "documents/historical-edo-doc/v1/patent.pdf";
     storedObjects.set(edoSourceKey, Buffer.from("edo-patent-content"));
 
-    // Candidate has both EDO patent and ERP patent in history
-    erp.request.mockResolvedValueOnce({
-      items: [
-        // EDO patent with originalFiles
+    // 1. Configure historical EDO document returned via prisma.document.findMany
+    extraHistoricalDocuments.push({
+      id: "hist-edo-doc-1",
+      reviewGroup: "IG",
+      currentVersion: 1,
+      status: "APPROVED",
+      documentTypeId: "dt-patent",
+      documentType: {
+        id: "dt-patent",
+        code: "WORK_PATENT",
+        title: "Патент (из ЭДО)",
+        erpUid: EMPLOYMENT_PATENT_UID,
+      },
+      candidate: {
+        id: "cand-previous-1",
+        code1c: row.code1c,
+        personUid: row.personUid,
+      },
+      versions: [
         {
-          id: "prev-patent-from-edo",
-          documentUid: EMPLOYMENT_PATENT_UID,
-          title: "Патент (из ЭДО)",
-          category: "required",
-          expiresAt: "2027-01-01",
-          originalAvailable: true,
-          originalFiles: [
+          id: "ver-hist-1",
+          documentId: "hist-edo-doc-1",
+          version: 1,
+          status: "APPROVED",
+          delivery: {
+            status: "SENT",
+            transport: "multipart-v2",
+            attempts: [
+              {
+                receiptValidated: true,
+                finishedAt: new Date(),
+                errorCode: null,
+              },
+            ],
+          },
+          fields: [{ name: "expiryDate", value: "2027-01-01", kind: "date" }],
+          files: [
             {
+              id: "file-edo-1",
+              ordinal: 0,
               storageKey: edoSourceKey,
               filename: "patent.pdf",
-              mimeType: "application/pdf",
               sizeBytes: 100,
               sha256: "hash-edo",
               pageCount: 1,
             },
           ],
-          fields: {},
         },
-        // ERP patent without originalFiles (downloads bytes from 1C ERP)
+      ],
+    });
+
+    // 2. Configure ERP document returned via erp.request
+    erp.request.mockResolvedValueOnce({
+      items: [
         {
           id: "prev-patent-from-erp",
           documentUid: EMPLOYMENT_PATENT_UID,
@@ -1331,18 +1375,176 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
 
     await syncService.syncPreviousDocuments(row.id, "system:test");
 
-    // Exactly one version was linked and created
+    // 1. Verifies real call to ownHistory.probeOriginal for the EDO file
+    expect(ownHistory.probeOriginal).toHaveBeenCalledWith(edoSourceKey, 100, "hash-edo");
+
+    // 2. Verifies real call to storage.copy for the EDO file
+    expect(storage.copy).toHaveBeenCalledWith(
+      edoSourceKey,
+      expect.stringMatching(/^documents\/[a-zA-Z0-9-]+\/v1\/file-edo-1-patent\.pdf$/),
+      expect.anything(),
+    );
+
+    // 3. Exactly one version was linked and created
     expect(candidateUpsertedVersions.length).toBe(1);
     const linkedVersion = candidateUpsertedVersions[0];
     expect(linkedVersion.status).toBe("IN_REVIEW");
 
-    // Linked file is kept in storage
+    // 4. Linked file is kept in storage
     expect(storedObjects.has(linkedVersion.storageKey)).toBe(true);
 
-    // The second document's prepared file was deleted
+    // 5. Unused prepared file (from ERP) was deleted
     expect(storage.delete).toHaveBeenCalled();
     // But storage.delete was NOT called on the linked file!
     expect(storage.delete).not.toHaveBeenCalledWith(linkedVersion.storageKey);
+  });
+
+  // Scenario N: Multi-file EDO document with identical filenames (e.g. image.jpg) copies files to independent S3 keys
+  it("Scenario N: Multi-file EDO document with identical filenames (e.g. image.jpg) copies files to independent S3 keys and preserves separate content", async () => {
+    const {
+      syncService,
+      row,
+      storedObjects,
+      candidateUpsertedVersions,
+      extraHistoricalDocuments,
+    } = setupLifecycleTest();
+
+    const edoSourceKey1 = "documents/historical-edo/v1/f1-image.jpg";
+    const edoSourceKey2 = "documents/historical-edo/v1/f2-image.jpg";
+    storedObjects.set(edoSourceKey1, Buffer.from("content-of-first-image-page1"));
+    storedObjects.set(edoSourceKey2, Buffer.from("content-of-second-image-page2"));
+
+    // Historical EDO document has two files both named "image.jpg"
+    extraHistoricalDocuments.push({
+      id: "hist-edo-multi-file",
+      reviewGroup: "IG",
+      currentVersion: 1,
+      status: "APPROVED",
+      documentTypeId: "dt-patent",
+      documentType: {
+        id: "dt-patent",
+        code: "WORK_PATENT",
+        title: "Патент (из ЭДО)",
+        erpUid: EMPLOYMENT_PATENT_UID,
+      },
+      candidate: {
+        id: "cand-prev-multi",
+        code1c: row.code1c,
+        personUid: row.personUid,
+      },
+      versions: [
+        {
+          id: "ver-hist-multi",
+          documentId: "hist-edo-multi-file",
+          version: 1,
+          status: "APPROVED",
+          delivery: {
+            status: "SENT",
+            transport: "multipart-v2",
+            attempts: [
+              {
+                receiptValidated: true,
+                finishedAt: new Date(),
+                errorCode: null,
+              },
+            ],
+          },
+          fields: [{ name: "expiryDate", value: "2027-01-01", kind: "date" }],
+          files: [
+            {
+              id: "file-page-1",
+              ordinal: 0,
+              storageKey: edoSourceKey1,
+              filename: "image.jpg",
+              sizeBytes: 30,
+              sha256: "hash-page-1",
+              pageCount: 1,
+            },
+            {
+              id: "file-page-2",
+              ordinal: 1,
+              storageKey: edoSourceKey2,
+              filename: "image.jpg",
+              sizeBytes: 31,
+              sha256: "hash-page-2",
+              pageCount: 1,
+            },
+          ],
+        },
+      ],
+    });
+
+    await syncService.syncPreviousDocuments(row.id, "system:test");
+
+    expect(candidateUpsertedVersions.length).toBe(1);
+    const linkedVersion = candidateUpsertedVersions[0];
+    const createdFiles = linkedVersion.files.create;
+    expect(createdFiles.length).toBe(2);
+
+    // 1. Both files maintain their original display filename
+    expect(createdFiles[0].filename).toBe("image.jpg");
+    expect(createdFiles[1].filename).toBe("image.jpg");
+
+    // 2. Both files have distinct, independent S3 storage keys (no overwrite!)
+    expect(createdFiles[0].storageKey).not.toBe(createdFiles[1].storageKey);
+    expect(createdFiles[0].storageKey).toMatch(/^documents\/[a-zA-Z0-9-]+\/v1\/file-page-1-image\.jpg$/);
+    expect(createdFiles[1].storageKey).toMatch(/^documents\/[a-zA-Z0-9-]+\/v1\/file-page-2-image\.jpg$/);
+
+    // 3. Both files exist in storage and can be opened/read independently with their respective distinct content
+    const page1Bytes = storedObjects.get(createdFiles[0].storageKey);
+    const page2Bytes = storedObjects.get(createdFiles[1].storageKey);
+    expect(page1Bytes?.toString()).toBe("content-of-first-image-page1");
+    expect(page2Bytes?.toString()).toBe("content-of-second-image-page2");
+  });
+
+  // Scenario O: Registers S3 keys before async upload/copy, and does not delete files if DB reference check fails
+  it("Scenario O: Registers S3 keys before async upload/copy, and does not delete files if DB reference check fails", async () => {
+    const {
+      syncService,
+      row,
+      erp,
+      storage,
+      storedObjects,
+      prisma,
+    } = setupLifecycleTest();
+
+    // Setup ERP to return 1 patent
+    erp.request.mockResolvedValueOnce({
+      items: [
+        {
+          id: "prev-patent-erp-timeout",
+          documentUid: EMPLOYMENT_PATENT_UID,
+          title: "Патент (таймаут)",
+          category: "required",
+          expiresAt: "2027-01-01",
+          originalAvailable: true,
+          fields: {},
+        },
+      ],
+    });
+
+    // 1. Simulate upload failure (e.g. AbortSignal timeout after partial write)
+    let uploadedKey: string | null = null;
+    vi.spyOn(storage, "uploadBuffer").mockImplementation(async (key, bytes) => {
+      uploadedKey = key;
+      storedObjects.set(key, bytes as Buffer);
+      throw new Error("Upload aborted due to S3 timeout");
+    });
+
+    // 2. Simulate DB failure during reference check (e.g. MariaDB connection lost)
+    vi.spyOn(prisma.documentVersion, "findFirst").mockRejectedValue(
+      new Error("MariaDB connection lost during reference check"),
+    );
+
+    // Act: syncPreviousDocuments catches per-document failure and attempts cleanup
+    await syncService.syncPreviousDocuments(row.id, "system:test");
+
+    // Key was registered before upload started
+    expect(uploadedKey).not.toBeNull();
+    // S3 delete must NOT have been called because the DB reference check failed
+    expect(storage.delete).not.toHaveBeenCalled();
+    // File remains preserved in storage rather than deleted without verification
+    expect(storedObjects.has(uploadedKey!)).toBe(true);
   });
 
   // Scenario M: Real approve() for historical version without submission (submission: null)

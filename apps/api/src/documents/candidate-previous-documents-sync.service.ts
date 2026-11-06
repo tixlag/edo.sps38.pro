@@ -337,17 +337,19 @@ export class CandidatePreviousDocumentsSyncService {
             for (let idx = 0; idx < doc.originalFiles.length; idx++) {
               const f = doc.originalFiles[idx];
               const filename = f.filename || `${docType.code}.pdf`;
+              const fileIdOrOrdinal = f.id || `${idx + 1}`;
+              const storageFilename = `${fileIdOrOrdinal}-${filename}`;
               const targetKey = this.storage
-                ? this.storage.keyFor(prepToken, 1, filename)
-                : `documents/${prepToken}/v1/${filename}`;
+                ? this.storage.keyFor(prepToken, 1, storageFilename)
+                : `documents/${prepToken}/v1/${storageFilename}`;
               if (this.storage) {
+                docCreatedKeys.push(targetKey);
+                createdStorageKeys.push(targetKey);
                 await this.storage.copy(
                   f.storageKey,
                   targetKey,
                   AbortSignal.timeout(30000),
                 );
-                docCreatedKeys.push(targetKey);
-                createdStorageKeys.push(targetKey);
               }
               vFiles.push({
                 ordinal: idx,
@@ -377,13 +379,14 @@ export class CandidatePreviousDocumentsSyncService {
                   ? "png"
                   : "pdf";
             const filename = `${docType.code}.${ext}`;
+            const storageFilename = `1-${filename}`;
             const targetKey = this.storage
-              ? this.storage.keyFor(prepToken, 1, filename)
-              : `documents/${prepToken}/v1/${filename}`;
+              ? this.storage.keyFor(prepToken, 1, storageFilename)
+              : `documents/${prepToken}/v1/${storageFilename}`;
             if (this.storage) {
-              await this.storage.uploadBuffer(targetKey, bytes, mimeType);
               docCreatedKeys.push(targetKey);
               createdStorageKeys.push(targetKey);
+              await this.storage.uploadBuffer(targetKey, bytes, mimeType);
             }
             vFiles = [
               {
@@ -408,7 +411,7 @@ export class CandidatePreviousDocumentsSyncService {
         } catch {
           if (this.storage && docCreatedKeys.length > 0) {
             for (const key of docCreatedKeys) {
-              await this.storage.delete(key).catch(() => undefined);
+              await this.safeDeleteIfUnreferenced(key);
               const idx = createdStorageKeys.indexOf(key);
               if (idx !== -1) createdStorageKeys.splice(idx, 1);
             }
@@ -776,48 +779,14 @@ export class CandidatePreviousDocumentsSyncService {
     );
     if (this.storage && unusedKeys.length > 0) {
       for (const key of unusedKeys) {
-        try {
-          const isReferenced = (this.prisma as any).documentVersion
-            ? await (this.prisma as any).documentVersion.findFirst({
-                where: {
-                  OR: [
-                    { storageKey: key },
-                    { files: { some: { storageKey: key } } },
-                  ],
-                },
-                select: { id: true },
-              })
-            : null;
-          if (!isReferenced) {
-            await this.storage.delete(key).catch(() => undefined);
-          }
-        } catch {
-          /* ignore best-effort deletion */
-        }
+        await this.safeDeleteIfUnreferenced(key);
       }
     }
     createdStorageKeys.length = 0;
   } catch (txErr) {
     if (this.storage && createdStorageKeys.length > 0) {
       for (const key of createdStorageKeys) {
-        try {
-          const isReferenced = (this.prisma as any).documentVersion
-            ? await (this.prisma as any).documentVersion.findFirst({
-                where: {
-                  OR: [
-                    { storageKey: key },
-                    { files: { some: { storageKey: key } } },
-                  ],
-                },
-                select: { id: true },
-              })
-            : null;
-          if (!isReferenced) {
-            await this.storage.delete(key).catch(() => undefined);
-          }
-        } catch {
-          /* ignore best-effort deletion */
-        }
+        await this.safeDeleteIfUnreferenced(key);
       }
     }
     throw txErr;
@@ -850,5 +819,31 @@ export class CandidatePreviousDocumentsSyncService {
           }
         : {}),
     };
+  }
+
+  private async safeDeleteIfUnreferenced(key: string): Promise<void> {
+    if (!this.storage) return;
+    let isReferenced = true;
+    try {
+      if ((this.prisma as any).documentVersion) {
+        const row = await (this.prisma as any).documentVersion.findFirst({
+          where: {
+            OR: [
+              { storageKey: key },
+              { files: { some: { storageKey: key } } },
+            ],
+          },
+          select: { id: true },
+        });
+        isReferenced = !!row;
+      } else {
+        isReferenced = true;
+      }
+    } catch {
+      isReferenced = true;
+    }
+    if (!isReferenced) {
+      await this.storage.delete(key).catch(() => undefined);
+    }
   }
 }
