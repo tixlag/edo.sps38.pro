@@ -412,6 +412,10 @@ export interface CandidateSnapshotDto {
    * @nullable
    */
   uuid?: string | null;
+  /** @maxLength 64 */
+  code1C?: string;
+  /** @maxLength 64 */
+  code1c?: string;
   /** @maxLength 512 */
   fullName?: string;
   /** @maxLength 512 */

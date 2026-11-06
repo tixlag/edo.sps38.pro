@@ -782,6 +782,16 @@ export class CandidateSnapshotDto {
   @IsOptional()
   @IsUUID()
   uuid?: string | null;
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  code1C?: string;
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  code1c?: string;
   @ApiPropertyOptional({ maxLength: 512 })
   @IsOptional()
   @IsString()

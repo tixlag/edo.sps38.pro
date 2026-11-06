@@ -21,9 +21,69 @@ export async function resolveCandidateIdentity(
     ...(identity.chatUuid ? [{ chatUuid: identity.chatUuid }] : []),
     ...(identity.expectedId ? [{ id: identity.expectedId }] : []),
   ];
-  const rows = await tx.candidate.findMany({ where: { OR: refs } });
-  if (rows.length > 1)
+  const rows = await tx.candidate.findMany({
+    where: { OR: refs },
+    include: { _count: { select: { documents: true } } },
+  });
+  if (rows.length > 1) {
+    const ghost = rows.find(
+      (r) => r.erpUid && !r.chatUuid && ((r as any)._count?.documents ?? 0) === 0,
+    );
+    const real = rows.find(
+      (r) =>
+        r.id !== ghost?.id &&
+        (r.chatUuid || ((r as any)._count?.documents ?? 0) > 0),
+    );
+    if (ghost && real && rows.length === 2) {
+      await tx.candidate.delete({ where: { id: ghost.id } });
+      await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${real.id} FOR UPDATE`;
+      return tx.candidate.update({
+        where: { id: real.id },
+        data: {
+          erpUid: ghost.erpUid,
+          ...(ghost.statusId && !real.statusId
+            ? { statusId: ghost.statusId }
+            : {}),
+          ...(ghost.statusName && !real.statusName
+            ? { statusName: ghost.statusName }
+            : {}),
+          ...(ghost.managerId && !real.managerId
+            ? { managerId: ghost.managerId }
+            : {}),
+          ...(ghost.managerName && !real.managerName
+            ? { managerName: ghost.managerName }
+            : {}),
+          ...(ghost.projectCode && !real.projectCode
+            ? { projectCode: ghost.projectCode }
+            : {}),
+          ...(ghost.projectName && !real.projectName
+            ? { projectName: ghost.projectName }
+            : {}),
+          ...(ghost.positionCode && !real.positionCode
+            ? { positionCode: ghost.positionCode }
+            : {}),
+          ...(ghost.positionName && !real.positionName
+            ? { positionName: ghost.positionName }
+            : {}),
+          reviewGroup:
+            real.reviewGroup ??
+            ghost.reviewGroup ??
+            identity.reviewGroup ??
+            "RU",
+          ...(identity.chatUuid && !real.chatUuid
+            ? { chatUuid: identity.chatUuid }
+            : {}),
+          ...(identity.code1c && !real.code1c
+            ? { code1c: identity.code1c }
+            : {}),
+          ...(identity.personUid && !real.personUid
+            ? { personUid: identity.personUid }
+            : {}),
+        },
+      });
+    }
     throw new ConflictException("CANDIDATE_IDENTITY_CONFLICT");
+  }
   if (!rows.length) {
     // A legacy employee namespace does not prove an admission cycle. Refuse a
     // second card until that unresolved history is reconciled explicitly.
@@ -77,7 +137,8 @@ export async function resolveCandidateIdentity(
     (identity.personUid && !owner.personUid) ||
     (identity.reviewGroup && !owner.reviewGroup) ||
     (identity.erpUid && !owner.erpUid) ||
-    (identity.chatUuid && !owner.chatUuid)
+    (identity.chatUuid && !owner.chatUuid) ||
+    (identity.code1c && !owner.code1c)
   ) {
     return tx.candidate.update({
       where: { id: owner.id },
@@ -86,6 +147,7 @@ export async function resolveCandidateIdentity(
         ...(identity.personUid ? { personUid: identity.personUid } : {}),
         ...(identity.reviewGroup ? { reviewGroup: identity.reviewGroup } : {}),
         ...(identity.chatUuid ? { chatUuid: identity.chatUuid } : {}),
+        ...(identity.code1c ? { code1c: identity.code1c } : {}),
       },
     });
   }

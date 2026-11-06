@@ -89,7 +89,26 @@ export class CandidateProfileRefresh {
           const after = Object.fromEntries(
             keys.map((key) => [key, (data as Record<string, unknown>)[key]]),
           );
-          await tx.candidate.update({ where: { id: row.id }, data });
+          const extraUpdates: Record<string, unknown> = {};
+          if (parsed.erpUid && !current.erpUid) {
+            extraUpdates.erpUid = parsed.erpUid;
+          }
+          if (context.code1c && !current.code1c) {
+            extraUpdates.code1c = context.code1c;
+          }
+          if (
+            !current.reviewGroup &&
+            (row.chatUuid || parsed.citizenship?.toLowerCase() === "ru")
+          ) {
+            extraUpdates.reviewGroup = "RU";
+          }
+          if (parsed.personUid && !current.personUid) {
+            extraUpdates.personUid = parsed.personUid;
+          }
+          await tx.candidate.update({
+            where: { id: row.id },
+            data: { ...data, ...extraUpdates },
+          });
           await this.audit.logInTransaction(tx, {
             actorId: "system:candidate-profile-refresh",
             action: "DATA_IMPORTED",

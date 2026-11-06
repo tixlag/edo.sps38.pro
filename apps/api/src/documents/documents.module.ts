@@ -81,6 +81,7 @@ import { DocumentNotificationService } from "./document-notification.service";
     IgProfileEnrichmentService,
     CandidatePreviousDocumentsSyncService,
     DocumentNotificationService,
+    ErpCandidateClient,
   ],
   providers: [
     ErpWorkspaceClient,
