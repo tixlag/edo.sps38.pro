@@ -84,15 +84,23 @@ function setupLifecycleTest() {
       }),
     },
     document: {
-      findUnique: vi.fn(async ({ where }) => {
-        return (
-          candidateUpsertedDocuments.find(
-            (d) =>
-              d.candidateId === where.candidateId_documentTypeId.candidateId &&
-              d.documentTypeId ===
-                where.candidateId_documentTypeId.documentTypeId,
-          ) ?? null
+      findUnique: vi.fn(async ({ where, include }) => {
+        const found = candidateUpsertedDocuments.find(
+          (d) =>
+            d.candidateId === where.candidateId_documentTypeId?.candidateId &&
+            d.documentTypeId ===
+              where.candidateId_documentTypeId?.documentTypeId,
         );
+        if (!found) return null;
+        if (include?.versions) {
+          return {
+            ...found,
+            versions: candidateUpsertedVersions.filter(
+              (v) => v.documentId === found.id,
+            ),
+          };
+        }
+        return { ...found };
       }),
       upsert: vi.fn(async ({ where, create, update }) => {
         let existing = candidateUpsertedDocuments.find(
@@ -141,9 +149,23 @@ function setupLifecycleTest() {
       }),
       findFirst: vi.fn(async ({ where }) => {
         return (
-          candidateUpsertedVersions.find(
-            (v) => v.id === where.id || v.documentId === where.documentId,
-          ) ?? null
+          candidateUpsertedVersions.find((v) => {
+            if (where.id && v.id === where.id) return true;
+            if (where.documentId && v.documentId === where.documentId) return true;
+            if (where.storageKey && v.storageKey === where.storageKey) return true;
+            if (where.OR && Array.isArray(where.OR)) {
+              return where.OR.some(
+                (clause: any) =>
+                  (clause.storageKey && clause.storageKey === v.storageKey) ||
+                  (clause.files?.some &&
+                    Array.isArray(v.files) &&
+                    v.files.some(
+                      (f: any) => f.storageKey === clause.files.some.storageKey,
+                    )),
+              );
+            }
+            return false;
+          }) ?? null
         );
       }),
     },
@@ -237,6 +259,7 @@ function setupLifecycleTest() {
       findFirst: vi.fn(async () => ({ ...row })),
     },
     document: tx.document,
+    documentVersion: tx.documentVersion,
     documentType: tx.documentType,
     candidatePreviousDocument: {
       findMany: vi.fn(async () => candidatePreviousDocumentsUpserted),
@@ -1183,6 +1206,335 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
       code1c,
       personUid,
       "erp-document-id-abc",
+    );
+  });
+
+  // Scenario K: Does not intercept candidate's active upload when currentVersion === 0 and submission exists
+  it("Scenario K: Does not intercept candidate's active upload when currentVersion === 0 and submission exists", async () => {
+    const {
+      syncService,
+      row,
+      erp,
+      storedObjects,
+      candidateUpsertedDocuments,
+      candidateUpsertedVersions,
+    } = setupLifecycleTest();
+
+    // Candidate has an active upload in progress: Document(currentVersion: 0, status: DRAFT)
+    // with DocumentVersion(version: 1, status: UPLOADED) and a DocumentSubmission
+    candidateUpsertedDocuments.push({
+      id: "doc-candidate-active",
+      candidateId: row.id,
+      documentTypeId: "dt-patent",
+      currentVersion: 0,
+      status: "DRAFT",
+    });
+    candidateUpsertedVersions.push({
+      id: "ver-candidate-active-1",
+      documentId: "doc-candidate-active",
+      version: 1,
+      status: "UPLOADED",
+      storageKey: "documents/doc-candidate-active/v1/active-user-file.pdf",
+      submission: { id: "submission-in-progress", status: "UPLOADING" },
+    });
+    storedObjects.set(
+      "documents/doc-candidate-active/v1/active-user-file.pdf",
+      Buffer.from("candidate-active-bytes"),
+    );
+
+    // ERP returns a valid historical patent for the person
+    erp.request.mockResolvedValueOnce({
+      items: [
+        {
+          id: "hist-patent-erp",
+          documentUid: EMPLOYMENT_PATENT_UID,
+          title: "Патент",
+          category: "required",
+          expiresAt: "2027-01-01",
+          originalAvailable: true,
+          fields: {},
+        },
+      ],
+    });
+
+    await syncService.syncPreviousDocuments(row.id, "system:test");
+
+    // 1. Candidate's active document was NOT intercepted
+    const doc = candidateUpsertedDocuments.find((d) => d.id === "doc-candidate-active");
+    expect(doc.currentVersion).toBe(0);
+    expect(doc.status).toBe("DRAFT");
+
+    // 2. Candidate's active version was NOT changed to IN_REVIEW or overwritten
+    const ver = candidateUpsertedVersions.find((v) => v.id === "ver-candidate-active-1");
+    expect(ver.status).toBe("UPLOADED");
+    expect(ver.version).toBe(1);
+
+    // 3. Candidate's uploaded file was NOT deleted from storage
+    expect(
+      storedObjects.has("documents/doc-candidate-active/v1/active-user-file.pdf"),
+    ).toBe(true);
+
+    // 4. No new DocumentVersion was linked
+    expect(candidateUpsertedVersions.length).toBe(1);
+  });
+
+  // Scenario L: Deletes unused prepared S3 copies when duplicate documents exist in ERP and EDO
+  it("Scenario L: Deletes unused prepared S3 copies when duplicate documents exist in ERP and EDO for the same document type", async () => {
+    const {
+      syncService,
+      row,
+      erp,
+      storage,
+      storedObjects,
+      candidateUpsertedVersions,
+    } = setupLifecycleTest();
+
+    // Source EDO patent file exists in storage
+    const edoSourceKey = "documents/historical-edo-doc/v1/patent.pdf";
+    storedObjects.set(edoSourceKey, Buffer.from("edo-patent-content"));
+
+    // Candidate has both EDO patent and ERP patent in history
+    erp.request.mockResolvedValueOnce({
+      items: [
+        // EDO patent with originalFiles
+        {
+          id: "prev-patent-from-edo",
+          documentUid: EMPLOYMENT_PATENT_UID,
+          title: "Патент (из ЭДО)",
+          category: "required",
+          expiresAt: "2027-01-01",
+          originalAvailable: true,
+          originalFiles: [
+            {
+              storageKey: edoSourceKey,
+              filename: "patent.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 100,
+              sha256: "hash-edo",
+              pageCount: 1,
+            },
+          ],
+          fields: {},
+        },
+        // ERP patent without originalFiles (downloads bytes from 1C ERP)
+        {
+          id: "prev-patent-from-erp",
+          documentUid: EMPLOYMENT_PATENT_UID,
+          title: "Патент (из 1С)",
+          category: "required",
+          expiresAt: "2027-01-01",
+          originalAvailable: true,
+          fields: {},
+        },
+      ],
+    });
+
+    await syncService.syncPreviousDocuments(row.id, "system:test");
+
+    // Exactly one version was linked and created
+    expect(candidateUpsertedVersions.length).toBe(1);
+    const linkedVersion = candidateUpsertedVersions[0];
+    expect(linkedVersion.status).toBe("IN_REVIEW");
+
+    // Linked file is kept in storage
+    expect(storedObjects.has(linkedVersion.storageKey)).toBe(true);
+
+    // The second document's prepared file was deleted
+    expect(storage.delete).toHaveBeenCalled();
+    // But storage.delete was NOT called on the linked file!
+    expect(storage.delete).not.toHaveBeenCalledWith(linkedVersion.storageKey);
+  });
+
+  // Scenario M: Real approve() for historical version without submission (submission: null)
+  it("Scenario M: Real approve() for historical version without submission (submission: null) recalculates igCompletedAt", async () => {
+    const candidateId = "cand-lifecycle-no-sub";
+    const personUid = "person-uid-no-sub";
+    const code1c = "worker-no-sub";
+    const candidate = {
+      id: candidateId,
+      code1c,
+      personUid,
+      citizenship: "uz",
+      positionCode: "pos-dev",
+      projectCode: "proj-1",
+      sexKnown: true,
+      sex: "male",
+      igCompletedAt: null,
+      igCompletionVerified: false,
+      igRequirementsConflict: false,
+    };
+
+    // Historical version created by previous documents sync: NO submission (submission: null)
+    const patentVersion = {
+      id: "ver-patent-no-sub",
+      documentId: "doc-patent-no-sub",
+      version: 1,
+      revision: 1,
+      status: "IN_REVIEW",
+      fields: [],
+      submission: null, // Real historical version without submission!
+      job: null,
+      ocrSource: "PREVIOUS_LINK",
+      ocrRaw: { source: "ERP" },
+      pendingApprovalStorageKey: null,
+      approvalLeaseUntil: null,
+      document: {
+        id: "doc-patent-no-sub",
+        candidateId,
+        candidate,
+        currentVersion: 1,
+        documentType: { id: "dt-patent", code: "PATENT", erpUid: EMPLOYMENT_PATENT_UID },
+      },
+    };
+
+    const migrationDoc = {
+      id: "doc-mig-no-sub",
+      documentTypeId: "dt-migration",
+      status: "APPROVED",
+      currentVersion: 1,
+      versions: [
+        {
+          version: 1,
+          status: "APPROVED",
+          ocrSource: null,
+          ocrRaw: null,
+          delivery: {
+            status: "SENT",
+            transport: "multipart-v2",
+            attempts: [{ receiptValidated: true, finishedAt: new Date(), errorCode: null }],
+          },
+        },
+      ],
+    };
+
+    const patentDoc = {
+      id: "doc-patent-no-sub",
+      documentTypeId: "dt-patent",
+      status: "IN_REVIEW",
+      currentVersion: 1,
+      versions: [patentVersion],
+    };
+
+    const previousPassport = {
+      id: "prev-pass-no-sub",
+      documentUid: PASSPORT_UID,
+      status: "CONFIRMED",
+      originalAvailable: true,
+      originalVerified: true,
+      expiresAt: null,
+      fields: {},
+    };
+
+    const catalogTypes = [
+      { id: "dt-migration", erpUid: MIGRATION_UID, requiredForAll: true, allForeign: true, positions: [], stageRules: [] },
+      { id: "dt-patent", erpUid: EMPLOYMENT_PATENT_UID, requiredForAll: true, allForeign: true, positions: [], stageRules: [] },
+      { id: "dt-passport", erpUid: PASSPORT_UID, requiredForAll: true, allForeign: true, positions: [], stageRules: [] },
+    ];
+
+    const tx: any = {
+      $queryRaw: vi.fn(),
+      candidate: {
+        findFirst: vi.fn(async () => candidate),
+        update: vi.fn(async ({ data }) => {
+          Object.assign(candidate, data);
+          return candidate;
+        }),
+      },
+      document: {
+        findUnique: vi.fn(async () => patentDoc),
+        findFirst: vi.fn(async () => patentDoc),
+        update: vi.fn(async ({ data }) => {
+          Object.assign(patentDoc, data);
+          return patentDoc;
+        }),
+        findMany: vi.fn(async () => [migrationDoc, patentDoc]),
+      },
+      documentVersion: {
+        findUnique: vi.fn(async () => patentVersion),
+        updateMany: vi.fn(async ({ data }) => {
+          Object.assign(patentVersion, data);
+          return { count: 1 };
+        }),
+      },
+      erpDocumentDelivery: {
+        create: vi.fn(),
+      },
+      igEmploymentState: {
+        findFirst: vi.fn(async () => ({ currentCandidate: candidate })),
+        update: vi.fn(async ({ data }) => {
+          Object.assign(candidate, data);
+          return candidate;
+        }),
+      },
+      candidatePreviousDocument: {
+        findMany: vi.fn(async () => [previousPassport]),
+      },
+      documentType: {
+        findMany: vi.fn(async () => catalogTypes),
+      },
+      ocrJob: { updateMany: vi.fn() },
+      documentVersionField: { upsert: vi.fn() },
+    };
+
+    const prismaMock: any = {
+      documentVersion: tx.documentVersion,
+      $transaction: vi.fn(async (callback) => callback(tx)),
+    };
+    const accessMock: any = {
+      document: vi.fn(async () => patentDoc),
+      documentReviewWhere: vi.fn(() => ({})),
+    };
+    const auditMock: any = {
+      logInTransaction: vi.fn(),
+    };
+    const readsMock: any = {
+      version: vi.fn(async () => patentVersion),
+    };
+    const pdfMock: any = {
+      prepare: vi.fn(),
+      discard: vi.fn(),
+    };
+    const erpMock: any = {
+      identity: vi.fn(async () => ({
+        reviewGroup: "IG",
+        recipientType: "person",
+        personUid,
+        code1C: code1c,
+      })),
+    };
+
+    const service = new DocumentReviewService(
+      prismaMock,
+      accessMock,
+      auditMock,
+      readsMock,
+      pdfMock,
+      erpMock,
+    );
+
+    await service.approve("doc-patent-no-sub", 1, 1, actor(), "corr-approve-no-sub");
+
+    // 1. Version and Document both set to APPROVED
+    expect(tx.document.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "APPROVED" }),
+      }),
+    );
+    expect(tx.documentVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "APPROVED" }),
+      }),
+    );
+    // 2. NO fake delivery created
+    expect(tx.erpDocumentDelivery.create).not.toHaveBeenCalled();
+    // 3. Completion recalculated and approved
+    expect(tx.candidate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          igCompletedAt: expect.any(Date),
+          igCompletionVerified: true,
+        }),
+      }),
     );
   });
 });
