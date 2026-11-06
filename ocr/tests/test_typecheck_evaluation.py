@@ -32,6 +32,33 @@ class EvaluationTests(unittest.TestCase):
             sample['split'] = 'tuning'
         self.assertFalse(evaluation.summarize(samples, rows, codes)['passed'])
 
+    def test_selected_types_do_not_require_coverage_of_disabled_types(self):
+        samples, rows, codes = self.corpus()
+        for row in rows:
+            if row['actual'] == 'NAKS':
+                row.update(verdict='UNCERTAIN', detected=None)
+        self.assertTrue(evaluation.summarize(samples, rows, codes, {'SNILS'})['passed'])
+        self.assertFalse(evaluation.summarize(samples, rows, codes)['passed'])
+
+    def test_a_disabled_document_misread_as_an_enabled_type_blocks_release(self):
+        samples, rows, codes = self.corpus()
+        row = next(r for r in rows if r['actual'] == r['expected'] == 'NAKS')
+        row.update(verdict='MISMATCH', detected='SNILS')
+        self.assertFalse(evaluation.summarize(samples, rows, codes, {'SNILS'})['passed'])
+
+    def test_known_unsafe_tuning_samples_also_block_selected_release(self):
+        samples, rows, codes = self.corpus()
+        row = next(r for r in rows if r['id'] == 'NAKS0' and r['actual'] == r['expected'])
+        row.update(verdict='MISMATCH', detected='SNILS')
+        self.assertIn('FALSE_RETURNS', evaluation.summarize(samples, rows, codes, {'SNILS'})['problems'])
+
+    def test_user_supplied_provenance_counts_without_a_fictional_public_url(self):
+        samples, rows, codes = self.corpus()
+        for sample in samples:
+            sample['source_id'] = 'user-provided:' + sample['id']
+            del sample['source_url']
+        self.assertTrue(evaluation.summarize(samples, rows, codes)['passed'])
+
     def test_resized_copies_of_a_tuning_document_cannot_be_heldout(self):
         samples, rows, codes = self.corpus()
         for sample in samples:

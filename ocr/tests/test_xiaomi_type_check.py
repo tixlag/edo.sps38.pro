@@ -65,6 +65,24 @@ class XiaomiPolicyTests(unittest.TestCase):
         self.assertEqual((result['type_verdict'], result['type_reason']), ('UNCERTAIN', 'MIXED_DOCUMENT_TYPES'))
         self.assertIsNone(result['rejection_reason'])
 
+    def test_returns_are_scoped_by_detected_type_not_expected_type(self):
+        with patch.dict(os.environ, {'DOCUMENT_TYPE_AUTORETURN_CODES': 'SNILS'}):
+            self.assertEqual(self.check([SNILS], 'NAKS')['type_verdict'], 'MISMATCH')
+            self.assertEqual(self.check([SNILS], 'SNILS')['type_verdict'], 'MATCH')
+            result = self.check([MIGRATION], 'SNILS')
+            self.assertEqual((result['type_verdict'], result['type_reason']), ('UNCERTAIN', 'TYPE_NOT_ENABLED'))
+            self.assertIsNone(result['rejection_reason'])
+
+    def test_invalid_release_scope_fails_closed(self):
+        for value in ('', 'SNILS,', 'SNILS,SNILS', 'UNKNOWN', 'SNILS,UNKNOWN'):
+            with patch.dict(os.environ, {'DOCUMENT_TYPE_AUTORETURN_CODES': value}), self.assertRaises(ValueError):
+                self.check([MIGRATION], 'SNILS')
+
+    def test_a_disabled_foreign_type_does_not_hide_a_mixed_package(self):
+        with patch.dict(os.environ, {'DOCUMENT_TYPE_AUTORETURN_CODES': 'SNILS'}):
+            result = self.check([SNILS, MIGRATION], 'SNILS')
+        self.assertEqual((result['type_verdict'], result['type_reason']), ('UNCERTAIN', 'MIXED_DOCUMENT_TYPES'))
+
     def test_orientation_is_selected_without_the_expected_type(self):
         matcher = DocumentTypeMatcher(ROOT / 'contracts/document-type-rules-v2.json')
         with patch.object(xiaomi_type_check, 'recognize_page',

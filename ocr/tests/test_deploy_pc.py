@@ -55,6 +55,16 @@ class DeploymentTests(unittest.TestCase):
             self.assertIsNone(self.module.prepare_typecheck(self.old, self.root / 'shared'))
         run.assert_not_called()
 
+    def test_service_configuration_is_frozen_for_safe_rollback(self):
+        config = self.root / 'uz.env'
+        config.write_text('DOCUMENT_TYPE_PROVIDER=shadow\n')
+        target = self.new / '.env'
+        self.module.snapshot_service_config(config, target)
+        config.write_text('DOCUMENT_TYPE_PROVIDER=xiaomi\n')
+        self.assertFalse(target.is_symlink())
+        self.assertEqual(target.read_text(), 'DOCUMENT_TYPE_PROVIDER=shadow\n')
+        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+
     def test_invalid_provider_fails_before_switching_current(self):
         config = self.root / 'shared/config'
         config.mkdir(parents=True)
