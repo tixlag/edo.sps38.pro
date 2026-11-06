@@ -25,6 +25,9 @@ import { changedProfileFields, snapshotUpdateInput } from "./candidate-profile";
 import type { StagedUpload } from "./document-upload.service";
 import { igUploadOwner } from "./ig-upload-owner";
 import { DocumentNotificationService } from "./document-notification.service";
+import { resolveCandidateIdentity } from "./candidate-identity";
+import { ErpCandidateClient } from "./erp-candidate.client";
+import type { ReviewGroup } from "./review-group";
 
 @Injectable()
 export class ManualDocumentService {
@@ -35,6 +38,7 @@ export class ManualDocumentService {
     private readonly catalog: DocumentCatalogService,
     @Optional() private readonly config?: ConfigService,
     @Optional() private readonly notifications?: DocumentNotificationService,
+    @Optional() private readonly candidates?: ErpCandidateClient,
   ) {}
 
   async upload(
@@ -270,6 +274,35 @@ export class ManualDocumentService {
             // LK profile snapshot: only keys actually present in the upload
             // update the stored profile; empty values never clear stored fields.
             const profile = snapshotUpdateInput(metadata.candidateSnapshot);
+            const group: ReviewGroup =
+              metadata.chat_uuid || metadata.citizenship?.toLowerCase() === "ru"
+                ? "RU"
+                : "IG";
+            const code1cToLink =
+              metadata.code_1c ??
+              (metadata.candidateSnapshot as any)?.code1C ??
+              (metadata.candidateSnapshot as any)?.code1c ??
+              null;
+            const personUidToLink =
+              metadata.candidateSnapshot?.personUid ?? null;
+            let erpUid = metadata.candidateSnapshot?.erpUid ?? null;
+            const resolver =
+              this.candidates ??
+              (this.notifications &&
+              "resolveIdentityByChat" in this.notifications
+                ? (this.notifications as unknown as ErpCandidateClient)
+                : undefined);
+            if (!erpUid && metadata.chat_uuid && resolver) {
+              try {
+                const resolved = await resolver.resolveIdentityByChat(
+                  metadata.chat_uuid,
+                );
+                if (resolved) erpUid = resolved;
+              } catch {
+                // Non-blocking
+              }
+            }
+
             const owner =
               !metadata.chat_uuid &&
               metadata.code_1c &&
@@ -280,20 +313,42 @@ export class ManualDocumentService {
                     metadata.citizenship,
                     locationId,
                   )
-                : await tx.candidate.upsert({
-                    where: { identityKey },
-                    update: {},
-                    create: {
-                      identityKey,
-                      chatUuid: metadata.chat_uuid ?? null,
-                      code1c: metadata.code_1c ?? null,
-                      locationId: locationId ?? null,
-                    },
+                : await resolveCandidateIdentity(tx, {
+                    identityKey,
+                    chatUuid: metadata.chat_uuid ?? null,
+                    code1c: code1cToLink,
+                    erpUid,
+                    personUid: personUidToLink,
+                    reviewGroup: group,
                   });
             await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${owner.id} FOR UPDATE`;
             const current = await tx.candidate.findUniqueOrThrow({
               where: { id: owner.id },
             });
+            if (erpUid && !current.erpUid) {
+              await tx.candidate.update({
+                where: { id: owner.id },
+                data: { erpUid },
+              });
+            }
+            if (group && !current.reviewGroup) {
+              await tx.candidate.update({
+                where: { id: owner.id },
+                data: { reviewGroup: group },
+              });
+            }
+            if (personUidToLink && !current.personUid) {
+              await tx.candidate.update({
+                where: { id: owner.id },
+                data: { personUid: personUidToLink },
+              });
+            }
+            if (locationId !== undefined && current.locationId == null) {
+              await tx.candidate.update({
+                where: { id: owner.id },
+                data: { locationId },
+              });
+            }
             if (profile) {
               const keys = changedProfileFields(current, profile);
               const changed = Object.fromEntries(

@@ -50,6 +50,8 @@ import {
   CreateCandidateDto,
   UpdateCandidateDto,
 } from "./candidate-workspace.dto";
+import { ErpCandidateClient } from "../documents/erp-candidate.client";
+import type { Candidate, Prisma } from "@prisma/client";
 
 @Injectable()
 export class CandidateWorkspaceService {
@@ -62,6 +64,7 @@ export class CandidateWorkspaceService {
     private readonly catalog: DocumentCatalogService,
     private readonly previousDocsSync: CandidatePreviousDocumentsSyncService,
     @Optional() private readonly ownHistory?: OwnDocumentHistoryService,
+    @Optional() private readonly candidates?: ErpCandidateClient,
   ) {}
   private actor(p: AuthPrincipal) {
     requireReviewGroup(p, "RU");
@@ -70,10 +73,95 @@ export class CandidateWorkspaceService {
   }
   private async owner(id: string, p: AuthPrincipal) {
     requireReviewGroup(p, "RU");
-    const row = await this.access.candidate(id, p);
-    if (row.reviewGroup !== "RU" || !row.erpUid)
+    let row = await this.access.candidate(id, p);
+    if (candidateReviewGroup(row) !== "RU")
+      throw new ConflictException("ERP_CANDIDATE_CONFIRMATION_REQUIRED");
+    if (!row.erpUid && row.chatUuid && this.candidates) {
+      row = await this.healCandidateFromErp(row, p);
+    }
+    if (!row.erpUid)
       throw new ConflictException("ERP_CANDIDATE_CONFIRMATION_REQUIRED");
     return row;
+  }
+
+  private async healCandidateFromErp(
+    row: Candidate,
+    p: AuthPrincipal,
+  ): Promise<Candidate> {
+    if (!this.candidates || !row.chatUuid) return row;
+    let erpUid: string | undefined;
+    let code1c: string | undefined;
+    try {
+      if (typeof this.candidates.resolveIdentityByChat === "function") {
+        erpUid = await this.candidates.resolveIdentityByChat(row.chatUuid);
+      }
+      if (!row.code1c || !erpUid) {
+        try {
+          if (typeof this.candidates.findByChatUuid === "function") {
+            const snapshot = await this.candidates.findByChatUuid(row.chatUuid);
+            if (snapshot.erpUid) erpUid = snapshot.erpUid;
+            if (snapshot.code1C) code1c = snapshot.code1C;
+            else if (snapshot.code1c) code1c = snapshot.code1c;
+          }
+        } catch {
+          // Non-blocking if profile is incomplete
+        }
+      }
+    } catch {
+      return row;
+    }
+    if (!erpUid) return row;
+
+    return this.prisma.$transaction(async (tx) => {
+      const ghost = await tx.candidate.findFirst({
+        where: {
+          erpUid,
+          id: { not: row.id },
+          chatUuid: null,
+        },
+        include: { _count: { select: { documents: true } } },
+      });
+
+      let ghostMeta: Prisma.CandidateUpdateInput = {};
+      if (ghost && (ghost as any)._count?.documents === 0) {
+        ghostMeta = {
+          ...(ghost.statusId && !row.statusId ? { statusId: ghost.statusId } : {}),
+          ...(ghost.statusName && !row.statusName ? { statusName: ghost.statusName } : {}),
+          ...(ghost.managerId && !row.managerId ? { managerId: ghost.managerId } : {}),
+          ...(ghost.managerName && !row.managerName ? { managerName: ghost.managerName } : {}),
+          ...(ghost.projectCode && !row.projectCode ? { projectCode: ghost.projectCode } : {}),
+          ...(ghost.projectName && !row.projectName ? { projectName: ghost.projectName } : {}),
+          ...(ghost.positionCode && !row.positionCode ? { positionCode: ghost.positionCode } : {}),
+          ...(ghost.positionName && !row.positionName ? { positionName: ghost.positionName } : {}),
+          ...(ghost.code1c && !row.code1c ? { code1c: ghost.code1c } : {}),
+          ...(ghost.personUid && !row.personUid ? { personUid: ghost.personUid } : {}),
+        };
+        await tx.candidate.delete({ where: { id: ghost.id } });
+      }
+
+      await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${row.id} FOR UPDATE`;
+      const updated = await tx.candidate.update({
+        where: { id: row.id },
+        data: {
+          erpUid,
+          reviewGroup: "RU",
+          ...(code1c && !row.code1c ? { code1c } : {}),
+          ...ghostMeta,
+        },
+      });
+
+      await this.audit.logInTransaction(tx, {
+        actorId: p.uuid,
+        action: "CANDIDATE_LINKED",
+        entityType: "Candidate",
+        entityId: row.id,
+        correlationId: "",
+        before: { erpUid: row.erpUid, reviewGroup: row.reviewGroup },
+        after: { erpUid, reviewGroup: "RU" },
+      });
+
+      return updated;
+    });
   }
   private async previousOwner(id: string, p: AuthPrincipal) {
     const row = await this.access.candidate(id, p);

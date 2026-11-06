@@ -16743,6 +16743,14 @@
             "nullable": true,
             "description": "Chat UUID, named uuid by 1C"
           },
+          "code1C": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "code1c": {
+            "type": "string",
+            "maxLength": 64
+          },
           "fullName": {
             "type": "string",
             "maxLength": 512

@@ -83,7 +83,26 @@ export class CandidateProfileBackfill {
             current.code1c !== owner.code1c
           )
             return false;
-          await tx.candidate.update({ where: { id: owner.id }, data });
+          const extraUpdates: Partial<Candidate> = {};
+          if (parsed.data.erpUid && !current.erpUid) {
+            extraUpdates.erpUid = parsed.data.erpUid;
+          }
+          if (typeof body.code1c === "string" && !current.code1c) {
+            extraUpdates.code1c = body.code1c;
+          }
+          if (
+            !current.reviewGroup &&
+            (owner.chatUuid || parsed.data.citizenship?.toLowerCase() === "ru")
+          ) {
+            extraUpdates.reviewGroup = "RU";
+          }
+          if (parsed.data.personUid && !current.personUid) {
+            extraUpdates.personUid = parsed.data.personUid;
+          }
+          await tx.candidate.update({
+            where: { id: owner.id },
+            data: { ...data, ...extraUpdates },
+          });
           const before = Object.fromEntries(
             Object.keys(data).map((key) => [
               key,

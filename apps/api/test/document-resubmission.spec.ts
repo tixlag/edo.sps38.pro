@@ -55,6 +55,8 @@ function fixture(status: DocumentStatus, externalOcr = false) {
     ocrJob: { create: vi.fn(async () => ({ id: "check-job" })) },
     $queryRaw: vi.fn(async () => []),
     candidate: {
+      findMany: vi.fn(async () => [{ id: "owner" }]),
+      update: vi.fn(async () => ({ id: "owner" })),
       upsert: vi.fn(async () => ({ id: "owner" })),
       updateMany: vi.fn(async () => ({ count: 0 })),
       findUniqueOrThrow: vi.fn(async () => ({
