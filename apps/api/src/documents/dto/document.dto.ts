@@ -288,10 +288,19 @@ export class DocumentVersionDto extends DocumentReviewMetadataDto {
 }
 export class ReviewStageCountsDto {
   @ApiProperty() approved!: number;
-  @ApiProperty() pending!: number;
-  @ApiProperty() processing!: number;
+  @ApiProperty() reused!: number;
+  @ApiProperty() signed!: number;
+  @ApiProperty() inReview!: number;
+  @ApiProperty() uploaded!: number;
+  @ApiProperty() ocrPending!: number;
+  @ApiProperty() ocrFailed!: number;
+  @ApiProperty() returned!: number;
+  @ApiProperty() expired!: number;
+  @ApiProperty() draft!: number;
   @ApiProperty() missing!: number;
-  @ApiProperty() attention!: number;
+  @ApiPropertyOptional() pending?: number;
+  @ApiPropertyOptional() processing?: number;
+  @ApiPropertyOptional() attention?: number;
 }
 export class ReviewStageProgressDto {
   @ApiProperty({ type: Number, nullable: true }) stage!: number | null;

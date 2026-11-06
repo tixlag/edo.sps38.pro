@@ -22,9 +22,18 @@ type Type = {
 };
 type Counts = {
   approved: number;
+  reused: number;
+  signed: number;
+  inReview: number;
+  uploaded: number;
+  ocrPending: number;
+  ocrFailed: number;
+  returned: number;
+  expired: number;
+  draft: number;
+  missing: number;
   pending: number;
   processing: number;
-  missing: number;
   attention: number;
 };
 export type StageProgress = {
@@ -34,9 +43,18 @@ export type StageProgress = {
 };
 const empty = (): Counts => ({
   approved: 0,
+  reused: 0,
+  signed: 0,
+  inReview: 0,
+  uploaded: 0,
+  ocrPending: 0,
+  ocrFailed: 0,
+  returned: 0,
+  expired: 0,
+  draft: 0,
+  missing: 0,
   pending: 0,
   processing: 0,
-  missing: 0,
   attention: 0,
 });
 
@@ -72,10 +90,13 @@ export function reviewStageProgress(
   previousUids: string[] = [],
   isIg = true,
 ): StageProgress[] {
-  const states = new Map(
+  const nonDraftStates = new Map(
     documents
       .filter((d) => d.status !== "DRAFT")
       .map((d) => [d.documentTypeId, d.status]),
+  );
+  const allStates = new Map(
+    documents.map((d) => [d.documentTypeId, d.status]),
   );
   const reused = new Set(previousUids.map((uid) => uid.toLowerCase()));
   const stages = new Map<number | null, StageProgress>();
@@ -91,19 +112,42 @@ export function reviewStageProgress(
         stages.set(stage, entry);
       }
       const count = category === "required" ? entry.required : entry.additional;
-      const status =
-        states.get(type.id) ??
-        (type.erpUid &&
-        (!isIg || !needsNewIgDocument(type.erpUid)) &&
-        reused.has(type.erpUid.toLowerCase())
-          ? "APPROVED"
-          : undefined);
-      if (!status || status === "DRAFT") count.missing++;
-      else if (status === "APPROVED" || status === "SIGNED") count.approved++;
-      else if (status === "IN_REVIEW") count.pending++;
-      else if (status === "OCR_PENDING" || status === "UPLOADED")
-        count.processing++;
-      else count.attention++;
+      const activeStatus = nonDraftStates.get(type.id);
+      const isReused =
+        !activeStatus &&
+        Boolean(
+          type.erpUid &&
+            (!isIg || !needsNewIgDocument(type.erpUid)) &&
+            reused.has(type.erpUid.toLowerCase()),
+        );
+
+      if (isReused) {
+        count.reused++;
+      } else if (activeStatus === "APPROVED") {
+        count.approved++;
+      } else if (activeStatus === "SIGNED") {
+        count.signed++;
+      } else if (activeStatus === "IN_REVIEW") {
+        count.inReview++;
+      } else if (activeStatus === "UPLOADED") {
+        count.uploaded++;
+      } else if (activeStatus === "OCR_PENDING") {
+        count.ocrPending++;
+      } else if (activeStatus === "OCR_FAILED") {
+        count.ocrFailed++;
+      } else if (activeStatus === "RETURNED") {
+        count.returned++;
+      } else if (activeStatus === "EXPIRED") {
+        count.expired++;
+      } else if (allStates.get(type.id) === "DRAFT") {
+        count.draft++;
+      } else {
+        count.missing++;
+      }
+
+      count.pending = count.inReview;
+      count.processing = count.uploaded + count.ocrPending;
+      count.attention = count.returned + count.ocrFailed + count.expired;
     }
   }
   return [...stages.values()].sort(

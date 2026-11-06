@@ -24,6 +24,7 @@ import {
   getListCatalogManagersQueryKey,
   type CandidateDetailsDto,
   type CandidateDocumentSummaryDto,
+  type ReviewStageCountsDto,
   type ReviewStageProgressDto,
   useGetDocumentInfo,
   useGetMe,
@@ -156,11 +157,17 @@ function StaticSearchSelect({
 }
 
 const STAGE_STATES = [
-  ["approved", "Подтверждено", "var(--success)"],
-  ["pending", "Ожидают проверки", "var(--warning)"],
-  ["processing", "Обрабатываются", "var(--info)"],
-  ["missing", "Не загружено", "var(--muted-foreground)"],
-  ["attention", "Требуют внимания", "var(--danger)"],
+  ["approved", "Одобрен", "var(--success)"],
+  ["reused", "Зачтён ранее", "var(--success-bright)"],
+  ["signed", "Подписан", "color-mix(in srgb, var(--info) 60%, var(--success))"],
+  ["inReview", "На проверке", "var(--warning)"],
+  ["uploaded", "Загружен", "var(--info)"],
+  ["ocrPending", "Распознаётся", "var(--purple)"],
+  ["ocrFailed", "Ошибка OCR", "#f97316"],
+  ["returned", "Возвращён", "var(--danger)"],
+  ["expired", "Истёк", "#881337"],
+  ["draft", "Черновик", "var(--crumb)"],
+  ["missing", "Не загружен", "var(--border)"],
 ] as const;
 
 function StageTooltip({
@@ -255,26 +262,36 @@ function StageTooltip({
           </tr>
         </thead>
         <tbody>
-          {STAGE_STATES.map(([key, text, color]) => (
-            <tr key={key}>
-              <th scope="row" className="py-1.5 pr-2 font-normal">
-                <span className="inline-flex items-center gap-2">
-                  <span
-                    aria-hidden="true"
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: color }}
-                  />
-                  {text}
-                </span>
-              </th>
-              <td className="px-1 py-1.5 text-center tabular-nums">
-                {progress.required[key]}
-              </td>
-              <td className="pl-1 py-1.5 text-center tabular-nums">
-                {progress.additional[key]}
-              </td>
-            </tr>
-          ))}
+          {STAGE_STATES.map(([key, text, color]) => {
+            const reqVal =
+              progress.required[key as keyof ReviewStageCountsDto] ??
+              (key === "inReview" ? progress.required.pending : 0) ??
+              0;
+            const addVal =
+              progress.additional[key as keyof ReviewStageCountsDto] ??
+              (key === "inReview" ? progress.additional.pending : 0) ??
+              0;
+            return (
+              <tr key={key}>
+                <th scope="row" className="py-1.5 pr-2 font-normal">
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: color }}
+                    />
+                    {text}
+                  </span>
+                </th>
+                <td className="px-1 py-1.5 text-center tabular-nums">
+                  {reqVal}
+                </td>
+                <td className="pl-1 py-1.5 text-center tabular-nums">
+                  {addVal}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>,
@@ -319,39 +336,60 @@ export function StageRing({
     return () => document.removeEventListener("keydown", escape);
   }, [open]);
   const total = (counts: ReviewStageProgressDto["required"]) =>
-    counts.approved +
-    counts.pending +
-    counts.processing +
-    counts.missing +
-    counts.attention;
-  const pending = progress.required.pending + progress.additional.pending;
-  const attention = progress.required.attention + progress.additional.attention;
+    (counts.approved ?? 0) +
+    (counts.reused ?? 0) +
+    (counts.signed ?? 0) +
+    (counts.inReview ?? counts.pending ?? 0) +
+    (counts.uploaded ?? 0) +
+    (counts.ocrPending ?? 0) +
+    (counts.ocrFailed ?? 0) +
+    (counts.returned ?? 0) +
+    (counts.expired ?? 0) +
+    (counts.draft ?? 0) +
+    (counts.missing ?? 0);
+  const completed = (counts: ReviewStageProgressDto["required"]) =>
+    (counts.approved ?? 0) + (counts.reused ?? 0) + (counts.signed ?? 0);
+  const inReview =
+    (progress.required.inReview ?? progress.required.pending ?? 0) +
+    (progress.additional.inReview ?? progress.additional.pending ?? 0);
+  const attention =
+    (progress.required.returned ?? 0) +
+    (progress.additional.returned ?? 0) +
+    (progress.required.ocrFailed ?? 0) +
+    (progress.additional.ocrFailed ?? 0) +
+    (progress.required.expired ?? 0) +
+    (progress.additional.expired ?? 0) +
+    (progress.required.attention ?? 0) +
+    (progress.additional.attention ?? 0);
   const processing =
-    progress.required.processing + progress.additional.processing;
-  const missing = progress.required.missing + progress.additional.missing;
-  const color = pending
+    (progress.required.uploaded ?? 0) +
+    (progress.additional.uploaded ?? 0) +
+    (progress.required.ocrPending ?? 0) +
+    (progress.additional.ocrPending ?? 0) +
+    (progress.required.processing ?? 0) +
+    (progress.additional.processing ?? 0);
+  const totalCount = total(progress.required) + total(progress.additional);
+  const completedCount =
+    completed(progress.required) + completed(progress.additional);
+  const color = inReview
     ? "var(--warning)"
     : attention
       ? "var(--danger)"
       : processing
         ? "var(--info)"
-        : missing
-          ? "var(--muted-foreground)"
-          : "var(--success)";
+        : totalCount > 0 && completedCount === totalCount
+          ? "var(--success)"
+          : "var(--muted-foreground)";
   const arc = (counts: ReviewStageProgressDto["required"], radius: number) => {
     const sum = total(counts);
     const circumference = 2 * Math.PI * radius;
     let offset = 0;
-    return (
-      [
-        ["approved", "var(--success)"],
-        ["pending", "var(--warning)"],
-        ["processing", "var(--info)"],
-        ["attention", "var(--danger)"],
-        ["missing", "var(--border)"],
-      ] as const
-    ).map(([key, stroke]) => {
-      const length = sum ? (circumference * counts[key]) / sum : 0;
+    return STAGE_STATES.map(([key, , stroke]) => {
+      const countVal =
+        counts[key as keyof ReviewStageCountsDto] ??
+        (key === "inReview" ? counts.pending : 0) ??
+        0;
+      const length = sum ? (circumference * countVal) / sum : 0;
       const element = (
         <circle
           key={key}
@@ -428,15 +466,14 @@ export function StageRing({
           {arc(progress.required, 21)}
         </svg>
         <span style={{ color }} aria-hidden="true">
-          {pending ? <AlertTriangle size={19} /> : <FileText size={19} />}
+          {inReview ? <AlertTriangle size={19} /> : <FileText size={19} />}
         </span>
       </span>
       <strong className="flex h-8 items-center justify-center leading-tight">
         {label}
       </strong>
       <span className="text-[var(--muted-foreground)]">
-        {progress.required.approved + progress.additional.approved}/
-        {total(progress.required) + total(progress.additional)}
+        {completedCount}/{totalCount}
       </span>
       {open && anchor.current && (
         <StageTooltip

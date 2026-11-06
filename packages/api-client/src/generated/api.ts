@@ -536,10 +536,19 @@ export interface ReturnedDocumentVersionDto {
 
 export interface ReviewStageCountsDto {
   approved: number;
-  pending: number;
-  processing: number;
+  reused: number;
+  signed: number;
+  inReview: number;
+  uploaded: number;
+  ocrPending: number;
+  ocrFailed: number;
+  returned: number;
+  expired: number;
+  draft: number;
   missing: number;
-  attention: number;
+  pending?: number;
+  processing?: number;
+  attention?: number;
 }
 
 export interface ReviewStageProgressDto {
