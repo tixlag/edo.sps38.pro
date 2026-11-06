@@ -52,9 +52,11 @@ def install(manifest, models_root, opener=urllib.request.urlopen):
     data = json.loads(manifest.read_text())
     files = load_manifest(manifest)
     repository, revision = data['repository'], data['revision']
-    if repository != 'google/siglip2-base-patch16-224' or not re.fullmatch(r'[a-f0-9]{40}', revision):
+    prefixes = {'google/siglip2-base-patch16-224': 'document-check',
+                'xiaomi-research/Xiaomi-OCR-0': 'document-type'}
+    if repository not in prefixes or not re.fullmatch(r'[a-f0-9]{40}', revision):
         raise ValueError('Unsupported public model repository/revision')
-    destination = target(models_root, 'document-check/' + revision)
+    destination = target(models_root, prefixes[repository] + '/' + revision)
     try:
         verify(destination, files)
         print('Public classifier already verified: ' + revision)

@@ -6,6 +6,7 @@ The registry must opt phrases into definitive classification via strong_markers.
 from __future__ import annotations
 
 import json
+import html
 from pathlib import Path
 import re
 import unicodedata
@@ -56,11 +57,22 @@ class DocumentTypeMatcher:
     def __init__(self, rules_path: Path | None = None):
         path = rules_path or ROOT / 'contracts/document-type-rules.json'
         data = json.loads(path.read_text(encoding='utf-8'))
+        overrides = {}
+        if data.get('version') == 'document-type-rules-v2' and data.get('extends') == 'document-type-rules.json':
+            overrides = data
+            data = json.loads((path.parent / data['extends']).read_text(encoding='utf-8'))
         if data.get('version') != 'document-type-rules-v1':
             raise ValueError('Unsupported document type rules version')
         self.rules = {rule['code']: rule for rule in data['rules']}
         if len(self.rules) != len(data['rules']):
             raise ValueError('Duplicate document type code')
+        for field in ('strong_markers', 'supporting_markers'):
+            for code, phrases in overrides.get(field, {}).items():
+                self.rules[code][field].extend(phrases)
+        self.prefer_corroborated = overrides.get('prefer_corroborated', False)
+        self.marker_sets = overrides.get('marker_sets', {})
+        self.required_any = overrides.get('required_any', {})
+        self.pattern_groups = overrides.get('pattern_groups', {})
 
     def evaluate_text(self, text: str, expected_code: str) -> dict:
         result = {'verdict': 'UNCERTAIN', 'detected_code': None,
@@ -68,6 +80,8 @@ class DocumentTypeMatcher:
         expected_code = canonical_code(expected_code)
         if expected_code not in self.rules:
             return result
+        if self.prefer_corroborated:
+            return self.evaluate_corroborated(text, expected_code)
         normalized = ' ' + normalize(text) + ' '
         hits = {}
         for code, rule in self.rules.items():
@@ -77,6 +91,8 @@ class DocumentTypeMatcher:
                 hits[code] = phrases
         # A document may mention other documents. Contradictory evidence needs review.
         if len(hits) != 1:
+            if len(hits) > 1:
+                result['reason'] = 'MIXED_DOCUMENT_TYPES'
             return result
         code, phrases = next(iter(hits.items()))
         result.update(detected_code=code, matched_phrases=phrases)
@@ -86,9 +102,55 @@ class DocumentTypeMatcher:
         for phrase in normalized_phrases:
             if not any(' ' + phrase + ' ' in ' ' + other + ' ' for other in independent):
                 independent.append(phrase)
-        corroborated = any(' ' + normalize(p) + ' ' in normalized
-                           for p in self.rules[code].get('supporting_markers', [])
-                           if normalize(p) and not any(normalize(p) in anchor for anchor in independent))
+        supporting = [p for p in self.rules[code].get('supporting_markers', [])
+                      if normalize(p) and ' ' + normalize(p) + ' ' in normalized
+                      and not any(normalize(p) in anchor for anchor in independent)]
+        corroborated = bool(supporting)
         if len(independent) >= 2 or corroborated:
             result['verdict'] = 'MATCH' if code == expected_code else 'MISMATCH'
+            result['matched_phrases'] = phrases + supporting
+        return result
+
+    def evaluate_corroborated(self, text, expected_code):
+        text = html.unescape(text)
+        text = re.sub(r'</?(?:table|tr|td|th|p|div|h[1-6]|br|span|strong|b|i|em|html|body)(?:\s[^>]*)?>', '\n', text, flags=re.IGNORECASE)
+        normalized = ' ' + normalize(text) + ' '
+        def contains(phrase):
+            return bool(normalize(phrase)) and ' ' + normalize(phrase) + ' ' in normalized
+        hits, confident = {}, {}
+        for code, rule in self.rules.items():
+            required = self.required_any.get(code, [])
+            if required and not any(contains(p) for p in required):
+                continue
+            anchors = [p for p in rule['strong_markers'] if contains(p)]
+            for group in self.marker_sets.get(code, []):
+                if all(contains(p) for p in group):
+                    anchors.extend(group)
+            for group in self.pattern_groups.get(code, []):
+                found = re.search(group['pattern'], text, re.IGNORECASE | re.MULTILINE)
+                evidence = [p for p in group['supporting_markers'] if contains(p)]
+                if found and evidence:
+                    anchors.extend([found.group(0), *evidence])
+            if not anchors:
+                continue
+            hits[code] = list(dict.fromkeys(anchors))
+            supporting = [p for p in rule['supporting_markers'] if contains(p)]
+            independent = []
+            for phrase in sorted({normalize(p) for p in anchors + supporting}, key=len, reverse=True):
+                if not any(' ' + phrase + ' ' in ' ' + other + ' ' for other in independent):
+                    independent.append(phrase)
+            if len(independent) >= 2:
+                confident[code] = list(dict.fromkeys(anchors + supporting))
+        # A field mentioning another document is weaker than corroborated type
+        # evidence. Two corroborated types still require human review.
+        selected = confident or hits
+        result = {'verdict': 'UNCERTAIN', 'detected_code': None,
+                  'rejection_reason': None, 'matched_phrases': []}
+        if len(selected) > 1:
+            return {**result, 'reason': 'MIXED_DOCUMENT_TYPES'}
+        if selected:
+            code, phrases = next(iter(selected.items()))
+            result.update(detected_code=code, matched_phrases=phrases)
+            if confident:
+                result['verdict'] = 'MATCH' if code == expected_code else 'MISMATCH'
         return result

@@ -11,7 +11,7 @@ from recognizeuz.quality.type_aggregation import aggregate_type_pages
 from recognizeuz.quality.type_matcher import DocumentTypeMatcher, canonical_code
 
 
-def check_types(payload: list[tuple[str, bytes, str | None]], expected_code: str,
+def legacy_check_types(payload: list[tuple[str, bytes, str | None]], expected_code: str,
                 presence: dict[str, Any], *, deadline: float) -> dict[str, Any]:
     from recognizeuz.core.config import GLM_OCR_MODEL, GLM_OCR_URL
     from recognizeuz.quality.document_check import pages
@@ -68,3 +68,24 @@ def check_types(payload: list[tuple[str, bytes, str | None]], expected_code: str
             'type_verdict': aggregate['verdict'], 'rejection_reason': reason,
             'source': next((p['source'] for p in results if p['verdict'] == aggregate['verdict']), None),
             'type_pages': results}
+
+
+def check_types(payload, expected_code, presence, *, deadline):
+    provider = os.getenv('DOCUMENT_TYPE_PROVIDER', 'legacy')
+    if provider not in {'legacy', 'shadow', 'xiaomi'}:
+        raise ValueError('Invalid DOCUMENT_TYPE_PROVIDER')
+    if provider == 'xiaomi':
+        from recognizeuz.quality.xiaomi_type_check import check_types as xiaomi_check
+        return xiaomi_check(payload, expected_code, presence, deadline=deadline)
+    result = legacy_check_types(payload, expected_code, presence, deadline=deadline)
+    if provider == 'shadow':
+        import logging
+        try:
+            from recognizeuz.quality.xiaomi_type_check import check_types as xiaomi_check
+            shadow = xiaomi_check(payload, expected_code, presence, deadline=deadline)
+            logging.info('document_type_shadow legacy_verdict=%s legacy_code=%s verdict=%s detected_code=%s reason=%s',
+                         result['type_verdict'], result['detected_code'], shadow['type_verdict'],
+                         shadow['detected_code'], shadow['type_reason'])
+        except Exception as error:
+            logging.warning('document_type_shadow error_class=%s', type(error).__name__)
+    return result

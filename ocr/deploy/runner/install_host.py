@@ -60,7 +60,8 @@ def main():
     backup = runtime / ('admin-backup-' + stamp)
     backup.mkdir(parents=True, mode=0o700)
     paths = [target, Path('/etc/systemd/system/recognize-uz.service'),
-             Path('/etc/systemd/system/recognize-ru.service')]
+             Path('/etc/systemd/system/recognize-ru.service'),
+             Path('/etc/systemd/system/recognize-typecheck.service')]
     for path in paths:
         if path.is_file():
             shutil.copy2(path, backup / (path.name + '.backup'))
@@ -100,7 +101,7 @@ def main():
 ExecStart=
 ExecStart=/usr/local/bin/gitlab-runner run --config /etc/gitlab-runner/config.toml --working-directory {working} --service gitlab-runner --user {args.user}
 ''')
-    for service in ('uz', 'ru'):
+    for service in ('uz', 'ru', 'typecheck'):
         text = (component / f'deploy/systemd/recognize-{service}.service').read_text()
         text = text.replace('/opt/edo.sps38.pro/ocr', str(runtime / 'current'))
         text = text.replace('User=ocr', 'User=' + args.user).replace('Group=ocr', 'Group=' + args.user)

@@ -129,6 +129,13 @@ def check_http(url, timeout, validate=None):
 
 
 def services_healthy(root):
+    text_reader = root / 'current/services/typecheck/.venv/bin/python'
+    if text_reader.is_file():
+        manifest = json.loads((root / 'current/models/xiaomi-manifest.json').read_text())
+        check_http('http://127.0.0.1:8084/health', 120,
+                   lambda data: data.get('status') == 'ok'
+                   and data.get('model') == manifest['repository']
+                   and data.get('revision') == manifest['revision'])
     classifier = root / 'current/contracts/document-check-v1.json'
     def loaded(data):
         keys = ('doc_model', 'passport_fields_model', 'migration_fields_model',
@@ -177,6 +184,94 @@ def prepare_classifier(release, shared):
         '--private-dir', str(shared / 'var/regression'))
 
 
+def type_setting(shared, name, default=None):
+    configuration = shared / 'config/uz.env'
+    value = default
+    if configuration.is_file():
+        for line in configuration.read_text().splitlines():
+            line = line.strip().removeprefix('export ')
+            if line.startswith(name + '='):
+                value = line.split('=', 1)[1].strip().strip("\"'")
+    return value
+
+
+def type_provider(shared):
+    provider = type_setting(shared, 'DOCUMENT_TYPE_PROVIDER', 'legacy')
+    if provider not in ('legacy', 'shadow', 'xiaomi'):
+        raise ValueError('DOCUMENT_TYPE_PROVIDER must be legacy, shadow or xiaomi')
+    return provider
+
+
+def type_configuration(shared):
+    return {'provider': type_provider(shared),
+            'autoreturn_codes': type_setting(shared, 'DOCUMENT_TYPE_AUTORETURN_CODES')}
+
+
+def snapshot_service_config(configuration, target):
+    # A rollback must restore the provider and allowed types with the code.
+    # A shared .env symlink would apply the new provider to the old release.
+    if configuration.is_file():
+        shutil.copy2(configuration, target)
+        target.chmod(0o600)
+
+
+def prepare_typecheck(release, shared):
+    provider = type_provider(shared)
+    if provider == 'legacy':
+        return None
+    manifest = release / 'models/xiaomi-manifest.json'
+    if not manifest.is_file():
+        raise ValueError('This release does not support Xiaomi')
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('typecheck_evaluation', release / 'scripts/evaluate_typecheck.py')
+    evaluation = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(evaluation)
+    matcher = evaluation.DocumentTypeMatcher(release / 'contracts/document-type-rules-v2.json')
+    requested_codes = evaluation.resolve_codes(type_setting(shared, 'DOCUMENT_TYPE_AUTORETURN_CODES'), matcher.rules)
+    if provider == 'xiaomi':
+        gate_file = shared / 'var/verification/typecheck/gate.json'
+        gate = json.loads(gate_file.read_text()) if gate_file.is_file() else {}
+        pinned = json.loads(manifest.read_text())
+        if (gate.get('passed') is not True or gate.get('model_revision') != pinned['revision']
+                or set(gate.get('approved_codes', [])) != requested_codes
+                or gate.get('rules_sha256') != evaluation.rules_digest(release)):
+            raise ValueError('Xiaomi requires a passing held-out corpus gate for this model and policy')
+    unit = Path('/etc/systemd/system/recognize-typecheck.service')
+    wrapper = Path('/usr/local/sbin/edo-ocr-systemctl')
+    if not unit.is_file() or 'recognize-typecheck.service' not in wrapper.read_text():
+        raise ValueError('Install the optional Xiaomi systemd unit and control wrapper before enabling it')
+    service = release / 'services/typecheck'
+    key = fingerprint(service / 'requirements.lock', release / 'scripts/setup_typecheck.sh')
+    environment = shared / 'venvs' / ('typecheck-' + key)
+    marker = environment / '.ready'
+    if not marker.is_file():
+        # A new environment requires ~10 GiB during installation. Never clean
+        # shared caches or an active environment to make room automatically.
+        cached_wheels = (shared / 'wheels/document-type/.complete').is_file()
+        required_gib = 7 if cached_wheels else 10
+        if shutil.disk_usage(shared).free < required_gib * 1024 ** 3:
+            raise ValueError(f'Xiaomi environment preparation requires {required_gib} GiB free disk space')
+        if environment.exists():
+            shutil.rmtree(environment)
+        run('bash', str(release / 'scripts/setup_typecheck.sh'),
+            env={**os.environ, 'SERVICE_VENV': str(environment),
+                 'TYPECHECK_BUILD_DIR': str(shared / 'var/typecheck-build'),
+                 **({'TYPECHECK_WHEELHOUSE': str(shared / 'wheels/document-type')}
+                    if (shared / 'wheels/document-type').is_dir() else {})})
+        marker.write_text(key + '\n')
+    run(sys.executable, str(release / 'scripts/public_models.py'),
+        '--manifest', str(manifest), '--models-dir', str(shared / 'models'))
+    link = service / '.venv'
+    if not link.exists():
+        link.symlink_to(environment)
+    elif link.resolve() != environment:
+        raise ValueError('Xiaomi environment does not match this release')
+    configuration = shared / 'config/typecheck.env'
+    if configuration.is_file() and not (service / '.env').exists():
+        (service / '.env').symlink_to(configuration)
+    return key
+
+
 def prepare_release(repo, commit, root, bootstrap=False):
     shared = root / 'shared'
     for fixture in ('uz.jpg', 'migration.png', 'ru.pdf'):
@@ -188,6 +283,15 @@ def prepare_release(repo, commit, root, bootstrap=False):
         run(sys.executable, str(release / 'scripts/models.py'), 'verify',
             '--models-dir', str(root / 'shared/models'))
         prepare_classifier(release, shared)
+        metadata = json.loads((release / 'release.json').read_text())
+        if metadata.get('type_configuration') != type_configuration(shared):
+            raise ValueError('Type configuration changed for a prepared release; prepare a new commit')
+        recorded = metadata.get('environments', {}).get('typecheck')
+        if (type_provider(shared) != 'legacy') != bool(recorded):
+            raise ValueError('Provider changed for a prepared release; prepare a new commit')
+        key = prepare_typecheck(release, shared)
+        if key != recorded:
+            raise ValueError('Provider changed for a prepared release; prepare a new commit')
         return release
     if release.exists():
         shutil.rmtree(release)
@@ -203,6 +307,9 @@ def prepare_release(repo, commit, root, bootstrap=False):
     vendor.mkdir(parents=True, exist_ok=True)
     (release / 'vendor').symlink_to(vendor)
     environment_keys = {}
+    typecheck_key = prepare_typecheck(release, shared)
+    if typecheck_key:
+        environment_keys['typecheck'] = typecheck_key
     for service in ('uz', 'ru'):
         service_dir = release / 'services' / service
         key = fingerprint(service_dir / 'requirements.lock', release / 'scripts/setup_service.sh')
@@ -220,8 +327,7 @@ def prepare_release(repo, commit, root, bootstrap=False):
             marker.write_text(key + '\n')
         (service_dir / '.venv').symlink_to(environment)
         configuration = shared / 'config' / (service + '.env')
-        if configuration.exists():
-            (service_dir / '.env').symlink_to(configuration)
+        snapshot_service_config(configuration, service_dir / '.env')
     run(sys.executable, str(release / 'scripts/setup_paddleocr.py'))
     glm_key = fingerprint(release / 'deploy/glm/Dockerfile', release / 'deploy/glm/compose.yaml')
     glm_dir = shared / 'glm' / glm_key
@@ -240,7 +346,8 @@ def prepare_release(repo, commit, root, bootstrap=False):
             run('docker', 'compose', '-p', 'edo-ocr', '-f', str(glm_dir / 'compose.yaml'),
                 'build', env={**os.environ, 'GLM_OCR_IMAGE': image})
     (release / 'release.json').write_text(json.dumps({'commit': commit, 'glm_key': glm_key,
-                                                    'glm_image': image, 'environments': environment_keys}, indent=2))
+                                                    'glm_image': image, 'environments': environment_keys,
+                                                    'type_configuration': type_configuration(shared)}, indent=2))
     return release
 
 

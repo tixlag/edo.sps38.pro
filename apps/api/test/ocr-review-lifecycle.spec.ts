@@ -102,6 +102,21 @@ function workerFixture() {
 afterEach(() => vi.useRealTimers());
 
 describe("manual review enrichment", () => {
+  it("never approves a new document because its v3 type matches", async () => {
+    const { worker, tx, job, version } = workerFixture();
+    job.status = "RUNNING";
+    job.leaseToken = "lease";
+    version.status = "OCR_PENDING";
+    await worker.complete("job", "lease", {
+      outcome: "SUCCEEDED", source: "EXTERNAL", fields: {},
+      raw: { documentCheck: { status: "COMPLETED", result: {
+        policy_version: "document-check-v3", type_verdict: "MATCH", detected_code: "SNILS",
+      } } },
+    }, {});
+    expect(tx.documentVersion.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "IN_REVIEW" }),
+    }));
+  });
   it.each([0, 1, 2])(
     "routes the third submitted type mismatch to review: %i",
     async (previousCount) => {
