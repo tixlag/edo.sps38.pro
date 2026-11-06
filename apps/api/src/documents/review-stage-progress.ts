@@ -1,8 +1,10 @@
 import { classifyRule, excludedForSex } from "./document-contract";
+import { needsNewIgDocument } from "./reemployment-document-policy";
 
 type Type = {
   id: string;
   code: string;
+  erpUid?: string | null;
   stage: number | null;
   requiredForAll: boolean;
   allRu: boolean;
@@ -67,8 +69,10 @@ export function reviewStageProgress(
   types: Type[],
   documents: { documentTypeId: string | null; status: string }[],
   profile: Profile,
+  previousUids: string[] = [],
 ): StageProgress[] {
   const states = new Map(documents.map((d) => [d.documentTypeId, d.status]));
+  const reused = new Set(previousUids.map((uid) => uid.toLowerCase()));
   const stages = new Map<number | null, StageProgress>();
   for (const type of types) {
     if (excludedForSex(type.code, profile.sex)) continue;
@@ -82,7 +86,13 @@ export function reviewStageProgress(
         stages.set(stage, entry);
       }
       const count = category === "required" ? entry.required : entry.additional;
-      const status = states.get(type.id);
+      const status =
+        states.get(type.id) ??
+        (type.erpUid &&
+        !needsNewIgDocument(type.erpUid) &&
+        reused.has(type.erpUid.toLowerCase())
+          ? "APPROVED"
+          : undefined);
       if (!status || status === "DRAFT") count.missing++;
       else if (status === "APPROVED" || status === "SIGNED") count.approved++;
       else if (status === "IN_REVIEW") count.pending++;

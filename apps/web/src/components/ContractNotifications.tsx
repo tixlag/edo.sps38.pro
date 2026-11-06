@@ -15,7 +15,7 @@ export function ContractNotifications() {
   const container = React.useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const client = useQueryClient();
-  const notifications = useListSigningNotifications({
+  const notifications = useListSigningNotifications(undefined, {
     query: {
       queryKey: getListSigningNotificationsQueryKey(),
       refetchInterval: 10_000,

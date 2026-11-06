@@ -353,4 +353,17 @@ describe("SearchSelect", () => {
       view.cleanup();
     }
   });
+
+  it("applies standardized input styling consistent with CANDIDATE_CONTROL", () => {
+    const view = renderSelect();
+    try {
+      const input = view.input();
+      expect(input.className).toContain("rounded-md");
+      expect(input.className).toContain("py-2 pl-3 pr-12");
+      expect(input.className).toContain("text-sm");
+      expect(input.className).toContain("focus-visible:ring-1 focus-visible:ring-[var(--primary)]");
+    } finally {
+      view.cleanup();
+    }
+  });
 });

@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+const optionalUrl = z.preprocess(
+  (value) => typeof value === 'string' && !value.trim() ? undefined : value,
+  z.string().url().optional(),
+);
+
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   API_PORT: z.coerce.number().default(3001),
@@ -28,8 +33,10 @@ const envSchema = z.object({
   EDO_LK_QUEUE: z.string().default('edo.lk-reference-sync'),
   REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
   EDO_LK_INTERNAL_TOKEN: z.string().optional(),
+  EDO_ERP_ADAPTATION_TOKEN: z.string().optional(),
+  ERP_ADAPTATION_TOKEN: z.string().optional(),
   ERP_DOCUMENTS_BASE_URL: z.string().url().default('https://api-erp.sps38.pro/ERP/hs/api/'),
-  ERP_DOCUMENTS_TRANSPORT: z.enum(['base64-v1', 'multipart-v2']).default('multipart-v2'),
+  ERP_DOCUMENTS_TRANSPORT: z.literal('multipart-v2').default('multipart-v2'),
   // Enable only after idempotency acceptance on the target 1C publication.
   ERP_DOCUMENTS_V2_AUTO_RETRY: z.enum(['true', 'false']).default('false'),
   ERP_DOCUMENTS_V2_TIMEOUT_MS: z.coerce.number().int().min(60000).max(600000).default(300000),
@@ -42,8 +49,17 @@ const envSchema = z.object({
   ZUP_DOCUMENTS_BASIC_AUTH: z.string().optional(),
   ZUP_DOCUMENTS_API_KEY: z.string().optional(),
   CONTRACT_LIBREOFFICE_BIN: z.string().default('libreoffice'),
+  CONTRACT_NOTIFICATION_WORKER_ENABLED: z.enum(['true', 'false']).default('false'),
+  ERP_COMMUNICATIONS_URL: optionalUrl,
+  LK_CHAT_BASE_URL: optionalUrl,
+  LK_PUBLIC_BASE_URL: z.string().url().default('https://lk.sps38.pro'),
+  CANDIDATE_CATALOG_SYNC_ENABLED: z.enum(['true', 'false']).default('true'),
+  EDO_ARRIVAL_SYNC_ENABLED: z.enum(['true', 'false']).default('false'),
+  EDO_ARRIVAL_CONTEXTS_URL: optionalUrl,
+  EDO_ADAPTATION_SYNC_TOKEN: z.string().optional(),
   DOCUMENT_WORKER_ENABLED: z.enum(['true', 'false']).default('true'),
   EDO_PUBLIC_API_URL: z.string().url().default('http://localhost:3001/api'),
+  EDO_PUBLIC_WEB_URL: optionalUrl,
   OCR_MODE: z.enum(['disabled', 'stub', 'external']).default('disabled'),
   OCR_RU_BASE_URL: z.string().url().optional(),
   OCR_UZ_BASE_URL: z.string().url().optional(),
@@ -64,6 +80,18 @@ export type AppEnv = z.infer<typeof envSchema>;
 
 export function validateEnv(config: Record<string, unknown>): AppEnv {
   const parsed = envSchema.parse(config);
+  if (parsed.EDO_ARRIVAL_SYNC_ENABLED === 'true' && !parsed.ERP_COMMUNICATIONS_URL) {
+    throw new Error('ERP_COMMUNICATIONS_URL is required when EDO_ARRIVAL_SYNC_ENABLED=true');
+  }
+  if (parsed.EDO_ARRIVAL_CONTEXTS_URL) {
+    if (!parsed.EDO_ADAPTATION_SYNC_TOKEN?.trim()) {
+      throw new Error('EDO_ADAPTATION_SYNC_TOKEN is required when EDO_ARRIVAL_CONTEXTS_URL is configured');
+    }
+    const url = new URL(parsed.EDO_ARRIVAL_CONTEXTS_URL);
+    if (url.username || url.password || url.search || url.hash || url.pathname !== '/surveys-service/api/internal/edo/arrival-contexts' || (url.protocol !== 'https:' && !(url.protocol === 'http:' && parsed.NODE_ENV !== 'production'))) {
+      throw new Error('EDO_ARRIVAL_CONTEXTS_URL must be the approved Surveys endpoint over HTTPS in production');
+    }
+  }
   const nodeEnv = String(config['NODE_ENV'] ?? parsed.NODE_ENV ?? 'development');
   // Fail closed: production must have a real JWT secret and no dev bypass.
   if (nodeEnv === 'production') {

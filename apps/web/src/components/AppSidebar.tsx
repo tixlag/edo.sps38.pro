@@ -36,7 +36,7 @@ export const WORK_NAV: NavItem[] = [
   { key: "tasks", label: "Мои задачи", icon: ClipboardCheck, to: "/tasks" },
   {
     key: "review",
-    label: "Проверка документов РУ",
+    label: "Кандидаты РУ",
     icon: FileCheck2,
     to: "/review",
   },
@@ -48,8 +48,19 @@ export const WORK_NAV: NavItem[] = [
   },
   { key: "onboarding", label: "Оформление", icon: Route, to: "/onboarding" },
   { key: "signing", label: "Подписание", icon: PenLine, to: "/signing" },
-  { key: "my-documents", label: "Мои документы", icon: FileCheck2, to: "/my-documents" },
+  {
+    key: "my-documents",
+    label: "Мои документы",
+    icon: FileCheck2,
+    to: "/my-documents",
+  },
   { key: "employees", label: "Работники", icon: Users, to: "/employees" },
+  {
+    key: "candidates",
+    label: "Кандидаты · Россия",
+    icon: Users,
+    to: "/candidates",
+  },
 ];
 
 export const CONFIG_NAV: NavItem[] = [

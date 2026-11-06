@@ -51,6 +51,8 @@ enum AuditAction {
   DATA_IMPORTED
   LK_REFERENCE_SYNCED
   LK_EVENT_APPLIED
+  COMMUNICATION_REQUESTED
+  COMMUNICATION_COMPLETED
   DOCUMENT_OCR_RETRIED
   DOCUMENT_OCR_REQUESTED
   ANNOTATION_CATALOG_CHANGED
@@ -115,25 +117,34 @@ model DocumentType {
   @@map("document_types")
 }
 
+enum ReviewGroup {
+  RU
+  IG
+}
+
 model Document {
+  reviewGroup ReviewGroup?
   id             String         @id @default(cuid()) @db.VarChar(64)
   employeeId     String?        @db.VarChar(64)
   candidateId    String?        @db.VarChar(64)
   documentTypeId String?        @db.VarChar(64)
   status         DocumentStatus @default(DRAFT)
   currentVersion Int            @default(1)
+  expiresAt      DateTime?      @db.Date
   createdAt      DateTime       @default(now()) @db.DateTime(3)
   updatedAt      DateTime       @updatedAt @db.DateTime(3)
 
-  employee     Employee?         @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: Restrict)
-  candidate    Candidate?        @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: Restrict)
-  documentType DocumentType?     @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
-  versions     DocumentVersion[]
-  auditLogs    AuditLog[]        @relation("AuditEntityDocument")
+  employee         Employee?                 @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  candidate        Candidate?                @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  documentType     DocumentType?             @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+  versions         DocumentVersion[]
+  expirationAlerts DocumentExpirationAlert[]
+  auditLogs        AuditLog[]                @relation("AuditEntityDocument")
 
   @@unique([candidateId, documentTypeId])
   @@index([employeeId])
   @@index([status])
+  @@index([expiresAt])
   @@map("documents")
 }
 
@@ -175,11 +186,13 @@ model DocumentVersion {
   fields     DocumentVersionField[]
   issues     OcrIssue[]
   job        OcrJob?
+  expiresAt  DateTime?              @db.Date
   createdAt  DateTime               @default(now()) @db.DateTime(3)
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, version])
+  @@index([expiresAt])
   @@map("document_versions")
 }
 
@@ -371,7 +384,22 @@ model LkSyncState {
 }
 
 model Candidate {
+  igArrivalPerson IgArrivalPerson?
+  igCompletedAt DateTime? @db.DateTime(3)
+  igCompletionVerified Boolean @default(false)
+  igRequirementsConflict Boolean @default(false)
+  igEmploymentState IgEmploymentState?
+  reviewGroup ReviewGroup?
+  personUid String? @db.VarChar(36)
+  phone String? @db.VarChar(64)
+  managerId String? @db.VarChar(64)
+  statusId String? @db.VarChar(128)
+  statusName String? @db.VarChar(256)
+  previousDocuments CandidatePreviousDocument[]
   id         String     @id @default(cuid()) @db.VarChar(64)
+  erpUid     String?    @unique @db.VarChar(36)
+  erpDeleted Boolean    @default(false)
+  catalogSyncedAt DateTime? @db.DateTime(3)
   chatUuid   String?    @unique @db.VarChar(36)
   identityKey String @unique @db.VarChar(80)
   locationId Int?
@@ -399,15 +427,42 @@ model Candidate {
   mentorCode1c    String?   @db.VarChar(64)
   isReemployment  Boolean   @default(false)
   profileSyncedAt DateTime? @db.DateTime(3)
+  previousDocumentsSyncedAt DateTime? @db.DateTime(3)
+  profileSyncNextAttemptAt DateTime? @db.DateTime(3)
+  profileSyncAttempts      Int       @default(0)
   createdAt  DateTime   @default(now()) @db.DateTime(3)
   updatedAt  DateTime   @updatedAt @db.DateTime(3)
   documents  Document[]
   jobs       OcrJob[]
   signingContracts SigningContract[]
+  communications CommunicationOperation[]
+  chatAttachments CommunicationAttachment[]
 
   @@index([locationId])
   @@index([code1c])
+  @@index([personUid])
+  @@index([previousDocumentsSyncedAt])
+  @@index([profileSyncNextAttemptAt])
   @@map("candidates")
+}
+
+model IgEmploymentState {
+  code1c String @id @db.VarChar(64)
+  currentCandidateId String? @unique @db.VarChar(64)
+  currentCandidate Candidate? @relation(fields: [currentCandidateId], references: [id], onDelete: Restrict)
+  @@map("ig_employment_states")
+}
+
+model IgGrantEvent {
+  id String @id @db.VarChar(36)
+  code1c String @db.VarChar(64)
+  candidateId String? @db.VarChar(64)
+  personUid String? @db.VarChar(36)
+  citizenship String? @db.VarChar(16)
+  enabled Boolean?
+  payloadHash String? @db.VarChar(64)
+  receivedAt DateTime @default(now()) @db.DateTime(3)
+  @@map("ig_grant_events")
 }
 
 enum SigningContractState {
@@ -493,8 +548,17 @@ model SigningContractNotification {
   message String @db.VarChar(512)
   createdAt DateTime @default(now()) @db.DateTime(3)
   readAt DateTime? @db.DateTime(3)
+  deliveredAt DateTime? @db.DateTime(3)
+  deliveryCancelledAt DateTime? @db.DateTime(3)
+  lkBroadcastUuid String? @db.VarChar(36)
+  lkReadSyncedAt DateTime? @db.DateTime(3)
+  deliveryLeaseToken String? @db.VarChar(36)
+  deliveryLeaseUntil DateTime? @db.DateTime(3)
+  deliveryRetryAt DateTime? @db.DateTime(3)
+  deliveryAttempts Int @default(0)
   @@unique([contractId, kind])
   @@index([recipientId, createdAt])
+  @@index([deliveredAt, deliveryRetryAt])
   @@map("signing_contract_notifications")
 }
 
@@ -506,6 +570,53 @@ model SigningContractObject {
   createdAt DateTime @default(now()) @db.DateTime(3)
   @@index([retained, createdAt])
   @@map("signing_contract_objects")
+}
+
+enum CommunicationStatus {
+  PENDING
+  SENT
+  FAILED
+  UNKNOWN
+}
+
+model CommunicationOperation {
+  id String @id @default(uuid()) @db.VarChar(36)
+  candidateId String @db.VarChar(64)
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+  actorId String @db.VarChar(64)
+  actorCode1c String @db.VarChar(64)
+  requestKey String @db.VarChar(128)
+  fingerprint String @db.VarChar(64)
+  channel String @db.VarChar(16)
+  recipientId String @db.VarChar(256)
+  text String @db.Text
+  status CommunicationStatus @default(PENDING)
+  providerId String? @db.VarChar(256)
+  errorCode String? @db.VarChar(64)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  attachments CommunicationAttachment[]
+
+  @@unique([actorId, requestKey])
+  @@index([candidateId, createdAt])
+  @@map("communication_operations")
+}
+
+model CommunicationAttachment {
+  id String @id @default(uuid()) @db.VarChar(36)
+  candidateId String @db.VarChar(64)
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+  actorId String @db.VarChar(64)
+  filename String @db.VarChar(256)
+  mimeType String @db.VarChar(128)
+  sizeBytes Int
+  storageKey String @unique @db.VarChar(512)
+  operationId String? @db.VarChar(36)
+  operation CommunicationOperation? @relation(fields: [operationId], references: [id])
+  createdAt DateTime @default(now()) @db.DateTime(3)
+
+  @@index([candidateId, actorId])
+  @@map("communication_attachments")
 }
 
 model DocumentVersionFile {
@@ -633,7 +744,7 @@ model DocumentSubmission {
 }
 
 model ErpDocumentDelivery {
-  transport String @default("base64-v1") @db.VarChar(16)
+  transport String @default("multipart-v2") @db.VarChar(16)
   attemptCount Int @default(0)
   nextAttemptAt DateTime? @db.DateTime(3)
   id String @id @default(cuid()) @db.VarChar(64)
@@ -653,6 +764,7 @@ model ErpDocumentDelivery {
 }
 
 model ErpDocumentAttempt {
+  receiptValidated Boolean @default(false)
   id String @id @default(cuid()) @db.VarChar(64)
   deliveryId String @db.VarChar(64)
   actorId String @db.VarChar(64)
@@ -669,6 +781,7 @@ model ErpDocumentAttempt {
 }
 
 model DocumentStreamGrant {
+  candidateId String? @db.VarChar(64)
   id String @id @default(cuid()) @db.VarChar(64)
   tokenHash String @unique @db.VarChar(64)
   chatUuid String? @db.VarChar(36)
@@ -975,4 +1088,134 @@ model AnnotationRegionVertex {
   region AnnotationRegion @relation(fields: [regionId], references: [id], onDelete: Cascade)
   @@id([regionId, ordinal])
   @@map("annotation_region_vertices")
+}
+
+
+enum CandidateRecheckStatus {
+  REQUIRES_REVIEW
+  CONFIRMED
+  REPLACE
+  MISSING
+  ORIGINAL_UNAVAILABLE
+}
+
+model CandidatePreviousDocument {
+  originalVerified Boolean @default(false)
+  id String @id @default(cuid()) @db.VarChar(64)
+  candidateId String @db.VarChar(64)
+  candidate Candidate @relation(fields: [candidateId], references: [id], onUpdate: Restrict)
+  sourceId String @db.VarChar(256)
+  documentUid String? @db.VarChar(36)
+  title String @db.VarChar(512)
+  fields Json
+  expiresAt DateTime? @db.Date
+  originalAvailable Boolean
+  status CandidateRecheckStatus @default(REQUIRES_REVIEW)
+  reviewedBy String? @db.VarChar(64)
+  reviewedAt DateTime? @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  expirationAlerts DocumentExpirationAlert[]
+
+  @@unique([candidateId, sourceId])
+  @@index([expiresAt])
+  @@map("candidate_previous_documents")
+}
+
+model DocumentExpirationAlert {
+  id              String   @id @default(cuid()) @db.VarChar(64)
+  documentId      String?  @db.VarChar(64)
+  previousDocId   String?  @db.VarChar(64)
+  candidateId     String?  @db.VarChar(64)
+  employeeId      String?  @db.VarChar(64)
+  documentTitle   String   @db.VarChar(255)
+  expiresAt       DateTime @db.Date
+  thresholdDays   Int
+  recipientCode1c String   @db.VarChar(64)
+  recipientRole   String   @db.VarChar(32)
+  status          String   @default("CLAIMED") @db.VarChar(16)
+  attemptCount    Int      @default(1)
+  nextAttemptAt   DateTime? @db.DateTime(3)
+  leaseExpiresAt  DateTime? @db.DateTime(3)
+  leaseToken      String?  @db.VarChar(36)
+  lastError       String?  @db.Text
+  broadcastUuid   String?  @db.VarChar(36)
+  sentAt          DateTime? @db.DateTime(3)
+  payload         Json?
+  createdAt       DateTime @default(now()) @db.DateTime(3)
+  updatedAt       DateTime @default(now()) @updatedAt @db.DateTime(3)
+
+  document        Document?                  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  previousDoc     CandidatePreviousDocument? @relation(fields: [previousDocId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, expiresAt, thresholdDays, recipientCode1c], map: "uniq_doc_alert")
+  @@unique([previousDocId, expiresAt, thresholdDays, recipientCode1c], map: "uniq_prevdoc_alert")
+  @@index([expiresAt])
+  @@index([thresholdDays])
+  @@index([status, nextAttemptAt])
+  @@index([status, leaseExpiresAt])
+  @@map("document_expiration_alerts")
+}
+
+model IgArrivalPerson {
+  personUid String @id @db.VarChar(36)
+  code1c String @unique @db.VarChar(64)
+  revision BigInt @default(0)
+  state String @db.VarChar(16)
+  currentMemberUid String? @unique @db.VarChar(36)
+  currentMember IgArrivalMember? @relation("IgArrivalCurrent", fields: [currentMemberUid], references: [arrivalMemberUid], onDelete: SetNull)
+  members IgArrivalMember[] @relation("IgArrivalOwner")
+  candidateId String? @unique @db.VarChar(64)
+  candidate Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  sourceHash String @db.VarChar(64)
+  sourcePayload Json
+  syncPending Boolean @default(true)
+  syncedRevision BigInt @default(0)
+  syncError String? @db.VarChar(64)
+  bindingError String? @db.VarChar(64)
+  igVerified Boolean @default(false)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  @@index([state, personUid])
+  @@index([igVerified, state, personUid])
+  @@index([syncPending, updatedAt])
+  @@map("ig_arrival_persons")
+}
+model IgArrivalMember {
+  arrivalMemberUid String @id @db.VarChar(36)
+  personUid String @db.VarChar(36)
+  owner IgArrivalPerson @relation("IgArrivalOwner", fields: [personUid], references: [personUid], onDelete: Cascade)
+  currentFor IgArrivalPerson? @relation("IgArrivalCurrent")
+  arrivalDate String? @db.Char(10)
+  locationUid String? @db.VarChar(36)
+  locationCode1c String? @db.VarChar(512)
+  locationName String? @db.VarChar(512)
+  fullName String? @db.VarChar(512)
+  citizenship String? @db.VarChar(2)
+  managerCode1c String? @db.VarChar(512)
+  cancelled Boolean
+  @@index([arrivalDate, locationUid])
+  @@index([personUid])
+  @@map("ig_arrival_members")
+}
+
+model IgArrivalIssue {
+  id String @id @db.Char(64)
+  personHash String @db.Char(64)
+  revision BigInt?
+  code String @db.VarChar(64)
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  @@index([personHash, active])
+  @@map("ig_arrival_issues")
+}
+
+model IgArrivalSyncState {
+  id String @id @db.VarChar(32)
+  cursor String? @db.VarChar(128)
+  completedAt DateTime? @db.DateTime(3)
+  lockToken String? @db.VarChar(64)
+  lockExpiresAt DateTime? @db.DateTime(3)
+  generation BigInt @default(0)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  @@map("ig_arrival_sync_state")
 }

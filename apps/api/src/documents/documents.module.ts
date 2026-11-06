@@ -1,3 +1,4 @@
+import { ErpWorkspaceClient } from "./erp-workspace.client";
 import { Module } from "@nestjs/common";
 import { RedisModule } from "../redis/redis.module";
 import { PrismaModule } from "../prisma/prisma.module";
@@ -15,6 +16,7 @@ import { DocumentOcrRetryService } from "./document-ocr-retry.service";
 import { DocumentIngestionService } from "./document-ingestion.service";
 import { DocumentUploadService } from "./document-upload.service";
 import { LkInternalGuard } from "./lk-internal.guard";
+import { ErpAdaptationGuard } from "./erp-adaptation.guard";
 
 import { ManualDocumentService } from "./manual-document.service";
 import { DocumentCatalogService } from "./document-catalog.service";
@@ -44,25 +46,52 @@ import { CandidateContextService } from "./candidate-context.service";
 import { LkCandidateIdentityService } from "./lk-candidate-identity.service";
 import { ErpCandidateClient } from "./erp-candidate.client";
 import { CandidateCardCache } from "./candidate-card-cache";
+import { IgArrivalQueueService } from "./ig-arrival-queue.service";
+import { IgArrivalProjectionService } from "./ig-arrival-projection.service";
+import { IgArrivalSyncWorker } from "./ig-arrival-sync.worker";
+import { IgProfileEnrichmentService } from "./ig-profile-enrichment.service";
+import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
+import { IgEmploymentService } from "./ig-employment.service";
+import { OwnDocumentHistoryService } from "./own-document-history.service";
+import { OwnDocumentHistoryController } from "./own-document-history.controller";
+import { ErpAdaptationGrantsController } from "./erp-adaptation-grants.controller";
+import { ExpirationModule } from "../expiration/expiration.module";
 
 @Module({
-  imports: [PrismaModule, AuditModule, StorageModule, OcrModule, RedisModule],
+  imports: [PrismaModule, AuditModule, StorageModule, OcrModule, RedisModule, ExpirationModule],
   controllers: [
     BrowserCandidateDocumentsController,
     MyCandidateDocumentsController,
+    OwnDocumentHistoryController,
     CandidateIntegrationController,
     DocumentsController,
     ManualDocumentIntegrationController,
     ManualDocumentReviewController,
     CandidateDocumentEventsController,
     CandidateDocumentUploadController,
+    ErpAdaptationGrantsController,
   ],
-  exports: [CandidateContextService, DocumentCatalogService],
+  exports: [
+    CandidateContextService,
+    DocumentCatalogService,
+    OwnDocumentHistoryService,
+    IgEmploymentService,
+    IgProfileEnrichmentService,
+    CandidatePreviousDocumentsSyncService,
+  ],
   providers: [
+    ErpWorkspaceClient,
     CandidateDocumentsService,
     CandidateContextService,
+    CandidatePreviousDocumentsSyncService,
     LkCandidateIdentityService,
     ErpCandidateClient,
+    IgEmploymentService,
+    IgArrivalProjectionService,
+    IgArrivalSyncWorker,
+    IgProfileEnrichmentService,
+    IgArrivalQueueService,
+    OwnDocumentHistoryService,
     CandidateCardCache,
     DocumentAccessService,
     DocumentReadService,
@@ -71,6 +100,7 @@ import { CandidateCardCache } from "./candidate-card-cache";
     DocumentIngestionService,
     DocumentUploadService,
     LkInternalGuard,
+    ErpAdaptationGuard,
     ManualDocumentService,
     DocumentCatalogService,
     DocumentPdfService,

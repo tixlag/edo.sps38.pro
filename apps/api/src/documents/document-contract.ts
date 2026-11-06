@@ -158,6 +158,13 @@ export const candidateSnapshotSchema = z.preprocess(
   aliasSnapshotKeys,
   z
     .object({
+      erpUid: z
+        .string()
+        .uuid()
+        .transform((value) => value.toLowerCase())
+        .optional(),
+      personUid: z.string().uuid().optional(),
+      reviewGroup: z.enum(["RU", "IG"]).optional(),
       fullName: snapshotName(512),
       birthDate: snapshotBirthDate,
       citizenship: snapshotCitizenship,
@@ -191,6 +198,11 @@ export const candidateSnapshotSchema = z.preprocess(
     })
     .transform((v) => ({
       // Preserve presence for round-tripping; persistence ignores empty values.
+      // null = arrived-but-empty (clears the column); undefined = absent
+      // (leaves the stored value untouched). Never collapse one into the other.
+      erpUid: v.erpUid,
+      personUid: v.personUid,
+      reviewGroup: v.reviewGroup,
       fullName: v.fullName,
       birthDate: v.birthDate,
       citizenship: v.citizenship,
@@ -572,7 +584,11 @@ export function classifyRule(
   return matchedPosition.length ? "additional" : null;
 }
 export function applicable(
-  type: ApplicabilityRule & { code?: string; stageRules?: ApplicabilityRule[] },
+  type: ApplicabilityRule & {
+    code?: string;
+    erpUid?: string | null;
+    stageRules?: ApplicabilityRule[];
+  },
   position: string,
   citizenship: string,
   sex?: "male" | "female" | null,
@@ -585,7 +601,11 @@ export function applicable(
 }
 
 export function requiredApplicable(
-  type: ApplicabilityRule & { code?: string; stageRules?: ApplicabilityRule[] },
+  type: ApplicabilityRule & {
+    code?: string;
+    erpUid?: string | null;
+    stageRules?: ApplicabilityRule[];
+  },
   position: string,
   citizenship: string,
   sex?: "male" | "female" | null,

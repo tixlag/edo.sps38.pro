@@ -273,7 +273,7 @@ export function DashboardPage() {
                     ? "Итого по отделам"
                     : selectedGroup === "IG"
                       ? "Проверка документов ИГ"
-                      : "Проверка документов РУ"}
+                      : "Кандидаты РУ"}
                 </h2>
                 {metrics(data.kpis, selectedGroup)}
               </section>
@@ -286,7 +286,7 @@ export function DashboardPage() {
                   >
                     <h2 className="text-[15px] font-bold">
                       {section.reviewGroup === "RU"
-                        ? "Проверка документов РУ"
+                        ? "Кандидаты РУ"
                         : "Проверка документов ИГ"}
                     </h2>
                     {metrics(section.kpis, section.reviewGroup)}

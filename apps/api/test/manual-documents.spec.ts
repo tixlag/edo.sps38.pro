@@ -280,7 +280,7 @@ suite("manual documents with isolated MariaDB/S3 and ERP stub", () => {
       S3_BUCKET: bucket,
       S3_ACCESS_KEY: "test",
       S3_SECRET_KEY: "test",
-      ERP_DOCUMENTS_TRANSPORT: "base64-v1",
+      ERP_DOCUMENTS_TRANSPORT: "multipart-v2",
       ERP_DOCUMENTS_BASE_URL: `http://127.0.0.1:${port}/`,
       ERP_DOCUMENTS_TOKEN: "test-token",
       ERP_USERNAME: "test-user",
@@ -810,7 +810,7 @@ suite("manual documents with isolated MariaDB/S3 and ERP stub", () => {
       expect(posts.at(-1)!.mimeType).toBe("image/webp");
       expect(posts.at(-1)!.deliveryId).toBe(row.delivery!.id);
     } finally {
-      config.set("ERP_DOCUMENTS_TRANSPORT", "base64-v1");
+      config.set("ERP_DOCUMENTS_TRANSPORT", "multipart-v2");
     }
   }, 30000);
 });

@@ -80,6 +80,147 @@ function setup() {
 }
 
 describe("candidate review queue", () => {
+  it("includes newly admitted IG candidates before their first upload", async () => {
+    const { reads, prisma } = setup();
+    prisma.candidate.findMany.mockResolvedValue([
+      { ...owner("ig1"), chatUuid: null, citizenship: "uz", documents: [] },
+    ]);
+    const result = await reads.candidateReviewQueue(principal, {
+      status: "IN_REVIEW",
+      reviewGroup: "IG",
+    });
+    expect(result.items.map((item) => item.candidate.id)).toEqual(["ig1"]);
+    expect(prisma.candidate.findMany.mock.calls[0][0].where.AND).toContainEqual(
+      expect.objectContaining({
+        OR: expect.arrayContaining([
+          expect.objectContaining({
+            igEmploymentState: { isNot: null },
+            OR: [{ igCompletedAt: null }, { igCompletionVerified: false }],
+          }),
+        ]),
+      }),
+    );
+  });
+  it("offers IG candidates without uploads in the name filter", async () => {
+    const { reads, prisma } = setup();
+    prisma.document.findMany.mockResolvedValue([]);
+    prisma.candidate.findMany.mockResolvedValue([
+      { id: "ig1", fullName: "Петров" },
+    ]);
+    const result = await reads.reviewCandidates(principal, {
+      reviewGroup: "IG",
+    });
+    expect(result.items).toEqual([{ id: "ig1", fullName: "Петров" }]);
+    expect(prisma.candidate.findMany).toHaveBeenCalled();
+  });
+  it("includes candidates with and without uploaded documents in separate ordered groups", async () => {
+    const { reads, prisma } = setup();
+    prisma.candidate.findMany
+      .mockResolvedValueOnce([{ ...owner("c1"), documents: [document("d1")] }])
+      .mockResolvedValueOnce([{ ...owner("c2"), documents: [] }]);
+    const result = await reads.candidateReviewQueue(principal, {
+      status: "ALL",
+      reviewGroup: "RU",
+      limit: 10,
+    });
+    expect(result.items.map((item) => item.candidate.id)).toEqual(["c1", "c2"]);
+    expect(prisma.candidate.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.candidate.findMany.mock.calls[0][0].orderBy).toEqual([
+      { fullName: "asc" },
+      { id: "asc" },
+    ]);
+    expect(prisma.candidate.findMany.mock.calls[1][0].where.AND).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          documents: expect.objectContaining({ none: expect.anything() }),
+        }),
+      ]),
+    );
+  });
+  it("continues into the next group without repeating the previous candidate", async () => {
+    const { reads, prisma } = setup();
+    const first = {
+      ...owner("c1"),
+      fullName: "Анна",
+      documents: [document("d1")],
+    };
+    const second = { ...owner("c2"), fullName: "Борис", documents: [] };
+    prisma.candidate.findMany
+      .mockResolvedValueOnce([first])
+      .mockResolvedValueOnce([second]);
+    const page1 = await reads.candidateReviewQueue(principal, {
+      status: "ALL",
+      reviewGroup: "RU",
+      limit: 1,
+    });
+    expect(page1.items.map((row) => row.candidate.id)).toEqual(["c1"]);
+    expect(page1.nextCursor).toBeTruthy();
+    prisma.candidate.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([second]);
+    const page2 = await reads.candidateReviewQueue(principal, {
+      status: "ALL",
+      reviewGroup: "RU",
+      limit: 1,
+      cursor: page1.nextCursor!,
+    });
+    expect(page2.items.map((row) => row.candidate.id)).toEqual(["c2"]);
+    expect(page2.nextCursor).toBeNull();
+  });
+  it("filters local creation dates using inclusive Irkutsk calendar days", async () => {
+    const { reads, prisma } = setup();
+    prisma.candidate.findMany.mockResolvedValue([]);
+    await reads.candidateReviewQueue(principal, {
+      status: "ALL",
+      reviewGroup: "RU",
+      createdFrom: "2026-01-01",
+      createdTo: "2026-01-01",
+    });
+    expect(prisma.candidate.findMany.mock.calls[0][0].where.AND).toEqual(
+      expect.arrayContaining([
+        {
+          createdAt: {
+            gte: new Date("2025-12-31T16:00:00Z"),
+            lt: new Date("2026-01-01T16:00:00Z"),
+          },
+        },
+      ]),
+    );
+    await expect(
+      reads.candidateReviewQueue(principal, {
+        status: "ALL",
+        createdFrom: "2026-02-30",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      reads.candidateReviewQueue(principal, {
+        status: "ALL",
+        createdFrom: "2026-02-01",
+        createdTo: "2026-01-01",
+      }),
+    ).rejects.toThrow();
+  });
+  it("requires a matching uploaded document when filtering all candidates by document type", async () => {
+    const { reads, prisma } = setup();
+    prisma.candidate.findMany.mockResolvedValue([]);
+    await reads.candidateReviewQueue(principal, {
+      status: "ALL",
+      reviewGroup: "RU",
+      documentTypeCode: "PASSPORT",
+    });
+    expect(prisma.candidate.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.candidate.findMany.mock.calls[0][0].where.AND).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          documents: {
+            some: expect.objectContaining({
+              documentType: { code: "PASSPORT" },
+            }),
+          },
+        }),
+      ]),
+    );
+  });
   it("starts a catalog refresh without blocking the queue", async () => {
     const { prisma, access } = setup();
     prisma.candidate.findMany.mockResolvedValue([

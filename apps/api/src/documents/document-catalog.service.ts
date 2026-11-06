@@ -6,6 +6,7 @@ import { RedisService } from "../redis/redis.module";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   applicable,
+  classifyRule,
   erpCatalogSchema,
   FIELD_LABELS,
   fieldKind,
@@ -303,6 +304,16 @@ export class DocumentCatalogService {
           code: t.code,
           title: t.title,
           documentUid: t.erpUid!,
+          stages: [
+            ...new Set(
+              (t.stageRules?.length ? t.stageRules : [t])
+                .filter(
+                  (rule) =>
+                    classifyRule(rule, position, citizenship, project) !== null,
+                )
+                .map((rule) => rule.stage ?? null),
+            ),
+          ].sort((a, b) => (a ?? Infinity) - (b ?? Infinity)),
           fields: t.definitions.map((f) => ({
             name: f.name,
             label: FIELD_LABELS[f.name],

@@ -18,16 +18,16 @@ describe("review navigation permissions", () => {
           />,
         );
       const ru = render({ "20002": [] });
-      expect(ru).toContain("Проверка документов РУ");
+      expect(ru).toContain("Кандидаты РУ");
       expect(ru).not.toContain("Проверка документов ИГ");
       const ig = render({ "20011": [] });
       expect(ig).toContain("Проверка документов ИГ");
-      expect(ig).not.toContain("Проверка документов РУ");
+      expect(ig).not.toContain("Кандидаты РУ");
       const all = render({ "20009": [] });
-      expect(all).toContain("Проверка документов РУ");
+      expect(all).toContain("Кандидаты РУ");
       expect(all).toContain("Проверка документов ИГ");
       const neither = render({ "20000": [] });
-      expect(neither).not.toContain("Проверка документов РУ");
+      expect(neither).not.toContain("Кандидаты РУ");
       expect(neither).not.toContain("Проверка документов ИГ");
     },
   );

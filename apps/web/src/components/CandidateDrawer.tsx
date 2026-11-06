@@ -9,6 +9,7 @@ import {
 import { Badge, Button, StatusBadge } from "@edo/ui";
 import { ChevronRight, X } from "lucide-react";
 import { LkLink } from "./LkLink";
+import { CandidatePreviousDocuments } from "./CandidatePreviousDocuments";
 import {
   candidateInitials,
   documentProgressPercent,
@@ -211,7 +212,7 @@ export function CandidateDrawer({
                   <dd className="mt-0.5 break-words [overflow-wrap:anywhere]">
                     {profile.managerCode1c ? (
                       <LkLink code1c={profile.managerCode1c}>
-                        {profile.managerName ?? profile.managerCode1c}
+                        {profile.managerName ?? "Менеджер"}
                       </LkLink>
                     ) : (
                       (profile.managerName ?? "—")
@@ -225,7 +226,7 @@ export function CandidateDrawer({
                   <dd className="mt-0.5 break-words [overflow-wrap:anywhere]">
                     {profile.mentorCode1c ? (
                       <LkLink code1c={profile.mentorCode1c}>
-                        {profile.mentorName ?? profile.mentorCode1c}
+                        {profile.mentorName ?? "Наставник"}
                         {profile.mentorPosition
                           ? ` · ${profile.mentorPosition}`
                           : ""}
@@ -408,6 +409,11 @@ export function CandidateDrawer({
                   )}
                 </section>
               ))}
+            {profile?.reviewGroup === "IG" &&
+              profile.code1c &&
+              !returnedHistory && (
+                <CandidatePreviousDocuments candidateId={candidateId} />
+              )}
           </div>
         </div>
       </div>

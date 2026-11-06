@@ -12,12 +12,16 @@ import { useGetMe } from "@edo/api-client";
 import { Button } from "@edo/ui";
 import { useDocumentEvents } from "../lib/document-events";
 
+import { clearChatDrafts } from "../lib/chat-drafts";
+import { subscribeAccessToken } from "../lib/auth-token";
+
 const CRUMBS: Record<string, string> = {
   "/": "Дашборд",
   "/employees": "Работники",
   "/employee": "Карточка работника",
   "/tasks": "Мои задачи",
-  "/review": "Проверка документов РУ",
+  "/review": "Кандидаты РУ",
+  "/candidates": "Кандидаты · Россия",
   "/review-ig": "Проверка документов ИГ",
   "/history": "История",
   "/my-reviews": "Мои проверки",
@@ -49,6 +53,12 @@ function activeFor(pathname: string): string {
 /** Layout shell: real URL routing via TanStack Router (back/forward + deep links work). */
 export function AppShell() {
   const profile = useGetMe();
+  React.useEffect(() => {
+    clearChatDrafts();
+    return subscribeAccessToken((token) => {
+      if (!token) clearChatDrafts();
+    });
+  }, [profile.data?.uuid]);
   useDocumentEvents(canAccessPath(profile.data?.permissions, "/"));
   const [collapsed, setCollapsed] = React.useState(true);
   const navigate = useNavigate();

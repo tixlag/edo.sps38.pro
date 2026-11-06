@@ -16,6 +16,7 @@ export interface ReviewProfileFilters {
   projectCode?: string;
   candidateId?: string;
   managerCode1c?: string;
+  managerId?: string;
   managerName?: string;
   managerUnassigned?: boolean;
   mentorCode1c?: string;
@@ -120,8 +121,9 @@ export function snapshotUpdateInput(
   put("masterCode1c", snapshot.masterCode1c);
   put("supervisorName", snapshot.supervisorName);
   put("supervisorCode1c", snapshot.supervisorCode1c);
-  put("positionCode", snapshot.positionCode);
-  put("positionName", snapshot.positionName);
+  const rawPos = (snapshot as { position?: { code?: string; name?: string } }).position;
+  put("positionCode", rawPos?.code ?? snapshot.positionCode);
+  put("positionName", rawPos?.name ?? snapshot.positionName);
   put("projectCode", snapshot.projectCode);
   put("projectName", snapshot.projectName);
   put("managerName", snapshot.managerName);
@@ -148,6 +150,10 @@ export function parseBirthDateBound(value: string, field: string): Date {
 }
 
 type ProfileRow = {
+  statusId?: string | null;
+  statusName?: string | null;
+  managerId?: string | null;
+  reviewGroup?: "RU" | "IG" | null;
   id: string;
   chatUuid: string | null;
   code1c: string | null;
@@ -192,6 +198,9 @@ export function toCandidateProfile(
   if (!row) return null;
   return {
     id: row.id,
+    statusId: row.statusId ?? null,
+    statusName: row.statusName ?? null,
+    managerId: row.managerId ?? null,
     reviewGroup: candidateReviewGroup(row),
     chatUuid: row.chatUuid,
     code1c: row.code1c,
@@ -240,6 +249,7 @@ export function buildCandidateProfileWhere(
   const citizenship = text(filters.citizenship)?.toLowerCase();
   if (citizenship) and.push({ citizenship });
   const manager = text(filters.manager);
+  if (filters.managerId) and.push({ managerId: filters.managerId });
   if (manager)
     and.push({
       OR: [

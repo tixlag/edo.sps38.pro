@@ -56,6 +56,7 @@ function fixture(status: DocumentStatus, externalOcr = false) {
     $queryRaw: vi.fn(async () => []),
     candidate: {
       upsert: vi.fn(async () => ({ id: "owner" })),
+      updateMany: vi.fn(async () => ({ count: 0 })),
       findUniqueOrThrow: vi.fn(async () => ({
         code1c: null,
         locationId: null,
@@ -258,7 +259,10 @@ describe("owner-scoped returned document fields", () => {
       ],
     });
     const service = new DocumentReadService(
-      { document: { findFirst } } as unknown as PrismaService,
+      {
+        document: { findFirst },
+        igEmploymentState: { findUnique: vi.fn().mockResolvedValue(null) },
+      } as unknown as PrismaService,
       {} as DocumentAccessService,
       {} as StorageService,
     );

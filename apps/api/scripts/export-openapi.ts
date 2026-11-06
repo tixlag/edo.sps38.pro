@@ -8,6 +8,7 @@ async function main() {
   process.env.DATABASE_URL ??= 'mysql://edo:edo@127.0.0.1:12002/edo';
   process.env.JWT_SECRET ??= 'export-only-insecure-secret';
   process.env.LK_EVENTS_CONSUME ??= '0';
+  process.env.CONTRACT_NOTIFICATION_WORKER_ENABLED = 'false';
   const { document } = await createApp();
   const out = join(__dirname, '..', 'openapi.json');
   writeFileSync(out, JSON.stringify(document, null, 2));

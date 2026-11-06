@@ -16,6 +16,7 @@ import { DocumentAccessService } from "./document-access.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 
 export interface DocumentEventScope {
+  candidateId?: string;
   chat_uuid?: string;
   code_1c?: string;
 }
@@ -34,6 +35,7 @@ export class DocumentStreamGuard implements CanActivate {
     if (!grant || grant.expiresAt <= new Date())
       throw new UnauthorizedException();
     req.documentScope = {
+      candidateId: grant.candidateId ?? undefined,
       chat_uuid: grant.chatUuid ?? undefined,
       code_1c: grant.code1c ?? undefined,
     };
@@ -70,6 +72,7 @@ export class DocumentEventsService implements OnModuleDestroy {
     const expiresAt = new Date(Date.now() + 300000);
     await this.prisma.documentStreamGrant.create({
       data: {
+        candidateId: scope.candidateId ?? null,
         tokenHash: createHash("sha256").update(token).digest("hex"),
         chatUuid: scope.chat_uuid?.toLowerCase() ?? null,
         code1c: scope.chat_uuid ? null : (scope.code_1c ?? null),

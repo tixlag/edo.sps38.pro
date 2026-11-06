@@ -15,6 +15,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { usablePreviousUids } from "./ig-completion";
 import { documentCheckEnabled } from "../ocr/document-check";
 import {
   canRetryDocumentOcr,
@@ -44,6 +45,7 @@ import {
 } from "../ocr/ocr-profile";
 import {
   buildCandidateProfileWhere,
+  parseBirthDateBound,
   toCandidateProfile,
 } from "./candidate-profile";
 import type {
@@ -223,6 +225,7 @@ export class DocumentReadService {
       items: rows.map(
         (d): DocumentDto => ({
           ...this.documentSummary(d),
+          reviewGroup: d.candidate ? candidateReviewGroup(d.candidate) : "RU",
           candidateId: d.candidateId,
           chatUuid: d.candidate?.chatUuid ?? null,
           code1c: d.candidate?.code1c ?? null,
@@ -291,6 +294,19 @@ export class DocumentReadService {
     });
     const candidate = toCandidateProfile(owner)!;
     await this.enrichReviewCandidates(principal, [candidate]);
+    const previousUids = new Set(
+      owner.code1c && candidateReviewGroup(owner) === "IG"
+        ? usablePreviousUids(
+            await this.prisma.candidatePreviousDocument.findMany({
+              where: {
+                candidateId: id,
+                status: "CONFIRMED",
+                originalAvailable: true,
+              },
+            }),
+          )
+        : [],
+    );
     let stageDocuments: CandidateDetailsDto["stageDocuments"];
     if (stage !== undefined) {
       stageDocuments = null;
@@ -329,7 +345,13 @@ export class DocumentReadService {
               stageDocuments[category].documents.push(
                 this.documentSummary(doc),
               );
-            if (!doc || doc.status === "DRAFT")
+            if (
+              (!doc &&
+                !(
+                  type.erpUid && previousUids.has(type.erpUid.toLowerCase())
+                )) ||
+              doc?.status === "DRAFT"
+            )
               stageDocuments[category].missingDocuments.push({
                 code: type.code,
                 title: type.title,
@@ -387,7 +409,11 @@ export class DocumentReadService {
           }
           const uploaded = new Set(rows.map((row) => row.documentTypeId));
           for (const type of types) {
-            if (uploaded.has(type.id)) continue;
+            if (
+              uploaded.has(type.id) ||
+              (type.erpUid && previousUids.has(type.erpUid.toLowerCase()))
+            )
+              continue;
             const rules = type.stageRules?.length ? type.stageRules : [type];
             const category = requiredIds.has(type.id)
               ? "required"
@@ -413,6 +439,7 @@ export class DocumentReadService {
       missingDocuments: await this.missingDocumentTypes(
         owner,
         rows.map((row) => row.documentType?.code),
+        previousUids,
       ),
       ...(stage !== undefined ? { stageDocuments } : { documentGroups }),
     };
@@ -427,6 +454,7 @@ export class DocumentReadService {
       sexKnown?: boolean;
     } | null,
     uploadedCodes: (string | null | undefined)[],
+    previousUids: Set<string> = new Set(),
   ): Promise<MissingDocumentTypeDto[] | null> {
     if (
       !profile ||
@@ -455,7 +483,9 @@ export class DocumentReadService {
               ? profile.sex
               : null,
             profile.projectCode,
-          ) && !uploaded.has(type.code),
+          ) &&
+          !uploaded.has(type.code) &&
+          !(type.erpUid && previousUids.has(type.erpUid.toLowerCase())),
       )
       .map(({ code, title }) => ({ code, title }));
   }
@@ -971,12 +1001,25 @@ export class DocumentReadService {
   async reviewDocumentFacets(
     principal: AuthPrincipal,
     reviewGroup: ReviewGroup = "RU",
+    includeAll = false,
   ): Promise<ReviewDocumentFacetsDto> {
-    const ids = await this.reviewCandidateIds(principal, reviewGroup);
-    if (ids.length === 0)
+    const ids =
+      includeAll && reviewGroup === "RU"
+        ? null
+        : await this.reviewCandidateIds(principal, reviewGroup);
+    if (ids?.length === 0)
       return { managers: [], mentors: [], projects: [], citizenships: [] };
+    requireReviewGroup(principal, reviewGroup);
     const candidates = await this.prisma.candidate.findMany({
-      where: { id: { in: ids } },
+      where: ids
+        ? { id: { in: ids } }
+        : {
+            AND: [
+              this.access.candidateWhere(principal),
+              reviewGroupWhere("RU"),
+              { erpDeleted: false },
+            ],
+          },
       select: {
         managerName: true,
         managerCode1c: true,
@@ -1036,15 +1079,44 @@ export class DocumentReadService {
     query: ReviewCandidatesQueryDto,
   ): Promise<ReviewCandidateListDto> {
     const { limit = 20 } = query;
-    const ids = await this.reviewCandidateIds(
-      principal,
-      query.reviewGroup ?? "RU",
-    );
-    if (ids.length === 0) return { items: [] };
+    const group = query.reviewGroup ?? "RU";
+    const ids =
+      query.includeAll && group === "RU"
+        ? null
+        : await this.reviewCandidateIds(principal, group);
+    if (ids?.length === 0 && group !== "IG") return { items: [] };
+    requireReviewGroup(principal, group);
     const needle = query.q?.trim();
     const rows = await this.prisma.candidate.findMany({
       where: {
-        id: { in: ids },
+        ...(ids
+          ? group === "IG"
+            ? {
+                AND: [
+                  this.access.candidateWhere(principal),
+                  reviewGroupWhere("IG"),
+                  {
+                    OR: [
+                      { id: { in: ids } },
+                      {
+                        igEmploymentState: { isNot: null },
+                        OR: [
+                          { igCompletedAt: null },
+                          { igCompletionVerified: false },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              }
+            : { id: { in: ids } }
+          : {
+              AND: [
+                this.access.candidateWhere(principal),
+                reviewGroupWhere("RU"),
+                { erpDeleted: false },
+              ],
+            }),
         ...(needle ? { fullName: { contains: needle } } : {}),
       },
       select: { id: true, fullName: true },
@@ -1081,32 +1153,83 @@ export class DocumentReadService {
     ];
   }
   scopeWhere(scope: {
+    candidateId?: string;
     chat_uuid?: string;
     code_1c?: string;
   }): Prisma.DocumentWhereInput {
-    if (!scope.chat_uuid && !scope.code_1c)
+    if (!scope.candidateId && !scope.chat_uuid && !scope.code_1c)
       throw new BadRequestException("Document owner is required");
     return {
       candidate: {
-        ...(scope.chat_uuid
-          ? { chatUuid: scope.chat_uuid.toLowerCase() }
-          : { code1c: scope.code_1c }),
+        ...(scope.candidateId
+          ? { id: scope.candidateId }
+          : scope.chat_uuid
+            ? { chatUuid: scope.chat_uuid.toLowerCase() }
+            : { code1c: scope.code_1c }),
       },
     };
   }
-  async internalDocuments(scope: { chat_uuid?: string; code_1c?: string }) {
-    return this.documents({
-      ...this.scopeWhere(scope),
+  private async currentScopeWhere(scope: {
+    candidateId?: string;
+    chat_uuid?: string;
+    code_1c?: string;
+  }) {
+    if (!scope.candidateId && !scope.chat_uuid && scope.code_1c) {
+      const state = await this.prisma.igEmploymentState.findUnique({
+        where: { code1c: scope.code_1c },
+        select: { currentCandidateId: true },
+      });
+      if (state?.currentCandidateId)
+        return this.scopeWhere({ candidateId: state.currentCandidateId });
+    }
+    return this.scopeWhere(scope);
+  }
+  async internalDocuments(scope: {
+    candidateId?: string;
+    chat_uuid?: string;
+    code_1c?: string;
+  }) {
+    const state =
+      !scope.candidateId && !scope.chat_uuid && scope.code_1c
+        ? await this.prisma.igEmploymentState.findUnique({
+            where: { code1c: scope.code_1c },
+            select: { currentCandidateId: true },
+          })
+        : null;
+    const result = await this.documents({
+      ...this.scopeWhere(
+        state?.currentCandidateId
+          ? { candidateId: state.currentCandidateId }
+          : scope,
+      ),
       currentVersion: { gt: 0 },
     });
+    if (!state?.currentCandidateId)
+      return { ...result, reusedDocumentUids: [] };
+    const previous = await this.prisma.candidatePreviousDocument.findMany({
+      where: {
+        candidateId: state.currentCandidateId,
+        status: "CONFIRMED",
+        originalAvailable: true,
+      },
+    });
+    const current = new Set(
+      result.items.map((doc) => doc.documentUid?.toLowerCase()),
+    );
+    return {
+      ...result,
+      reusedDocumentUids: usablePreviousUids(previous).filter(
+        (uid) => !current.has(uid),
+      ),
+    };
   }
   async internalDraft(
-    scope: { chat_uuid?: string; code_1c?: string },
+    scope: { candidateId?: string; chat_uuid?: string; code_1c?: string },
     documentUid: string,
   ): Promise<CandidateDocumentDraftDto> {
     const document = await this.prisma.document.findFirst({
       where: {
-        ...this.scopeWhere(scope),
+        ...(await this.currentScopeWhere(scope)),
         documentType: { erpUid: documentUid },
         status: "RETURNED",
         currentVersion: { gt: 0 },
@@ -1199,21 +1322,164 @@ export class DocumentReadService {
       currentStatus,
       documentTypeCode,
       reviewGroup = "RU",
+      createdFrom,
+      createdTo,
       ...profile
     } = query;
+    const from = createdFrom
+      ? parseBirthDateBound(createdFrom, "createdFrom")
+      : undefined;
+    const to = createdTo
+      ? parseBirthDateBound(createdTo, "createdTo")
+      : undefined;
+    if (from && to && from > to)
+      throw new BadRequestException("createdFrom must not be after createdTo");
+    const createdAt =
+      from || to
+        ? {
+            ...(from
+              ? { gte: new Date(from.getTime() - 8 * 60 * 60 * 1000) }
+              : {}),
+            ...(to ? { lt: new Date(to.getTime() + 16 * 60 * 60 * 1000) } : {}),
+          }
+        : undefined;
     const documentsWhere = this.reviewDocumentWhere(principal, {
       status,
       currentStatus,
       documentTypeCode,
       reviewGroup,
     });
+    if (reviewGroup === "RU" && status === "ALL") {
+      let after: { group: number; id: string; name: string | null } | undefined;
+      if (cursor) {
+        try {
+          const decoded = JSON.parse(
+            Buffer.from(cursor, "base64url").toString(),
+          );
+          if (
+            ![0, 1].includes(decoded.group) ||
+            typeof decoded.id !== "string" ||
+            (decoded.name !== null && typeof decoded.name !== "string")
+          )
+            throw new Error();
+          after = decoded;
+        } catch {
+          throw new BadRequestException("Invalid candidate cursor");
+        }
+      }
+      const uploadedWhere = {
+        ...this.access.documentWhere(principal),
+        currentVersion: { gt: 0 },
+      };
+      const common = [
+        this.access.candidateWhere(principal),
+        reviewGroupWhere("RU"),
+        { erpDeleted: false },
+        buildCandidateProfileWhere(profile) ?? {},
+        ...(createdAt ? [{ createdAt }] : []),
+      ];
+      const rows: {
+        row: Prisma.CandidateGetPayload<{
+          include: { documents: { include: typeof documentSummaryInclude } };
+        }>;
+        group: number;
+      }[] = [];
+      for (const group of [0, 1]) {
+        if (after && group < after.group) continue;
+        if (group === 1 && (currentStatus || documentTypeCode)) continue;
+        const boundary =
+          after && after.group === group
+            ? after.name === null
+              ? {
+                  OR: [
+                    { fullName: null, id: { gt: after.id } },
+                    { fullName: { not: null } },
+                  ],
+                }
+              : {
+                  OR: [
+                    { fullName: { gt: after.name } },
+                    { fullName: after.name, id: { gt: after.id } },
+                  ],
+                }
+            : undefined;
+        const page = await this.prisma.candidate.findMany({
+          where: {
+            AND: [
+              ...common,
+              group === 0
+                ? { documents: { some: uploadedWhere } }
+                : { documents: { none: uploadedWhere } },
+              ...(group === 0 && (currentStatus || documentTypeCode)
+                ? [{ documents: { some: documentsWhere } }]
+                : []),
+              ...(boundary ? [boundary] : []),
+            ],
+          },
+          include: {
+            documents: {
+              where: documentsWhere,
+              include: documentSummaryInclude,
+              orderBy: { id: "asc" },
+            },
+          },
+          orderBy: [{ fullName: "asc" }, { id: "asc" }],
+          take: limit + 1 - rows.length,
+        });
+        rows.push(...page.map((row) => ({ row, group })));
+        if (rows.length > limit) break;
+      }
+      const page = rows.slice(0, limit);
+      const items = page.map(({ row }) => ({
+        candidate: toCandidateProfile(row)!,
+        documents: row.documents.map((d) => this.documentSummary(d)),
+      }));
+      await this.enrichReviewCandidates(
+        principal,
+        items.map((item) => item.candidate),
+      );
+      const last = page.at(-1);
+      return {
+        items,
+        nextCursor:
+          rows.length > limit && last
+            ? Buffer.from(
+                JSON.stringify({
+                  group: last.group,
+                  id: last.row.id,
+                  name: last.row.fullName,
+                }),
+              ).toString("base64url")
+            : null,
+      };
+    }
     const rows = await this.prisma.candidate.findMany({
       where: {
         AND: [
           this.access.candidateWhere(principal),
           buildCandidateProfileWhere(profile) ?? {},
+          ...(createdAt ? [{ createdAt }] : []),
           ...(cursor ? [{ id: { gt: cursor } }] : []),
-          { documents: { some: documentsWhere } },
+          ...(reviewGroup === "IG" &&
+          (!status || status === "IN_REVIEW" || status === "ALL") &&
+          !currentStatus &&
+          !documentTypeCode
+            ? [
+                {
+                  OR: [
+                    { documents: { some: documentsWhere } },
+                    {
+                      ...reviewGroupWhere("IG"),
+                      igEmploymentState: { isNot: null },
+                      OR: [
+                        { igCompletedAt: null },
+                        { igCompletionVerified: false },
+                      ],
+                    },
+                  ],
+                },
+              ]
+            : [{ documents: { some: documentsWhere } }]),
         ],
       },
       include: {
@@ -1335,6 +1601,18 @@ export class DocumentReadService {
         },
       }),
     ]);
+    const igIds = profiles
+      .filter((profile) => profile.reviewGroup === "IG" && profile.code1c)
+      .map((profile) => profile.id);
+    const historical = igIds.length
+      ? await this.prisma.candidatePreviousDocument.findMany({
+          where: {
+            candidateId: { in: igIds },
+            status: "CONFIRMED",
+            originalAvailable: true,
+          },
+        })
+      : [];
     const approved = new Map<string, number>();
     const profileById = new Map(
       profiles.map((profile) => [profile.id, profile]),
@@ -1370,6 +1648,18 @@ export class DocumentReadService {
         );
     }
     for (const profile of profiles) {
+      const previousUids = usablePreviousUids(
+        historical.filter((doc) => doc.candidateId === profile.id),
+      );
+      const reusedTypes = catalog.filter(
+        (type) =>
+          type.erpUid &&
+          previousUids.includes(type.erpUid.toLowerCase()) &&
+          !grouped.some(
+            (row) =>
+              row.candidateId === profile.id && row.documentTypeId === type.id,
+          ),
+      );
       const hasProfile = !!(
         profile.positionCode ||
         profile.projectCode ||
@@ -1388,9 +1678,23 @@ export class DocumentReadService {
                 citizenship,
                 sex: profile.sexKnown ? profile.sex : null,
               },
+              previousUids,
             )
           : null;
-      profile.approvedDocuments = approved.get(profile.id) ?? 0;
+      profile.approvedDocuments =
+        (approved.get(profile.id) ?? 0) +
+        reusedTypes.filter((type) =>
+          requiredApplicable(
+            type,
+            profile.positionCode ?? "",
+            profile.citizenship ?? "ru",
+            profile.sexKnown &&
+              (profile.sex === "female" || profile.sex === "male")
+              ? profile.sex
+              : null,
+            profile.projectCode,
+          ),
+        ).length;
       profile.requiredDocuments = profile.positionCode
         ? catalog.filter(
             (type) =>

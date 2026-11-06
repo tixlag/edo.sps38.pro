@@ -67,8 +67,19 @@ describe("document catalog cached snapshot", () => {
             erpUid: uid,
             allRu: true,
             allForeign: false,
+            requiredForAll: false,
+            stage: null as number | null,
             positions: [],
             definitions: [],
+            stageRules: [] as {
+              stage: number | null;
+              requiredForAll: boolean;
+              allRu: boolean;
+              allForeign: boolean;
+              positions: { code1c: string; required: boolean }[];
+              projects: { code1c: string }[];
+              countries: { code: string }[];
+            }[],
           },
         ]),
       },
@@ -111,6 +122,46 @@ describe("document catalog cached snapshot", () => {
   const settle = async (count: number) => {
     await vi.waitFor(() => expect(commits).toBe(count));
   };
+  it("returns only applicable stages for each applicable document", async () => {
+    syncedAt = new Date();
+    const base = (await prisma.documentType.findMany())[0];
+    const rule = {
+      requiredForAll: false,
+      allRu: false,
+      allForeign: false,
+      positions: [],
+      projects: [],
+      countries: [],
+    };
+    prisma.documentType.findMany.mockResolvedValueOnce([
+      {
+        ...base,
+        stageRules: [
+          {
+            ...rule,
+            stage: 7,
+            positions: [{ code1c: "001", required: false }],
+          },
+          { ...rule, stage: 3, allRu: true },
+          { ...rule, stage: 3, allRu: true },
+          { ...rule, stage: null, projects: [{ code1c: "project" }] },
+          { ...rule, stage: 9, countries: [{ code: "uz" }] },
+        ],
+      },
+      {
+        ...base,
+        code: "OTHER",
+        allRu: false,
+        stageRules: [{ ...rule, stage: 4 }],
+      },
+      { ...base, code: "LEGACY", stage: 2, stageRules: [] },
+    ]);
+    const result = await service().list("001", "ru", null, "project");
+    expect(result.items.map(({ code, stages }) => ({ code, stages }))).toEqual([
+      { code: "PASSPORT", stages: [3, 7, null] },
+      { code: "LEGACY", stages: [2] },
+    ]);
+  });
   it("uses the persisted synchronization time for 24 hours, including after restart", async () => {
     syncedAt = new Date();
     await service().list("001");

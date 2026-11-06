@@ -1,0 +1,420 @@
+import { arrivalPageSchema } from "./ig-arrival-contract";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { z } from "zod";
+
+const uuid = z
+  .string()
+  .uuid()
+  .transform((v) => v.toLowerCase());
+const named = z.object({ code: z.string(), name: z.string() });
+const safeConflictCodes = new Set([
+  "CANDIDATE_DUPLICATE_REQUIRES_REVIEW",
+  "EXISTING_PERSON_REQUIRES_EXPLICIT_SELECTION",
+  "CANDIDATE_PERSON_LINK_AMBIGUOUS",
+  "PERSON_IDENTITY_AMBIGUOUS",
+  "CURRENT_CANDIDATE_AMBIGUOUS",
+  "CURRENT_CANDIDATE_CONFIRMATION_REQUIRED",
+  "CURRENT_CANDIDATE_UNAVAILABLE",
+  "CANDIDATE_PERSON_LINK_CONFLICT",
+  "PERSON_LINK_REQUIRED_OR_AMBIGUOUS",
+  "DISPATCHER_NOT_CONFIGURED",
+  "DISPATCHER_EMAIL_NOT_CONFIGURED",
+  "OPERATION_RESULT_UNKNOWN",
+  "IDEMPOTENCY_CONFLICT",
+]);
+export const erpIdentitySchema = z
+  .object({
+    recipientType: z.enum(["candidate", "person"]),
+    reviewGroup: z.enum(["RU", "IG"]),
+    erpUid: uuid.nullable(),
+    chatUuid: uuid.nullable(),
+    personUid: uuid.nullable(),
+    code1C: z.string(),
+  })
+  .superRefine((v, ctx) => {
+    if (
+      (v.reviewGroup === "RU" &&
+        (v.recipientType !== "candidate" || !v.erpUid)) ||
+      (v.reviewGroup === "IG" &&
+        (v.recipientType !== "person" ||
+          !v.personUid ||
+          v.erpUid ||
+          v.chatUuid))
+    )
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Invalid business recipient",
+      });
+  });
+export type ErpIdentity = z.infer<typeof erpIdentitySchema>;
+export const erpCardSchema = z.object({
+  erpUid: uuid,
+  chatUuid: uuid.nullable(),
+  code1C: z.string().nullable(),
+  personUid: uuid.nullable(),
+  reviewGroup: z.literal("RU"),
+  fullName: z.string(),
+  phone: z.string(),
+  birthDate: z.string(),
+  citizenship: z.string().regex(/^[a-zA-Z]{2}$/),
+  position: named.nullable(),
+  project: named.nullable(),
+  manager: z.object({ id: z.string(), name: z.string() }).nullable(),
+  mentor: z
+    .object({ name: z.string(), position: z.string().optional() })
+    .passthrough()
+    .nullable(),
+  status: z.object({ id: z.string(), name: z.string() }).nullable(),
+  history: z.array(
+    z.object({
+      date: z.string(),
+      author: z.string(),
+      statusId: z.string(),
+      statusName: z.string(),
+      comment: z.string(),
+    }),
+  ),
+});
+export type ErpCard = z.infer<typeof erpCardSchema>;
+const erpCalendarDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return (
+      Number.isFinite(date.getTime()) &&
+      date.toISOString().slice(0, 10) === value
+    );
+  });
+export const previousDocumentsSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string().max(256),
+      documentUid: uuid.nullable(),
+      title: z.string().max(512),
+      fields: z.record(z.unknown()),
+      expiresAt: erpCalendarDate.nullable(),
+      recordDate: erpCalendarDate.nullable().optional(),
+      isInvalid: z.boolean().nullable().optional(),
+      originalAvailable: z.boolean(),
+      recheckStatus: z.enum(["REQUIRES_REVIEW", "ORIGINAL_UNAVAILABLE"]),
+    }),
+  ),
+});
+export const erpEmploymentHistorySchema = z.object({
+  items: z
+    .array(
+      z.object({
+        eventDate: erpCalendarDate,
+        startDate: erpCalendarDate.nullable(),
+        eventType: z.enum(["HIRE", "DISMISSAL"]),
+      }),
+    )
+    .max(500),
+});
+export const referencesSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      code: z.string().optional(),
+      birthDate: z.string().nullable().optional(),
+      editable: z.boolean().optional(),
+      requiresProject: z.boolean().optional(),
+      requiresPlannedArrivalDate: z.boolean().optional(),
+    }),
+  ),
+});
+export const personMatchesSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: uuid,
+        name: z.string().max(512),
+        birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        latinName: z.string().max(512).nullable(),
+        matchedCyrillic: z.boolean(),
+        matchedLatin: z.boolean(),
+      }),
+    )
+    .max(100),
+});
+
+/** Shared narrow ERP business bridge. No automatic retries of mutations. */
+@Injectable()
+export class ErpWorkspaceClient {
+  constructor(private readonly config: ConfigService) {}
+  private async response(
+    action: string,
+    query: Record<string, string>,
+    body?: unknown,
+  ) {
+    const endpoint = this.config.get<string>("ERP_COMMUNICATIONS_URL"),
+      token = this.config.get<string>("ERP_CANDIDATE_TOKEN"),
+      username = this.config.get<string>("ERP_USERNAME"),
+      password = this.config.get<string>("ERP_PASSWORD");
+    if (!endpoint || !token || !username || !password)
+      throw new ServiceUnavailableException("ERP_WORKSPACE_NOT_CONFIGURED");
+    let url: URL;
+    try {
+      url = new URL(endpoint);
+      if (
+        !["http:", "https:"].includes(url.protocol) ||
+        url.username ||
+        url.password ||
+        url.hash
+      )
+        throw new Error();
+    } catch {
+      throw new ServiceUnavailableException("ERP_WORKSPACE_NOT_CONFIGURED");
+    }
+    url.searchParams.set("action", action);
+    for (const [key, value] of Object.entries(query))
+      url.searchParams.set(key, value);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: body === undefined ? "GET" : "POST",
+        redirect: "error",
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
+          token,
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(body === undefined ? 15000 : 45000),
+      });
+    } catch {
+      throw new ServiceUnavailableException(
+        body === undefined ? "ERP_UNAVAILABLE" : "ERP_OPERATION_RESULT_UNKNOWN",
+      );
+    }
+    if (!response.ok) {
+      if (response.status === 409) {
+        let code: unknown;
+        try {
+          const bytes = await this.readBounded(response, 8192);
+          code = (JSON.parse(bytes.toString("utf8")) as { code?: unknown })
+            .code;
+        } catch {
+          // Unknown or oversized upstream bodies must never leak to the client.
+        }
+        throw new ConflictException(
+          typeof code === "string" && safeConflictCodes.has(code)
+            ? code
+            : "ERP_RELATION_OR_OPERATION_CONFLICT: требуется точечная проверка связи или результата операции в ERP",
+        );
+      }
+      if (response.status === 400) {
+        let err: unknown;
+        try {
+          const bytes = await this.readBounded(response, 8192);
+          const parsed = JSON.parse(bytes.toString("utf8")) as {
+            error?: unknown;
+            code?: unknown;
+          };
+          err = parsed.error ?? parsed.code;
+          if (
+            typeof err === "object" &&
+            err !== null &&
+            (err as Record<string, unknown>).code === "INVALID_CURSOR"
+          ) {
+            err = "INVALID_CURSOR";
+          }
+        } catch {
+          // Unknown or oversized upstream bodies must never leak to the client.
+        }
+        if (err === "INVALID_CURSOR") {
+          throw new BadRequestException("INVALID_CURSOR");
+        }
+        throw new ServiceUnavailableException(
+          body === undefined ? "ERP_UNAVAILABLE" : "ERP_OPERATION_RESULT_UNKNOWN",
+        );
+      }
+      await response.body?.cancel();
+      if (response.status === 404)
+        throw new NotFoundException("ERP_ENTITY_NOT_FOUND");
+      throw new ServiceUnavailableException(
+        body === undefined ? "ERP_UNAVAILABLE" : "ERP_OPERATION_RESULT_UNKNOWN",
+      );
+    }
+    return response;
+  }
+  async request<T>(
+    action: string,
+    schema: z.ZodType<T>,
+    query: Record<string, string> = {},
+    body?: unknown,
+  ): Promise<T> {
+    const response = await this.response(action, query, body);
+    const bytes = await this.readBounded(response, 2 * 1024 * 1024);
+    try {
+      return schema.parse(JSON.parse(bytes.toString("utf8")));
+    } catch {
+      throw new ServiceUnavailableException("ERP_WORKSPACE_CONTRACT_ERROR");
+    }
+  }
+  private async readBounded(response: Response, limit: number) {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    if (!response.body)
+      throw new ServiceUnavailableException("ERP_WORKSPACE_CONTRACT_ERROR");
+    const reader = response.body.getReader();
+    try {
+      for (;;) {
+        const r = await reader.read();
+        if (r.done) break;
+        size += r.value.length;
+        if (size > limit)
+          throw new ServiceUnavailableException(
+            "ERP_WORKSPACE_RESPONSE_TOO_LARGE",
+          );
+        chunks.push(Buffer.from(r.value));
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined);
+    }
+    return Buffer.concat(chunks);
+  }
+  arrivalPage(limit: number, cursor?: string) {
+    if (
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 200 ||
+      (cursor !== undefined && (!cursor || cursor.length > 1024))
+    )
+      throw new Error("INVALID_ARRIVAL_PAGE");
+    return this.request("ig-arrivals", arrivalPageSchema, {
+      limit: String(limit),
+      ...(cursor ? { cursor } : {}),
+    });
+  }
+  async identity(code1c: string) {
+    const identity = await this.request("identity", erpIdentitySchema, {
+      code1c,
+    });
+    if (identity.code1C !== code1c)
+      throw new ConflictException("ERP_IDENTITY_MISMATCH");
+    return identity;
+  }
+  employmentHistory(code1c: string, personUid: string) {
+    return this.request(
+      "person-employment-history",
+      erpEmploymentHistorySchema,
+      { code1c, personUid },
+    );
+  }
+  card(erpUid: string) {
+    return this.request("card", erpCardSchema, { candidate: erpUid });
+  }
+  async original(erpUid: string, id: string) {
+    const response = await this.response("person-document-original", {
+      candidate: erpUid,
+      id,
+    });
+    return {
+      bytes: await this.readBounded(response, 100 * 1024 * 1024),
+      mimeType:
+        response.headers.get("content-type") ?? "application/octet-stream",
+    };
+  }
+  async probePersonOriginal(
+    code1c: string,
+    personUid: string,
+    id: string,
+  ): Promise<boolean> {
+    const response = await this.response("person-document-original-by-code", {
+      code1c,
+      personUid,
+      id,
+    });
+    const mime = response.headers
+      .get("content-type")
+      ?.split(";")[0]
+      .trim()
+      .toLowerCase();
+    const allowed = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "application/octet-stream",
+    ];
+    const rawLength = response.headers.get("content-length");
+    if (
+      !mime ||
+      !allowed.includes(mime) ||
+      (rawLength !== null &&
+        (!/^\d+$/.test(rawLength) ||
+          Number(rawLength) <= 0 ||
+          Number(rawLength) > 100 * 1024 * 1024))
+    ) {
+      await response.body?.cancel().catch(() => undefined);
+      return false;
+    }
+    if (!response.body) return false;
+    const reader = response.body.getReader();
+    let size = 0;
+    let prefix = Buffer.alloc(0);
+    try {
+      for (;;) {
+        const part = await reader.read();
+        if (part.done) {
+          const detected = prefix.subarray(0, 5).equals(Buffer.from("%PDF-"))
+            ? "application/pdf"
+            : prefix.length >= 3 &&
+                prefix[0] === 0xff &&
+                prefix[1] === 0xd8 &&
+                prefix[2] === 0xff
+              ? "image/jpeg"
+              : prefix
+                    .subarray(0, 8)
+                    .equals(
+                      Buffer.from([
+                        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+                      ]),
+                    )
+                ? "image/png"
+                : prefix.length >= 12 &&
+                    prefix.toString("ascii", 0, 4) === "RIFF" &&
+                    prefix.toString("ascii", 8, 12) === "WEBP"
+                  ? "image/webp"
+                  : null;
+          return (
+            !!detected &&
+            (mime === detected || mime === "application/octet-stream") &&
+            (rawLength === null || Number(rawLength) === size)
+          );
+        }
+        size += part.value.length;
+        if (size > 100 * 1024 * 1024) return false;
+        if (prefix.length < 12)
+          prefix = Buffer.concat([
+            prefix,
+            Buffer.from(part.value.subarray(0, 12 - prefix.length)),
+          ]);
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined);
+    }
+  }
+  async personOriginal(code1c: string, personUid: string, id: string) {
+    const response = await this.response("person-document-original-by-code", {
+      code1c,
+      personUid,
+      id,
+    });
+    return {
+      bytes: await this.readBounded(response, 100 * 1024 * 1024),
+      mimeType:
+        response.headers.get("content-type") ?? "application/octet-stream",
+    };
+  }
+}

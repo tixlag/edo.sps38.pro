@@ -5,6 +5,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { LkCandidateIdentityService } from "./lk-candidate-identity.service";
 import { ErpCandidateClient } from "./erp-candidate.client";
+import { ErpWorkspaceClient } from "./erp-workspace.client";
 import { CandidateProfileRefresh } from "./candidate-profile-refresh";
 import { loadCandidateRefresh } from "./load-candidate-refresh";
 
@@ -33,7 +34,7 @@ async function main() {
   const config = new ConfigService(process.env);
   const db = new PrismaService();
   const identityService = new LkCandidateIdentityService(config);
-  const erp = new ErpCandidateClient(config);
+  const erp = new ErpCandidateClient(config, new ErpWorkspaceClient(config));
   try {
     const report = await new CandidateProfileRefresh(
       db,

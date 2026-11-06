@@ -1,0 +1,7 @@
+CREATE TABLE `ig_arrival_sync_state` (
+    `id` VARCHAR(32) NOT NULL,
+    `cursor` VARCHAR(128) NULL,
+    `completedAt` DATETIME(3) NULL,
+    `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

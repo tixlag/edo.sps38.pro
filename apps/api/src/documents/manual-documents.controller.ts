@@ -1,3 +1,10 @@
+import { IgArrivalQueueService } from "./ig-arrival-queue.service";
+import {
+  IgArrivalGroupsDto,
+  IgArrivalPageQueryDto,
+  IgArrivalPeopleDto,
+  IgArrivalPeopleQueryDto,
+} from "./dto/ig-arrival-queue.dto";
 import { ReviewGroupQueryDto } from "./dto/document.dto";
 import {
   Controller,
@@ -271,14 +278,43 @@ export class ManualDocumentReviewController {
     private readonly review: DocumentReviewService,
     private readonly delivery: DocumentDeliveryService,
     private readonly events: DocumentEventsService,
+    private readonly arrivals: IgArrivalQueueService,
   ) {}
+  @Get("candidate-review-queue/ig-arrival-groups")
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_IG)
+  @ApiOperation({
+    operationId: "listIgArrivalGroups",
+    summary: "IG review groups by arrival calendar date and ERP object",
+    description:
+      "Person counts use one primary status: completed, returned, inReview, sending, then waitingDocuments. needsAttention may overlap any status. Technical issues do not move a person with a known date and object into the unassigned group.",
+  })
+  @ApiResponse({ status: 200, type: IgArrivalGroupsDto })
+  arrivalGroups(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Query() query: IgArrivalPageQueryDto,
+  ): Promise<IgArrivalGroupsDto> {
+    return this.arrivals.groups(principal, query);
+  }
+  @Get("candidate-review-queue/ig-arrival-people")
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_IG)
+  @ApiOperation({
+    operationId: "listIgArrivalPeople",
+    summary: "Paginated people in one IG arrival group",
+  })
+  @ApiResponse({ status: 200, type: IgArrivalPeopleDto })
+  arrivalPeople(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Query() query: IgArrivalPeopleQueryDto,
+  ): Promise<IgArrivalPeopleDto> {
+    return this.arrivals.people(principal, query);
+  }
   @Get("candidate-review-queue")
   @RequireAccessRule(EdoAccessRule.ACCESS)
   @ApiOperation({
     operationId: "listCandidateReviewQueue",
     summary: "Candidates with matching documents, paginated by candidate id",
     description:
-      "Profile filters select candidates; status and documentTypeCode select their nested documents. RETURNED includes documents with any returned version, even after a newer upload; returnedVersions contains the history. Progress counts all accessible approved documents across tabs. Candidates and documents must both be in the caller's location scope.",
+      "Profile filters select candidates; status and documentTypeCode select their nested documents. RETURNED includes documents with any returned version, even after a newer upload; returnedVersions contains the history. Progress counts all accessible approved documents across tabs. Reviewers can access every candidate and document in their confirmed RU or IG direction without location permissions; other administrative access retains its location scope.",
   })
   @ApiResponse({ status: 200, type: CandidateReviewQueueDto })
   candidateQueue(
@@ -313,7 +349,11 @@ export class ManualDocumentReviewController {
     @CurrentPrincipal() principal: AuthPrincipal,
     @Query() query: ReviewGroupQueryDto,
   ) {
-    return this.reads.reviewDocumentFacets(principal, query.reviewGroup);
+    return this.reads.reviewDocumentFacets(
+      principal,
+      query.reviewGroup,
+      query.includeAll,
+    );
   }
   @Get("review-candidates")
   @RequireAccessRule(EdoAccessRule.ACCESS)

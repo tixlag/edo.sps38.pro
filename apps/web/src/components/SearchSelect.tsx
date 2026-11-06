@@ -210,7 +210,7 @@ export function SearchSelect({
         disabled={disabled}
         placeholder={placeholder ?? label}
         value={text}
-        className="w-full rounded-[6px] border border-[var(--border)] bg-[var(--background)] py-1.5 pl-2 pr-12 text-[13px] text-[var(--foreground)]"
+        className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] py-2 pl-3 pr-12 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--primary)] disabled:opacity-60"
         onFocus={() => {
           if (!open) openWithHighlight();
         }}
@@ -269,18 +269,18 @@ export function SearchSelect({
           id={listboxId}
           role="listbox"
           aria-label={label}
-          className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-[6px] border border-[var(--border)] bg-[var(--background)] py-1 shadow-lg"
+          className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border border-[var(--border)] bg-[var(--background)] py-1 shadow-lg"
         >
           {isLoading && (
             <li
               role="status"
-              className="px-2 py-1.5 text-[13px] text-[var(--muted-foreground)]"
+              className="px-3 py-1.5 text-sm text-[var(--muted-foreground)]"
             >
               {loadingText}
             </li>
           )}
           {!isLoading && isError && (
-            <li role="alert" className="px-2 py-1.5 text-[13px]">
+            <li role="alert" className="px-3 py-1.5 text-sm">
               <span className="text-[var(--danger)]">{errorText}</span>{" "}
               {onRetry && (
                 <button
@@ -295,7 +295,7 @@ export function SearchSelect({
             </li>
           )}
           {!isLoading && !isError && options.length === 0 && (
-            <li className="px-2 py-1.5 text-[13px] text-[var(--muted-foreground)]">
+            <li className="px-3 py-1.5 text-sm text-[var(--muted-foreground)]">
               {emptyText}
             </li>
           )}
@@ -313,7 +313,7 @@ export function SearchSelect({
                   if (highlight !== index) setHighlight(index);
                 }}
                 onClick={() => commit(option.value, option.label)}
-                className={`cursor-pointer px-2 py-1.5 text-[13px] text-[var(--foreground)] ${
+                className={`cursor-pointer px-3 py-1.5 text-sm text-[var(--foreground)] ${
                   index === highlight ? "bg-[var(--muted)]" : ""
                 } ${option.value === normalizedValue ? "font-semibold" : ""}`}
               >

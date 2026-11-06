@@ -362,26 +362,15 @@ suite(
       },
       30000,
     );
-    it("freezes transport across configuration changes and creates a new ID for a new version", async () => {
+    it("rejects retired v1 for new approvals while preserving existing v2 deliveries", async () => {
       const f = await version();
       const d = await approve(f);
       config.set("ERP_DOCUMENTS_TRANSPORT", "base64-v1");
       await worker().send(d.id);
       expect(posts.at(-1)!.id).toBe(d.id);
       const second = await version("scan.png", "image/png", f.documentId);
-      const next = await approve(second);
-      expect(next.transport).toBe("base64-v1");
-      expect(next.id).not.toBe(d.id);
-      expect(next.version.approvedMimeType).toBe("application/pdf");
-      expect(
-        (await storage.read(d.version.approvedStorageKey!)).equals(f.bytes),
-      ).toBe(true);
+      await expect(approve(second)).rejects.toThrow("ERP_TRANSPORT_INVALID");
       config.set("ERP_DOCUMENTS_TRANSPORT", "multipart-v2");
-      // Avoid sending the intentionally-created v1 row into the v2-only stub.
-      await prisma.erpDocumentDelivery.update({
-        where: { id: next.id },
-        data: { status: "WAITING_CONTRACT" },
-      });
     });
     it("rolls back metadata, delivery and audit together on approval failure and preserves originals", async () => {
       const f = await version();

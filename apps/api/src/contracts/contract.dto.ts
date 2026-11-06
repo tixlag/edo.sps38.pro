@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 import {
   IsBoolean,
   IsEnum,
@@ -7,6 +8,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  Max,
   Min,
 } from "class-validator";
 
@@ -120,6 +122,19 @@ export class ContractNotificationDto {
 export class ContractNotificationsDto {
   @ApiProperty({ type: [ContractNotificationDto] })
   items!: ContractNotificationDto[];
+  @ApiProperty() total!: number;
+}
+export class ContractNotificationsQueryDto {
+  @ApiPropertyOptional({ default: 30, minimum: 1, maximum: 100 })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100)
+  limit?: number;
+
+  @ApiPropertyOptional({ default: 0, minimum: 0 })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  offset?: number;
+}
+export class ContractNotificationsReadAllDto {
+  @ApiProperty() updated!: number;
 }
 export class ContractErrorDto {
   @ApiProperty() statusCode!: number;

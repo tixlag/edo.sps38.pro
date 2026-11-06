@@ -11,6 +11,7 @@ export default defineConfig({
           "/src/documents/",
           "/src/contracts/",
           "/src/annotations/",
+          "/src/communications/",
           "/src/ocr/",
           "/src/storage/",
           "/src/auth/jwt.service.ts",

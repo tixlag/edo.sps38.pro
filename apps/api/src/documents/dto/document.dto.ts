@@ -51,10 +51,19 @@ export class CandidateQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @MaxLength(64)
+  @MaxLength(2048)
   cursor?: string;
 }
 export class ReviewGroupQueryDto {
+  @ApiPropertyOptional({
+    description: "Include accessible RU candidates without documents",
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === "true" ? true : value === "false" ? false : value,
+  )
+  @IsBoolean()
+  includeAll?: boolean;
   @ApiPropertyOptional({
     enum: ["RU", "IG"],
     enumName: "ReviewGroup",
@@ -241,7 +250,7 @@ export class DocumentReviewMetadataDto {
 }
 export class DocumentVersionDto extends DocumentReviewMetadataDto {
   @ApiPropertyOptional({ enum: ["RU", "IG"], enumName: "ReviewGroup" })
-  reviewGroup?: "RU" | "IG";
+  reviewGroup?: "RU" | "IG" | null;
   @ApiProperty({
     description:
       "Current supported submitted version has no OCR attempt and retained originals",
@@ -302,6 +311,15 @@ export class CandidateProfileDto {
     | null;
   @ApiProperty({ enum: ["RU", "IG"], enumName: "ReviewGroup" })
   reviewGroup!: "RU" | "IG";
+  @ApiPropertyOptional({ type: String, nullable: true }) statusId?:
+    | string
+    | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) statusName?:
+    | string
+    | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) managerId?:
+    | string
+    | null;
   @ApiProperty() id!: string;
   @ApiProperty({ type: String, nullable: true, format: "uuid" }) chatUuid!:
     | string
@@ -383,6 +401,8 @@ export class CandidateDocumentSummaryDto extends DocumentReviewMetadataDto {
   @ApiProperty({ type: String, nullable: true }) deliveryStatus!: string | null;
 }
 export class DocumentDto extends CandidateDocumentSummaryDto {
+  @ApiProperty({ enum: ["RU", "IG"], nullable: true })
+  reviewGroup!: "RU" | "IG" | null;
   @ApiProperty({ type: String, nullable: true }) candidateId!: string | null;
   @ApiProperty({ type: String, nullable: true }) chatUuid!: string | null;
   @ApiProperty({ type: String, nullable: true }) code1c!: string | null;
@@ -468,6 +488,13 @@ export class DocumentDefinitionDto {
 }
 export class CatalogDocumentTypeDto extends DocumentTypeDto {
   @ApiProperty({ format: "uuid" }) documentUid!: string;
+  @ApiProperty({
+    type: "array",
+    items: { type: "integer", nullable: true },
+    description:
+      "Applicable stage numbers; null denotes a document without a stage",
+  })
+  stages!: (number | null)[];
   @ApiProperty({ type: [DocumentDefinitionDto] })
   fields!: DocumentDefinitionDto[];
 }
@@ -623,11 +650,11 @@ export class CatalogQueryDto {
   @MaxLength(64)
   @Matches(/^\S+$/)
   position_code_1c!: string;
-  @ApiPropertyOptional({ default: "ru" })
+  @ApiPropertyOptional({ type: String, default: "ru" })
   @IsOptional()
   @IsString()
   @Matches(/^[a-zA-Z]{2}$/)
-  citizenship = "ru";
+  citizenship: string = "ru";
 }
 export class DocumentStreamGrantDto {
   @ApiProperty() token!: string;
@@ -691,6 +718,22 @@ export class CandidateSnapshotDto {
   @ApiPropertyOptional({ type: () => CandidateSnapshotPositionDto })
   @IsOptional()
   supervisor?: CandidateSnapshotPositionDto;
+  @ApiPropertyOptional({ enum: ["RU", "IG"] })
+  @IsOptional()
+  @IsIn(["RU", "IG"])
+  reviewGroup?: "RU" | "IG" | null;
+  @ApiPropertyOptional({ format: "uuid" })
+  @IsOptional()
+  @IsUUID()
+  personUid?: string;
+  @ApiPropertyOptional({
+    format: "uuid",
+    description: "ERP candidate identifier supplied by the trusted ERP service",
+  })
+  @IsOptional()
+  @IsUUID()
+  erpUid?: string;
+
   @ApiPropertyOptional({
     type: String,
     format: "uuid",
@@ -961,13 +1004,36 @@ export class ReviewDocumentsDto extends DocumentListDto {
 }
 export class CandidateReviewQueueQueryDto extends ReviewDocumentsQueryDto {
   @ApiPropertyOptional({
+    description: "Exact candidate manager id from ERP catalog",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  managerId?: string;
+  @ApiPropertyOptional({
+    format: "date",
+    description: "Candidate added to EDO from (Asia/Irkutsk)",
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  createdFrom?: string;
+  @ApiPropertyOptional({
+    format: "date",
+    description: "Candidate added to EDO through (Asia/Irkutsk)",
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  createdTo?: string;
+  @ApiPropertyOptional({
     minimum: 1,
     maximum: 100,
     default: 50,
     description: "Number of candidates, regardless of their document counts",
   })
   declare limit?: number;
-  @ApiPropertyOptional({ description: "Candidate id from nextCursor" })
+  @ApiPropertyOptional({ description: "Opaque cursor from nextCursor" })
   declare cursor?: string;
 }
 

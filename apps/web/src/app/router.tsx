@@ -16,6 +16,8 @@ import {
   signingSearch,
 } from "../pages/SigningPage";
 import { useEmployeeRouteId } from "./AppShell";
+import { CandidatesPage } from "../pages/CandidatesPage";
+import { CandidateWorkspacePage } from "../pages/CandidateWorkspacePage";
 
 function Placeholder({ title }: { title: string }) {
   return (
@@ -85,6 +87,16 @@ const reviewDocumentRoute = createRoute({
   path: "/review/$documentId",
   component: ReviewDocumentPage,
 });
+const candidatesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/candidates",
+  component: CandidatesPage,
+});
+const candidateWorkspaceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/review/candidates/$candidateId",
+  component: CandidateWorkspacePage,
+});
 
 const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -150,6 +162,8 @@ const routeTree = rootRoute.addChildren([
   tasksRoute,
   reviewRoute,
   reviewDocumentRoute,
+  candidateWorkspaceRoute,
+  candidatesRoute,
   reviewIgRoute,
   reviewIgDocumentRoute,
   historyRoute,

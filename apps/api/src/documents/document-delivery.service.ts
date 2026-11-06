@@ -4,6 +4,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomUUID } from "node:crypto";
@@ -23,11 +24,10 @@ import {
   nextDeliveryAttempt,
 } from "./erp-multipart";
 import { erpDocumentHeaders } from "./erp-document-auth";
-import { formatDateForErp, shouldOmitPositionUid } from "./document-contract";
-import {
-  captureErpDeliveryResponse,
-  type ErpDeliveryResponse,
-} from "./erp-delivery-response";
+import { tryCompleteIgEmployment } from "./ig-completion";
+import { isIgRecipient, matchesIgRecipient } from "./ig-recipient";
+import { ErpWorkspaceClient } from "./erp-workspace.client";
+import type { ErpDeliveryResponse } from "./erp-delivery-response";
 
 @Injectable()
 export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
@@ -44,6 +44,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
     private readonly manual: ManualDocumentService,
     private readonly pdf: DocumentPdfService,
     private readonly uploads: DocumentUploadService,
+    @Optional() private readonly erp?: ErpWorkspaceClient,
   ) {}
   onModuleInit(): void {
     if (this.config.get<string>("DOCUMENT_WORKER_ENABLED") === "false") return;
@@ -74,8 +75,83 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
     await this.access.document(documentId, principal);
     const row = await this.prisma.erpDocumentDelivery.findFirst({
       where: { version: { documentId, version, status: "APPROVED" } },
+      include: {
+        version: { include: { document: { include: { candidate: true } } } },
+      },
     });
     if (!row) throw new ConflictException("Document has no ERP delivery");
+    if (row.status === "WAITING_CONTRACT") {
+      const candidate = row.version.document.candidate;
+      if (!candidate?.code1c || !this.erp || !isIgRecipient(candidate))
+        throw new ConflictException("ERP_PERSON_IDENTITY_UNAVAILABLE");
+      const identity = await this.erp
+        .identity(candidate.code1c)
+        .catch(() => undefined);
+      if (!matchesIgRecipient(candidate, identity))
+        throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${candidate.id} FOR UPDATE`;
+        const current = await tx.erpDocumentDelivery.findUnique({
+          where: { id: row.id },
+          include: {
+            version: {
+              include: { document: { include: { candidate: true } } },
+            },
+          },
+        });
+        const doc = current?.version.document;
+        if (
+          !current ||
+          current.status !== "WAITING_CONTRACT" ||
+          current.transport !== "multipart-v2" ||
+          !doc ||
+          current.version.status !== "APPROVED" ||
+          doc.currentVersion !== version ||
+          !doc.candidate ||
+          !matchesIgRecipient(doc.candidate, identity) ||
+          !(await tx.document.findFirst({
+            where: {
+              id: documentId,
+              ...this.access.documentReviewWhere(principal),
+            },
+          }))
+        )
+          throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
+        const payload = current.payload as Prisma.JsonObject;
+        if (
+          typeof payload.documentUid !== "string" ||
+          !payload.documentUid ||
+          payload.recipientType ||
+          payload.personUid ||
+          payload.code1c ||
+          payload.chatUid
+        )
+          throw new ConflictException("ERP_DELIVERY_CONTRACT_INVALID");
+        const changed = await tx.erpDocumentDelivery.updateMany({
+          where: { id: row.id, status: "WAITING_CONTRACT" },
+          data: {
+            status: "PENDING",
+            errorCode: null,
+            payload: {
+              ...payload,
+              recipientType: "person",
+              personUid: identity!.personUid!,
+              code1c: identity!.code1C,
+            },
+          },
+        });
+        if (changed.count !== 1)
+          throw new ConflictException("ERP delivery has changed");
+        await this.audit.logInTransaction(tx, {
+          actorId: principal.uuid,
+          action: "DOCUMENT_ERP_SEND_REQUESTED",
+          entityType: "Document",
+          entityId: documentId,
+          correlationId,
+          after: { version, reason: "ERP_PERSON_IDENTITY_REPAIRED" },
+        });
+      });
+    }
     await this.send(row.id, principal.uuid, correlationId, principal);
     return this.reads.version(documentId, version);
   }
@@ -102,16 +178,18 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
           await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${doc.candidateId} FOR UPDATE`;
         if (
           !(await tx.document.findFirst({
-            where: { id: doc.id, ...this.access.documentReviewWhere(principal) },
+            where: {
+              id: doc.id,
+              ...this.access.documentReviewWhere(principal),
+            },
           }))
         )
           throw new ConflictException("Document access has changed");
       }
-      if (
-        row.transport &&
-        !["base64-v1", "multipart-v2"].includes(row.transport)
-      )
-        throw new ConflictException("ERP transport is unsupported");
+      if (row.transport !== "multipart-v2")
+        throw new ConflictException(
+          "Legacy ERP delivery requires manual reconciliation",
+        );
       if (!["PENDING", "REQUIRES_MANUAL"].includes(row.status))
         throw new ConflictException(
           "ERP delivery is unavailable or already being sent",
@@ -123,10 +201,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
         data: {
           status: "SENDING",
           leaseToken: token,
-          leaseUntil: new Date(
-            Date.now() +
-              (row.transport === "multipart-v2" ? v2Timeout + 60000 : 180000),
-          ),
+          leaseUntil: new Date(Date.now() + v2Timeout + 60000),
           attemptCount: { increment: 1 },
           nextAttemptAt: null,
           errorCode: null,
@@ -150,13 +225,12 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
     let errorCode: string | null = null;
     let erpResponse: ErpDeliveryResponse | null = null;
     let retryable = false;
-    const v2 = attempt.row.transport === "multipart-v2";
     try {
       const secret = this.config.get<string>("ERP_DOCUMENTS_TOKEN");
       if (!secret) throw new Error("ERP_NOT_CONFIGURED");
       if (!attempt.row.version.approvedStorageKey)
         throw new Error("APPROVED_PDF_UNAVAILABLE");
-      if (v2) {
+      {
         const version = attempt.row.version;
         const payload = attempt.row.payload as Prisma.JsonObject;
         if (
@@ -179,7 +253,19 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
           },
           metadata: {
             documentUid: String(payload.documentUid),
-            chatUid: String(payload.chatUid),
+            ...(typeof payload.chatUid === "string"
+              ? { chatUid: payload.chatUid }
+              : {}),
+            ...(typeof payload.candidateUid === "string"
+              ? { candidateUid: payload.candidateUid }
+              : {}),
+            ...(payload.recipientType === "person"
+              ? {
+                  recipientType: "person" as const,
+                  personUid: String(payload.personUid),
+                  code1c: String(payload.code1c),
+                }
+              : {}),
             documentFields: payload.documentFields as object,
           },
           deliveryId: id,
@@ -193,57 +279,6 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
         erpResponse = result.diagnostic;
         errorCode = result.errorCode;
         retryable = result.retryable;
-      } else {
-        const bytes = await this.storage.read(
-          attempt.row.version.approvedStorageKey,
-        );
-        const payload = { ...(attempt.row.payload as Prisma.JsonObject) };
-        const fields = payload.documentFields;
-        if (fields && typeof fields === "object" && !Array.isArray(fields)) {
-          const documentFields = { ...fields };
-          for (const field of attempt.row.version.fields) {
-            const value = documentFields[field.name];
-            if (field.kind === "date" && typeof value === "string")
-              documentFields[field.name] = formatDateForErp(value);
-          }
-          if (
-            shouldOmitPositionUid(
-              documentFields.positionUid,
-              attempt.row.version.positionCode1c,
-            )
-          )
-            delete documentFields.positionUid;
-          payload.documentFields = documentFields;
-        }
-        const response = await fetch(
-          new URL(
-            "candidate-documents",
-            this.config.get<string>("ERP_DOCUMENTS_BASE_URL"),
-          ),
-          {
-            method: "POST",
-            redirect: "error",
-            headers: {
-              ...erpDocumentHeaders(this.config),
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              ...payload,
-              fileExtension: "pdf",
-              fileBase64: bytes.toString("base64"),
-            }),
-            signal: AbortSignal.timeout(60000),
-          },
-        );
-        const username = this.config.get<string>("ERP_USERNAME") ?? "";
-        const password = this.config.get<string>("ERP_PASSWORD") ?? "";
-        erpResponse = await captureErpDeliveryResponse(response, [
-          secret,
-          username,
-          password,
-          Buffer.from(`${username}:${password}`).toString("base64"),
-        ]);
-        if (!response.ok) throw new Error(`ERP_HTTP_${response.status}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
@@ -253,12 +288,11 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
         )
           ? message
           : "ERP_DELIVERY_UNCONFIRMED";
-      retryable = v2 && errorCode === "ERP_DELIVERY_UNCONFIRMED";
+      retryable = errorCode === "ERP_DELIVERY_UNCONFIRMED";
     }
     const nextAttemptAt =
       errorCode &&
       retryable &&
-      v2 &&
       this.config.get("ERP_DOCUMENTS_V2_AUTO_RETRY") === "true" &&
       (attempt.row.attemptCount ?? 0) + 1 < MAX_DELIVERY_ATTEMPTS
         ? nextDeliveryAttempt((attempt.row.attemptCount ?? 0) + 1)
@@ -269,6 +303,23 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
         : "REQUIRES_MANUAL"
       : "SENT";
     await this.prisma.$transaction(async (tx) => {
+      const doc = await tx.document.findUnique({
+        where: { id: attempt.row.version.documentId },
+        select: {
+          candidateId: true,
+          candidate: {
+            select: {
+              chatUuid: true,
+              citizenship: true,
+              reviewGroup: true,
+              code1c: true,
+              personUid: true,
+            },
+          },
+        },
+      });
+      if (doc?.candidateId)
+        await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${doc.candidateId} FOR UPDATE`;
       const changed = await tx.erpDocumentDelivery.updateMany({
         where: { id, status: "SENDING", leaseToken: token },
         data: {
@@ -282,8 +333,26 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
       if (!changed.count) return;
       await tx.erpDocumentAttempt.update({
         where: { id: attempt.record.id },
-        data: { finishedAt: new Date(), errorCode, ...(erpResponse ?? {}) },
+        data: {
+          finishedAt: new Date(),
+          errorCode,
+          receiptValidated: status === "SENT",
+          ...(erpResponse ?? {}),
+        },
       });
+      if (
+        status === "SENT" &&
+        doc?.candidateId &&
+        doc.candidate &&
+        isIgRecipient(doc.candidate)
+      )
+        await tryCompleteIgEmployment(
+          tx,
+          this.audit,
+          doc.candidateId,
+          actorId,
+          correlationId,
+        );
       await this.audit.logInTransaction(tx, {
         actorId,
         action: "DOCUMENT_ERP_SEND_COMPLETED",
@@ -386,6 +455,35 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
             });
         });
     }
+    // Historical v1 attempts cannot be replayed against the removed ERP endpoint.
+    const legacy = await this.prisma.erpDocumentDelivery.findMany({
+      where: { status: "PENDING", transport: "base64-v1" },
+      include: { version: true },
+      take: 20,
+    });
+    for (const row of legacy)
+      await this.prisma.$transaction(async (tx) => {
+        const changed = await tx.erpDocumentDelivery.updateMany({
+          where: { id: row.id, status: "PENDING", transport: "base64-v1" },
+          data: {
+            status: "REQUIRES_MANUAL",
+            nextAttemptAt: null,
+            errorCode: "ERP_V1_RETIRED",
+          },
+        });
+        if (changed.count)
+          await this.audit.logInTransaction(tx, {
+            actorId: "document-worker",
+            action: "DOCUMENT_ERP_SEND_COMPLETED",
+            entityType: "Document",
+            entityId: row.version.documentId,
+            after: {
+              version: row.version.version,
+              status: "REQUIRES_MANUAL",
+              reason: "ERP_V1_RETIRED",
+            },
+          });
+      });
     for (const row of await this.prisma.documentSubmission.findMany({
       where: { status: "UPLOADING", leaseUntil: { lt: new Date() } },
       take: 20,
@@ -420,6 +518,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
     for (const row of await this.prisma.erpDocumentDelivery.findMany({
       where: {
         status: "PENDING",
+        transport: "multipart-v2",
         OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }],
       },
       take: 5,

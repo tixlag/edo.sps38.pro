@@ -4,10 +4,12 @@ import { fileURLToPath } from 'node:url';
 import * as React from 'react';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { profileAvatar, profileInitials, profileLabel, profileShortName } from './profile';
 import { AppHeader } from '../components/AppHeader';
 import { AppSidebar } from '../components/AppSidebar';
+
+vi.mock('../components/NotificationBell', () => ({ NotificationBell: () => null }));
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 

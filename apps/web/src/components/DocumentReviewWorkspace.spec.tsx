@@ -66,6 +66,7 @@ if (!Element.prototype.scrollTo) {
 function buildData(): DocumentVersionDto {
   return {
     documentId: "doc-1",
+    reviewGroup: "RU",
     version: 1,
     status: "IN_REVIEW",
     revision: 3,
@@ -322,6 +323,35 @@ describe("DocumentReviewWorkspace hover vs select", () => {
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
   });
+  it.each([
+    ["RU", "20002", true],
+    ["IG", "20011", true],
+    ["IG", "20002", false],
+    ["RU", "20011", false],
+    ["RU", "20005", false],
+    [undefined, "20002", false],
+    ["IG", "20009", true],
+  ] as const)(
+    "saved direction %s requires its reviewer right %s without location grants",
+    (group, rule, allowed) => {
+      vi.mocked(useGetMe).mockReturnValue({
+        data: { permissions: { [rule]: [] }, locationScope: { type: "none" } },
+      } as never);
+      const data = buildData();
+      data.reviewGroup = group;
+      const view = renderWorkspace(data);
+      try {
+        expect(
+          !!view.container.querySelector('[aria-label="Подтвердить документ"]'),
+        ).toBe(allowed);
+        expect(
+          !!view.container.querySelector('[aria-label="Отклонить документ"]'),
+        ).toBe(allowed);
+      } finally {
+        view.cleanup();
+      }
+    },
+  );
   it("reports manual edits, incomplete dates and cancellation to the document navigator", () => {
     const onNavigationStateChange = vi.fn();
     const view = renderWorkspace(buildData(), { onNavigationStateChange });
@@ -470,22 +500,71 @@ describe("DocumentReviewWorkspace hover vs select", () => {
 
   it("shows optional Latin passport names and lets the reviewer save OCR suggestions", () => {
     const mutate = vi.fn();
-    vi.mocked(useGetMe).mockReturnValue({ data: { permissions: { "20011": [] }, locationScope: { type: "none" } } } as never);
-    vi.mocked(useEditDocumentFields).mockReturnValue({ mutate, isPending: false } as never);
+    vi.mocked(useGetMe).mockReturnValue({
+      data: { permissions: { "20011": [] }, locationScope: { type: "none" } },
+    } as never);
+    vi.mocked(useEditDocumentFields).mockReturnValue({
+      mutate,
+      isPending: false,
+    } as never);
     const data = buildData();
     data.reviewGroup = "IG";
     data.fields = [
-      { ...data.fields[0], name: "number", label: "Номер", value: "123", originalValue: null, submittedValue: "123", required: true, reviewVisible: true, regions: [] },
-      ...([ ["lastNameLatin", "ALIYEV"], ["firstNameLatin", "ALI"], ["middleNameLatin", "VALIYEVICH"] ] as const).map(([name, originalValue]) => ({ ...data.fields[0], name, label: name, originalValue, value: null, submittedValue: null, editedBy: null, required: false, reviewVisible: true, regions: [] })),
+      {
+        ...data.fields[0],
+        name: "number",
+        label: "Номер",
+        value: "123",
+        originalValue: null,
+        submittedValue: "123",
+        required: true,
+        reviewVisible: true,
+        regions: [],
+      },
+      ...(
+        [
+          ["lastNameLatin", "ALIYEV"],
+          ["firstNameLatin", "ALI"],
+          ["middleNameLatin", "VALIYEVICH"],
+        ] as const
+      ).map(([name, originalValue]) => ({
+        ...data.fields[0],
+        name,
+        label: name,
+        originalValue,
+        value: null,
+        submittedValue: null,
+        editedBy: null,
+        required: false,
+        reviewVisible: true,
+        regions: [],
+      })),
     ];
     const view = renderWorkspace(data);
     try {
       expect(view.container.textContent).toContain("Номер · обязательно");
       expect(view.container.textContent).toContain("Отчество латиницей");
-      expect(view.container.querySelector<HTMLTextAreaElement>('[data-field-row="middleNameLatin"] textarea')?.value).toBe("VALIYEVICH");
+      expect(
+        view.container.querySelector<HTMLTextAreaElement>(
+          '[data-field-row="middleNameLatin"] textarea',
+        )?.value,
+      ).toBe("VALIYEVICH");
       click(saveButton(view.container));
-      expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ data: { revision: 3, fields: { lastNameLatin: "ALIYEV", firstNameLatin: "ALI", middleNameLatin: "VALIYEVICH" } } }));
-    } finally { view.cleanup(); }
+      expect(mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            revision: 3,
+            fields: {
+              lastNameLatin: "ALIYEV",
+              firstNameLatin: "ALI",
+              middleNameLatin: "VALIYEVICH",
+            },
+          },
+        }),
+      );
+    } finally {
+      view.cleanup();
+    }
   });
 
   it("formats OCR dates and accepted date inputs as dd.mm.yyyy", () => {
@@ -890,6 +969,26 @@ describe("DocumentReviewWorkspace hover vs select", () => {
       expect(useGetDocumentFileDownload).not.toHaveBeenCalled();
     } finally {
       cleanup();
+    }
+  });
+
+  it("allows an authorized reviewer to retry a parked ERP identity", () => {
+    vi.mocked(useGetMe).mockReturnValue({
+      data: { permissions: { "20011": [], "20006": [] } },
+    } as never);
+    const data = buildData();
+    data.status = "APPROVED";
+    data.reviewGroup = "IG";
+    data.delivery = {
+      status: "WAITING_CONTRACT",
+      errorCode: "ERP_PERSON_IDENTITY_UNAVAILABLE",
+      attempts: [],
+    };
+    const view = renderWorkspace(data);
+    try {
+      expect(view.container.textContent).toContain("Отправить в ERP");
+    } finally {
+      view.cleanup();
     }
   });
 
