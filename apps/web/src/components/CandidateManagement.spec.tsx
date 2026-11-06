@@ -159,7 +159,6 @@ vi.mock("@edo/api-client", () => {
     useUpdateCandidateWorkspace: () => mutation(state.update),
     useChangeCandidateStatus: () => mutation(state.status),
     useLinkCandidatePerson: () => mutation(state.link),
-    useRecheckCandidatePreviousDocument: () => mutation(state.recheck),
     getGetCandidateDetailsQueryKey: (id: string) => ["details", id],
     getGetCandidateWorkspaceQueryKey: (id: string) => ["workspace", id],
     getListCommunicationCandidatesQueryKey: () => ["catalog"],
@@ -601,7 +600,7 @@ describe("candidate manager flows", () => {
     },
   );
 
-  it("shows old documents as requiring review and explicitly saves current-cycle recheck", async () => {
+  it("shows old documents with their attributes and without manual recheck form", async () => {
     state.profile.linkedPerson = true;
     state.previous = [
       {
@@ -624,9 +623,8 @@ describe("candidate manager flows", () => {
         reviewedAt: null,
       },
     ];
-    state.recheck.mockResolvedValue({ items: state.previous });
     await render(<CandidateManagement candidateId="current-cycle" />);
-    expect(view.textContent).toContain("Требует повторной проверки");
+    expect(view.textContent).toContain("Требует проверки");
     expect(view.textContent).toContain("123456");
     expect(view.textContent).toContain("03.02.2020");
     expect(view.textContent).toContain("Отмечен недействительным в ERP");
@@ -640,23 +638,7 @@ describe("candidate manager flows", () => {
     expect(view.textContent).not.toContain("departmentCode");
     expect(view.textContent).not.toContain("subdivisionCode");
     expect(button("Оригинал недоступен").disabled).toBe(true);
-    const recheckForm = view.querySelector("form")!;
-    expect(recheckForm.className).toContain(
-      "flex-col gap-2 sm:flex-row sm:items-end",
-    );
-    select(view.querySelector("select")!, "REPLACE");
-    await act(async () =>
-      view
-        .querySelector("form")!
-        .dispatchEvent(
-          new Event("submit", { bubbles: true, cancelable: true }),
-        ),
-    );
-    expect(state.recheck).toHaveBeenCalledWith({
-      candidateId: "current-cycle",
-      documentId: "old-document",
-      data: { status: "REPLACE" },
-    });
+    expect(view.querySelector("form")).toBeNull();
   });
 
   it("lists newly required missing documents and does not infer approval from an old file", async () => {

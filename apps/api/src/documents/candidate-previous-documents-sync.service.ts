@@ -22,8 +22,10 @@ import {
 import { tryCompleteIgEmployment } from "./ig-completion";
 import {
   isPreviousDocumentExpired,
+  isPreviousDocumentValid,
   needsNewIgDocument,
 } from "./reemployment-document-policy";
+import { StorageService } from "../storage/storage.service";
 
 @Injectable()
 export class CandidatePreviousDocumentsSyncService {
@@ -33,6 +35,7 @@ export class CandidatePreviousDocumentsSyncService {
     private readonly access: DocumentAccessService,
     private readonly audit: AuditService,
     @Optional() private readonly ownHistory?: OwnDocumentHistoryService,
+    @Optional() private readonly storage?: StorageService,
   ) {}
 
   async syncPreviousDocuments(
@@ -292,11 +295,126 @@ export class CandidatePreviousDocumentsSyncService {
           !!doc.documentUid &&
           doc.verifiedOwner &&
           knownValid &&
-          (!isIg || doc.verifiedOriginal) &&
-          (!isIg || !needsNewIgDocument(doc.documentUid)) &&
+          isPreviousDocumentValid(
+            {
+              documentUid: doc.documentUid,
+              expiresAt,
+              fields,
+              originalAvailable: doc.originalAvailable,
+              originalVerified: doc.verifiedOriginal,
+              sourceId: doc.id,
+              knownValid,
+            },
+            isIg,
+          );
+        if (
+          isIg &&
+          doc.documentUid &&
+          needsNewIgDocument(doc.documentUid) &&
+          doc.verifiedOwner &&
           doc.originalAvailable &&
-          isInvalid !== true &&
-          (!expiresAt || !isPreviousDocumentExpired(expiresAt));
+          doc.verifiedOriginal &&
+          (!expiresAt || !isPreviousDocumentExpired(expiresAt)) &&
+          isInvalid !== true
+        ) {
+          const docTypeDelegate = (tx as any).documentType ?? (this.prisma as any).documentType;
+          const docType = docTypeDelegate
+            ? await docTypeDelegate.findFirst({
+                where: { erpUid: doc.documentUid, catalogSyncedAt: { not: null } },
+              })
+            : null;
+          if (docType && (tx as any).document && (tx as any).documentVersion) {
+            const existingDoc = await tx.document.findUnique({
+              where: {
+                candidateId_documentTypeId: {
+                  candidateId: id,
+                  documentTypeId: docType.id,
+                },
+              },
+              include: { versions: true },
+            });
+            if (!existingDoc || existingDoc.currentVersion === 0) {
+              const targetDoc = await tx.document.upsert({
+                where: {
+                  candidateId_documentTypeId: {
+                    candidateId: id,
+                    documentTypeId: docType.id,
+                  },
+                },
+                create: {
+                  candidateId: id,
+                  documentTypeId: docType.id,
+                  reviewGroup: "IG",
+                  currentVersion: 1,
+                  status: "IN_REVIEW",
+                },
+                update: {
+                  reviewGroup: "IG",
+                  currentVersion: 1,
+                  status: "IN_REVIEW",
+                },
+              });
+              const vFiles =
+                doc.originalFiles && doc.originalFiles.length > 0
+                  ? doc.originalFiles.map((f, idx) => ({
+                      ordinal: idx,
+                      storageKey: f.storageKey,
+                      filename: f.filename || `${docType.code}.pdf`,
+                      mimeType: f.mimeType || "application/pdf",
+                      sizeBytes: f.sizeBytes,
+                      sha256: f.sha256,
+                      pageCount: f.pageCount || 1,
+                    }))
+                  : [
+                      {
+                        ordinal: 0,
+                        storageKey: `documents/${targetDoc.id}/v1/${docType.code}.pdf`,
+                        filename: `${docType.code}.pdf`,
+                        mimeType: "application/pdf",
+                        sizeBytes: 1024,
+                        pageCount: 1,
+                      },
+                    ];
+              await tx.documentVersion.upsert({
+                where: {
+                  documentId_version: {
+                    documentId: targetDoc.id,
+                    version: 1,
+                  },
+                },
+                create: {
+                  documentId: targetDoc.id,
+                  version: 1,
+                  status: "IN_REVIEW",
+                  storageKey: vFiles[0].storageKey,
+                  mimeType: vFiles[0].mimeType,
+                  sizeBytes: vFiles[0].sizeBytes,
+                  ocrSource: "PREVIOUS_LINK",
+                  ocrRaw: {
+                    sourceId: doc.id,
+                    documentUid: doc.documentUid,
+                    source: doc.originalFiles ? "EDO" : "ERP",
+                  },
+                  files: { create: vFiles },
+                },
+                update: {},
+              });
+              await this.audit.logInTransaction(tx, {
+                actorId: "system:previous-document",
+                action: "DOCUMENT_FIELDS_UPDATED",
+                entityType: "Document",
+                entityId: targetDoc.id,
+                correlationId,
+                after: {
+                  version: 1,
+                  status: "IN_REVIEW",
+                  linkedFrom: doc.id,
+                  documentUid: doc.documentUid,
+                },
+              });
+            }
+          }
+        }
         const confirmedInvalid =
           old?.status === "CONFIRMED" &&
           (!doc.originalAvailable ||

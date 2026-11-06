@@ -1,10 +1,5 @@
 import { DocumentCatalogService } from "../documents/document-catalog.service";
 import { CandidatePreviousDocumentsSyncService } from "../documents/candidate-previous-documents-sync.service";
-import { tryCompleteIgEmployment } from "../documents/ig-completion";
-import {
-  isPreviousDocumentExpired,
-  needsNewIgDocument,
-} from "../documents/reemployment-document-policy";
 import { CandidateDocumentError } from "../documents/candidate-document.error";
 import {
   CandidateDocumentErrorCode,
@@ -45,7 +40,6 @@ import {
 import {
   CandidatePersonLinkDto,
   CandidatePersonMatchQueryDto,
-  CandidateRecheckRequestDto,
   CandidateStatusRequestDto,
   CreateCandidateDto,
   UpdateCandidateDto,
@@ -479,88 +473,6 @@ export class CandidateWorkspaceService {
       preloadedRow,
       p,
     );
-  }
-  async recheck(
-    id: string,
-    documentId: string,
-    p: AuthPrincipal,
-    body: CandidateRecheckRequestDto,
-  ) {
-    // Refresh before granting confirmation: a failed ERP request must never
-    // leave a stale document confirmed in the local projection.
-    if (body.status === "CONFIRMED") await this.previous(id, p);
-    const row = await this.previousOwner(id, p);
-    await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${id} FOR UPDATE`;
-      const current = await tx.candidate.findFirst({
-        where: { id, ...(p ? this.access.candidateWhere(p) : {}) },
-      });
-      if (
-        !current ||
-        candidateReviewGroup(current) !== candidateReviewGroup(row) ||
-        current.personUid !== row.personUid ||
-        current.code1c !== row.code1c ||
-        current.erpUid !== row.erpUid
-      )
-        throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
-      if (p) requireReviewGroup(p, candidateReviewGroup(current));
-      const doc = await tx.candidatePreviousDocument.findFirst({
-        where: { id: documentId, candidateId: id },
-      });
-      if (!doc) throw new NotFoundException();
-      if (
-        body.status === "CONFIRMED" &&
-        candidateReviewGroup(current) === "IG" &&
-        (!doc.documentUid || needsNewIgDocument(doc.documentUid))
-      )
-        throw new ConflictException(
-          "Для этого оформления нужна новая миграционная карта или патент. Если вид документа неизвестен, подтвердить его нельзя.",
-        );
-      if (
-        body.status === "CONFIRMED" &&
-        candidateReviewGroup(current) === "IG" &&
-        !doc.originalVerified
-      )
-        throw new ConflictException(
-          "Оригинал или действительность документа не подтверждены",
-        );
-      if (body.status === "CONFIRMED" && !doc.originalAvailable)
-        throw new ConflictException("Оригинал недоступен для проверки");
-      if (
-        body.status === "CONFIRMED" &&
-        doc.fields &&
-        typeof doc.fields === "object" &&
-        !Array.isArray(doc.fields) &&
-        doc.fields.isInvalid === true
-      )
-        throw new ConflictException("В ERP документ отмечен недействительным");
-      if (
-        body.status === "CONFIRMED" &&
-        doc.expiresAt &&
-        isPreviousDocumentExpired(doc.expiresAt)
-      )
-        throw new ConflictException("Срок действия документа истёк");
-      await tx.candidatePreviousDocument.update({
-        where: { id: documentId },
-        data: {
-          status: body.status,
-          reviewedBy: p.uuid,
-          reviewedAt: new Date(),
-        },
-      });
-      await this.audit.logInTransaction(tx, {
-        actorId: p.uuid,
-        action: "DOCUMENT_FIELDS_UPDATED",
-        entityType: "CandidatePreviousDocument",
-        entityId: documentId,
-        correlationId: "",
-        before: { status: doc.status },
-        after: { status: body.status },
-      });
-      if (body.status === "CONFIRMED" && candidateReviewGroup(current) === "IG")
-        await tryCompleteIgEmployment(tx, this.audit, id, p.uuid, "");
-    });
-    return this.previous(id, p);
   }
   async original(id: string, documentId: string, p: AuthPrincipal) {
     const row = await this.previousOwner(id, p);

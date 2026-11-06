@@ -69,6 +69,9 @@ it("shows former documents inside their stage group without contradictory missin
       expiresAt: null,
       recordedAt: null,
       originalAvailable: true,
+      source: "EDO",
+      sourceDescription: "Из ЭДО",
+      fields: {},
     },
     {
       id: "old-policy",
@@ -80,6 +83,9 @@ it("shows former documents inside their stage group without contradictory missin
       expiresAt: "2000-01-01",
       recordedAt: "1999-01-01",
       originalAvailable: true,
+      source: "EDO",
+      sourceDescription: "Из ЭДО",
+      fields: {},
     },
     {
       id: "old-diploma",
@@ -91,6 +97,9 @@ it("shows former documents inside their stage group without contradictory missin
       expiresAt: null,
       recordedAt: null,
       originalAvailable: false,
+      source: "ERP",
+      sourceDescription: "Из ERP",
+      fields: {},
     },
   ];
   const node = document.createElement("div");

@@ -13970,130 +13970,6 @@
         ]
       }
     },
-    "/api/v1/candidates/{candidateId}/previous-documents/{documentId}": {
-      "patch": {
-        "operationId": "recheckCandidatePreviousDocument",
-        "parameters": [
-          {
-            "name": "candidateId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "documentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CandidateRecheckRequestDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CandidatePreviousDocumentsDto"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "access-jwt": []
-          }
-        ],
-        "summary": "Save review for current admission cycle without changing historical ERP decisions",
-        "tags": [
-          "candidate-workspace"
-        ]
-      }
-    },
     "/api/v1/candidates/{candidateId}/previous-documents/{documentId}/original": {
       "get": {
         "operationId": "getCandidatePreviousDocumentOriginal",
@@ -18424,6 +18300,32 @@
           },
           "originalAvailable": {
             "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "EDO",
+              "ERP"
+            ]
+          },
+          "sourceDescription": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "version": {
+            "type": "number",
+            "nullable": true
+          },
+          "reviewedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "rejectionReason": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -18435,7 +18337,10 @@
           "state",
           "expiresAt",
           "recordedAt",
-          "originalAvailable"
+          "originalAvailable",
+          "source",
+          "sourceDescription",
+          "fields"
         ]
       },
       "MissingDocumentTypeDto": {
@@ -18489,6 +18394,37 @@
           "additional"
         ]
       },
+      "CandidateStageItemDto": {
+        "type": "object",
+        "properties": {
+          "stage": {
+            "type": "number",
+            "nullable": true
+          },
+          "title": {
+            "type": "string"
+          },
+          "required": {
+            "$ref": "#/components/schemas/StageDocumentGroupDto"
+          },
+          "additional": {
+            "$ref": "#/components/schemas/StageDocumentGroupDto"
+          },
+          "previousDocuments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreviousDocumentAvailabilityDto"
+            }
+          }
+        },
+        "required": [
+          "stage",
+          "title",
+          "required",
+          "additional",
+          "previousDocuments"
+        ]
+      },
       "CandidateDetailsDto": {
         "type": "object",
         "properties": {
@@ -18531,6 +18467,13 @@
                 "$ref": "#/components/schemas/CandidateStageDocumentsDto"
               }
             ]
+          },
+          "stages": {
+            "nullable": true,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateStageItemDto"
+            }
           }
         },
         "required": [
@@ -21362,21 +21305,6 @@
         },
         "required": [
           "items"
-        ]
-      },
-      "CandidateRecheckRequestDto": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CandidateRecheckStatus"
-              }
-            ]
-          }
-        },
-        "required": [
-          "status"
         ]
       },
       "CommunicationCandidatesDto": {

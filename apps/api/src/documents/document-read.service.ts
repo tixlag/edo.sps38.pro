@@ -52,6 +52,7 @@ import {
 import type {
   CandidateDocumentDraftDto,
   CandidateDetailsDto,
+  CandidateStageItemDto,
   CandidateDocumentSummaryDto,
   CandidateProfileDto,
   CandidateReviewQueueDto,
@@ -444,6 +445,85 @@ export class DocumentReadService {
         }
       }
     }
+    let allStages: CandidateStageItemDto[] | undefined;
+    if (
+      candidate.positionCode ||
+      candidate.projectCode ||
+      candidate.citizenship
+    ) {
+      const types = await this.prisma.documentType.findMany({
+        where: { catalogSyncedAt: { not: null } },
+        include: {
+          positions: true,
+          stageRules: {
+            include: { positions: true, projects: true, countries: true },
+          },
+        },
+        orderBy: { title: "asc" },
+      });
+      if (types.length) {
+        const profile = {
+          positionCode: candidate.positionCode ?? "",
+          projectCode: candidate.projectCode,
+          citizenship: candidate.citizenship ?? "ru",
+          sex: candidate.sexKnown ? candidate.sex : null,
+        };
+        const stageNumbers = new Set<number | null>();
+        for (const type of types) {
+          const rules = type.stageRules?.length ? type.stageRules : [type];
+          for (const rule of rules) {
+            const cat = classifyStageType(type, rule.stage ?? null, profile);
+            if (cat) stageNumbers.add(rule.stage ?? null);
+          }
+        }
+        if (stageNumbers.size === 0) stageNumbers.add(1);
+        const sortedStages = [...stageNumbers].sort((a, b) => {
+          if (a === null) return 1;
+          if (b === null) return -1;
+          return a - b;
+        });
+        allStages = sortedStages.map((stg) => {
+          const stageItem: CandidateStageItemDto = {
+            stage: stg,
+            title: stg === null ? "Без этапа" : `Этап ${stg}`,
+            required: { documents: [], missingDocuments: [] },
+            additional: { documents: [], missingDocuments: [] },
+            previousDocuments: [],
+          };
+          const stageApplicableTypes: Parameters<
+            typeof previousDocumentAvailability
+          >[0] = [];
+          for (const type of types) {
+            const category = classifyStageType(type, stg, profile);
+            if (!category) continue;
+            stageApplicableTypes.push({ ...type, category });
+            const doc = rows.find((row) => row.documentTypeId === type.id);
+            if (doc)
+              stageItem[category].documents.push(this.documentSummary(doc));
+            if (
+              (!doc &&
+                !(
+                  type.erpUid && previousUids.has(type.erpUid.toLowerCase())
+                )) ||
+              (doc?.status === "DRAFT" &&
+                !(type.erpUid && previousUids.has(type.erpUid.toLowerCase())))
+            ) {
+              stageItem[category].missingDocuments.push({
+                code: type.code,
+                title: type.title,
+              });
+            }
+          }
+          stageItem.previousDocuments = previousDocumentAvailability(
+            stageApplicableTypes,
+            previous,
+            rows,
+            isIg,
+          );
+          return stageItem;
+        });
+      }
+    }
     return {
       candidate,
       documents: rows.map((row) => this.documentSummary(row)),
@@ -459,6 +539,7 @@ export class DocumentReadService {
         previousUids,
       ),
       ...(stage !== undefined ? { stageDocuments } : { documentGroups }),
+      stages: allStages,
     };
   }
 

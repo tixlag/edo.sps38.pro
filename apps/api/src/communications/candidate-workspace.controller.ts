@@ -32,7 +32,6 @@ import {
   CandidatePersonLinkDto,
   CandidatePersonMatchQueryDto,
   CandidatePreviousDocumentsDto,
-  CandidateRecheckRequestDto,
   CandidateReferenceQueryDto,
   CandidateReferencesDto,
   CandidateStatusRequestDto,
@@ -228,25 +227,6 @@ export class CandidateWorkspaceController {
     @CurrentPrincipal() p: AuthPrincipal,
   ) {
     return this.workspace.previous(id, p);
-  }
-  @Patch(":candidateId/previous-documents/:documentId")
-  @RequireAccessRule(
-    EdoAccessRule.DOCUMENT_REVIEW_RU,
-    EdoAccessRule.DOCUMENT_REVIEW_IG,
-  )
-  @ApiOperation({
-    operationId: "recheckCandidatePreviousDocument",
-    summary:
-      "Save review for current admission cycle without changing historical ERP decisions",
-  })
-  @ApiResponse({ status: 200, type: CandidatePreviousDocumentsDto })
-  recheck(
-    @Param("candidateId") id: string,
-    @Param("documentId") documentId: string,
-    @CurrentPrincipal() p: AuthPrincipal,
-    @Body() body: CandidateRecheckRequestDto,
-  ) {
-    return this.workspace.recheck(id, documentId, p, body);
   }
   @Get(":candidateId/previous-documents/:documentId/original")
   @RequireAccessRule(

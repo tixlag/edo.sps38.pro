@@ -14,6 +14,7 @@ type CatalogType = {
 type Previous = Pick<
   CandidatePreviousDocument,
   | "id"
+  | "sourceId"
   | "documentUid"
   | "status"
   | "fields"
@@ -74,7 +75,7 @@ export function previousDocumentAvailability(
     if (!doc) return [];
     const fields =
       doc.fields && typeof doc.fields === "object" && !Array.isArray(doc.fields)
-        ? doc.fields
+        ? (doc.fields as Record<string, unknown>)
         : {};
     const date = fields.recordDate;
     const recordedAt =
@@ -84,6 +85,19 @@ export function previousDocumentAvailability(
       new Date(date).toISOString().slice(0, 10) === date
         ? date
         : null;
+    const isEdo = Boolean(doc.sourceId?.startsWith("edo:"));
+    const cleanFields = Object.fromEntries(
+      Object.entries(fields).filter(
+        ([k, v]) =>
+          !/(?:uuid|uid|code_?1c|code1c|erp|^id$|^sourceId$)/i.test(k) &&
+          (typeof v === "string" ||
+            typeof v === "number" ||
+            typeof v === "boolean"),
+      ),
+    );
+    const versionMatch = doc.sourceId?.match(/^edo:[^:]+:(\d+)$/);
+    const versionNumber = versionMatch ? Number(versionMatch[1]) : null;
+
     return [
       {
         id: doc.id,
@@ -95,6 +109,13 @@ export function previousDocumentAvailability(
         expiresAt: doc.expiresAt?.toISOString().slice(0, 10) ?? null,
         recordedAt,
         originalAvailable: doc.originalAvailable,
+        source: isEdo ? ("EDO" as const) : ("ERP" as const),
+        sourceDescription: isEdo
+          ? "Из прошлого оформления в ЭДО"
+          : "Из ERP",
+        fields: cleanFields,
+        version: versionNumber,
+        reviewedAt: doc.reviewedAt?.toISOString() ?? null,
       },
     ];
   });

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Link,
   useNavigate,
@@ -30,12 +30,12 @@ import {
   X,
 } from "lucide-react";
 import { CandidateManagement } from "../components/CandidateManagement";
-import { StageRing } from "./ReviewPage";
-import { CandidateDocumentList } from "../components/CandidateDocumentList";
+import { CandidateStageAccordion } from "../components/CandidateStageAccordion";
 import { hasAccessRule } from "../lib/audit-types";
 import { CandidateChat } from "../components/CandidateChat";
 import { DocumentReviewWorkspace } from "../components/DocumentReviewWorkspace";
 import { LkLink } from "../components/LkLink";
+import { assembleCandidateStages } from "../lib/candidate-stages";
 import {
   formatBirthDateRu,
   formatCandidateObject,
@@ -280,28 +280,79 @@ function CandidateWorkspace() {
   const queueSearch = { ...parseReviewSearchParams(search, "ALL") };
   delete queueSearch.candidate;
   const openDocument = (
-    document: CandidateDocumentSummaryDto,
-    selectedVersion = document.currentVersion,
+    docOrId: CandidateDocumentSummaryDto | string,
+    selectedVersion?: number,
   ) => {
+    const docId = typeof docOrId === "string" ? docOrId : docOrId.id;
+    const ver =
+      typeof docOrId === "string"
+        ? selectedVersion
+        : (selectedVersion ?? docOrId.currentVersion);
     setMobilePanel(null);
     void navigate({
       to: "/review/candidates/$candidateId",
       params: { candidateId },
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        document: document.id,
-        version: selectedVersion,
+        document: docId,
+        version: ver,
       }),
     });
   };
-  const stageData = stage ? stageDetails.data?.stageDocuments : undefined;
-  const groups = stage ? stageData : details.data?.documentGroups;
-  const documents = stage
-    ? [
-        ...(stageData?.required.documents ?? []),
-        ...(stageData?.additional.documents ?? []),
-      ]
-    : (details.data?.documents ?? []);
+
+  const stages = useMemo(() => {
+    const effectiveData =
+      (stage ? stageDetails.data : details.data) ?? details.data;
+    return assembleCandidateStages(effectiveData, { stage });
+  }, [details.data, stageDetails.data, stage]);
+
+  const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({});
+
+  const isStageOpen = (stgNumber: number | null, index: number) => {
+    const key = stgNumber === null ? "none" : String(stgNumber);
+    if (key in expandedStages) {
+      return expandedStages[key];
+    }
+    if (stage !== undefined && stage !== "") {
+      if (stage === "none") return stgNumber === null;
+      return String(stgNumber) === stage;
+    }
+    // Default: expand Stage 1 (or the first stage if none is 1)
+    if (stgNumber === 1) return true;
+    const hasStageOne = stages.some((s) => s.stage === 1);
+    if (!hasStageOne && index === 0) return true;
+    return false;
+  };
+
+  const toggleStage = (stgNumber: number | null, _index: number) => {
+    const key = stgNumber === null ? "none" : String(stgNumber);
+    const currentlyActive = stage === key;
+    const willOpen = !currentlyActive;
+    setExpandedStages((prev) => ({ ...prev, [key]: willOpen }));
+    void navigate({
+      to: "/review/candidates/$candidateId",
+      params: { candidateId },
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        stage: willOpen ? key : undefined,
+        document: undefined,
+        version: undefined,
+      }),
+    });
+  };
+
+  const totalDocCount = useMemo(() => {
+    if (stages.length > 0) {
+      return stages.reduce(
+        (sum, s) =>
+          sum +
+          s.required.documents.length +
+          s.additional.documents.length,
+        0,
+      );
+    }
+    return details.data?.documents?.length ?? 0;
+  }, [stages, details.data?.documents]);
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden p-3 sm:p-4">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
@@ -345,7 +396,7 @@ function CandidateWorkspace() {
             onClick={() => setMobilePanel("documents")}
           >
             <FileText size={15} />
-            Документы{details.data ? ` (${documents.length})` : ""}
+            Документы{details.data ? ` (${totalDocCount})` : ""}
           </Button>
         </div>
       </div>
@@ -615,67 +666,6 @@ function CandidateWorkspace() {
           ) : (
             details.data && (
               <>
-                <nav
-                  aria-label="Этапы документов"
-                  className="flex shrink-0 items-center gap-2 overflow-x-auto py-1 [&_[role=button]]:!flex-row [&_[role=button]]:!h-11 [&_[role=button]]:!w-auto [&_[role=button]]:shrink-0 [&_[role=button]]:gap-2 [&_[role=button]]:rounded-lg [&_[role=button]]:border [&_[role=button]]:border-[var(--border)] [&_[role=button]]:bg-[var(--card)] [&_[role=button]]:px-2.5 [&_[role=button]]:hover:bg-[var(--muted)] [&_[role=button][aria-pressed=true]]:border-[var(--primary)] [&_[role=button][aria-pressed=true]]:bg-[var(--primary-soft)] [&_[role=button]>span:first-child]:!h-9 [&_[role=button]>span:first-child]:!w-9 [&_[role=button]>span:first-child]:shrink-0 [&_[role=button]>strong]:!h-auto [&_[role=button]>strong]:whitespace-nowrap [&_[role=button]>strong]:text-xs [&_[role=button]>strong]:font-medium [&_[role=button]>span:last-of-type]:shrink-0 [&_[role=button]>span:last-of-type]:text-[11px]"
-                >
-                  <Button
-                    size="sm"
-                    variant={!stage ? "default" : "outline"}
-                    className="h-11 shrink-0 rounded-lg px-3.5"
-                    onClick={() =>
-                      void navigate({
-                        to: "/review/candidates/$candidateId",
-                        params: { candidateId },
-                        search: (previous: Record<string, unknown>) => ({
-                          ...previous,
-                          stage: undefined,
-                          document: undefined,
-                          version: undefined,
-                        }),
-                      })
-                    }
-                  >
-                    Все документы
-                  </Button>
-                  {profile?.stageProgress?.map((progress) => (
-                    <StageRing
-                      key={progress.stage ?? "none"}
-                      progress={progress}
-                      selected={
-                        stage ===
-                        (progress.stage === null
-                          ? "none"
-                          : String(progress.stage))
-                      }
-                      onOpen={() => {
-                        void navigate({
-                          to: "/review/candidates/$candidateId",
-                          params: { candidateId },
-                          search: (previous: Record<string, unknown>) => ({
-                            ...previous,
-                            document: undefined,
-                            version: undefined,
-                            stage:
-                              progress.stage === null
-                                ? "none"
-                                : String(progress.stage),
-                          }),
-                        });
-                        if (
-                          typeof window.matchMedia === "function" &&
-                          window.matchMedia("(max-width: 1023px)").matches
-                        )
-                          setMobilePanel("documents");
-                      }}
-                    />
-                  ))}
-                  {profile?.stageProgress === null && (
-                    <span className="text-xs text-[var(--muted-foreground)]">
-                      Этапы неизвестны
-                    </span>
-                  )}
-                </nav>
                 {documentId && (
                   <div className="flex shrink-0 items-center">
                     <Button
@@ -733,11 +723,11 @@ function CandidateWorkspace() {
           role={mobilePanel === "documents" ? "dialog" : undefined}
           aria-modal={mobilePanel === "documents" ? true : undefined}
           aria-label="Документы кандидата"
-          className={`${mobilePanel === "documents" ? "fixed inset-y-0 right-0 z-40 flex w-[min(88vw,320px)] shadow-xl" : "hidden w-60 xl:w-64 lg:flex"} shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]`}
+          className={`${mobilePanel === "documents" ? "fixed inset-y-0 right-0 z-40 flex w-[min(92vw,400px)] shadow-xl" : "hidden w-80 xl:w-96 lg:flex"} shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]`}
         >
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] p-3">
             <h2 className="text-sm font-semibold">
-              Документы{details.data ? ` (${documents.length})` : ""}
+              Документы{details.data ? ` (${totalDocCount})` : ""}
             </h2>
             <Button
               size="sm"
@@ -757,61 +747,56 @@ function CandidateWorkspace() {
               )}
             </p>
           )}
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {stage && stageDetails.isFetching && !stageData && (
-              <p role="status" className="p-2 text-sm">
-                Загрузка документов этапа…
-              </p>
-            )}
-            {stage && !stageDetails.isFetching && !stageData && (
-              <div
-                role={stageDetails.isError ? "alert" : "status"}
-                className="space-y-2 p-2 text-sm"
-              >
-                Не удалось определить документы выбранного этапа.
-                {stageDetails.isError && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void stageDetails.refetch()}
-                  >
-                    Повторить
-                  </Button>
-                )}
-              </div>
-            )}
+          <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-3">
+            {stage &&
+              stageDetails.isFetching &&
+              !stageDetails.data?.stageDocuments && (
+                <p
+                  role="status"
+                  className="p-2 text-sm text-[var(--muted-foreground)]"
+                >
+                  Загрузка документов этапа…
+                </p>
+              )}
             {details.isLoading && (
-              <p role="status" className="p-2 text-sm">
+              <p
+                role="status"
+                className="p-2 text-sm text-[var(--muted-foreground)]"
+              >
                 Загрузка документов…
               </p>
             )}
-            {details.data && (!stage || stageData) && (
-              <>
-                {!stage && !groups && (
-                  <p
-                    role="status"
-                    className="mb-3 px-1 text-xs text-[var(--muted-foreground)]"
-                  >
-                    Не удалось определить обязательные и дополнительные
-                    документы.
-                  </p>
-                )}
-                <CandidateDocumentList
-                  candidateId={candidateId}
-                  groups={groups}
-                  documents={documents}
-                  missingDocuments={
-                    stage ? [] : (details.data.missingDocuments ?? [])
-                  }
-                  selectedId={documentId}
-                  stage={stage}
-                  onOpen={openDocument}
-                  previousDocuments={
-                    (stage ? stageDetails.data : details.data)
-                      ?.previousDocuments ?? []
-                  }
-                />
-              </>
+            {details.isError && (
+              <div
+                role="alert"
+                className="p-2 text-sm text-[var(--primary)]"
+              >
+                Не удалось загрузить документы.
+              </div>
+            )}
+            {details.data && stages.length > 0 && (
+              <div className="space-y-3">
+                {stages.map((stg, index) => (
+                  <CandidateStageAccordion
+                    key={`stage-${stg.stage ?? "none"}-${index}`}
+                    stage={stg.stage}
+                    title={stg.title}
+                    required={stg.required}
+                    additional={stg.additional}
+                    previousDocuments={stg.previousDocuments}
+                    reviewGroup={profile?.reviewGroup}
+                    candidateId={candidateId}
+                    isOpen={isStageOpen(stg.stage, index)}
+                    onToggle={() => toggleStage(stg.stage, index)}
+                    onReviewDocument={openDocument}
+                  />
+                ))}
+              </div>
+            )}
+            {details.data && !details.isLoading && stages.length === 0 && (
+              <p className="p-2 text-xs text-[var(--muted-foreground)]">
+                Документы отсутствуют.
+              </p>
             )}
           </div>
         </aside>

@@ -387,15 +387,33 @@ export class DocumentReviewService {
               )
             )
               delete documentFields.positionUid;
+            const isExistingErpSource =
+              version.ocrSource === "PREVIOUS_LINK" &&
+              (version.ocrRaw as Record<string, unknown>)?.source === "ERP";
+            const deliveryStatus = isExistingErpSource
+              ? "SENT"
+              : uid && (ig ? validPerson : !!chatUid)
+                ? "PENDING"
+                : "WAITING_CONTRACT";
             await tx.erpDocumentDelivery.create({
               data: {
                 versionId: version.id,
                 transport: artifact!.transport,
-                status:
-                  uid && (ig ? validPerson : !!chatUid)
-                    ? "PENDING"
-                    : "WAITING_CONTRACT",
-                ...(ig && !validPerson
+                status: deliveryStatus,
+                ...(isExistingErpSource
+                  ? {
+                      attempts: {
+                        create: [
+                          {
+                            actorId: principal.uuid,
+                            receiptValidated: true,
+                            finishedAt: new Date(),
+                          },
+                        ],
+                      },
+                    }
+                  : {}),
+                ...(ig && !validPerson && !isExistingErpSource
                   ? {
                       errorCode: identity
                         ? "ERP_PERSON_IDENTITY_MISMATCH"

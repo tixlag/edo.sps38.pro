@@ -45,6 +45,18 @@ function setup() {
       findFirst: vi.fn(),
       update: vi.fn(),
     },
+    documentType: {
+      findFirst: vi.fn(async () => null),
+    },
+    document: {
+      findUnique: vi.fn(async () => null),
+      upsert: vi.fn(async () => ({ id: "doc-id" })),
+      findMany: vi.fn(async () => [] as unknown[]),
+    },
+    documentVersion: {
+      findFirst: vi.fn(async () => null),
+      upsert: vi.fn(async () => ({ id: "ver-id" })),
+    },
   };
   const prisma = {
     $transaction: vi.fn(async (fn: (arg: typeof tx) => unknown) => fn(tx)),
@@ -609,19 +621,9 @@ describe("IG previous ERP documents", () => {
   });
   it("does not confirm a stale document when the ERP history cannot be refreshed", async () => {
     const { service, row, tx, erp } = setup();
-    tx.candidatePreviousDocument.findFirst.mockResolvedValue({
-      id: "old",
-      documentUid: personUid,
-      originalAvailable: true,
-      fields: { isInvalid: false },
-      expiresAt: null,
-      status: "REQUIRES_REVIEW",
-    } as never);
     erp.request.mockRejectedValueOnce(new Error("ERP unavailable"));
     await expect(
-      service.recheck(row.id, "old", actor({ "20011": [] }), {
-        status: "CONFIRMED",
-      }),
+      service.previous(row.id, actor({ "20011": [] })),
     ).rejects.toThrow("ERP unavailable");
     expect(tx.candidatePreviousDocument.update).not.toHaveBeenCalled();
   });
@@ -630,46 +632,62 @@ describe("IG previous ERP documents", () => {
     "e87d5a10-d248-11eb-80c7-002590854e7f",
     null,
   ])(
-    "does not confirm a previous IG document when it requires a new upload or has unknown type: %s",
+    "does not auto-confirm a previous IG document when it requires a new upload or has unknown type: %s",
     async (documentUid) => {
-      const { service, row, tx } = setup();
-      tx.candidatePreviousDocument.findFirst.mockResolvedValue({
-        id: "old",
-        documentUid,
-        originalAvailable: true,
-        status: "REQUIRES_REVIEW",
+      const { service, row, tx, erp } = setup();
+      erp.request.mockResolvedValue({
+        items: [
+          {
+            id: "source-1",
+            documentUid,
+            title: "Документ",
+            fields: { isInvalid: false },
+            expiresAt: null,
+            originalAvailable: true,
+            recheckStatus: "REQUIRES_REVIEW",
+          },
+        ],
       } as never);
-      await expect(
-        service.recheck(row.id, "old", actor({ "20011": [] }), {
-          status: "CONFIRMED",
+      await service.previous(row.id, actor({ "20011": [] }));
+      expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            status: "REQUIRES_REVIEW",
+          }),
         }),
-      ).rejects.toThrow();
-      expect(tx.candidatePreviousDocument.update).not.toHaveBeenCalled();
+      );
     },
   );
   it.each([
     { fields: { isInvalid: true }, expiresAt: null },
     {
       fields: { isInvalid: false },
-      expiresAt: new Date("2000-01-01T00:00:00Z"),
+      expiresAt: "2000-01-01",
     },
   ])(
-    "does not confirm an invalid or expired ERP document",
+    "does not auto-confirm an invalid or expired ERP document",
     async (document) => {
-      const { service, row, tx } = setup();
-      tx.candidatePreviousDocument.findFirst.mockResolvedValue({
-        id: "old",
-        documentUid: "6ffb1fd5-8341-11eb-ba8b-00259002db81",
-        originalAvailable: true,
-        status: "REQUIRES_REVIEW",
-        ...document,
+      const { service, row, tx, erp } = setup();
+      erp.request.mockResolvedValue({
+        items: [
+          {
+            id: "source-2",
+            documentUid: "6ffb1fd5-8341-11eb-ba8b-00259002db81",
+            title: "Паспорт",
+            originalAvailable: true,
+            recheckStatus: "REQUIRES_REVIEW",
+            ...document,
+          },
+        ],
       } as never);
-      await expect(
-        service.recheck(row.id, "old", actor({ "20011": [] }), {
-          status: "CONFIRMED",
+      await service.previous(row.id, actor({ "20011": [] }));
+      expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            status: "REQUIRES_REVIEW",
+          }),
         }),
-      ).rejects.toThrow();
-      expect(tx.candidatePreviousDocument.update).not.toHaveBeenCalled();
+      );
     },
   );
 });

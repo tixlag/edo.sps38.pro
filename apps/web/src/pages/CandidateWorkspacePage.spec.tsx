@@ -104,10 +104,11 @@ it("keeps the chat and candidate data visible while selecting a document stage",
   expect(state.chatMounts).toBe(1);
   state.search.document = "doc1";
   await act(async () => root.render(<CandidateWorkspacePage />));
-  const stage = node.querySelector(
-    '[aria-label="Открыть документы: Этап 1"]',
+  const stageAccordion = [...node.querySelectorAll("button")].find((btn) =>
+    btn.textContent?.includes("Этап 1"),
   ) as HTMLElement;
-  await act(async () => stage.click());
+  expect(stageAccordion).not.toBeNull();
+  await act(async () => stageAccordion.click());
   await act(async () => root.render(<CandidateWorkspacePage />));
   expect(state.search.stage).toBe("1");
   expect(state.search.document).toBeUndefined();
@@ -128,7 +129,7 @@ it("keeps the chat and candidate data visible while selecting a document stage",
   node.remove();
 });
 
-it("renders unified breadcrumbs, expressive candidate header with status badge and metadata chips, and centered stage strip", async () => {
+it("renders unified breadcrumbs, expressive candidate header with status badge and metadata chips, and stage accordions in aside", async () => {
   state.search = {};
   state.candidate = {
     fullName: "Иванов Иван Иванович",
@@ -170,10 +171,10 @@ it("renders unified breadcrumbs, expressive candidate header with status badge a
   expect(node.textContent).toContain("Менеджер: Петров П.П.");
   expect(node.textContent).toContain("Наставник: Сидоров С.С.");
 
-  // 3. Stage navigation strip
+  // 3. Stage navigation strip removed, stages are in the documents aside
   const nav = node.querySelector('nav[aria-label="Этапы документов"]');
-  expect(nav).not.toBeNull();
-  expect(nav?.className).toContain("items-center");
+  expect(nav).toBeNull();
+  expect(node.textContent).toContain("Этап 1");
 
   await act(async () => root.unmount());
   node.remove();
