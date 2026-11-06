@@ -2,7 +2,7 @@
 """Private corpus evaluation: extract once, then check every expected type.
 
 Run on the OCR host. Images, extracted text and results must remain outside Git.
-Only held-out samples contribute to the release gate; tuning images do not.
+Coverage uses held-out samples; all known readings are checked for unsafe returns.
 """
 import argparse
 import hashlib
@@ -32,7 +32,9 @@ def rules_digest(root=ROOT):
         'services/typecheck/server.py'))).hexdigest()
 
 
-def summarize(samples, rows, codes, release_codes=None):
+def summarize(samples, rows, codes, release_codes=None, policy='coverage'):
+    if policy not in {'coverage', 'precision'}:
+        raise ValueError('Unknown document type release policy')
     approved = set(codes) if release_codes is None else set(release_codes)
     if not approved or not approved <= set(codes):
         raise ValueError('Expected known, nonempty release codes')
@@ -63,24 +65,47 @@ def summarize(samples, rows, codes, release_codes=None):
     positive_rate = sum(r['verdict'] == 'MATCH' for r in positives) / max(1, len(positives))
     negative_rate = sum(r['verdict'] == 'MISMATCH' and r['detected'] == r['actual']
                         for r in negatives) / max(1, len(negatives))
-    if false_returns:
-        problems.append('FALSE_RETURNS')
     if positive_rate < .95:
         problems.append('POSITIVE_COVERAGE_BELOW_95_PERCENT')
     if negative_rate < .95:
         problems.append('NEGATIVE_COVERAGE_BELOW_95_PERCENT')
+    coverage_problems = problems
+    safety_problems = []
+    if false_returns:
+        safety_problems.append('FALSE_RETURNS')
     if any(r['detected'] != r['actual'] for r in returns):
-        problems.append('WRONG_DETECTED_TYPE')
+        safety_problems.append('WRONG_DETECTED_TYPE')
     if len(evaluated) != len(heldout_ids) * len(codes):
-        problems.append('INCOMPLETE_MATRIX')
+        safety_problems.append('INCOMPLETE_MATRIX')
+    if policy == 'precision':
+        # Partial coverage means manual review, not permission to guess a type.
+        # Every catalog type still needs a known control and a complete matrix.
+        actual_by_id = {s['id']: s['code'] for s in samples}
+        cells = {(r['id'], r['expected']) for r in rows}
+        expected_cells = {(s['id'], code) for s in samples for code in codes}
+        if (cells != expected_cells or len(cells) != len(rows)
+                or any(r['actual'] != actual_by_id.get(r['id']) for r in rows)):
+            safety_problems.append('INCOMPLETE_SAFETY_MATRIX')
+        for code in codes:
+            if code not in actual_by_id.values():
+                safety_problems.append('MISSING_TYPE_CONTROL:' + code)
+        if not returns:
+            safety_problems.append('NO_CONFIRMED_RETURNS')
+    problems = safety_problems + (coverage_problems if policy == 'coverage' else [])
     return {'passed': not problems, 'problems': problems, 'false_returns': false_returns,
+            'policy': policy, 'coverage_passed': not coverage_problems,
+            'coverage_problems': coverage_problems,
+            'return_safety_passed': not safety_problems,
+            'return_count': len(returns),
+            'return_precision': sum(r['detected'] == r['actual'] and r['expected'] != r['actual'] for r in returns) / max(1, len(returns)),
+            'unconfirmed_return_codes': sorted(approved - {r['actual'] for r in returns if r['detected'] == r['actual']}),
             'positive_rate': positive_rate, 'negative_rate': negative_rate,
             'heldout_samples': len(heldout_ids), 'matrix_rows': len(evaluated),
             'approved_codes': sorted(approved), 'positive_samples': len(positives),
             'negative_pairs': len(negatives)}
 
 
-def evaluate(manifest, output, release_codes=None):
+def evaluate(manifest, output, release_codes=None, policy='coverage'):
     from PIL import Image, ImageOps
 
     policy_hash = rules_digest()
@@ -134,7 +159,7 @@ def evaluate(manifest, output, release_codes=None):
                          'verdict': result['verdict'], 'detected': result['detected_code'],
                          'reason': reason or result.get('reason'),
                          'matched_phrases': result['matched_phrases']})
-    report = {**summarize(prepared, rows, set(matcher.rules), approved),
+    report = {**summarize(prepared, rows, set(matcher.rules), approved, policy),
               'model_revision': MANIFEST['revision'], 'rules_sha256': policy_hash,
               'samples': prepared}
     if rules_digest() != policy_hash:
@@ -151,5 +176,7 @@ if __name__ == '__main__':
     parser.add_argument('--manifest', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--release-code', action='append', help='Canonical detected type allowed to cause returns; default all types')
+    parser.add_argument('--policy', choices=('coverage', 'precision'), default='coverage',
+                        help='coverage requires >=95%% recall; precision permits manual review for unrecognized types')
     args = parser.parse_args()
-    raise SystemExit(evaluate(args.manifest.resolve(), args.output.resolve(), args.release_code))
+    raise SystemExit(evaluate(args.manifest.resolve(), args.output.resolve(), args.release_code, args.policy))

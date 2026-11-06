@@ -204,7 +204,15 @@ def type_provider(shared):
 
 def type_configuration(shared):
     return {'provider': type_provider(shared),
-            'autoreturn_codes': type_setting(shared, 'DOCUMENT_TYPE_AUTORETURN_CODES')}
+            'autoreturn_codes': type_setting(shared, 'DOCUMENT_TYPE_AUTORETURN_CODES'),
+            'release_policy': type_release_policy(shared)}
+
+
+def type_release_policy(shared):
+    policy = type_setting(shared, 'DOCUMENT_TYPE_RELEASE_POLICY', 'coverage')
+    if policy not in {'coverage', 'precision'}:
+        raise ValueError('DOCUMENT_TYPE_RELEASE_POLICY must be coverage or precision')
+    return policy
 
 
 def snapshot_service_config(configuration, target):
@@ -233,6 +241,7 @@ def prepare_typecheck(release, shared):
         gate = json.loads(gate_file.read_text()) if gate_file.is_file() else {}
         pinned = json.loads(manifest.read_text())
         if (gate.get('passed') is not True or gate.get('model_revision') != pinned['revision']
+                or gate.get('policy', 'coverage') != type_release_policy(shared)
                 or set(gate.get('approved_codes', [])) != requested_codes
                 or gate.get('rules_sha256') != evaluation.rules_digest(release)):
             raise ValueError('Xiaomi requires a passing held-out corpus gate for this model and policy')

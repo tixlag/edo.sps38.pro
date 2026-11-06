@@ -26,6 +26,39 @@ class EvaluationTests(unittest.TestCase):
     def test_complete_heldout_matrix_passes(self):
         self.assertTrue(evaluation.summarize(*self.corpus())['passed'])
 
+    def test_precision_policy_reports_partial_coverage_without_guessing(self):
+        samples, rows, codes = self.corpus()
+        for row in rows:
+            if row['actual'] == 'NAKS':
+                row.update(verdict='UNCERTAIN', detected=None)
+        result = evaluation.summarize(samples, rows, codes, policy='precision')
+        self.assertTrue(result['passed'])
+        self.assertFalse(result['coverage_passed'])
+        self.assertEqual(result['unconfirmed_return_codes'], ['NAKS'])
+        self.assertEqual(result['return_precision'], 1)
+        self.assertFalse(evaluation.summarize(samples, rows, codes)['passed'])
+
+    def test_precision_policy_still_blocks_a_false_return_on_tuning(self):
+        samples, rows, codes = self.corpus()
+        row = next(r for r in rows if r['id'] == 'NAKS0' and r['actual'] == r['expected'])
+        row.update(verdict='MISMATCH', detected='SNILS')
+        self.assertIn('FALSE_RETURNS', evaluation.summarize(samples, rows, codes, policy='precision')['problems'])
+
+    def test_precision_policy_requires_controls_and_every_matrix_cell(self):
+        for kind in ('missing_cell', 'duplicate_cell', 'wrong_actual', 'missing_control', 'no_returns'):
+            samples, rows, codes = self.corpus()
+            if kind == 'missing_cell': rows.pop()
+            elif kind == 'duplicate_cell': rows[-1] = rows[0]
+            elif kind == 'wrong_actual': rows[0]['actual'] = 'OTHER'
+            elif kind == 'missing_control': codes.add('OTHER')
+            else:
+                for row in rows: row.update(verdict='UNCERTAIN', detected=None)
+            self.assertFalse(evaluation.summarize(samples, rows, codes, policy='precision')['passed'], kind)
+
+    def test_unknown_release_policy_is_rejected(self):
+        with self.assertRaises(ValueError):
+            evaluation.summarize(*self.corpus(), policy='unknown')
+
     def test_tuning_success_does_not_substitute_for_heldout_coverage(self):
         samples, rows, codes = self.corpus()
         for sample in samples:

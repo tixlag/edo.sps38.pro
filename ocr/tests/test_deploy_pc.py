@@ -73,6 +73,13 @@ class DeploymentTests(unittest.TestCase):
             self.module.prepare_typecheck(self.new, self.root / 'shared')
         self.assertEqual((self.root / 'current').resolve(), self.old)
 
+    def test_unknown_release_policy_is_rejected(self):
+        config = self.root / 'shared/config'
+        config.mkdir(parents=True)
+        (config / 'uz.env').write_text('DOCUMENT_TYPE_RELEASE_POLICY=unknown\n')
+        with self.assertRaisesRegex(ValueError, 'DOCUMENT_TYPE_RELEASE_POLICY'):
+            self.module.type_configuration(self.root / 'shared')
+
     def test_enabled_provider_requires_support_in_the_release(self):
         config = self.root / 'shared/config'
         config.mkdir(parents=True)
