@@ -492,3 +492,19 @@ describe("ErpAdaptationGrantsController", () => {
     });
   });
 });
+
+
+describe("ERP adaptation credential isolation", () => {
+  it.each(["ERP_ADAPTATION_TOKEN", "ADAPTATION_ACCESS_TOKEN", "EDO_LK_INTERNAL_TOKEN"])(
+    "rejects %s when EDO_ERP_ADAPTATION_TOKEN is missing",
+    (legacyKey) => {
+      const guard = new ErpAdaptationGuard({
+        get: (key: string) => key === legacyKey ? "legacy-token" : undefined,
+      } as never);
+      const context = {
+        switchToHttp: () => ({ getRequest: () => ({ headers: { authorization: "Bearer legacy-token" } }) }),
+      } as never;
+      expect(() => guard.canActivate(context)).toThrow();
+    },
+  );
+});

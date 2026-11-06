@@ -16,8 +16,6 @@ export class ErpAdaptationGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const expected =
       this.config.get<string>("EDO_ERP_ADAPTATION_TOKEN")?.trim() ||
-      this.config.get<string>("ERP_ADAPTATION_TOKEN")?.trim() ||
-      this.config.get<string>("ADAPTATION_ACCESS_TOKEN")?.trim() ||
       "";
 
     if (!expected) {
