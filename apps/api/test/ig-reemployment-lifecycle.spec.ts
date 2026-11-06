@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { CandidatePreviousDocumentsSyncService } from "../src/documents/candidate-previous-documents-sync.service";
+import { DocumentReviewService } from "../src/documents/document-review.service";
+import { CandidateWorkspaceService } from "../src/communications/candidate-workspace.service";
 import {
   igRequiredDocumentsComplete,
   tryCompleteIgEmployment,
@@ -234,9 +236,8 @@ function setupLifecycleTest() {
       findUnique: vi.fn(async () => ({ ...row })),
       findFirst: vi.fn(async () => ({ ...row })),
     },
-    document: {
-      findMany: vi.fn(async () => []),
-    },
+    document: tx.document,
+    documentType: tx.documentType,
     candidatePreviousDocument: {
       findMany: vi.fn(async () => candidatePreviousDocumentsUpserted),
     },
@@ -385,7 +386,7 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
       const file = v.files.create[0];
       expect(file.sizeBytes).toBeGreaterThan(0);
       expect(file.sha256).toHaveLength(64);
-      expect(file.storageKey).toMatch(/^documents\/doc-\d+\/v1\//);
+      expect(file.storageKey).toMatch(/^documents\/[a-zA-Z0-9-]+\/v1\//);
 
       // Verify physical upload to S3 occurred with exact SHA-256
       expect(storage.uploadBuffer).toHaveBeenCalledWith(
@@ -625,5 +626,563 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
         false, // isIg = false
       ),
     ).toBe(true);
+  });
+
+  // Scenario G: Real DocumentReviewService.approve() on ERP-linked patent
+  it("Scenario G: Real DocumentReviewService.approve() on ERP-linked patent recalculates igCompletedAt and skips ErpDocumentDelivery", async () => {
+    const candidateId = "cand-lifecycle-1";
+    const personUid = "person-uid-123";
+    const code1c = "worker-1";
+    const candidate = {
+      id: candidateId,
+      code1c,
+      personUid,
+      citizenship: "uz",
+      positionCode: "pos-dev",
+      projectCode: "proj-1",
+      sexKnown: true,
+      sex: "male",
+      igCompletedAt: null,
+      igCompletionVerified: false,
+      igRequirementsConflict: false,
+    };
+    const patentVersion = {
+      id: "ver-patent-1",
+      documentId: "doc-patent-1",
+      version: 1,
+      revision: 1,
+      status: "IN_REVIEW",
+      fields: [],
+      submission: {},
+      job: null,
+      ocrSource: "PREVIOUS_LINK",
+      ocrRaw: { source: "ERP" },
+      pendingApprovalStorageKey: "approved-key-1",
+      approvalLeaseUntil: new Date("2099-01-01"),
+      document: {
+        id: "doc-patent-1",
+        candidateId,
+        candidate,
+        currentVersion: 1,
+        documentType: { id: "dt-patent", code: "PATENT", erpUid: EMPLOYMENT_PATENT_UID },
+      },
+    };
+
+    const migrationDoc = {
+      id: "doc-mig-1",
+      documentTypeId: "dt-migration",
+      status: "APPROVED",
+      currentVersion: 1,
+      versions: [
+        {
+          version: 1,
+          status: "APPROVED",
+          ocrSource: null,
+          ocrRaw: null,
+          delivery: {
+            status: "SENT",
+            transport: "multipart-v2",
+            attempts: [{ receiptValidated: true, finishedAt: new Date(), errorCode: null }],
+          },
+        },
+      ],
+    };
+
+    const patentDoc = {
+      id: "doc-patent-1",
+      documentTypeId: "dt-patent",
+      status: "IN_REVIEW",
+      currentVersion: 1,
+      versions: [patentVersion],
+    };
+
+    const previousPassport = {
+      id: "prev-pass-1",
+      documentUid: PASSPORT_UID,
+      status: "CONFIRMED",
+      originalAvailable: true,
+      originalVerified: true,
+      expiresAt: null,
+      fields: {},
+    };
+
+    const catalogTypes = [
+      { id: "dt-migration", erpUid: MIGRATION_UID, requiredForAll: true, allForeign: true, positions: [], stageRules: [] },
+      { id: "dt-patent", erpUid: EMPLOYMENT_PATENT_UID, requiredForAll: true, allForeign: true, positions: [], stageRules: [] },
+      { id: "dt-passport", erpUid: PASSPORT_UID, requiredForAll: true, allForeign: true, positions: [], stageRules: [] },
+    ];
+
+    const tx: any = {
+      $queryRaw: vi.fn(),
+      document: {
+        findUnique: vi.fn(async () => patentDoc),
+        findFirst: vi.fn(async () => patentDoc),
+        update: vi.fn(async ({ data }) => {
+          patentDoc.status = data.status;
+          return patentDoc;
+        }),
+        findMany: vi.fn(async () => [migrationDoc, patentDoc]),
+      },
+      documentVersion: {
+        findUnique: vi.fn(async () => patentVersion),
+        updateMany: vi.fn(async ({ data }) => {
+          Object.assign(patentVersion, data);
+          return { count: 1 };
+        }),
+      },
+      erpDocumentDelivery: {
+        create: vi.fn(async () => ({ id: "delivery-1" })),
+      },
+      igEmploymentState: {
+        findFirst: vi.fn(async () => ({ currentCandidate: candidate })),
+      },
+      candidate: {
+        update: vi.fn(async ({ data }) => {
+          Object.assign(candidate, data);
+          return candidate;
+        }),
+        findFirst: vi.fn(async () => candidate),
+      },
+      candidatePreviousDocument: {
+        findMany: vi.fn(async () => [previousPassport]),
+      },
+      documentType: {
+        findMany: vi.fn(async () => catalogTypes),
+      },
+      ocrJob: { updateMany: vi.fn() },
+      documentVersionField: { upsert: vi.fn() },
+    };
+
+    const prismaMock: any = {
+      documentVersion: tx.documentVersion,
+      $transaction: vi.fn(async (callback) => callback(tx)),
+    };
+    const accessMock: any = {
+      document: vi.fn(async () => patentDoc),
+      documentReviewWhere: vi.fn(() => ({})),
+    };
+    const auditMock: any = {
+      logInTransaction: vi.fn(),
+    };
+    const readsMock: any = {
+      version: vi.fn(async () => patentVersion),
+    };
+    const pdfMock: any = {
+      prepare: vi.fn(async () => ({
+        key: "approved-key-1",
+        transport: "multipart-v2",
+        mimeType: "application/pdf",
+        filename: "patent.pdf",
+        extension: "pdf",
+        sizeBytes: 1024,
+        sha256: "hash",
+        pageCount: 1,
+        preparation: "FLATTENED",
+      })),
+      discard: vi.fn(),
+    };
+    const erpMock: any = {
+      identity: vi.fn(async () => ({
+        reviewGroup: "IG",
+        recipientType: "person",
+        personUid,
+        code1C: code1c,
+      })),
+    };
+
+    const service = new DocumentReviewService(
+      prismaMock,
+      accessMock,
+      auditMock,
+      readsMock,
+      pdfMock,
+      erpMock,
+    );
+
+    await service.approve("doc-patent-1", 1, 1, actor(), "corr-approve-erp");
+
+    // 1. NO fake delivery created
+    expect(tx.erpDocumentDelivery.create).not.toHaveBeenCalled();
+    // 2. Candidate onboarding completed
+    expect(tx.candidate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          igCompletedAt: expect.any(Date),
+          igCompletionVerified: true,
+        }),
+      }),
+    );
+  });
+
+  // Scenario H: Real DocumentReviewService.approve() on EDO-linked patent
+  it("Scenario H: Real DocumentReviewService.approve() on EDO-linked patent recalculates igCompletedAt without duplicate delivery", async () => {
+    const candidateId = "cand-lifecycle-edo";
+    const personUid = "person-uid-edo";
+    const code1c = "worker-edo";
+    const candidate = {
+      id: candidateId,
+      code1c,
+      personUid,
+      citizenship: "uz",
+      positionCode: "pos-dev",
+      projectCode: "proj-1",
+      sexKnown: true,
+      sex: "male",
+      igCompletedAt: null,
+      igCompletionVerified: false,
+      igRequirementsConflict: false,
+    };
+    const patentVersion = {
+      id: "ver-patent-edo",
+      documentId: "doc-patent-edo",
+      version: 1,
+      revision: 1,
+      status: "IN_REVIEW",
+      fields: [],
+      submission: {},
+      job: null,
+      ocrSource: "PREVIOUS_LINK",
+      ocrRaw: { source: "EDO", deliveredHistorically: true },
+      pendingApprovalStorageKey: "approved-key-edo",
+      approvalLeaseUntil: new Date("2099-01-01"),
+      document: {
+        id: "doc-patent-edo",
+        candidateId,
+        candidate,
+        currentVersion: 1,
+        documentType: { id: "dt-patent", code: "PATENT", erpUid: EMPLOYMENT_PATENT_UID },
+      },
+    };
+
+    const migrationDoc = {
+      id: "doc-mig-edo",
+      documentTypeId: "dt-migration",
+      status: "APPROVED",
+      currentVersion: 1,
+      versions: [
+        {
+          version: 1,
+          status: "APPROVED",
+          ocrSource: null,
+          ocrRaw: null,
+          delivery: {
+            status: "SENT",
+            transport: "multipart-v2",
+            attempts: [{ receiptValidated: true, finishedAt: new Date(), errorCode: null }],
+          },
+        },
+      ],
+    };
+
+    const patentDoc = {
+      id: "doc-patent-edo",
+      documentTypeId: "dt-patent",
+      status: "IN_REVIEW",
+      currentVersion: 1,
+      versions: [patentVersion],
+    };
+
+    const previousPassport = {
+      id: "prev-pass-edo",
+      documentUid: PASSPORT_UID,
+      status: "CONFIRMED",
+      originalAvailable: true,
+      originalVerified: true,
+      expiresAt: null,
+      fields: {},
+    };
+
+    const catalogTypes = [
+      { id: "dt-migration", erpUid: MIGRATION_UID, requiredForAll: true, allForeign: true, positions: [], stageRules: [] },
+      { id: "dt-patent", erpUid: EMPLOYMENT_PATENT_UID, requiredForAll: true, allForeign: true, positions: [], stageRules: [] },
+      { id: "dt-passport", erpUid: PASSPORT_UID, requiredForAll: true, allForeign: true, positions: [], stageRules: [] },
+    ];
+
+    const tx: any = {
+      $queryRaw: vi.fn(),
+      document: {
+        findUnique: vi.fn(async () => patentDoc),
+        findFirst: vi.fn(async () => patentDoc),
+        update: vi.fn(async ({ data }) => {
+          patentDoc.status = data.status;
+          return patentDoc;
+        }),
+        findMany: vi.fn(async () => [migrationDoc, patentDoc]),
+      },
+      documentVersion: {
+        findUnique: vi.fn(async () => patentVersion),
+        updateMany: vi.fn(async ({ data }) => {
+          Object.assign(patentVersion, data);
+          return { count: 1 };
+        }),
+      },
+      erpDocumentDelivery: {
+        create: vi.fn(async () => ({ id: "delivery-1" })),
+      },
+      igEmploymentState: {
+        findFirst: vi.fn(async () => ({ currentCandidate: candidate })),
+      },
+      candidate: {
+        update: vi.fn(async ({ data }) => {
+          Object.assign(candidate, data);
+          return candidate;
+        }),
+        findFirst: vi.fn(async () => candidate),
+      },
+      candidatePreviousDocument: {
+        findMany: vi.fn(async () => [previousPassport]),
+      },
+      documentType: {
+        findMany: vi.fn(async () => catalogTypes),
+      },
+      ocrJob: { updateMany: vi.fn() },
+      documentVersionField: { upsert: vi.fn() },
+    };
+
+    const prismaMock: any = {
+      documentVersion: tx.documentVersion,
+      $transaction: vi.fn(async (callback) => callback(tx)),
+    };
+    const accessMock: any = {
+      document: vi.fn(async () => patentDoc),
+      documentReviewWhere: vi.fn(() => ({})),
+    };
+    const auditMock: any = {
+      logInTransaction: vi.fn(),
+    };
+    const readsMock: any = {
+      version: vi.fn(async () => patentVersion),
+    };
+    const pdfMock: any = {
+      prepare: vi.fn(async () => ({
+        key: "approved-key-edo",
+        transport: "multipart-v2",
+        mimeType: "application/pdf",
+        filename: "patent.pdf",
+        extension: "pdf",
+        sizeBytes: 1024,
+        sha256: "hash",
+        pageCount: 1,
+        preparation: "FLATTENED",
+      })),
+      discard: vi.fn(),
+    };
+    const erpMock: any = {
+      identity: vi.fn(async () => ({
+        reviewGroup: "IG",
+        recipientType: "person",
+        personUid,
+        code1C: code1c,
+      })),
+    };
+
+    const service = new DocumentReviewService(
+      prismaMock,
+      accessMock,
+      auditMock,
+      readsMock,
+      pdfMock,
+      erpMock,
+    );
+
+    await service.approve("doc-patent-edo", 1, 1, actor(), "corr-approve-edo");
+
+    // 1. NO fake delivery created
+    expect(tx.erpDocumentDelivery.create).not.toHaveBeenCalled();
+    // 2. Candidate onboarding completed
+    expect(tx.candidate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          igCompletedAt: expect.any(Date),
+          igCompletionVerified: true,
+        }),
+      }),
+    );
+  });
+
+  // Scenario I: Real DocumentReviewService.reject() on previous patent
+  it("Scenario I: Real DocumentReviewService.reject() sets status RETURNED and does NOT recalculate igCompletedAt", async () => {
+    const candidateId = "cand-lifecycle-reject";
+    const candidate = {
+      id: candidateId,
+      code1c: "worker-rej",
+      personUid: "person-rej",
+      citizenship: "uz",
+      positionCode: "pos-dev",
+      igCompletedAt: null,
+      igCompletionVerified: false,
+    };
+    const patentVersion = {
+      id: "ver-patent-rej",
+      documentId: "doc-patent-rej",
+      version: 1,
+      revision: 1,
+      status: "IN_REVIEW",
+      fields: [],
+      ocrSource: "PREVIOUS_LINK",
+      ocrRaw: { source: "ERP" },
+      document: {
+        id: "doc-patent-rej",
+        candidateId,
+        candidate,
+        currentVersion: 1,
+        documentType: { id: "dt-patent", code: "PATENT", erpUid: EMPLOYMENT_PATENT_UID },
+      },
+    };
+    const patentDoc = {
+      id: "doc-patent-rej",
+      documentTypeId: "dt-patent",
+      status: "IN_REVIEW",
+      currentVersion: 1,
+      versions: [patentVersion],
+    };
+
+    const tx: any = {
+      $queryRaw: vi.fn(),
+      document: {
+        findUnique: vi.fn(async () => patentDoc),
+        findFirst: vi.fn(async () => patentDoc),
+        update: vi.fn(async ({ data }) => {
+          patentDoc.status = data.status;
+          return patentDoc;
+        }),
+      },
+      documentVersion: {
+        findUnique: vi.fn(async () => patentVersion),
+        updateMany: vi.fn(async ({ data }) => {
+          Object.assign(patentVersion, data);
+          return { count: 1 };
+        }),
+      },
+      candidate: {
+        update: vi.fn(),
+      },
+      ocrJob: { updateMany: vi.fn() },
+    };
+
+    const prismaMock: any = {
+      documentVersion: tx.documentVersion,
+      $transaction: vi.fn(async (callback) => callback(tx)),
+    };
+    const accessMock: any = {
+      document: vi.fn(async () => patentDoc),
+      documentReviewWhere: vi.fn(() => ({})),
+    };
+    const auditMock: any = {
+      logInTransaction: vi.fn(),
+    };
+    const readsMock: any = {
+      version: vi.fn(async () => patentVersion),
+    };
+    const pdfMock: any = {
+      prepare: vi.fn(),
+      discard: vi.fn(),
+    };
+
+    const service = new DocumentReviewService(
+      prismaMock,
+      accessMock,
+      auditMock,
+      readsMock,
+      pdfMock,
+    );
+
+    await service.reject(
+      "doc-patent-rej",
+      1,
+      1,
+      "Нечитаемый документ",
+      actor(),
+      "corr-reject-test",
+    );
+
+    expect(tx.document.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "RETURNED" }),
+      }),
+    );
+    expect(tx.documentVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "RETURNED",
+          rejectionReason: "Нечитаемый документ",
+        }),
+      }),
+    );
+    // Completion must NOT be triggered
+    expect(tx.candidate.update).not.toHaveBeenCalled();
+  });
+
+  // Scenario J: CandidateWorkspaceService.original() strips #count suffix
+  it("Scenario J: CandidateWorkspaceService.original() strips #count suffix before querying 1C ERP", async () => {
+    const candidateId = "cand-original-test";
+    const personUid = "person-orig-1";
+    const code1c = "worker-orig-1";
+    const candidateRow = {
+      id: candidateId,
+      code1c,
+      personUid,
+      citizenship: "uz",
+      reviewGroup: "IG",
+    };
+
+    const prevDoc = {
+      id: "prev-doc-with-count",
+      candidateId,
+      sourceId: "erp-document-id-abc#2", // Deduplicated sourceId with suffix
+      originalAvailable: true,
+    };
+
+    const prismaMock: any = {
+      candidatePreviousDocument: {
+        findFirst: vi.fn(async () => prevDoc),
+      },
+      $transaction: vi.fn(async (cb) => cb({
+        $queryRaw: vi.fn(),
+        candidate: {
+          findFirst: vi.fn(async () => candidateRow),
+        },
+        audit: { logInTransaction: vi.fn() },
+      })),
+    };
+
+    const accessMock: any = {
+      candidate: vi.fn(async () => candidateRow),
+      candidateWhere: vi.fn(() => ({})),
+    };
+
+    const erpMock: any = {
+      identity: vi.fn(async () => ({
+        reviewGroup: "IG",
+        recipientType: "person",
+        personUid,
+        code1C: code1c,
+      })),
+      personOriginal: vi.fn(async () => ({
+        bytes: Buffer.from("pdf-bytes"),
+        mimeType: "application/pdf",
+      })),
+    };
+
+    const workspaceService = new CandidateWorkspaceService(
+      prismaMock,
+      erpMock,
+      accessMock,
+      { logInTransaction: vi.fn() } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+
+    await workspaceService.original(candidateId, prevDoc.id, actor());
+
+    // Verified: erp.personOriginal was called with "erp-document-id-abc", NOT "erp-document-id-abc#2"!
+    expect(erpMock.personOriginal).toHaveBeenCalledWith(
+      code1c,
+      personUid,
+      "erp-document-id-abc",
+    );
   });
 });

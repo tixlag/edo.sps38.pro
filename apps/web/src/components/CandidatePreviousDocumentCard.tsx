@@ -140,11 +140,17 @@ export function CandidatePreviousDocumentCard({
   };
 
   const renderBadge = () => {
-    if (isMissing || effectiveStatus === "MISSING") {
-      return <Badge tone="default">Не загружен</Badge>;
+    if (effectiveStatus === "APPROVED" || effectiveStatus === "SIGNED") {
+      return <Badge tone="success">Документ принят</Badge>;
     }
     if (effectiveStatus === "RETURNED" || returnedVersion) {
       return <Badge tone="danger">Возвращён</Badge>;
+    }
+    if (effectiveStatus === "IN_REVIEW") {
+      return <Badge tone="warning">Ожидает проверки</Badge>;
+    }
+    if (effectiveStatus === "UPLOADED") {
+      return <Badge tone="info">Загружен</Badge>;
     }
     if (previousDocument?.state === "REQUIRES_REVIEW") {
       return <Badge tone="warning">Проверить актуальность</Badge>;
@@ -165,14 +171,8 @@ export function CandidatePreviousDocumentCard({
     if (previousDocument?.state === "ORIGINAL_UNAVAILABLE") {
       return <Badge tone="warning">Оригинал недоступен</Badge>;
     }
-    if (effectiveStatus === "IN_REVIEW") {
-      return <Badge tone="warning">Ожидает проверки</Badge>;
-    }
-    if (effectiveStatus === "APPROVED") {
-      return <Badge tone="success">Документ принят</Badge>;
-    }
-    if (effectiveStatus === "UPLOADED") {
-      return <Badge tone="info">Загружен</Badge>;
+    if (isMissing || effectiveStatus === "MISSING") {
+      return <Badge tone="default">Не загружен</Badge>;
     }
     return <StatusBadge status={effectiveStatus} document />;
   };

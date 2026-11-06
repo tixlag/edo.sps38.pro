@@ -4,7 +4,7 @@ import {
   NotFoundException,
   Optional,
 } from "@nestjs/common";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
@@ -230,7 +230,164 @@ export class CandidatePreviousDocumentsSyncService {
         )),
       );
     }
-    await this.prisma.$transaction(async (tx) => {
+
+    const createdStorageKeys: string[] = [];
+    const preparedLinkDocuments = new Map<
+      string,
+      {
+        targetDocId: string;
+        docTypeId: string;
+        vFiles: Array<{
+          ordinal: number;
+          storageKey: string;
+          filename: string;
+          mimeType: string;
+          sizeBytes: number;
+          sha256: string;
+          pageCount: number;
+        }>;
+      }
+    >();
+
+    if (
+      isIg &&
+      ((this.prisma as any).document || (this.prisma as any).candidate) &&
+      (this.prisma as any).documentType
+    ) {
+      for (const doc of allDocuments) {
+        const expiresAt = doc.expiresAt
+          ? new Date(`${doc.expiresAt}T00:00:00Z`)
+          : null;
+        const isDocInvalid =
+          doc.isInvalid === true ||
+          (doc.fields &&
+            typeof doc.fields === "object" &&
+            !Array.isArray(doc.fields) &&
+            doc.fields.isInvalid === true);
+        const needsLinking =
+          doc.documentUid &&
+          needsNewIgDocument(doc.documentUid) &&
+          doc.verifiedOwner &&
+          doc.originalAvailable &&
+          doc.verifiedOriginal &&
+          (!expiresAt || !isPreviousDocumentExpired(expiresAt)) &&
+          !isDocInvalid;
+
+        if (!needsLinking) continue;
+
+        try {
+          const docType = await (this.prisma as any).documentType.findFirst({
+            where: { erpUid: doc.documentUid, catalogSyncedAt: { not: null } },
+          });
+          if (!docType) continue;
+
+          const existingDoc = (this.prisma as any).document
+            ? await (this.prisma as any).document.findUnique({
+                where: {
+                  candidateId_documentTypeId: {
+                    candidateId: id,
+                    documentTypeId: docType.id,
+                  },
+                },
+              })
+            : null;
+          if (
+            existingDoc &&
+            existingDoc.currentVersion > 0 &&
+            existingDoc.status !== "DRAFT"
+          ) {
+            continue;
+          }
+
+          const targetDocId = existingDoc?.id ?? randomUUID();
+          let vFiles: Array<{
+            ordinal: number;
+            storageKey: string;
+            filename: string;
+            mimeType: string;
+            sizeBytes: number;
+            sha256: string;
+            pageCount: number;
+          }> = [];
+
+          if (doc.originalFiles && doc.originalFiles.length > 0) {
+            for (let idx = 0; idx < doc.originalFiles.length; idx++) {
+              const f = doc.originalFiles[idx];
+              const filename = f.filename || `${docType.code}.pdf`;
+              const targetKey = this.storage
+                ? this.storage.keyFor(targetDocId, 1, filename)
+                : `documents/${targetDocId}/v1/${filename}`;
+              if (this.storage) {
+                await this.storage.copy(
+                  f.storageKey,
+                  targetKey,
+                  AbortSignal.timeout(30000),
+                );
+                createdStorageKeys.push(targetKey);
+              }
+              vFiles.push({
+                ordinal: idx,
+                storageKey: targetKey,
+                filename,
+                mimeType: f.mimeType || "application/pdf",
+                sizeBytes: f.sizeBytes,
+                sha256: f.sha256 ?? "",
+                pageCount: f.pageCount || 1,
+              });
+            }
+          } else {
+            const rawId = (doc.originalErpId ?? doc.id).split("#")[0];
+            const originalData = await this.erp.personOriginal(
+              row.code1c!,
+              personUid!,
+              rawId,
+            );
+            const bytes = originalData.bytes;
+            const mimeType = originalData.mimeType || "application/pdf";
+            const sha256 = createHash("sha256").update(bytes).digest("hex");
+            const sizeBytes = bytes.length;
+            const ext =
+              mimeType.includes("jpeg") || mimeType.includes("jpg")
+                ? "jpg"
+                : mimeType.includes("png")
+                  ? "png"
+                  : "pdf";
+            const filename = `${docType.code}.${ext}`;
+            const targetKey = this.storage
+              ? this.storage.keyFor(targetDocId, 1, filename)
+              : `documents/${targetDocId}/v1/${filename}`;
+            if (this.storage) {
+              await this.storage.uploadBuffer(targetKey, bytes, mimeType);
+              createdStorageKeys.push(targetKey);
+            }
+            vFiles = [
+              {
+                ordinal: 0,
+                storageKey: targetKey,
+                filename,
+                mimeType,
+                sizeBytes,
+                sha256,
+                pageCount: 1,
+              },
+            ];
+          }
+
+          if (vFiles.length > 0) {
+            preparedLinkDocuments.set(doc.id, {
+              targetDocId,
+              docTypeId: docType.id,
+              vFiles,
+            });
+          }
+        } catch {
+          doc.verifiedOriginal = false;
+        }
+      }
+    }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${id} FOR UPDATE`;
       const current = await tx.candidate.findFirst({
         where: { id, ...(p ? this.access.candidateWhere(p) : {}) },
@@ -322,39 +479,34 @@ export class CandidatePreviousDocumentsSyncService {
           isIg &&
           doc.documentUid &&
           needsNewIgDocument(doc.documentUid) &&
-          doc.verifiedOwner &&
-          doc.originalAvailable &&
-          doc.verifiedOriginal &&
-          (!expiresAt || !isPreviousDocumentExpired(expiresAt)) &&
-          !isDocInvalid
+          preparedLinkDocuments.has(doc.id)
         ) {
-          const docTypeDelegate = (tx as any).documentType ?? (this.prisma as any).documentType;
-          const docType = docTypeDelegate
-            ? await docTypeDelegate.findFirst({
-                where: { erpUid: doc.documentUid, catalogSyncedAt: { not: null } },
-              })
-            : null;
-          if (docType && (tx as any).document && (tx as any).documentVersion) {
+          const prep = preparedLinkDocuments.get(doc.id)!;
+          if ((tx as any).document && (tx as any).documentVersion) {
             const existingDoc = await tx.document.findUnique({
               where: {
                 candidateId_documentTypeId: {
                   candidateId: id,
-                  documentTypeId: docType.id,
+                  documentTypeId: prep.docTypeId,
                 },
               },
-              include: { versions: true },
             });
-            if (!existingDoc || existingDoc.currentVersion === 0) {
+            if (
+              !existingDoc ||
+              existingDoc.currentVersion === 0 ||
+              existingDoc.status === "DRAFT"
+            ) {
               const targetDoc = await tx.document.upsert({
                 where: {
                   candidateId_documentTypeId: {
                     candidateId: id,
-                    documentTypeId: docType.id,
+                    documentTypeId: prep.docTypeId,
                   },
                 },
                 create: {
+                  id: prep.targetDocId,
                   candidateId: id,
-                  documentTypeId: docType.id,
+                  documentTypeId: prep.docTypeId,
                   reviewGroup: "IG",
                   currentVersion: 1,
                   status: "IN_REVIEW",
@@ -365,76 +517,6 @@ export class CandidatePreviousDocumentsSyncService {
                   status: "IN_REVIEW",
                 },
               });
-
-              let vFiles: Array<{
-                ordinal: number;
-                storageKey: string;
-                filename: string;
-                mimeType: string;
-                sizeBytes: number;
-                sha256: string;
-                pageCount: number;
-              }> = [];
-
-              if (doc.originalFiles && doc.originalFiles.length > 0) {
-                for (let idx = 0; idx < doc.originalFiles.length; idx++) {
-                  const f = doc.originalFiles[idx];
-                  const filename = f.filename || `${docType.code}.pdf`;
-                  const targetKey = this.storage
-                    ? this.storage.keyFor(targetDoc.id, 1, filename)
-                    : `documents/${targetDoc.id}/v1/${filename}`;
-                  if (this.storage) {
-                    await this.storage.copy(
-                      f.storageKey,
-                      targetKey,
-                      AbortSignal.timeout(30000),
-                    );
-                  }
-                  vFiles.push({
-                    ordinal: idx,
-                    storageKey: targetKey,
-                    filename,
-                    mimeType: f.mimeType || "application/pdf",
-                    sizeBytes: f.sizeBytes,
-                    sha256: f.sha256 ?? "",
-                    pageCount: f.pageCount || 1,
-                  });
-                }
-              } else {
-                const originalData = await this.erp.personOriginal(
-                  row.code1c!,
-                  personUid!,
-                  doc.originalErpId ?? doc.id,
-                );
-                const bytes = originalData.bytes;
-                const mimeType = originalData.mimeType || "application/pdf";
-                const sha256 = createHash("sha256").update(bytes).digest("hex");
-                const sizeBytes = bytes.length;
-                const ext =
-                  mimeType.includes("jpeg") || mimeType.includes("jpg")
-                    ? "jpg"
-                    : mimeType.includes("png")
-                      ? "png"
-                      : "pdf";
-                const filename = `${docType.code}.${ext}`;
-                const targetKey = this.storage
-                  ? this.storage.keyFor(targetDoc.id, 1, filename)
-                  : `documents/${targetDoc.id}/v1/${filename}`;
-                if (this.storage) {
-                  await this.storage.uploadBuffer(targetKey, bytes, mimeType);
-                }
-                vFiles = [
-                  {
-                    ordinal: 0,
-                    storageKey: targetKey,
-                    filename,
-                    mimeType,
-                    sizeBytes,
-                    sha256,
-                    pageCount: 1,
-                  },
-                ];
-              }
 
               await tx.documentVersion.upsert({
                 where: {
@@ -447,16 +529,17 @@ export class CandidatePreviousDocumentsSyncService {
                   documentId: targetDoc.id,
                   version: 1,
                   status: "IN_REVIEW",
-                  storageKey: vFiles[0].storageKey,
-                  mimeType: vFiles[0].mimeType,
-                  sizeBytes: vFiles[0].sizeBytes,
+                  storageKey: prep.vFiles[0].storageKey,
+                  mimeType: prep.vFiles[0].mimeType,
+                  sizeBytes: prep.vFiles[0].sizeBytes,
                   ocrSource: "PREVIOUS_LINK",
                   ocrRaw: {
                     sourceId: doc.id,
                     documentUid: doc.documentUid,
                     source: doc.originalFiles ? "EDO" : "ERP",
+                    deliveredHistorically: doc.originalFiles ? true : undefined,
                   },
-                  files: { create: vFiles },
+                  files: { create: prep.vFiles },
                 },
                 update: {},
               });
@@ -637,6 +720,15 @@ export class CandidatePreviousDocumentsSyncService {
         after: { count: allDocuments.length },
       });
     });
+    createdStorageKeys.length = 0;
+  } catch (txErr) {
+    if (this.storage && createdStorageKeys.length > 0) {
+      for (const key of createdStorageKeys) {
+        await this.storage.delete(key).catch(() => undefined);
+      }
+    }
+    throw txErr;
+  }
     const docs = await this.prisma.candidatePreviousDocument.findMany({
       where: { candidateId: id },
       orderBy: { title: "asc" },

@@ -267,4 +267,93 @@ describe("CandidatePreviousDocumentCard", () => {
     );
     expect(openSpy).toHaveBeenCalled();
   });
+
+  it("prioritizes currentDocument APPROVED status over previousDocument REQUIRES_REVIEW state", async () => {
+    const prevDoc: PreviousDocumentAvailabilityDto = {
+      id: "prev-patent",
+      documentUid: "uid-patent",
+      documentTypeCode: "PATENT",
+      title: "Патент",
+      category: "required",
+      state: "REQUIRES_REVIEW",
+      expiresAt: "2027-01-01",
+      recordedAt: null,
+      originalAvailable: true,
+      source: "ERP",
+      sourceDescription: "Из 1С",
+      fields: {},
+    };
+
+    const currentDoc: CandidateDocumentSummaryDto = {
+      id: "doc-approved-1",
+      documentUid: "uid-curr-1",
+      documentTypeCode: "PATENT",
+      title: "Патент",
+      status: "APPROVED",
+      currentVersion: 1,
+      deliveryStatus: "NONE",
+      revision: 1,
+      ocrStatus: null,
+      ocrErrorCode: null,
+      pendingDeliveryVersions: [],
+      submittedAt: "2026-11-06T10:00:00Z",
+      reviewedAt: null,
+      reviewedBy: null,
+    };
+
+    await renderCard({
+      candidateId: "cand-1",
+      title: "Патент",
+      status: "APPROVED",
+      currentDocument: currentDoc,
+      previousDocument: prevDoc,
+    });
+
+    expect(container?.textContent).toContain("Документ принят");
+    expect(container?.textContent).not.toContain("Проверить актуальность");
+  });
+
+  it("prioritizes currentDocument IN_REVIEW status over previousDocument state", async () => {
+    const prevDoc: PreviousDocumentAvailabilityDto = {
+      id: "prev-patent",
+      documentUid: "uid-patent",
+      documentTypeCode: "PATENT",
+      title: "Патент",
+      category: "required",
+      state: "REQUIRES_REVIEW",
+      expiresAt: "2027-01-01",
+      recordedAt: null,
+      originalAvailable: true,
+      source: "ERP",
+      sourceDescription: "Из 1С",
+      fields: {},
+    };
+
+    const currentDoc: CandidateDocumentSummaryDto = {
+      id: "doc-in-review-1",
+      documentUid: "uid-curr-1",
+      documentTypeCode: "PATENT",
+      title: "Патент",
+      status: "IN_REVIEW",
+      currentVersion: 1,
+      deliveryStatus: "NONE",
+      revision: 1,
+      ocrStatus: null,
+      ocrErrorCode: null,
+      pendingDeliveryVersions: [],
+      submittedAt: "2026-11-06T10:00:00Z",
+      reviewedAt: null,
+      reviewedBy: null,
+    };
+
+    await renderCard({
+      candidateId: "cand-1",
+      title: "Патент",
+      status: "IN_REVIEW",
+      currentDocument: currentDoc,
+      previousDocument: prevDoc,
+    });
+
+    expect(container?.textContent).toContain("Ожидает проверки");
+  });
 });

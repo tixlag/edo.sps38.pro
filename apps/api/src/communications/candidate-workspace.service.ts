@@ -513,9 +513,10 @@ export class CandidateWorkspaceService {
           version.files[0]?.id ?? `legacy-${version.id}`,
         );
       }
+      const rawSourceId = doc.sourceId.split("#")[0];
       return candidateReviewGroup(row) === "IG"
-        ? this.erp.personOriginal(row.code1c!, row.personUid!, doc.sourceId)
-        : this.erp.original(row.erpUid!, doc.sourceId);
+        ? this.erp.personOriginal(row.code1c!, row.personUid!, rawSourceId)
+        : this.erp.original(row.erpUid!, rawSourceId);
     }
     if (candidateReviewGroup(row) === "IG" && this.ownHistory) {
       const historicalDoc = await this.prisma.document.findFirst({

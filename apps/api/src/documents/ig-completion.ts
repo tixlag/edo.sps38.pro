@@ -75,10 +75,11 @@ export function igRequiredDocumentsComplete(
           return false;
         }
 
-        const isConfirmedReusedErp =
+        const isConfirmedReused =
           version.ocrSource === "PREVIOUS_LINK" &&
-          (version.ocrRaw as Record<string, unknown> | null)?.source === "ERP";
-        if (isConfirmedReusedErp) {
+          ((version.ocrRaw as Record<string, unknown> | null)?.source === "ERP" ||
+            (version.ocrRaw as Record<string, unknown> | null)?.deliveredHistorically === true);
+        if (isConfirmedReused) {
           return true;
         }
 

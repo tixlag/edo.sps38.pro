@@ -25,6 +25,7 @@ import {
   typedValue,
   validateFields,
 } from "./document-contract";
+import { tryCompleteIgEmployment } from "./ig-completion";
 
 const editsSchema = z
   .record(
@@ -387,10 +388,11 @@ export class DocumentReviewService {
               )
             )
               delete documentFields.positionUid;
-            const isExistingErpSource =
+            const isDeliveredPrevious =
               version.ocrSource === "PREVIOUS_LINK" &&
-              (version.ocrRaw as Record<string, unknown>)?.source === "ERP";
-            if (!isExistingErpSource) {
+              ((version.ocrRaw as Record<string, unknown>)?.source === "ERP" ||
+                (version.ocrRaw as Record<string, unknown>)?.deliveredHistorically === true);
+            if (!isDeliveredPrevious) {
               const deliveryStatus =
                 uid && (ig ? validPerson : !!chatUid)
                   ? "PENDING"
@@ -423,6 +425,15 @@ export class DocumentReviewService {
                 },
               });
             }
+          }
+          if (!rejectionReason && version.document?.candidateId) {
+            await tryCompleteIgEmployment(
+              tx,
+              this.audit,
+              version.document.candidateId,
+              principal.uuid,
+              correlationId,
+            );
           }
         }
         await this.audit.logInTransaction(tx, {
