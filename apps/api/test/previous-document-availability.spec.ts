@@ -72,7 +72,7 @@ describe("previous employment document availability", () => {
       previousDocumentState(previous({ documentUid: MIGRATION_UID }), true),
     ).toBe("REPLACE_REQUIRED");
   });
-  it("shows only one best original and preserves a submitted current replacement", () => {
+  it("shows only one best original and retains previous version info across current document statuses", () => {
     const versions = [
       previous({
         id: "expired",
@@ -93,7 +93,7 @@ describe("previous employment document availability", () => {
         [{ documentType: { erpUid: "PASSPORT-UID" }, status: "RETURNED" }],
         false,
       ),
-    ).toEqual([]);
+    ).toHaveLength(1);
     expect(
       previousDocumentAvailability(
         types,

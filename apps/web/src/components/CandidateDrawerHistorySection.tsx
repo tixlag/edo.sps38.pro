@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { QueryClientContext } from "@tanstack/react-query";
 import {
   getCandidatePreviousDocumentOriginal,
+  getGetCandidateDetailsQueryKey,
   getListCandidatePreviousDocumentsQueryKey,
   useListCandidatePreviousDocuments,
   type CandidatePreviousDocumentsDto,
@@ -69,13 +71,25 @@ export function CandidateDrawerHistorySection({
 }: CandidateDrawerHistorySectionProps) {
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const open = isOpen !== undefined ? isOpen : internalOpen;
 
+  const queryClient = useContext(QueryClientContext);
   const query = useListCandidatePreviousDocuments(candidateId, {
     query: {
       queryKey: getListCandidatePreviousDocumentsQueryKey(candidateId),
-      enabled: data === undefined,
+      enabled: data === undefined && open,
     },
   });
+
+  const hasSyncedRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (query.data && query.dataUpdatedAt !== hasSyncedRef.current) {
+      hasSyncedRef.current = query.dataUpdatedAt;
+      void queryClient?.invalidateQueries({
+        queryKey: getGetCandidateDetailsQueryKey(candidateId),
+      });
+    }
+  }, [query.data, query.dataUpdatedAt, queryClient, candidateId]);
 
   const effectiveData = data ?? query.data;
   const effectiveLoading =
@@ -83,7 +97,6 @@ export function CandidateDrawerHistorySection({
   const effectiveError = isError ?? (data === undefined && query.isError);
   const handleRetry = onRetry ?? (() => void query.refetch());
 
-  const open = isOpen !== undefined ? isOpen : internalOpen;
   const toggle = () => {
     if (onToggle) {
       onToggle();

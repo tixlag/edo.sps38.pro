@@ -503,7 +503,16 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
       take: 20,
     })) {
       for (const file of row.files) {
-        await this.storage.delete(file.storageKey);
+        const activeRefs = await this.prisma.documentVersionFile.count({
+          where: {
+            storageKey: file.storageKey,
+            id: { not: file.id },
+            deletedAt: null,
+          },
+        });
+        if (activeRefs === 0) {
+          await this.storage.delete(file.storageKey);
+        }
         await this.prisma.documentVersionFile.update({
           where: { id: file.id },
           data: { deletedAt: new Date() },

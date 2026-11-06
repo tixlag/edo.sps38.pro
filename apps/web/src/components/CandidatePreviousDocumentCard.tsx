@@ -212,7 +212,10 @@ export function CandidatePreviousDocumentCard({
     previousDocument?.state === "EXPIRED" ||
     Boolean(
       previousDocument?.expiresAt &&
-        new Date(previousDocument.expiresAt).getTime() < Date.now(),
+        previousDocument.expiresAt <
+          new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Irkutsk",
+          }).format(new Date()),
     );
 
   const requisites = formatRequisites(previousDocument?.fields);

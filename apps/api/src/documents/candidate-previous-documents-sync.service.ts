@@ -4,6 +4,7 @@ import {
   NotFoundException,
   Optional,
 } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
@@ -66,12 +67,6 @@ export class CandidatePreviousDocumentsSyncService {
         throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
       personUid = identity.personUid;
       row.personUid = personUid;
-      if (!row.personUid) {
-        await this.prisma.candidate?.update?.({
-          where: { id },
-          data: { personUid },
-        });
-      }
     }
     const historyPromise = isIg
       ? this.erp
@@ -171,15 +166,25 @@ export class CandidatePreviousDocumentsSyncService {
         },
       ];
     });
-    const candidates = [
+    const rawCandidates = [
       ...result.items.map((doc) => ({
         ...doc,
+        originalErpId: doc.id,
         verifiedOwner: true,
         originalFiles: null,
         malformedExpiry: false,
       })),
-      ...edoHistory,
+      ...edoHistory.map((doc) => ({
+        ...doc,
+        originalErpId: null,
+      })),
     ];
+    const seenIds = new Map<string, number>();
+    const candidates = rawCandidates.map((doc) => {
+      const count = (seenIds.get(doc.id) ?? 0) + 1;
+      seenIds.set(doc.id, count);
+      return count > 1 ? { ...doc, id: `${doc.id}#${count}` } : doc;
+    });
     const allDocuments: ((typeof candidates)[number] & {
       verifiedOriginal: boolean;
     })[] = [];
@@ -213,8 +218,8 @@ export class CandidatePreviousDocumentsSyncService {
                 } else if (isIg)
                   verifiedOriginal = await this.erp.probePersonOriginal(
                     row.code1c!,
-                    row.personUid!,
-                    doc.id,
+                    personUid!,
+                    (doc as any).originalErpId ?? (doc as any).id,
                   );
               } catch {
                 verifiedOriginal = false;
@@ -233,11 +238,18 @@ export class CandidatePreviousDocumentsSyncService {
       if (
         !current ||
         candidateReviewGroup(current) !== candidateReviewGroup(row) ||
-        current.personUid !== row.personUid ||
+        (current.personUid && personUid && current.personUid !== personUid) ||
         current.code1c !== row.code1c ||
         current.erpUid !== row.erpUid
       )
         throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
+      if (isIg && !current.personUid && personUid) {
+        await tx.candidate.update({
+          where: { id },
+          data: { personUid },
+        });
+        current.personUid = personUid;
+      }
       if (p) requireReviewGroup(p, candidateReviewGroup(current));
       const oldDocuments = await tx.candidatePreviousDocument.findMany({
         where: { candidateId: id },
@@ -249,8 +261,7 @@ export class CandidatePreviousDocumentsSyncService {
       let completionChanged = false;
       let completionInvalidated = false;
       for (const doc of allDocuments) {
-        if (seen.has(doc.id))
-          throw new ConflictException("ERP_DOCUMENT_DUPLICATE_SOURCE");
+        if (seen.has(doc.id)) continue;
         seen.add(doc.id);
         const old = oldBySource.get(doc.id);
         if (
@@ -270,13 +281,13 @@ export class CandidatePreviousDocumentsSyncService {
           : doc.isInvalid !== undefined
             ? doc.isInvalid
             : oldFields.isInvalid;
-        const knownValid =
-          !isIg ||
-          (doc.originalFiles
-            ? isInvalid === undefined || isInvalid === false
-            : isInvalid === false &&
-              (doc.fields.isInvalid === undefined ||
-                doc.fields.isInvalid === false));
+        const isDocInvalid =
+          isInvalid === true ||
+          (doc.fields &&
+            typeof doc.fields === "object" &&
+            !Array.isArray(doc.fields) &&
+            doc.fields.isInvalid === true);
+        const knownValid = !isIg || !isDocInvalid;
         const recordDate =
           doc.recordDate !== undefined ? doc.recordDate : oldFields.recordDate;
         const fields = {
@@ -315,7 +326,7 @@ export class CandidatePreviousDocumentsSyncService {
           doc.originalAvailable &&
           doc.verifiedOriginal &&
           (!expiresAt || !isPreviousDocumentExpired(expiresAt)) &&
-          isInvalid !== true
+          !isDocInvalid
         ) {
           const docTypeDelegate = (tx as any).documentType ?? (this.prisma as any).documentType;
           const docType = docTypeDelegate
@@ -354,27 +365,77 @@ export class CandidatePreviousDocumentsSyncService {
                   status: "IN_REVIEW",
                 },
               });
-              const vFiles =
-                doc.originalFiles && doc.originalFiles.length > 0
-                  ? doc.originalFiles.map((f, idx) => ({
-                      ordinal: idx,
-                      storageKey: f.storageKey,
-                      filename: f.filename || `${docType.code}.pdf`,
-                      mimeType: f.mimeType || "application/pdf",
-                      sizeBytes: f.sizeBytes,
-                      sha256: f.sha256,
-                      pageCount: f.pageCount || 1,
-                    }))
-                  : [
-                      {
-                        ordinal: 0,
-                        storageKey: `documents/${targetDoc.id}/v1/${docType.code}.pdf`,
-                        filename: `${docType.code}.pdf`,
-                        mimeType: "application/pdf",
-                        sizeBytes: 1024,
-                        pageCount: 1,
-                      },
-                    ];
+
+              let vFiles: Array<{
+                ordinal: number;
+                storageKey: string;
+                filename: string;
+                mimeType: string;
+                sizeBytes: number;
+                sha256: string;
+                pageCount: number;
+              }> = [];
+
+              if (doc.originalFiles && doc.originalFiles.length > 0) {
+                for (let idx = 0; idx < doc.originalFiles.length; idx++) {
+                  const f = doc.originalFiles[idx];
+                  const filename = f.filename || `${docType.code}.pdf`;
+                  const targetKey = this.storage
+                    ? this.storage.keyFor(targetDoc.id, 1, filename)
+                    : `documents/${targetDoc.id}/v1/${filename}`;
+                  if (this.storage) {
+                    await this.storage.copy(
+                      f.storageKey,
+                      targetKey,
+                      AbortSignal.timeout(30000),
+                    );
+                  }
+                  vFiles.push({
+                    ordinal: idx,
+                    storageKey: targetKey,
+                    filename,
+                    mimeType: f.mimeType || "application/pdf",
+                    sizeBytes: f.sizeBytes,
+                    sha256: f.sha256 ?? "",
+                    pageCount: f.pageCount || 1,
+                  });
+                }
+              } else {
+                const originalData = await this.erp.personOriginal(
+                  row.code1c!,
+                  personUid!,
+                  doc.originalErpId ?? doc.id,
+                );
+                const bytes = originalData.bytes;
+                const mimeType = originalData.mimeType || "application/pdf";
+                const sha256 = createHash("sha256").update(bytes).digest("hex");
+                const sizeBytes = bytes.length;
+                const ext =
+                  mimeType.includes("jpeg") || mimeType.includes("jpg")
+                    ? "jpg"
+                    : mimeType.includes("png")
+                      ? "png"
+                      : "pdf";
+                const filename = `${docType.code}.${ext}`;
+                const targetKey = this.storage
+                  ? this.storage.keyFor(targetDoc.id, 1, filename)
+                  : `documents/${targetDoc.id}/v1/${filename}`;
+                if (this.storage) {
+                  await this.storage.uploadBuffer(targetKey, bytes, mimeType);
+                }
+                vFiles = [
+                  {
+                    ordinal: 0,
+                    storageKey: targetKey,
+                    filename,
+                    mimeType,
+                    sizeBytes,
+                    sha256,
+                    pageCount: 1,
+                  },
+                ];
+              }
+
               await tx.documentVersion.upsert({
                 where: {
                   documentId_version: {
@@ -419,12 +480,12 @@ export class CandidatePreviousDocumentsSyncService {
           old?.status === "CONFIRMED" &&
           (!doc.originalAvailable ||
             (isIg && !doc.verifiedOriginal) ||
-            isInvalid === true ||
+            isDocInvalid ||
             (expiresAt !== null && isPreviousDocumentExpired(expiresAt)) ||
             (isIg &&
               (!doc.documentUid || needsNewIgDocument(doc.documentUid))));
         const nextStatus =
-          old?.status === "CONFIRMED" && !knownValid && isInvalid !== true
+          old?.status === "CONFIRMED" && !knownValid && !isDocInvalid
             ? "REQUIRES_REVIEW"
             : confirmedInvalid
               ? !doc.originalAvailable || (isIg && !doc.verifiedOriginal)

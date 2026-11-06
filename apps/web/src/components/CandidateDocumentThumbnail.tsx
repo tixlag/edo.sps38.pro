@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCandidatePreviousDocumentOriginal } from "@edo/api-client";
 import { cn } from "@edo/ui";
 import { ExternalLink, FileText, Loader2 } from "lucide-react";
@@ -20,13 +20,36 @@ export function CandidateDocumentThumbnail({
   className,
   onClick,
 }: CandidateDocumentThumbnailProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(() => {
+    return typeof IntersectionObserver === "undefined";
+  });
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPdf, setIsPdf] = useState(false);
 
   useEffect(() => {
-    if (!originalAvailable || !candidateId || !documentId) {
+    if (isVisible || typeof IntersectionObserver === "undefined") return;
+    const element = containerRef.current;
+    if (!element) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "100px" },
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [isVisible]);
+
+  useEffect(() => {
+    if (!isVisible || !originalAvailable || !candidateId || !documentId) {
       setObjectUrl(null);
       setLoading(false);
       setError(null);
@@ -74,7 +97,7 @@ export function CandidateDocumentThumbnail({
         URL.revokeObjectURL(createdUrl);
       }
     };
-  }, [candidateId, documentId, originalAvailable, title]);
+  }, [isVisible, candidateId, documentId, originalAvailable, title]);
 
   const handleOpen = () => {
     if (onClick) {
@@ -128,6 +151,7 @@ export function CandidateDocumentThumbnail({
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         "group relative flex h-24 w-20 shrink-0 flex-col items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] transition-colors hover:border-[var(--primary)] focus-within:ring-2 focus-within:ring-[var(--primary)]",
         className,

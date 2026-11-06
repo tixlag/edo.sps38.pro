@@ -390,51 +390,39 @@ export class DocumentReviewService {
             const isExistingErpSource =
               version.ocrSource === "PREVIOUS_LINK" &&
               (version.ocrRaw as Record<string, unknown>)?.source === "ERP";
-            const deliveryStatus = isExistingErpSource
-              ? "SENT"
-              : uid && (ig ? validPerson : !!chatUid)
-                ? "PENDING"
-                : "WAITING_CONTRACT";
-            await tx.erpDocumentDelivery.create({
-              data: {
-                versionId: version.id,
-                transport: artifact!.transport,
-                status: deliveryStatus,
-                ...(isExistingErpSource
-                  ? {
-                      attempts: {
-                        create: [
-                          {
-                            actorId: principal.uuid,
-                            receiptValidated: true,
-                            finishedAt: new Date(),
-                          },
-                        ],
-                      },
-                    }
-                  : {}),
-                ...(ig && !validPerson && !isExistingErpSource
-                  ? {
-                      errorCode: identity
-                        ? "ERP_PERSON_IDENTITY_MISMATCH"
-                        : "ERP_PERSON_IDENTITY_UNAVAILABLE",
-                    }
-                  : {}),
-                payload: {
-                  documentUid: uid,
-                  ...(ig
-                    ? validPerson
-                      ? {
-                          recipientType: "person",
-                          personUid: identity!.personUid,
-                          code1c: identity!.code1C,
-                        }
-                      : {}
-                    : { chatUid }),
-                  documentFields,
+            if (!isExistingErpSource) {
+              const deliveryStatus =
+                uid && (ig ? validPerson : !!chatUid)
+                  ? "PENDING"
+                  : "WAITING_CONTRACT";
+              await tx.erpDocumentDelivery.create({
+                data: {
+                  versionId: version.id,
+                  transport: artifact!.transport,
+                  status: deliveryStatus,
+                  ...(ig && !validPerson
+                    ? {
+                        errorCode: identity
+                          ? "ERP_PERSON_IDENTITY_MISMATCH"
+                          : "ERP_PERSON_IDENTITY_UNAVAILABLE",
+                      }
+                    : {}),
+                  payload: {
+                    documentUid: uid,
+                    ...(ig
+                      ? validPerson
+                        ? {
+                            recipientType: "person",
+                            personUid: identity!.personUid,
+                            code1c: identity!.code1C,
+                          }
+                        : {}
+                      : { chatUid }),
+                    documentFields,
+                  },
                 },
-              },
-            });
+              });
+            }
           }
         }
         await this.audit.logInTransaction(tx, {

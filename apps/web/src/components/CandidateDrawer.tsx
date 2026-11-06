@@ -102,6 +102,12 @@ export function CandidateDrawer({
 
   const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({});
 
+  useEffect(() => {
+    if (candidateStageParam !== undefined && candidateStageParam !== "") {
+      setExpandedStages((prev) => ({ ...prev, [candidateStageParam]: true }));
+    }
+  }, [candidateStageParam]);
+
   const isStageOpen = (stgNumber: number | null, index: number) => {
     const key = stgNumber === null ? "none" : String(stgNumber);
     if (key in expandedStages) {
@@ -121,7 +127,22 @@ export function CandidateDrawer({
   const toggleStage = (stgNumber: number | null, index: number) => {
     const key = stgNumber === null ? "none" : String(stgNumber);
     const currentlyOpen = isStageOpen(stgNumber, index);
-    setExpandedStages((prev) => ({ ...prev, [key]: !currentlyOpen }));
+    const nextOpen = !currentlyOpen;
+    setExpandedStages((prev) => ({ ...prev, [key]: nextOpen }));
+
+    const nextStageParam = nextOpen ? key : undefined;
+    void navigate({
+      search: ((prev: Record<string, unknown>) => {
+        const next = { ...prev };
+        if (nextStageParam !== undefined) {
+          next.candidateStage = nextStageParam;
+        } else {
+          delete next.candidateStage;
+        }
+        return next;
+      }) as never,
+      replace: true,
+    });
   };
 
   const handleReviewDocument = (docId: string, version?: number) => {

@@ -49,19 +49,12 @@ export function previousDocumentState(
 export function previousDocumentAvailability(
   types: CatalogType[],
   previous: Previous[],
-  current: { documentType: { erpUid: string | null } | null; status: string }[],
-  isIg: boolean,
+  _current: { documentType: { erpUid: string | null } | null; status: string }[] = [],
+  isIg: boolean = true,
 ): PreviousDocumentAvailabilityDto[] {
-  const submitted = new Set(
-    current
-      .filter((doc) => doc.status !== "DRAFT")
-      .flatMap((doc) =>
-        doc.documentType?.erpUid ? [doc.documentType.erpUid.toLowerCase()] : [],
-      ),
-  );
   return types.flatMap((type) => {
     const uid = type.erpUid?.toLowerCase();
-    if (!uid || submitted.has(uid)) return [];
+    if (!uid) return [];
     const candidates = previous
       .filter((doc) => doc.documentUid?.toLowerCase() === uid)
       .sort(

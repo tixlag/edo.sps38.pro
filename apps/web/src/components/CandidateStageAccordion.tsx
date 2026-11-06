@@ -56,11 +56,10 @@ export function CandidateStageAccordion({
     (d) => d.status === "APPROVED" || d.status === "SIGNED",
   ).length;
 
-  const reusedRequired = previousDocuments.filter(
-    (p) =>
-      p.state === "REUSED" &&
-      (p.category === "required" ||
-        required.missingDocuments.some((m) => m.code === p.documentTypeCode)),
+  const reusedRequired = required.missingDocuments.filter((m) =>
+    previousDocuments.some(
+      (p) => p.documentTypeCode === m.code && p.state === "REUSED",
+    ),
   ).length;
 
   const confirmedCount = approvedRequired + reusedRequired;

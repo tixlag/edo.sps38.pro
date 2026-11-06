@@ -137,7 +137,7 @@ describe("IG previous ERP documents", () => {
     expect(tx.igEmploymentState.findFirst).toHaveBeenCalled();
   });
   it.each([null, undefined])(
-    "does not auto-confirm ERP record with unknown invalidity %s",
+    "auto-confirms ERP record with missing or null invalidity %s when not marked invalid (FIX-06)",
     async (isInvalid) => {
       const { service, row, tx, erp } = setup();
       erp.request.mockResolvedValue({
@@ -157,7 +157,7 @@ describe("IG previous ERP documents", () => {
       await service.previous(row.id, actor({ "20011": [] }));
       expect(tx.candidatePreviousDocument.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          create: expect.objectContaining({ status: "REQUIRES_REVIEW" }),
+          create: expect.objectContaining({ status: "CONFIRMED" }),
         }),
       );
     },

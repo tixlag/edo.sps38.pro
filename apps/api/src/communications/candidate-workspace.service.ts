@@ -476,33 +476,83 @@ export class CandidateWorkspaceService {
   }
   async original(id: string, documentId: string, p: AuthPrincipal) {
     const row = await this.previousOwner(id, p);
-    const doc = await this.prisma.candidatePreviousDocument.findFirst({
+    let doc = await this.prisma.candidatePreviousDocument.findFirst({
       where: { id: documentId, candidateId: id },
     });
-    if (!doc?.originalAvailable)
-      throw new NotFoundException("Оригинал недоступен");
-    if (candidateReviewGroup(row) === "IG" && doc.sourceId.startsWith("edo:")) {
-      const parts = doc.sourceId.split(":");
-      if (parts.length !== 3 || !this.ownHistory) throw new NotFoundException();
-      const version = await this.prisma.documentVersion.findFirst({
+    if (!doc) {
+      doc = await this.prisma.candidatePreviousDocument.findFirst({
         where: {
-          id: parts[2],
-          documentId: parts[1],
-          document: { candidate: { code1c: row.code1c, chatUuid: null } },
-        },
-        include: {
-          files: { where: { deletedAt: null }, orderBy: { ordinal: "asc" } },
+          candidateId: id,
+          OR: [
+            { sourceId: documentId },
+            { sourceId: { startsWith: `edo:${documentId}:` } },
+          ],
         },
       });
-      if (!version) throw new NotFoundException();
-      return this.ownHistory.edoFile(
-        row.code1c!,
-        parts[1],
-        version.files[0]?.id ?? `legacy-${version.id}`,
-      );
     }
-    return candidateReviewGroup(row) === "IG"
-      ? this.erp.personOriginal(row.code1c!, row.personUid!, doc.sourceId)
-      : this.erp.original(row.erpUid!, doc.sourceId);
+    if (doc) {
+      if (!doc.originalAvailable)
+        throw new NotFoundException("Оригинал недоступен");
+      if (candidateReviewGroup(row) === "IG" && doc.sourceId.startsWith("edo:")) {
+        const parts = doc.sourceId.split(":");
+        if (parts.length !== 3 || !this.ownHistory) throw new NotFoundException();
+        const version = await this.prisma.documentVersion.findFirst({
+          where: {
+            id: parts[2],
+            documentId: parts[1],
+            document: { candidate: { code1c: row.code1c, chatUuid: null } },
+          },
+          include: {
+            files: { where: { deletedAt: null }, orderBy: { ordinal: "asc" } },
+          },
+        });
+        if (!version) throw new NotFoundException();
+        return this.ownHistory.edoFile(
+          row.code1c!,
+          parts[1],
+          version.files[0]?.id ?? `legacy-${version.id}`,
+        );
+      }
+      return candidateReviewGroup(row) === "IG"
+        ? this.erp.personOriginal(row.code1c!, row.personUid!, doc.sourceId)
+        : this.erp.original(row.erpUid!, doc.sourceId);
+    }
+    if (candidateReviewGroup(row) === "IG" && this.ownHistory) {
+      const historicalDoc = await this.prisma.document.findFirst({
+        where: {
+          id: documentId,
+          candidate: {
+            code1c: row.code1c,
+            chatUuid: null,
+            AND: [
+              { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
+              { OR: [{ personUid: null }, { personUid: row.personUid }] },
+            ],
+          },
+        },
+        include: {
+          versions: {
+            include: {
+              files: { where: { deletedAt: null }, orderBy: { ordinal: "asc" } },
+            },
+            orderBy: { version: "desc" },
+          },
+        },
+      });
+      if (historicalDoc) {
+        const version =
+          historicalDoc.versions.find(
+            (v) => v.version === historicalDoc.currentVersion,
+          ) ?? historicalDoc.versions[0];
+        if (version && (version.files.length > 0 || version.storageKey)) {
+          return this.ownHistory.edoFile(
+            row.code1c!,
+            historicalDoc.id,
+            version.files[0]?.id ?? `legacy-${version.id}`,
+          );
+        }
+      }
+    }
+    throw new NotFoundException("Оригинал недоступен");
   }
 }

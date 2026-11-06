@@ -129,7 +129,8 @@ describe("former documents in the current stage", () => {
   it("keeps a submitted replacement visible and does not count the former source twice", async () => {
     const { reads } = setup("IG", false, "IN_REVIEW");
     const result = await reads.candidateDetails("cycle", principal, "1");
-    expect(result.previousDocuments).toEqual([]);
+    expect(result.previousDocuments).toHaveLength(1);
+    expect(result.previousDocuments?.[0].id).toBe("former");
     expect(result.documents).toHaveLength(1);
     expect(result.candidate.approvedDocuments).toBe(0);
     expect(result.candidate.stageProgress?.[0].required.pending).toBe(1);
