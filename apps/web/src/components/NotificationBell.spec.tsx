@@ -127,6 +127,8 @@ describe("NotificationBell", () => {
     expect(resolveNotificationTarget("/public/news", "news", "https://edo.example", "https://lk.example")?.href).toBe("https://lk.example/public/news");
     expect(resolveNotificationTarget("/tasks/1", "surveys_platform", "https://edo.example", "https://lk.example")?.href).toBe("https://lk.example/surveys/tasks/1");
     expect(resolveNotificationTarget("/review", "document_expiration", "https://edo.example", "https://lk.example")?.href).toBe("https://edo.example/review");
+    expect(resolveNotificationTarget("/review/candidates/cand-1?document=doc-1", "candidate_document_upload", "https://edo.example", "https://lk.example")?.href).toBe("https://edo.example/review/candidates/cand-1?document=doc-1");
+    expect(resolveNotificationTarget("/review-ig?candidate=cand-2", undefined, "https://edo.example", "https://lk.example")?.href).toBe("https://edo.example/review-ig?candidate=cand-2");
     expect(resolveNotificationTarget("javascript:alert(1)", "news", "https://edo.example", "https://lk.example")).toBeNull();
   });
 
@@ -138,10 +140,10 @@ describe("NotificationBell", () => {
   it("honors VITE_LK_WS_URL when explicitly configured", () => {
     const originalEnv = import.meta.env.VITE_LK_WS_URL;
     try {
-      (import.meta.env as any).VITE_LK_WS_URL = "wss://custom.lk.domain:9000";
+      (import.meta.env as Record<string, string | undefined>).VITE_LK_WS_URL = "wss://custom.lk.domain:9000";
       expect(getLkNotificationWsUrl("user-999")).toBe("wss://custom.lk.domain:9000/ws/notification?user_uuid=user-999");
     } finally {
-      (import.meta.env as any).VITE_LK_WS_URL = originalEnv;
+      (import.meta.env as Record<string, string | undefined>).VITE_LK_WS_URL = originalEnv;
     }
   });
 
