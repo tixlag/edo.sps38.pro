@@ -797,6 +797,7 @@ function CandidateWorkspace() {
                   </p>
                 )}
                 <CandidateDocumentList
+                  candidateId={candidateId}
                   groups={groups}
                   documents={documents}
                   missingDocuments={
@@ -805,6 +806,10 @@ function CandidateWorkspace() {
                   selectedId={documentId}
                   stage={stage}
                   onOpen={openDocument}
+                  previousDocuments={
+                    (stage ? stageDetails.data : details.data)
+                      ?.previousDocuments ?? []
+                  }
                 />
               </>
             )}

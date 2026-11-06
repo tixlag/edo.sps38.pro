@@ -18331,6 +18331,72 @@
           "deliveryStatus"
         ]
       },
+      "PreviousDocumentAvailabilityState": {
+        "type": "string",
+        "enum": [
+          "REUSED",
+          "EXPIRED",
+          "REPLACE_REQUIRED",
+          "REQUIRES_REVIEW",
+          "ORIGINAL_UNAVAILABLE"
+        ]
+      },
+      "PreviousDocumentAvailabilityDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "documentUid": {
+            "type": "string"
+          },
+          "documentTypeCode": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "required",
+              "additional"
+            ]
+          },
+          "state": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PreviousDocumentAvailabilityState"
+              }
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          },
+          "recordedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date",
+            "description": "Date of the source record; not an inferred former admission or upload date"
+          },
+          "originalAvailable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "documentUid",
+          "documentTypeCode",
+          "title",
+          "category",
+          "state",
+          "expiresAt",
+          "recordedAt",
+          "originalAvailable"
+        ]
+      },
       "MissingDocumentTypeDto": {
         "type": "object",
         "properties": {
@@ -18392,6 +18458,13 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CandidateDocumentSummaryDto"
+            }
+          },
+          "previousDocuments": {
+            "description": "Applicable previous-employment documents without a submitted current replacement; eligibility is decided by the backend",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreviousDocumentAvailabilityDto"
             }
           },
           "missingDocuments": {

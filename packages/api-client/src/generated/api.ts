@@ -1153,6 +1153,44 @@ export interface CandidateDocumentSummaryDto {
   deliveryStatus: string | null;
 }
 
+export type PreviousDocumentAvailabilityState =
+  (typeof PreviousDocumentAvailabilityState)[keyof typeof PreviousDocumentAvailabilityState];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const PreviousDocumentAvailabilityState = {
+  REUSED: "REUSED",
+  EXPIRED: "EXPIRED",
+  REPLACE_REQUIRED: "REPLACE_REQUIRED",
+  REQUIRES_REVIEW: "REQUIRES_REVIEW",
+  ORIGINAL_UNAVAILABLE: "ORIGINAL_UNAVAILABLE",
+} as const;
+
+export type PreviousDocumentAvailabilityDtoCategory =
+  (typeof PreviousDocumentAvailabilityDtoCategory)[keyof typeof PreviousDocumentAvailabilityDtoCategory];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const PreviousDocumentAvailabilityDtoCategory = {
+  required: "required",
+  additional: "additional",
+} as const;
+
+export interface PreviousDocumentAvailabilityDto {
+  id: string;
+  documentUid: string;
+  documentTypeCode: string;
+  title: string;
+  category: PreviousDocumentAvailabilityDtoCategory;
+  state: PreviousDocumentAvailabilityState;
+  /** @nullable */
+  expiresAt: string | null;
+  /**
+   * Date of the source record; not an inferred former admission or upload date
+   * @nullable
+   */
+  recordedAt: string | null;
+  originalAvailable: boolean;
+}
+
 export interface MissingDocumentTypeDto {
   code: string;
   title: string;
@@ -1183,6 +1221,8 @@ export type CandidateDetailsDtoDocumentGroups =
 export interface CandidateDetailsDto {
   candidate: CandidateProfileDto;
   documents: CandidateDocumentSummaryDto[];
+  /** Applicable previous-employment documents without a submitted current replacement; eligibility is decided by the backend */
+  previousDocuments?: PreviousDocumentAvailabilityDto[];
   /**
    * Null when the applicable requirements cannot be determined
    * @nullable

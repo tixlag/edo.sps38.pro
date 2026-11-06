@@ -34,6 +34,22 @@ const types = [
   { id: "passport", erpUid: "6ffb1fd5-8341-11eb-ba8b-00259002db81" },
 ];
 describe("IG completion", () => {
+  it("keeps a reusable original while a new upload remains an unsubmitted draft", () => {
+    expect(
+      igRequiredDocumentsComplete(
+        [types[2]],
+        [{ ...approved("passport"), status: "DRAFT" }],
+        [types[2].erpUid],
+      ),
+    ).toBe(true);
+    expect(
+      igRequiredDocumentsComplete(
+        [types[2]],
+        [{ ...approved("passport"), status: "IN_REVIEW" }],
+        [types[2].erpUid],
+      ),
+    ).toBe(false);
+  });
   it("requires confirmed latest version, not a stale or missing receipt", () => {
     const doc = approved("passport");
     doc.currentVersion = 2;
@@ -122,17 +138,15 @@ describe("IG completion", () => {
         findFirst: vi.fn().mockResolvedValue({ currentCandidate: candidate }),
       },
       documentType: {
-        findMany: vi
-          .fn()
-          .mockResolvedValue([
-            {
-              ...types[2],
-              requiredForAll: true,
-              allRu: false,
-              allForeign: false,
-              positions: [],
-            },
-          ]),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            ...types[2],
+            requiredForAll: true,
+            allRu: false,
+            allForeign: false,
+            positions: [],
+          },
+        ]),
       },
       document: { findMany: vi.fn().mockResolvedValue([approved("passport")]) },
       candidatePreviousDocument: { findMany: vi.fn().mockResolvedValue([]) },

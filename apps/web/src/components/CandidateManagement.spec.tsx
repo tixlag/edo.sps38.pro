@@ -164,6 +164,7 @@ vi.mock("@edo/api-client", () => {
     getGetCandidateWorkspaceQueryKey: (id: string) => ["workspace", id],
     getListCommunicationCandidatesQueryKey: () => ["catalog"],
     getListCandidateReviewQueueQueryKey: () => ["queue"],
+    getListReviewDocumentsQueryKey: () => ["review-documents"],
     getGetCandidateRequirementsQueryKey: (id: string) => ["requirements", id],
     getListCandidatePreviousDocumentsQueryKey: (id: string) => ["previous", id],
     getCandidatePreviousDocumentOriginal: vi.fn(),
@@ -742,7 +743,7 @@ describe("candidate manager flows", () => {
     expect(details?.open).toBe(true);
     expect(details?.className).toContain("rounded-xl");
     const summary = details?.querySelector("summary");
-    expect(summary?.textContent).toContain("Прежние документы физлица");
+    expect(summary?.textContent).toContain("История документов");
     expect(summary?.textContent).toContain("2");
   });
 });
