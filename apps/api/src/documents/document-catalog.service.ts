@@ -301,47 +301,25 @@ export class DocumentCatalogService {
       items: types
         .filter((t) => applicable(t, position, citizenship, sex, project))
         .map((t) => {
-          const rules = (t.stageRules?.length ? t.stageRules : [t])
-            .map((rule) => {
-              const cat = classifyRule(
-                rule,
-                position,
-                citizenship,
-                project,
-              );
-              return cat ? { stage: rule.stage ?? null, category: cat } : null;
-            })
+          const stage = t.stage ?? null;
+          const rules = t.stageRules?.length ? t.stageRules : [t];
+          const categories = rules
+            .map((rule) =>
+              classifyRule(rule, position, citizenship, project),
+            )
             .filter(
-              (
-                entry,
-              ): entry is {
-                stage: number | null;
-                category: "required" | "additional";
-              } => entry !== null,
+              (cat): cat is "required" | "additional" => cat !== null,
             );
-
-          const stageMap = new Map<number | null, "required" | "additional">();
-          for (const { stage, category } of rules) {
-            const existing = stageMap.get(stage);
-            if (!existing || category === "required") {
-              stageMap.set(stage, category);
-            }
-          }
-
-          const sortedStages = [...stageMap.keys()].sort(
-            (a, b) => (a ?? Infinity) - (b ?? Infinity),
-          );
-          const stageDetails = sortedStages.map((stg) => ({
-            stage: stg,
-            category: stageMap.get(stg)!,
-          }));
+          const category: "required" | "additional" = categories.includes("required")
+            ? "required"
+            : "additional";
 
           return {
             code: t.code,
             title: t.title,
             documentUid: t.erpUid!,
-            stages: sortedStages,
-            stageDetails,
+            stages: [stage],
+            stageDetails: [{ stage, category }],
             fields: t.definitions.map((f) => ({
               name: f.name,
               label: FIELD_LABELS[f.name],
