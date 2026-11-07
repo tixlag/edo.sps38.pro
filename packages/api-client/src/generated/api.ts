@@ -1187,6 +1187,17 @@ export const PreviousDocumentAvailabilityDtoCategory = {
   additional: "additional",
 } as const;
 
+export type PreviousDocumentAvailabilityDtoSource =
+  (typeof PreviousDocumentAvailabilityDtoSource)[keyof typeof PreviousDocumentAvailabilityDtoSource];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const PreviousDocumentAvailabilityDtoSource = {
+  EDO: "EDO",
+  ERP: "ERP",
+} as const;
+
+export type PreviousDocumentAvailabilityDtoFields = { [key: string]: unknown };
+
 export interface PreviousDocumentAvailabilityDto {
   id: string;
   documentUid: string;
@@ -1202,6 +1213,15 @@ export interface PreviousDocumentAvailabilityDto {
    */
   recordedAt: string | null;
   originalAvailable: boolean;
+  source: PreviousDocumentAvailabilityDtoSource;
+  sourceDescription: string;
+  fields: PreviousDocumentAvailabilityDtoFields;
+  /** @nullable */
+  version?: number | null;
+  /** @nullable */
+  reviewedAt?: string | null;
+  /** @nullable */
+  rejectionReason?: string | null;
 }
 
 export interface MissingDocumentTypeDto {
@@ -1217,6 +1237,15 @@ export interface StageDocumentGroupDto {
 export interface CandidateStageDocumentsDto {
   required: StageDocumentGroupDto;
   additional: StageDocumentGroupDto;
+}
+
+export interface CandidateStageItemDto {
+  /** @nullable */
+  stage: number | null;
+  title: string;
+  required: StageDocumentGroupDto;
+  additional: StageDocumentGroupDto;
+  previousDocuments: PreviousDocumentAvailabilityDto[];
 }
 
 /**
@@ -1245,6 +1274,8 @@ export interface CandidateDetailsDto {
   stageDocuments?: CandidateDetailsDtoStageDocuments;
   /** @nullable */
   documentGroups?: CandidateDetailsDtoDocumentGroups;
+  /** @nullable */
+  stages?: CandidateStageItemDto[] | null;
 }
 
 export interface EmployeeDocumentListDto {
@@ -2443,10 +2474,6 @@ export interface CandidatePreviousDocumentsDto {
   items: CandidatePreviousDocumentDto[];
   employmentHistory?: CandidateEmploymentHistoryDto;
   edoDocuments?: CandidateHistoricalEdoDocumentDto[];
-}
-
-export interface CandidateRecheckRequestDto {
-  status: CandidateRecheckStatus;
 }
 
 export interface CommunicationCandidatesDto {
@@ -12418,103 +12445,6 @@ export function useListCandidatePreviousDocuments<
 
   return query;
 }
-
-/**
- * @summary Save review for current admission cycle without changing historical ERP decisions
- */
-export const recheckCandidatePreviousDocument = (
-  candidateId: string,
-  documentId: string,
-  candidateRecheckRequestDto: CandidateRecheckRequestDto,
-) => {
-  return customInstance<CandidatePreviousDocumentsDto>({
-    url: `/api/v1/candidates/${candidateId}/previous-documents/${documentId}`,
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    data: candidateRecheckRequestDto,
-  });
-};
-
-export const getRecheckCandidatePreviousDocumentMutationOptions = <
-  TError = ApiErrorDto,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof recheckCandidatePreviousDocument>>,
-    TError,
-    {
-      candidateId: string;
-      documentId: string;
-      data: CandidateRecheckRequestDto;
-    },
-    TContext
-  >;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof recheckCandidatePreviousDocument>>,
-  TError,
-  { candidateId: string; documentId: string; data: CandidateRecheckRequestDto },
-  TContext
-> => {
-  const mutationKey = ["recheckCandidatePreviousDocument"];
-  const { mutation: mutationOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey } };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof recheckCandidatePreviousDocument>>,
-    {
-      candidateId: string;
-      documentId: string;
-      data: CandidateRecheckRequestDto;
-    }
-  > = (props) => {
-    const { candidateId, documentId, data } = props ?? {};
-
-    return recheckCandidatePreviousDocument(candidateId, documentId, data);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type RecheckCandidatePreviousDocumentMutationResult = NonNullable<
-  Awaited<ReturnType<typeof recheckCandidatePreviousDocument>>
->;
-export type RecheckCandidatePreviousDocumentMutationBody =
-  CandidateRecheckRequestDto;
-export type RecheckCandidatePreviousDocumentMutationError = ApiErrorDto;
-
-/**
- * @summary Save review for current admission cycle without changing historical ERP decisions
- */
-export const useRecheckCandidatePreviousDocument = <
-  TError = ApiErrorDto,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof recheckCandidatePreviousDocument>>,
-    TError,
-    {
-      candidateId: string;
-      documentId: string;
-      data: CandidateRecheckRequestDto;
-    },
-    TContext
-  >;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof recheckCandidatePreviousDocument>>,
-  TError,
-  { candidateId: string; documentId: string; data: CandidateRecheckRequestDto },
-  TContext
-> => {
-  const mutationOptions =
-    getRecheckCandidatePreviousDocumentMutationOptions(options);
-
-  return useMutation(mutationOptions);
-};
 
 /**
  * @summary Authorized binary original from linked ERP physical person

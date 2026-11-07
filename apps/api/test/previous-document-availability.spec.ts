@@ -39,9 +39,24 @@ describe("previous employment document availability", () => {
           expiresAt: "2100-01-01",
           recordedAt: "2025-10-12",
           originalAvailable: true,
+          source: "ERP",
+          sourceDescription: "Из ERP",
+          fields: { recordDate: "2025-10-12" },
+          version: null,
+          reviewedAt: "2026-01-01T00:00:00.000Z",
         },
       ],
     );
+  });
+  it("recognizes EDO sources and formats description accordingly", () => {
+    const edoDoc = previous({
+      sourceId: "edo:doc1:1",
+      reviewedAt: new Date("2026-02-01T10:00:00Z"),
+    });
+    const result = previousDocumentAvailability(types, [edoDoc], [], true);
+    expect(result[0].source).toBe("EDO");
+    expect(result[0].sourceDescription).toBe("Из прошлого оформления в ЭДО");
+    expect(result[0].version).toBe(1);
   });
   it("does not treat an expired, invalid, unreviewed or unavailable original as reused", () => {
     for (const [patch, state] of [
@@ -57,7 +72,7 @@ describe("previous employment document availability", () => {
       previousDocumentState(previous({ documentUid: MIGRATION_UID }), true),
     ).toBe("REPLACE_REQUIRED");
   });
-  it("shows only one best original and preserves a submitted current replacement", () => {
+  it("shows only one best original and retains previous version info across current document statuses", () => {
     const versions = [
       previous({
         id: "expired",
@@ -78,7 +93,7 @@ describe("previous employment document availability", () => {
         [{ documentType: { erpUid: "PASSPORT-UID" }, status: "RETURNED" }],
         false,
       ),
-    ).toEqual([]);
+    ).toHaveLength(1);
     expect(
       previousDocumentAvailability(
         types,

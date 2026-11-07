@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import net from 'node:net';
 import { config as dotenvConfig } from 'dotenv';
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
@@ -11,6 +12,36 @@ let dbAvailable = false;
 let redisAvailable = false;
 let rabbitAvailable = false;
 
+function probePortResponsive(urlStr: string, defaultPort: number, sendBytes?: Buffer): Promise<boolean> {
+  try {
+    const parsed = new URL(urlStr);
+    const host = parsed.hostname || '127.0.0.1';
+    const port = Number(parsed.port) || defaultPort;
+    return new Promise((resolve) => {
+      let resolved = false;
+      const s = net.createConnection({ host, port });
+      const timer = setTimeout(() => finish(false), 1000);
+      const finish = (val: boolean) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          s.removeAllListeners();
+          s.destroy();
+          resolve(val);
+        }
+      };
+      s.on('connect', () => {
+        if (sendBytes) s.write(sendBytes);
+      });
+      s.on('data', () => finish(true));
+      s.on('error', () => finish(false));
+      s.on('close', () => finish(false));
+    });
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
 async function currentDatabase(): Promise<string | null> {
   try {
     const rows = (await prisma.$queryRaw`SELECT DATABASE() AS db`) as Array<{ db: string | null }>;
@@ -21,29 +52,48 @@ async function currentDatabase(): Promise<string | null> {
 }
 
 beforeAll(async () => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    dbAvailable = (await currentDatabase()) === 'edo';
-  } catch {
+  const dbUrl = process.env.DATABASE_URL ?? 'mysql://root@127.0.0.1:12002/edo';
+  const redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
+  const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672';
+
+  const dbResponsive = await probePortResponsive(dbUrl, 12002);
+  if (dbResponsive) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbAvailable = (await currentDatabase()) === 'edo';
+    } catch {
+      dbAvailable = false;
+    }
+  } else {
     dbAvailable = false;
   }
-  try {
-    const Redis = (await import('ioredis')).default;
-    const url = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
-    const c = new Redis(url, { maxRetriesPerRequest: 1, enableReadyCheck: false, lazyConnect: true });
-    await c.connect();
-    redisAvailable = (await c.ping()) === 'PONG';
-    await c.quit().catch(() => undefined);
-  } catch {
+
+  const redisResponsive = await probePortResponsive(redisUrl, 6379, Buffer.from('PING\r\n'));
+  if (redisResponsive) {
+    try {
+      const Redis = (await import('ioredis')).default;
+      const c = new Redis(redisUrl, { maxRetriesPerRequest: 1, enableReadyCheck: false, lazyConnect: true, connectTimeout: 1000 });
+      await c.connect();
+      redisAvailable = (await c.ping()) === 'PONG';
+      await c.quit().catch(() => undefined);
+    } catch {
+      redisAvailable = false;
+    }
+  } else {
     redisAvailable = false;
   }
-  try {
-    const amqp = await import('amqplib');
-    const url = process.env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672';
-    const conn = await amqp.connect(url);
-    await conn.close().catch(() => undefined);
-    rabbitAvailable = true;
-  } catch {
+
+  const rabbitResponsive = await probePortResponsive(rabbitUrl, 5672, Buffer.from('AMQP\x00\x00\x09\x01'));
+  if (rabbitResponsive) {
+    try {
+      const amqp = await import('amqplib');
+      const conn = await amqp.connect(rabbitUrl);
+      await conn.close().catch(() => undefined);
+      rabbitAvailable = true;
+    } catch {
+      rabbitAvailable = false;
+    }
+  } else {
     rabbitAvailable = false;
   }
 });

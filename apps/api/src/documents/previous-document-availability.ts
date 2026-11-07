@@ -14,6 +14,7 @@ type CatalogType = {
 type Previous = Pick<
   CandidatePreviousDocument,
   | "id"
+  | "sourceId"
   | "documentUid"
   | "status"
   | "fields"
@@ -48,19 +49,12 @@ export function previousDocumentState(
 export function previousDocumentAvailability(
   types: CatalogType[],
   previous: Previous[],
-  current: { documentType: { erpUid: string | null } | null; status: string }[],
-  isIg: boolean,
+  _current: { documentType: { erpUid: string | null } | null; status: string }[] = [],
+  isIg: boolean = true,
 ): PreviousDocumentAvailabilityDto[] {
-  const submitted = new Set(
-    current
-      .filter((doc) => doc.status !== "DRAFT")
-      .flatMap((doc) =>
-        doc.documentType?.erpUid ? [doc.documentType.erpUid.toLowerCase()] : [],
-      ),
-  );
   return types.flatMap((type) => {
     const uid = type.erpUid?.toLowerCase();
-    if (!uid || submitted.has(uid)) return [];
+    if (!uid) return [];
     const candidates = previous
       .filter((doc) => doc.documentUid?.toLowerCase() === uid)
       .sort(
@@ -74,7 +68,7 @@ export function previousDocumentAvailability(
     if (!doc) return [];
     const fields =
       doc.fields && typeof doc.fields === "object" && !Array.isArray(doc.fields)
-        ? doc.fields
+        ? (doc.fields as Record<string, unknown>)
         : {};
     const date = fields.recordDate;
     const recordedAt =
@@ -84,6 +78,19 @@ export function previousDocumentAvailability(
       new Date(date).toISOString().slice(0, 10) === date
         ? date
         : null;
+    const isEdo = Boolean(doc.sourceId?.startsWith("edo:"));
+    const cleanFields = Object.fromEntries(
+      Object.entries(fields).filter(
+        ([k, v]) =>
+          !/(?:uuid|uid|code_?1c|code1c|erp|^id$|^sourceId$)/i.test(k) &&
+          (typeof v === "string" ||
+            typeof v === "number" ||
+            typeof v === "boolean"),
+      ),
+    );
+    const versionMatch = doc.sourceId?.match(/^edo:[^:]+:(\d+)$/);
+    const versionNumber = versionMatch ? Number(versionMatch[1]) : null;
+
     return [
       {
         id: doc.id,
@@ -95,6 +102,13 @@ export function previousDocumentAvailability(
         expiresAt: doc.expiresAt?.toISOString().slice(0, 10) ?? null,
         recordedAt,
         originalAvailable: doc.originalAvailable,
+        source: isEdo ? ("EDO" as const) : ("ERP" as const),
+        sourceDescription: isEdo
+          ? "Из прошлого оформления в ЭДО"
+          : "Из ERP",
+        fields: cleanFields,
+        version: versionNumber,
+        reviewedAt: doc.reviewedAt?.toISOString() ?? null,
       },
     ];
   });

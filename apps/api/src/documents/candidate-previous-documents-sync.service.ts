@@ -4,6 +4,7 @@ import {
   NotFoundException,
   Optional,
 } from "@nestjs/common";
+import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
@@ -22,8 +23,26 @@ import {
 import { tryCompleteIgEmployment } from "./ig-completion";
 import {
   isPreviousDocumentExpired,
+  isPreviousDocumentValid,
   needsNewIgDocument,
 } from "./reemployment-document-policy";
+import { StorageService } from "../storage/storage.service";
+
+function hasActiveCandidateUpload(doc: {
+  currentVersion: number;
+  status: string;
+  versions?: Array<{
+    version: number;
+    status: string;
+    submission?: { id: string } | null;
+  }>;
+} | null | undefined): boolean {
+  if (!doc) return false;
+  if (doc.currentVersion > 0 && doc.status !== "DRAFT") return true;
+  return !!doc.versions?.some(
+    (v) => v.submission !== null || (v.version >= 1 && v.status !== "DRAFT"),
+  );
+}
 
 @Injectable()
 export class CandidatePreviousDocumentsSyncService {
@@ -33,6 +52,7 @@ export class CandidatePreviousDocumentsSyncService {
     private readonly access: DocumentAccessService,
     private readonly audit: AuditService,
     @Optional() private readonly ownHistory?: OwnDocumentHistoryService,
+    @Optional() private readonly storage?: StorageService,
   ) {}
 
   async syncPreviousDocuments(
@@ -63,12 +83,6 @@ export class CandidatePreviousDocumentsSyncService {
         throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
       personUid = identity.personUid;
       row.personUid = personUid;
-      if (!row.personUid) {
-        await this.prisma.candidate?.update?.({
-          where: { id },
-          data: { personUid },
-        });
-      }
     }
     const historyPromise = isIg
       ? this.erp
@@ -168,15 +182,25 @@ export class CandidatePreviousDocumentsSyncService {
         },
       ];
     });
-    const candidates = [
+    const rawCandidates = [
       ...result.items.map((doc) => ({
         ...doc,
+        originalErpId: doc.id,
         verifiedOwner: true,
         originalFiles: null,
         malformedExpiry: false,
       })),
-      ...edoHistory,
+      ...edoHistory.map((doc) => ({
+        ...doc,
+        originalErpId: null,
+      })),
     ];
+    const seenIds = new Map<string, number>();
+    const candidates = rawCandidates.map((doc) => {
+      const count = (seenIds.get(doc.id) ?? 0) + 1;
+      seenIds.set(doc.id, count);
+      return count > 1 ? { ...doc, id: `${doc.id}#${count}` } : doc;
+    });
     const allDocuments: ((typeof candidates)[number] & {
       verifiedOriginal: boolean;
     })[] = [];
@@ -210,8 +234,8 @@ export class CandidatePreviousDocumentsSyncService {
                 } else if (isIg)
                   verifiedOriginal = await this.erp.probePersonOriginal(
                     row.code1c!,
-                    row.personUid!,
-                    doc.id,
+                    personUid!,
+                    (doc as any).originalErpId ?? (doc as any).id,
                   );
               } catch {
                 verifiedOriginal = false;
@@ -222,7 +246,184 @@ export class CandidatePreviousDocumentsSyncService {
         )),
       );
     }
-    await this.prisma.$transaction(async (tx) => {
+
+    const createdStorageKeys: string[] = [];
+    const preparedLinkDocuments = new Map<
+      string,
+      {
+        targetDocId: string;
+        docTypeId: string;
+        vFiles: Array<{
+          ordinal: number;
+          storageKey: string;
+          filename: string;
+          mimeType: string;
+          sizeBytes: number;
+          sha256: string;
+          pageCount: number;
+        }>;
+      }
+    >();
+
+    if (
+      isIg &&
+      ((this.prisma as any).document || (this.prisma as any).candidate) &&
+      (this.prisma as any).documentType
+    ) {
+      for (const doc of allDocuments) {
+        const expiresAt = doc.expiresAt
+          ? new Date(`${doc.expiresAt}T00:00:00Z`)
+          : null;
+        const isDocInvalid =
+          doc.isInvalid === true ||
+          (doc.fields &&
+            typeof doc.fields === "object" &&
+            !Array.isArray(doc.fields) &&
+            doc.fields.isInvalid === true);
+        const needsLinking =
+          doc.documentUid &&
+          needsNewIgDocument(doc.documentUid) &&
+          doc.verifiedOwner &&
+          doc.originalAvailable &&
+          doc.verifiedOriginal &&
+          (!expiresAt || !isPreviousDocumentExpired(expiresAt)) &&
+          !isDocInvalid;
+
+        if (!needsLinking) continue;
+
+        const docCreatedKeys: string[] = [];
+        try {
+          const docType = await (this.prisma as any).documentType.findFirst({
+            where: { erpUid: doc.documentUid, catalogSyncedAt: { not: null } },
+          });
+          if (!docType) continue;
+
+          const existingDoc = (this.prisma as any).document
+            ? await (this.prisma as any).document.findUnique({
+                where: {
+                  candidateId_documentTypeId: {
+                    candidateId: id,
+                    documentTypeId: docType.id,
+                  },
+                },
+                include: {
+                  versions: {
+                    select: {
+                      id: true,
+                      version: true,
+                      status: true,
+                      submission: { select: { id: true } },
+                    },
+                  },
+                },
+              })
+            : null;
+          if (hasActiveCandidateUpload(existingDoc)) {
+            continue;
+          }
+
+          const prepToken = randomUUID();
+          let vFiles: Array<{
+            ordinal: number;
+            storageKey: string;
+            filename: string;
+            mimeType: string;
+            sizeBytes: number;
+            sha256: string;
+            pageCount: number;
+          }> = [];
+
+          if (doc.originalFiles && doc.originalFiles.length > 0) {
+            for (let idx = 0; idx < doc.originalFiles.length; idx++) {
+              const f = doc.originalFiles[idx];
+              const filename = f.filename || `${docType.code}.pdf`;
+              const fileIdOrOrdinal = f.id || `${idx + 1}`;
+              const storageFilename = `${fileIdOrOrdinal}-${filename}`;
+              const targetKey = this.storage
+                ? this.storage.keyFor(prepToken, 1, storageFilename)
+                : `documents/${prepToken}/v1/${storageFilename}`;
+              if (this.storage) {
+                docCreatedKeys.push(targetKey);
+                createdStorageKeys.push(targetKey);
+                await this.storage.copy(
+                  f.storageKey,
+                  targetKey,
+                  AbortSignal.timeout(30000),
+                );
+              }
+              vFiles.push({
+                ordinal: idx,
+                storageKey: targetKey,
+                filename,
+                mimeType: f.mimeType || "application/pdf",
+                sizeBytes: f.sizeBytes,
+                sha256: f.sha256 ?? "",
+                pageCount: f.pageCount || 1,
+              });
+            }
+          } else {
+            const rawId = (doc.originalErpId ?? doc.id).split("#")[0];
+            const originalData = await this.erp.personOriginal(
+              row.code1c!,
+              personUid!,
+              rawId,
+            );
+            const bytes = originalData.bytes;
+            const mimeType = originalData.mimeType || "application/pdf";
+            const sha256 = createHash("sha256").update(bytes).digest("hex");
+            const sizeBytes = bytes.length;
+            const ext =
+              mimeType.includes("jpeg") || mimeType.includes("jpg")
+                ? "jpg"
+                : mimeType.includes("png")
+                  ? "png"
+                  : "pdf";
+            const filename = `${docType.code}.${ext}`;
+            const storageFilename = `1-${filename}`;
+            const targetKey = this.storage
+              ? this.storage.keyFor(prepToken, 1, storageFilename)
+              : `documents/${prepToken}/v1/${storageFilename}`;
+            if (this.storage) {
+              docCreatedKeys.push(targetKey);
+              createdStorageKeys.push(targetKey);
+              await this.storage.uploadBuffer(targetKey, bytes, mimeType);
+            }
+            vFiles = [
+              {
+                ordinal: 0,
+                storageKey: targetKey,
+                filename,
+                mimeType,
+                sizeBytes,
+                sha256,
+                pageCount: 1,
+              },
+            ];
+          }
+
+          if (vFiles.length > 0) {
+            preparedLinkDocuments.set(doc.id, {
+              targetDocId: existingDoc?.id ?? prepToken,
+              docTypeId: docType.id,
+              vFiles,
+            });
+          }
+        } catch {
+          if (this.storage && docCreatedKeys.length > 0) {
+            for (const key of docCreatedKeys) {
+              await this.safeDeleteIfUnreferenced(key);
+              const idx = createdStorageKeys.indexOf(key);
+              if (idx !== -1) createdStorageKeys.splice(idx, 1);
+            }
+          }
+          doc.verifiedOriginal = false;
+        }
+      }
+    }
+
+    const usedStorageKeys = new Set<string>();
+    try {
+      await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${id} FOR UPDATE`;
       const current = await tx.candidate.findFirst({
         where: { id, ...(p ? this.access.candidateWhere(p) : {}) },
@@ -230,11 +431,18 @@ export class CandidatePreviousDocumentsSyncService {
       if (
         !current ||
         candidateReviewGroup(current) !== candidateReviewGroup(row) ||
-        current.personUid !== row.personUid ||
+        (current.personUid && personUid && current.personUid !== personUid) ||
         current.code1c !== row.code1c ||
         current.erpUid !== row.erpUid
       )
         throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
+      if (isIg && !current.personUid && personUid) {
+        await tx.candidate.update({
+          where: { id },
+          data: { personUid },
+        });
+        current.personUid = personUid;
+      }
       if (p) requireReviewGroup(p, candidateReviewGroup(current));
       const oldDocuments = await tx.candidatePreviousDocument.findMany({
         where: { candidateId: id },
@@ -246,8 +454,7 @@ export class CandidatePreviousDocumentsSyncService {
       let completionChanged = false;
       let completionInvalidated = false;
       for (const doc of allDocuments) {
-        if (seen.has(doc.id))
-          throw new ConflictException("ERP_DOCUMENT_DUPLICATE_SOURCE");
+        if (seen.has(doc.id)) continue;
         seen.add(doc.id);
         const old = oldBySource.get(doc.id);
         if (
@@ -267,13 +474,13 @@ export class CandidatePreviousDocumentsSyncService {
           : doc.isInvalid !== undefined
             ? doc.isInvalid
             : oldFields.isInvalid;
-        const knownValid =
-          !isIg ||
-          (doc.originalFiles
-            ? isInvalid === undefined || isInvalid === false
-            : isInvalid === false &&
-              (doc.fields.isInvalid === undefined ||
-                doc.fields.isInvalid === false));
+        const isDocInvalid =
+          isInvalid === true ||
+          (doc.fields &&
+            typeof doc.fields === "object" &&
+            !Array.isArray(doc.fields) &&
+            doc.fields.isInvalid === true);
+        const knownValid = !isIg || !isDocInvalid;
         const recordDate =
           doc.recordDate !== undefined ? doc.recordDate : oldFields.recordDate;
         const fields = {
@@ -292,21 +499,129 @@ export class CandidatePreviousDocumentsSyncService {
           !!doc.documentUid &&
           doc.verifiedOwner &&
           knownValid &&
-          (!isIg || doc.verifiedOriginal) &&
-          (!isIg || !needsNewIgDocument(doc.documentUid)) &&
-          doc.originalAvailable &&
-          isInvalid !== true &&
-          (!expiresAt || !isPreviousDocumentExpired(expiresAt));
+          isPreviousDocumentValid(
+            {
+              documentUid: doc.documentUid,
+              expiresAt,
+              fields,
+              originalAvailable: doc.originalAvailable,
+              originalVerified: doc.verifiedOriginal,
+              sourceId: doc.id,
+              knownValid,
+            },
+            isIg,
+          );
+        if (
+          isIg &&
+          doc.documentUid &&
+          needsNewIgDocument(doc.documentUid) &&
+          preparedLinkDocuments.has(doc.id)
+        ) {
+          const prep = preparedLinkDocuments.get(doc.id)!;
+          if ((tx as any).document && (tx as any).documentVersion) {
+            const existingDoc = await tx.document.findUnique({
+              where: {
+                candidateId_documentTypeId: {
+                  candidateId: id,
+                  documentTypeId: prep.docTypeId,
+                },
+              },
+              include: {
+                versions: {
+                  select: {
+                    id: true,
+                    version: true,
+                    status: true,
+                    submission: { select: { id: true } },
+                  },
+                },
+              },
+            });
+            const hasUpload = hasActiveCandidateUpload(existingDoc);
+            if (
+              !existingDoc ||
+              (!hasUpload &&
+                existingDoc.currentVersion === 0 &&
+                (!existingDoc.versions || existingDoc.versions.length === 0))
+            ) {
+              const targetDoc = await tx.document.upsert({
+                where: {
+                  candidateId_documentTypeId: {
+                    candidateId: id,
+                    documentTypeId: prep.docTypeId,
+                  },
+                },
+                create: {
+                  id: prep.targetDocId,
+                  candidateId: id,
+                  documentTypeId: prep.docTypeId,
+                  reviewGroup: "IG",
+                  currentVersion: 1,
+                  status: "IN_REVIEW",
+                },
+                update: {
+                  reviewGroup: "IG",
+                  currentVersion: 1,
+                  status: "IN_REVIEW",
+                },
+              });
+
+              await tx.documentVersion.upsert({
+                where: {
+                  documentId_version: {
+                    documentId: targetDoc.id,
+                    version: 1,
+                  },
+                },
+                create: {
+                  documentId: targetDoc.id,
+                  version: 1,
+                  status: "IN_REVIEW",
+                  storageKey: prep.vFiles[0].storageKey,
+                  mimeType: prep.vFiles[0].mimeType,
+                  sizeBytes: prep.vFiles[0].sizeBytes,
+                  ocrSource: "PREVIOUS_LINK",
+                  ocrRaw: {
+                    sourceId: doc.id,
+                    documentUid: doc.documentUid,
+                    source: doc.originalFiles ? "EDO" : "ERP",
+                    deliveredHistorically: doc.originalFiles ? true : undefined,
+                  },
+                  files: { create: prep.vFiles },
+                },
+                update: {},
+              });
+
+              for (const f of prep.vFiles) {
+                usedStorageKeys.add(f.storageKey);
+              }
+
+              await this.audit.logInTransaction(tx, {
+                actorId: "system:previous-document",
+                action: "DOCUMENT_FIELDS_UPDATED",
+                entityType: "Document",
+                entityId: targetDoc.id,
+                correlationId,
+                after: {
+                  version: 1,
+                  status: "IN_REVIEW",
+                  linkedFrom: doc.id,
+                  documentUid: doc.documentUid,
+                },
+              });
+            }
+          }
+        }
         const confirmedInvalid =
           old?.status === "CONFIRMED" &&
           (!doc.originalAvailable ||
             (isIg && !doc.verifiedOriginal) ||
-            isInvalid === true ||
+            isDocInvalid ||
             (expiresAt !== null && isPreviousDocumentExpired(expiresAt)) ||
             (isIg &&
               (!doc.documentUid || needsNewIgDocument(doc.documentUid))));
         const nextStatus =
-          old?.status === "CONFIRMED" && !knownValid && isInvalid !== true
+          old?.status === "CONFIRMED" && !knownValid && !isDocInvalid
             ? "REQUIRES_REVIEW"
             : confirmedInvalid
               ? !doc.originalAvailable || (isIg && !doc.verifiedOriginal)
@@ -458,6 +773,24 @@ export class CandidatePreviousDocumentsSyncService {
         after: { count: allDocuments.length },
       });
     });
+
+    const unusedKeys = createdStorageKeys.filter(
+      (key) => !usedStorageKeys.has(key),
+    );
+    if (this.storage && unusedKeys.length > 0) {
+      for (const key of unusedKeys) {
+        await this.safeDeleteIfUnreferenced(key);
+      }
+    }
+    createdStorageKeys.length = 0;
+  } catch (txErr) {
+    if (this.storage && createdStorageKeys.length > 0) {
+      for (const key of createdStorageKeys) {
+        await this.safeDeleteIfUnreferenced(key);
+      }
+    }
+    throw txErr;
+  }
     const docs = await this.prisma.candidatePreviousDocument.findMany({
       where: { candidateId: id },
       orderBy: { title: "asc" },
@@ -486,5 +819,31 @@ export class CandidatePreviousDocumentsSyncService {
           }
         : {}),
     };
+  }
+
+  private async safeDeleteIfUnreferenced(key: string): Promise<void> {
+    if (!this.storage) return;
+    let isReferenced = true;
+    try {
+      if ((this.prisma as any).documentVersion) {
+        const row = await (this.prisma as any).documentVersion.findFirst({
+          where: {
+            OR: [
+              { storageKey: key },
+              { files: { some: { storageKey: key } } },
+            ],
+          },
+          select: { id: true },
+        });
+        isReferenced = !!row;
+      } else {
+        isReferenced = true;
+      }
+    } catch {
+      isReferenced = true;
+    }
+    if (!isReferenced) {
+      await this.storage.delete(key).catch(() => undefined);
+    }
   }
 }

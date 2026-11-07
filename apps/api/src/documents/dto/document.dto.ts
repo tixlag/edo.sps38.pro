@@ -491,6 +491,29 @@ export class PreviousDocumentAvailabilityDto {
   })
   recordedAt!: string | null;
   @ApiProperty() originalAvailable!: boolean;
+  @ApiProperty({ enum: ["EDO", "ERP"] }) source!: "EDO" | "ERP";
+  @ApiProperty({ type: String }) sourceDescription!: string;
+  @ApiProperty({ type: "object", additionalProperties: true }) fields!: Record<
+    string,
+    unknown
+  >;
+  @ApiPropertyOptional({ type: Number, nullable: true }) version?:
+    | number
+    | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) reviewedAt?:
+    | string
+    | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) rejectionReason?:
+    | string
+    | null;
+}
+export class CandidateStageItemDto {
+  @ApiProperty({ type: Number, nullable: true }) stage!: number | null;
+  @ApiProperty({ type: String }) title!: string;
+  @ApiProperty({ type: StageDocumentGroupDto }) required!: StageDocumentGroupDto;
+  @ApiProperty({ type: StageDocumentGroupDto }) additional!: StageDocumentGroupDto;
+  @ApiProperty({ type: [PreviousDocumentAvailabilityDto] })
+  previousDocuments!: PreviousDocumentAvailabilityDto[];
 }
 export class CandidateDetailsDto {
   @ApiProperty({ type: CandidateProfileDto }) candidate!: CandidateProfileDto;
@@ -512,6 +535,8 @@ export class CandidateDetailsDto {
   stageDocuments?: CandidateStageDocumentsDto | null;
   @ApiPropertyOptional({ type: CandidateStageDocumentsDto, nullable: true })
   documentGroups?: CandidateStageDocumentsDto | null;
+  @ApiPropertyOptional({ type: [CandidateStageItemDto], nullable: true })
+  stages?: CandidateStageItemDto[] | null;
 }
 export class CandidateReviewQueueDto {
   @ApiProperty({ type: [CandidateDetailsDto] }) items!: CandidateDetailsDto[];

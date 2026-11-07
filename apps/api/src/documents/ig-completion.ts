@@ -39,6 +39,8 @@ type CompletionDocument = {
   versions: {
     version: number;
     status: string;
+    ocrSource?: string | null;
+    ocrRaw?: Prisma.JsonValue | null;
     delivery: {
       status: string;
       transport: string;
@@ -65,12 +67,25 @@ export function igRequiredDocumentsComplete(
         const version = current.versions.find(
           (v) => v.version === current.currentVersion,
         );
-        const delivery = version?.delivery;
+        if (
+          !version ||
+          !["APPROVED", "SIGNED"].includes(current.status) ||
+          !["APPROVED", "SIGNED"].includes(version.status)
+        ) {
+          return false;
+        }
+
+        const isConfirmedReused =
+          version.ocrSource === "PREVIOUS_LINK" &&
+          ((version.ocrRaw as Record<string, unknown> | null)?.source === "ERP" ||
+            (version.ocrRaw as Record<string, unknown> | null)?.deliveredHistorically === true);
+        if (isConfirmedReused) {
+          return true;
+        }
+
+        const delivery = version.delivery;
         const attempt = delivery?.attempts[0];
         return (
-          ["APPROVED", "SIGNED"].includes(current.status) &&
-          !!version &&
-          ["APPROVED", "SIGNED"].includes(version.status) &&
           delivery?.status === "SENT" &&
           delivery.transport === "multipart-v2" &&
           !!attempt?.receiptValidated &&
@@ -128,6 +143,8 @@ export async function tryCompleteIgEmployment(
           select: {
             version: true,
             status: true,
+            ocrSource: true,
+            ocrRaw: true,
             delivery: {
               select: {
                 status: true,

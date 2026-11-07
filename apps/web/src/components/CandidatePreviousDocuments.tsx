@@ -3,22 +3,19 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   getCandidatePreviousDocumentOriginal,
-  getListCandidatePreviousDocumentsQueryKey,
   getGetCandidateDetailsQueryKey,
   getListCandidateReviewQueueQueryKey,
   getListReviewDocumentsQueryKey,
   useListCandidatePreviousDocuments,
-  useRecheckCandidatePreviousDocument,
   type CandidatePreviousDocumentDto,
-  type CandidateRecheckStatus,
 } from "@edo/api-client";
 import { Badge, Button } from "@edo/ui";
 import { ChevronDown } from "lucide-react";
-import { CANDIDATE_CONTROL, candidateError } from "./CandidateForm";
+import { candidateError } from "./CandidateForm";
 import { formatDateRu } from "../lib/date-format";
 
-const RECHECK_LABELS: Record<CandidateRecheckStatus, string> = {
-  REQUIRES_REVIEW: "Требует повторной проверки",
+const STATUS_LABELS: Record<string, string> = {
+  REQUIRES_REVIEW: "Требует проверки",
   CONFIRMED: "Актуален и подтверждён",
   REPLACE: "Требуется замена",
   MISSING: "Отсутствует",
@@ -65,12 +62,8 @@ function PreviousDocument({
   candidateId: string;
   document: CandidatePreviousDocumentDto;
 }) {
-  const [status, setStatus] = useState(document.status);
   const [error, setError] = useState("");
   const [opening, setOpening] = useState(false);
-  const [message, setMessage] = useState("");
-  const mutation = useRecheckCandidatePreviousDocument();
-  const cache = useQueryClient();
   const open = async () => {
     setOpening(true);
     setError("");
@@ -111,7 +104,7 @@ function PreviousDocument({
         <div>
           <h3 className="text-sm font-semibold">{document.title}</h3>
           <p className="text-sm text-[var(--muted-foreground)]">
-            {RECHECK_LABELS[document.status]}
+            {STATUS_LABELS[document.status] ?? document.status}
           </p>
         </div>
         <Button
@@ -165,65 +158,6 @@ function PreviousDocument({
         <p className="text-xs text-[var(--muted-foreground)]">
           Проверено для текущего оформления:{" "}
           {new Date(document.reviewedAt).toLocaleString("ru-RU")}
-        </p>
-      )}
-      <form
-        className="flex flex-col gap-2 sm:flex-row sm:items-end"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setError("");
-          setMessage("");
-          void mutation
-            .mutateAsync({
-              candidateId,
-              documentId: document.id,
-              data: { status },
-            })
-            .then(async (saved) => {
-              cache.setQueryData(
-                getListCandidatePreviousDocumentsQueryKey(candidateId),
-                saved,
-              );
-              await refreshDocumentViews(cache, candidateId);
-              setMessage("Результат повторной проверки сохранён.");
-            })
-            .catch((cause) => setError(candidateError(cause)));
-        }}
-      >
-        <label className="min-w-0 flex-1 space-y-1 text-sm">
-          Результат повторной проверки
-          <select
-            aria-label={`Повторная проверка: ${document.title}`}
-            className={CANDIDATE_CONTROL}
-            value={status}
-            disabled={mutation.isPending}
-            onChange={(event) =>
-              setStatus(event.target.value as CandidateRecheckStatus)
-            }
-          >
-            {Object.entries(RECHECK_LABELS).map(([value, label]) => (
-              <option
-                key={value}
-                value={value}
-                disabled={value === "CONFIRMED" && !document.originalAvailable}
-              >
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Button
-          type="submit"
-          size="sm"
-          className="rounded-md sm:shrink-0"
-          disabled={mutation.isPending}
-        >
-          {mutation.isPending ? "Сохранение…" : "Сохранить проверку"}
-        </Button>
-      </form>
-      {message && (
-        <p role="status" className="text-sm">
-          {message}
         </p>
       )}
       {error && (

@@ -8,7 +8,6 @@ import { Type } from "class-transformer";
 import {
   IsDefined,
   IsEmpty,
-  IsIn,
   IsISO8601,
   IsNotEmpty,
   IsOptional,
@@ -227,9 +226,4 @@ export class CandidatePreviousDocumentsDto {
   employmentHistory?: CandidateEmploymentHistoryDto;
   @ApiPropertyOptional({ type: [CandidateHistoricalEdoDocumentDto] })
   edoDocuments?: CandidateHistoricalEdoDocumentDto[];
-}
-export class CandidateRecheckRequestDto {
-  @ApiProperty({ enum: recheckStates, enumName: "CandidateRecheckStatus" })
-  @IsIn(recheckStates)
-  status!: (typeof recheckStates)[number];
 }

@@ -1,10 +1,5 @@
 import { DocumentCatalogService } from "../documents/document-catalog.service";
 import { CandidatePreviousDocumentsSyncService } from "../documents/candidate-previous-documents-sync.service";
-import { tryCompleteIgEmployment } from "../documents/ig-completion";
-import {
-  isPreviousDocumentExpired,
-  needsNewIgDocument,
-} from "../documents/reemployment-document-policy";
 import { CandidateDocumentError } from "../documents/candidate-document.error";
 import {
   CandidateDocumentErrorCode,
@@ -45,7 +40,6 @@ import {
 import {
   CandidatePersonLinkDto,
   CandidatePersonMatchQueryDto,
-  CandidateRecheckRequestDto,
   CandidateStatusRequestDto,
   CreateCandidateDto,
   UpdateCandidateDto,
@@ -480,117 +474,86 @@ export class CandidateWorkspaceService {
       p,
     );
   }
-  async recheck(
-    id: string,
-    documentId: string,
-    p: AuthPrincipal,
-    body: CandidateRecheckRequestDto,
-  ) {
-    // Refresh before granting confirmation: a failed ERP request must never
-    // leave a stale document confirmed in the local projection.
-    if (body.status === "CONFIRMED") await this.previous(id, p);
-    const row = await this.previousOwner(id, p);
-    await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${id} FOR UPDATE`;
-      const current = await tx.candidate.findFirst({
-        where: { id, ...(p ? this.access.candidateWhere(p) : {}) },
-      });
-      if (
-        !current ||
-        candidateReviewGroup(current) !== candidateReviewGroup(row) ||
-        current.personUid !== row.personUid ||
-        current.code1c !== row.code1c ||
-        current.erpUid !== row.erpUid
-      )
-        throw new ConflictException("ERP_PERSON_IDENTITY_MISMATCH");
-      if (p) requireReviewGroup(p, candidateReviewGroup(current));
-      const doc = await tx.candidatePreviousDocument.findFirst({
-        where: { id: documentId, candidateId: id },
-      });
-      if (!doc) throw new NotFoundException();
-      if (
-        body.status === "CONFIRMED" &&
-        candidateReviewGroup(current) === "IG" &&
-        (!doc.documentUid || needsNewIgDocument(doc.documentUid))
-      )
-        throw new ConflictException(
-          "Для этого оформления нужна новая миграционная карта или патент. Если вид документа неизвестен, подтвердить его нельзя.",
-        );
-      if (
-        body.status === "CONFIRMED" &&
-        candidateReviewGroup(current) === "IG" &&
-        !doc.originalVerified
-      )
-        throw new ConflictException(
-          "Оригинал или действительность документа не подтверждены",
-        );
-      if (body.status === "CONFIRMED" && !doc.originalAvailable)
-        throw new ConflictException("Оригинал недоступен для проверки");
-      if (
-        body.status === "CONFIRMED" &&
-        doc.fields &&
-        typeof doc.fields === "object" &&
-        !Array.isArray(doc.fields) &&
-        doc.fields.isInvalid === true
-      )
-        throw new ConflictException("В ERP документ отмечен недействительным");
-      if (
-        body.status === "CONFIRMED" &&
-        doc.expiresAt &&
-        isPreviousDocumentExpired(doc.expiresAt)
-      )
-        throw new ConflictException("Срок действия документа истёк");
-      await tx.candidatePreviousDocument.update({
-        where: { id: documentId },
-        data: {
-          status: body.status,
-          reviewedBy: p.uuid,
-          reviewedAt: new Date(),
-        },
-      });
-      await this.audit.logInTransaction(tx, {
-        actorId: p.uuid,
-        action: "DOCUMENT_FIELDS_UPDATED",
-        entityType: "CandidatePreviousDocument",
-        entityId: documentId,
-        correlationId: "",
-        before: { status: doc.status },
-        after: { status: body.status },
-      });
-      if (body.status === "CONFIRMED" && candidateReviewGroup(current) === "IG")
-        await tryCompleteIgEmployment(tx, this.audit, id, p.uuid, "");
-    });
-    return this.previous(id, p);
-  }
   async original(id: string, documentId: string, p: AuthPrincipal) {
     const row = await this.previousOwner(id, p);
-    const doc = await this.prisma.candidatePreviousDocument.findFirst({
+    let doc = await this.prisma.candidatePreviousDocument.findFirst({
       where: { id: documentId, candidateId: id },
     });
-    if (!doc?.originalAvailable)
-      throw new NotFoundException("Оригинал недоступен");
-    if (candidateReviewGroup(row) === "IG" && doc.sourceId.startsWith("edo:")) {
-      const parts = doc.sourceId.split(":");
-      if (parts.length !== 3 || !this.ownHistory) throw new NotFoundException();
-      const version = await this.prisma.documentVersion.findFirst({
+    if (!doc) {
+      doc = await this.prisma.candidatePreviousDocument.findFirst({
         where: {
-          id: parts[2],
-          documentId: parts[1],
-          document: { candidate: { code1c: row.code1c, chatUuid: null } },
-        },
-        include: {
-          files: { where: { deletedAt: null }, orderBy: { ordinal: "asc" } },
+          candidateId: id,
+          OR: [
+            { sourceId: documentId },
+            { sourceId: { startsWith: `edo:${documentId}:` } },
+          ],
         },
       });
-      if (!version) throw new NotFoundException();
-      return this.ownHistory.edoFile(
-        row.code1c!,
-        parts[1],
-        version.files[0]?.id ?? `legacy-${version.id}`,
-      );
     }
-    return candidateReviewGroup(row) === "IG"
-      ? this.erp.personOriginal(row.code1c!, row.personUid!, doc.sourceId)
-      : this.erp.original(row.erpUid!, doc.sourceId);
+    if (doc) {
+      if (!doc.originalAvailable)
+        throw new NotFoundException("Оригинал недоступен");
+      if (candidateReviewGroup(row) === "IG" && doc.sourceId.startsWith("edo:")) {
+        const parts = doc.sourceId.split(":");
+        if (parts.length !== 3 || !this.ownHistory) throw new NotFoundException();
+        const version = await this.prisma.documentVersion.findFirst({
+          where: {
+            id: parts[2],
+            documentId: parts[1],
+            document: { candidate: { code1c: row.code1c, chatUuid: null } },
+          },
+          include: {
+            files: { where: { deletedAt: null }, orderBy: { ordinal: "asc" } },
+          },
+        });
+        if (!version) throw new NotFoundException();
+        return this.ownHistory.edoFile(
+          row.code1c!,
+          parts[1],
+          version.files[0]?.id ?? `legacy-${version.id}`,
+        );
+      }
+      const rawSourceId = doc.sourceId.split("#")[0];
+      return candidateReviewGroup(row) === "IG"
+        ? this.erp.personOriginal(row.code1c!, row.personUid!, rawSourceId)
+        : this.erp.original(row.erpUid!, rawSourceId);
+    }
+    if (candidateReviewGroup(row) === "IG" && this.ownHistory) {
+      const historicalDoc = await this.prisma.document.findFirst({
+        where: {
+          id: documentId,
+          candidate: {
+            code1c: row.code1c,
+            chatUuid: null,
+            AND: [
+              { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
+              { OR: [{ personUid: null }, { personUid: row.personUid }] },
+            ],
+          },
+        },
+        include: {
+          versions: {
+            include: {
+              files: { where: { deletedAt: null }, orderBy: { ordinal: "asc" } },
+            },
+            orderBy: { version: "desc" },
+          },
+        },
+      });
+      if (historicalDoc) {
+        const version =
+          historicalDoc.versions.find(
+            (v) => v.version === historicalDoc.currentVersion,
+          ) ?? historicalDoc.versions[0];
+        if (version && (version.files.length > 0 || version.storageKey)) {
+          return this.ownHistory.edoFile(
+            row.code1c!,
+            historicalDoc.id,
+            version.files[0]?.id ?? `legacy-${version.id}`,
+          );
+        }
+      }
+    }
+    throw new NotFoundException("Оригинал недоступен");
   }
 }
