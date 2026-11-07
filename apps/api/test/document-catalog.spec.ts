@@ -157,9 +157,27 @@ describe("document catalog cached snapshot", () => {
       { ...base, code: "LEGACY", stage: 2, stageRules: [] },
     ]);
     const result = await service().list("001", "ru", null, "project");
-    expect(result.items.map(({ code, stages }) => ({ code, stages }))).toEqual([
-      { code: "PASSPORT", stages: [3, 7, null] },
-      { code: "LEGACY", stages: [2] },
+    expect(
+      result.items.map(({ code, stages, stageDetails }) => ({
+        code,
+        stages,
+        stageDetails,
+      })),
+    ).toEqual([
+      {
+        code: "PASSPORT",
+        stages: [3, 7, null],
+        stageDetails: [
+          { stage: 3, category: "required" },
+          { stage: 7, category: "additional" },
+          { stage: null, category: "required" },
+        ],
+      },
+      {
+        code: "LEGACY",
+        stages: [2],
+        stageDetails: [{ stage: 2, category: "required" }],
+      },
     ]);
   });
   it("uses the persisted synchronization time for 24 hours, including after restart", async () => {

@@ -300,28 +300,57 @@ export class DocumentCatalogService {
     return {
       items: types
         .filter((t) => applicable(t, position, citizenship, sex, project))
-        .map((t) => ({
-          code: t.code,
-          title: t.title,
-          documentUid: t.erpUid!,
-          stages: [
-            ...new Set(
-              (t.stageRules?.length ? t.stageRules : [t])
-                .filter(
-                  (rule) =>
-                    classifyRule(rule, position, citizenship, project) !== null,
-                )
-                .map((rule) => rule.stage ?? null),
-            ),
-          ].sort((a, b) => (a ?? Infinity) - (b ?? Infinity)),
-          fields: t.definitions.map((f) => ({
-            name: f.name,
-            label: FIELD_LABELS[f.name],
-            kind: f.kind,
-            required: f.required,
-            ordinal: f.ordinal,
-          })),
-        })),
+        .map((t) => {
+          const rules = (t.stageRules?.length ? t.stageRules : [t])
+            .map((rule) => {
+              const cat = classifyRule(
+                rule,
+                position,
+                citizenship,
+                project,
+              );
+              return cat ? { stage: rule.stage ?? null, category: cat } : null;
+            })
+            .filter(
+              (
+                entry,
+              ): entry is {
+                stage: number | null;
+                category: "required" | "additional";
+              } => entry !== null,
+            );
+
+          const stageMap = new Map<number | null, "required" | "additional">();
+          for (const { stage, category } of rules) {
+            const existing = stageMap.get(stage);
+            if (!existing || category === "required") {
+              stageMap.set(stage, category);
+            }
+          }
+
+          const sortedStages = [...stageMap.keys()].sort(
+            (a, b) => (a ?? Infinity) - (b ?? Infinity),
+          );
+          const stageDetails = sortedStages.map((stg) => ({
+            stage: stg,
+            category: stageMap.get(stg)!,
+          }));
+
+          return {
+            code: t.code,
+            title: t.title,
+            documentUid: t.erpUid!,
+            stages: sortedStages,
+            stageDetails,
+            fields: t.definitions.map((f) => ({
+              name: f.name,
+              label: FIELD_LABELS[f.name],
+              kind: f.kind,
+              required: f.required,
+              ordinal: f.ordinal,
+            })),
+          };
+        }),
     };
   }
 }

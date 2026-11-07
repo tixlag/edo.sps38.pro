@@ -16738,6 +16738,33 @@
           "projectCode1c"
         ]
       },
+      "DocumentStageCategory": {
+        "type": "string",
+        "enum": [
+          "required",
+          "additional"
+        ]
+      },
+      "CatalogDocumentStageCategoryDto": {
+        "type": "object",
+        "properties": {
+          "stage": {
+            "type": "number",
+            "nullable": true
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DocumentStageCategory"
+              }
+            ]
+          }
+        },
+        "required": [
+          "stage",
+          "category"
+        ]
+      },
       "DocumentDefinitionDto": {
         "type": "object",
         "properties": {
@@ -16790,6 +16817,13 @@
               "nullable": true
             },
             "description": "Applicable stage numbers; null denotes a document without a stage"
+          },
+          "stageDetails": {
+            "description": "Detailed category (required/additional) for each applicable stage",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogDocumentStageCategoryDto"
+            }
           },
           "fields": {
             "type": "array",
