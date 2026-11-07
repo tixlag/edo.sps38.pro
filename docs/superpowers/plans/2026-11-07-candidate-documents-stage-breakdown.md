@@ -20,12 +20,12 @@
 - Modify: `apps/api/src/documents/document-catalog.service.ts`
 - Test: `apps/api/test/document-catalog.spec.ts`
 
-- [ ] **Step 1: Write test for `stageDetails` with category in catalog**
-- [ ] **Step 2: Run test to verify failure**
-- [ ] **Step 3: Add `CatalogDocumentStageCategoryDto` and populate `stageDetails` in `document-catalog.service.ts`**
-- [ ] **Step 4: Run test to verify pass**
-- [ ] **Step 5: Regenerate API client (`pnpm api:generate`)**
-- [ ] **Step 6: Commit backend changes**
+- [x] **Step 1: Write test for `stageDetails` with category in catalog**
+- [x] **Step 2: Run test to verify failure**
+- [x] **Step 3: Add `CatalogDocumentStageCategoryDto` and populate `stageDetails` in `document-catalog.service.ts`**
+- [x] **Step 4: Run test to verify pass**
+- [x] **Step 5: Regenerate API client (`pnpm api:generate`)**
+- [x] **Step 6: Commit backend changes**
 
 ---
 
@@ -36,11 +36,11 @@
 - Create: `public_next/src/features/candidate-documents/utils/stage-progress.ts`
 - Test: `public_next/src/features/candidate-documents/utils/stage-progress.spec.ts`
 
-- [ ] **Step 1: Write unit tests for stage grouping, required/additional separation and cross-stage crediting**
-- [ ] **Step 2: Run test to verify failure**
-- [ ] **Step 3: Implement `stage-progress.ts` calculation**
-- [ ] **Step 4: Run test to verify pass**
-- [ ] **Step 5: Commit stage progress logic**
+- [x] **Step 1: Write unit tests for stage grouping, required/additional separation and cross-stage crediting**
+- [x] **Step 2: Run test to verify failure**
+- [x] **Step 3: Implement `stage-progress.ts` calculation**
+- [x] **Step 4: Run test to verify pass**
+- [x] **Step 5: Commit stage progress logic**
 
 ---
 
@@ -50,10 +50,10 @@
 - Create: `public_next/src/features/candidate-documents/components/stage-donut-ring.tsx`
 - Test: `public_next/src/features/candidate-documents/components/stage-donut-ring.test.tsx`
 
-- [ ] **Step 1: Write component tests for `StageDonutRing` (rendering SVG arcs for inner required and outer additional)**
-- [ ] **Step 2: Implement `StageDonutRing`**
-- [ ] **Step 3: Verify tests pass**
-- [ ] **Step 4: Commit component**
+- [x] **Step 1: Write component tests for `StageDonutRing` (rendering SVG arcs for inner required and outer additional)**
+- [x] **Step 2: Implement `StageDonutRing`**
+- [x] **Step 3: Verify tests pass**
+- [x] **Step 4: Commit component**
 
 ---
 
@@ -64,11 +64,11 @@
 - Modify: `public_next/src/sections/adaptation/components/document-panel.comp.tsx`
 - Modify: `public_next/src/sections/adaptation/components/documents-list.comp.tsx`
 
-- [ ] **Step 1: Update `DocumentsModal` header to use `StageDonutRing` for each stage without legend, and document chips for active stage**
-- [ ] **Step 2: Update `DocumentPanel` with multi-page photo capture and speedup incentive banner above decoding inputs**
-- [ ] **Step 3: Update `DocumentsList` to group items by stage**
-- [ ] **Step 4: Run existing adaptation tests to ensure no regressions**
-- [ ] **Step 5: Commit modal updates**
+- [x] **Step 1: Update `DocumentsModal` header to use `StageDonutRing` for each stage without legend, and document chips for active stage**
+- [x] **Step 2: Update `DocumentPanel` with multi-page photo capture and speedup incentive banner above decoding inputs**
+- [x] **Step 3: Update `DocumentsList` to group items by stage**
+- [x] **Step 4: Run existing adaptation tests to ensure no regressions**
+- [x] **Step 5: Commit modal updates**
 
 ---
 
@@ -78,15 +78,15 @@
 - Modify: `public_next/src/features/candidate-documents/candidate-documents-panel.tsx`
 - Modify: `public_next/src/chats/pages/candidate-chat.page.tsx`
 
-- [ ] **Step 1: Replace raw `<details>` in candidate chat with stage-based widget showing `StageDonutRing` for each stage**
-- [ ] **Step 2: Wire up "Загрузить документы Этапа N" to open `DocumentsModal`**
-- [ ] **Step 3: Run candidate chat tests**
-- [ ] **Step 4: Commit candidate chat updates**
+- [x] **Step 1: Replace raw `<details>` in candidate chat with stage-based widget showing `StageDonutRing` for each stage**
+- [x] **Step 2: Wire up "Загрузить документы Этапа N" to open `DocumentsModal`**
+- [x] **Step 3: Run candidate chat tests**
+- [x] **Step 4: Commit candidate chat updates**
 
 ---
 
 ### Task 6: End-to-End Validation & Build Verification
 
-- [ ] **Step 1: Run full test suite in `edo.sps38.pro` (`pnpm test`, `pnpm build`)**
-- [ ] **Step 2: Run test suite in `lk.sps38.pro`**
-- [ ] **Step 3: Verify UI in browser across mobile and desktop viewpoints**
+- [x] **Step 1: Run full test suite in `edo.sps38.pro` (`pnpm test`, `pnpm build`)**
+- [x] **Step 2: Run test suite in `lk.sps38.pro`**
+- [x] **Step 3: Verify UI in browser across mobile and desktop viewpoints**
