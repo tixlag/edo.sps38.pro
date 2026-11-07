@@ -37,7 +37,7 @@ describe("review stage progress", () => {
       classifyStageType(type, 1, { ...profile, citizenship: "ru" }),
     ).toBeNull();
   });
-  it("counts a confirmed previous passport as approved when no current version exists", () => {
+  it("counts a confirmed previous passport as reused when no current version exists", () => {
     const type = {
       id: "passport",
       erpUid: "6ffb1fd5-8341-11eb-ba8b-00259002db81",
@@ -54,7 +54,7 @@ describe("review stage progress", () => {
       { positionCode: "001", citizenship: "uz", sex: null },
       [type.erpUid],
     );
-    expect(result[0].required.approved).toBe(1);
+    expect(result[0].required.reused).toBe(1);
     expect(result[0].required.missing).toBe(0);
   });
   it("selects and classifies a type using the rule for the chosen stage", () => {
@@ -163,11 +163,12 @@ describe("review stage progress", () => {
         ],
         { positionCode: "001", citizenship: "ru", sex: null },
       ),
-    ).toEqual([
+    ).toMatchObject([
       {
         stage: 1,
         required: {
           approved: 0,
+          inReview: 1,
           pending: 1,
           processing: 0,
           missing: 0,
@@ -257,8 +258,9 @@ describe("review stage progress", () => {
       [{ documentTypeId: "ig", status: "RETURNED" }],
       { positionCode: "001", citizenship: "uz", sex: null },
     );
-    expect(result[0].required).toEqual({
+    expect(result[0].required).toMatchObject({
       approved: 0,
+      returned: 1,
       pending: 0,
       processing: 0,
       missing: 1,
@@ -285,8 +287,69 @@ describe("review stage progress", () => {
     );
     expect(stage.required).toMatchObject({
       processing: 1,
+      ocrPending: 1,
       pending: 0,
       attention: 0,
+    });
+  });
+  it("counts every distinct document status with individual precision", () => {
+    const make = (id: string, stage = 1) => ({
+      id,
+      code: id.toUpperCase(),
+      erpUid: `uid-${id}`,
+      stage,
+      requiredForAll: true,
+      allRu: true,
+      allForeign: false,
+      positions: [],
+    });
+    const types = [
+      make("approved"),
+      make("reused"),
+      make("signed"),
+      make("review"),
+      make("uploaded"),
+      make("pending"),
+      make("ocr_err"),
+      make("returned"),
+      make("expired"),
+      make("draft"),
+      make("missing"),
+    ];
+    const docs = [
+      { documentTypeId: "approved", status: "APPROVED" },
+      // "reused" has no document, but has erpUid in previousUids
+      { documentTypeId: "signed", status: "SIGNED" },
+      { documentTypeId: "review", status: "IN_REVIEW" },
+      { documentTypeId: "uploaded", status: "UPLOADED" },
+      { documentTypeId: "pending", status: "OCR_PENDING" },
+      { documentTypeId: "ocr_err", status: "OCR_FAILED" },
+      { documentTypeId: "returned", status: "RETURNED" },
+      { documentTypeId: "expired", status: "EXPIRED" },
+      { documentTypeId: "draft", status: "DRAFT" },
+      // "missing" has no document
+    ];
+    const [result] = reviewStageProgress(
+      types,
+      docs,
+      { positionCode: "001", citizenship: "ru", sex: null },
+      ["uid-reused"],
+    );
+    expect(result.required).toEqual({
+      approved: 1,
+      reused: 1,
+      signed: 1,
+      inReview: 1,
+      uploaded: 1,
+      ocrPending: 1,
+      ocrFailed: 1,
+      returned: 1,
+      expired: 1,
+      draft: 1,
+      missing: 1,
+      pending: 1,
+      processing: 2,
+      attention: 3,
     });
   });
 });

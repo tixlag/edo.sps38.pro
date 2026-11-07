@@ -110,7 +110,7 @@ describe("former documents in the current stage", () => {
         }),
       ]);
       expect(result.candidate.approvedDocuments).toBe(1);
-      expect(result.candidate.stageProgress?.[0].required.approved).toBe(1);
+      expect(result.candidate.stageProgress?.[0].required.reused).toBe(1);
       expect(
         (await reads.candidateDetails("cycle", principal, "2"))
           .previousDocuments,
@@ -140,6 +140,6 @@ describe("former documents in the current stage", () => {
     expect(result.previousDocuments?.[0].state).toBe("REUSED");
     expect(result.stageDocuments?.required.missingDocuments).toEqual([]);
     expect(result.candidate.approvedDocuments).toBe(1);
-    expect(result.candidate.stageProgress?.[0].required.approved).toBe(1);
+    expect(result.candidate.stageProgress?.[0].required.reused).toBe(1);
   });
 });

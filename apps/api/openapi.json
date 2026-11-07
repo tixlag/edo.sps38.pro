@@ -17004,13 +17004,40 @@
           "approved": {
             "type": "number"
           },
+          "reused": {
+            "type": "number"
+          },
+          "signed": {
+            "type": "number"
+          },
+          "inReview": {
+            "type": "number"
+          },
+          "uploaded": {
+            "type": "number"
+          },
+          "ocrPending": {
+            "type": "number"
+          },
+          "ocrFailed": {
+            "type": "number"
+          },
+          "returned": {
+            "type": "number"
+          },
+          "expired": {
+            "type": "number"
+          },
+          "draft": {
+            "type": "number"
+          },
+          "missing": {
+            "type": "number"
+          },
           "pending": {
             "type": "number"
           },
           "processing": {
-            "type": "number"
-          },
-          "missing": {
             "type": "number"
           },
           "attention": {
@@ -17019,10 +17046,16 @@
         },
         "required": [
           "approved",
-          "pending",
-          "processing",
-          "missing",
-          "attention"
+          "reused",
+          "signed",
+          "inReview",
+          "uploaded",
+          "ocrPending",
+          "ocrFailed",
+          "returned",
+          "expired",
+          "draft",
+          "missing"
         ]
       },
       "ReviewStageProgressDto": {

@@ -258,7 +258,10 @@ describe("RU and IG review pages", () => {
     );
     expect(parseFloat((tooltip as HTMLElement).style.top)).toBeLessThan(740);
     bounds.mockRestore();
-    expect(tooltip.querySelectorAll("tbody tr")).toHaveLength(5);
+    expect(tooltip.querySelectorAll("tbody tr")).toHaveLength(11);
+    expect(tooltip.textContent).toContain("Зачтён ранее");
+    expect(tooltip.textContent).toContain("Подписан");
+    expect(tooltip.textContent).toContain("Ошибка OCR");
     expect(tooltip.textContent).toContain("Обязательные");
     expect(tooltip.textContent).toContain("Дополнительные");
     expect(ring.getAttribute("aria-describedby")).toBe(tooltip.id);
