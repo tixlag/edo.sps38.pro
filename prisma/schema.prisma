@@ -1185,6 +1185,8 @@ model IgArrivalMember {
   owner IgArrivalPerson @relation("IgArrivalOwner", fields: [personUid], references: [personUid], onDelete: Cascade)
   currentFor IgArrivalPerson? @relation("IgArrivalCurrent")
   arrivalDate String? @db.Char(10)
+  arrivalDateTime String? @db.Char(19)
+  lastSeenRevision BigInt?
   locationUid String? @db.VarChar(36)
   locationCode1c String? @db.VarChar(512)
   locationName String? @db.VarChar(512)
@@ -1193,6 +1195,7 @@ model IgArrivalMember {
   managerCode1c String? @db.VarChar(512)
   cancelled Boolean
   @@index([arrivalDate, locationUid])
+  @@index([lastSeenRevision, arrivalDate, locationUid])
   @@index([personUid])
   @@map("ig_arrival_members")
 }

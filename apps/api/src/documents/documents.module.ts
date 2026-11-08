@@ -46,6 +46,7 @@ import { CandidateContextService } from "./candidate-context.service";
 import { LkCandidateIdentityService } from "./lk-candidate-identity.service";
 import { ErpCandidateClient } from "./erp-candidate.client";
 import { CandidateCardCache } from "./candidate-card-cache";
+import { IgArrivalRegistryService } from "./ig-arrival-registry.service";
 import { IgArrivalQueueService } from "./ig-arrival-queue.service";
 import { IgArrivalProjectionService } from "./ig-arrival-projection.service";
 import { IgArrivalSyncWorker } from "./ig-arrival-sync.worker";
@@ -60,7 +61,15 @@ import { LkModule } from "../lk/lk.module";
 import { DocumentNotificationService } from "./document-notification.service";
 
 @Module({
-  imports: [PrismaModule, AuditModule, StorageModule, OcrModule, RedisModule, ExpirationModule, LkModule],
+  imports: [
+    PrismaModule,
+    AuditModule,
+    StorageModule,
+    OcrModule,
+    RedisModule,
+    ExpirationModule,
+    LkModule,
+  ],
   controllers: [
     BrowserCandidateDocumentsController,
     MyCandidateDocumentsController,
@@ -95,6 +104,7 @@ import { DocumentNotificationService } from "./document-notification.service";
     IgArrivalSyncWorker,
     IgProfileEnrichmentService,
     IgArrivalQueueService,
+    IgArrivalRegistryService,
     OwnDocumentHistoryService,
     CandidateCardCache,
     DocumentAccessService,

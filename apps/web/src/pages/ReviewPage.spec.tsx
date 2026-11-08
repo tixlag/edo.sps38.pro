@@ -5,6 +5,7 @@ import { ReviewDocumentPage, ReviewPage } from "./ReviewPage";
 
 const state = vi.hoisted(() => ({
   navigate: vi.fn(),
+  links: [] as Array<Record<string, unknown>>,
   search: {} as Record<string, unknown>,
   permissions: { "20011": [] } as Record<string, unknown>,
   queue: vi.fn(),
@@ -21,7 +22,10 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+  Link: (props: { children: ReactNode; search?: unknown; to?: unknown }) => {
+    state.links.push(props);
+    return <a>{props.children}</a>;
+  },
   useNavigate: () => state.navigate,
   useSearch: () => state.search,
   useParams: () => state.params,
@@ -79,12 +83,31 @@ vi.mock("../components/DocumentReviewWorkspace", () => ({
   },
 }));
 vi.mock("../components/IgArrivalReviewQueue", () => ({
-  IgArrivalReviewQueue: (props: { onSelectCandidate: (id: string) => void }) => {
+  IgArrivalReviewQueue: (props: {
+    onSelectCandidate: (
+      id: string,
+      context: {
+        memberUid: string;
+        date: string;
+        location: string;
+        status: string;
+      },
+    ) => void;
+  }) => {
     state.arrivalQueue(props);
     return (
       <div data-testid="ig-arrival-review-queue">
         <span>Списочные заезды ИГ</span>
-        <button onClick={() => props.onSelectCandidate("cand-arrival-1")}>
+        <button
+          onClick={() =>
+            props.onSelectCandidate("cand-arrival-1", {
+              memberUid: "member-1",
+              date: "2026-11-10",
+              location: "Склад",
+              status: "HISTORICAL",
+            })
+          }
+        >
           Выбрать кандидата из заезда
         </button>
       </div>
@@ -111,6 +134,7 @@ afterEach(async () => {
   container?.remove();
   vi.clearAllMocks();
   state.search = {};
+  state.links = [];
   state.permissions = { "20011": [] };
   state.documentInfo = null;
   state.documentVersion = null;
@@ -457,6 +481,8 @@ describe("RU and IG review pages", () => {
     expect(navCall.search({ view: "arrivals" })).toEqual({
       view: "arrivals",
       candidate: "cand-arrival-1",
+      igParticipation:
+        '{"memberUid":"member-1","date":"2026-11-10","location":"Склад","status":"HISTORICAL"}',
     });
   });
 
@@ -517,6 +543,33 @@ describe("review document navigation", () => {
       projectCode: "P1",
     };
   }
+  it("retains arrival registry context when returning from a document", async () => {
+    seedDocument();
+    Object.assign(state.search, {
+      view: "arrivals",
+      igArchive: "archive",
+      igQ: "Алиев",
+      igGroups: '["group-a","group-b"]',
+      igPages: '{"group-a":"next"}',
+      igParticipation:
+        '{"memberUid":"member-1","date":"2026-11-10","location":"Склад","status":"HISTORICAL"}',
+    });
+    await renderDocument();
+    const link = state.links.find((item) => item.to === "/review-ig");
+    expect(link?.search).toEqual(
+      expect.objectContaining({
+        view: "arrivals",
+        igArchive: "archive",
+        igQ: "Алиев",
+        igGroups: '["group-a","group-b"]',
+        igPages: '{"group-a":"next"}',
+        igParticipation:
+          '{"memberUid":"member-1","date":"2026-11-10","location":"Склад","status":"HISTORICAL"}',
+        candidate: "candidate-1",
+        candidateStage: "2",
+      }),
+    );
+  });
   function nextButton(view: HTMLElement) {
     return [...view.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Следующий на проверке"),

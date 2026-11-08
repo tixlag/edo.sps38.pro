@@ -5376,6 +5376,604 @@
         ]
       }
     },
+    "/api/v1/candidate-review-queue/ig-arrivals/locations": {
+      "get": {
+        "operationId": "listIgArrivalRegistryLocations",
+        "parameters": [
+          {
+            "name": "archive",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "current",
+              "type": "string",
+              "enum": [
+                "current",
+                "archive"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationUid",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 1024,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IgArrivalRegistryLocationsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Search IG arrival registry locations",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/candidate-review-queue/ig-arrivals/groups": {
+      "get": {
+        "operationId": "listIgArrivalRegistryGroups",
+        "parameters": [
+          {
+            "name": "archive",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "current",
+              "type": "string",
+              "enum": [
+                "current",
+                "archive"
+              ]
+            }
+          },
+          {
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationUid",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentStatus",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "UNKNOWN",
+                "NO_DOCUMENTS",
+                "IN_PROGRESS",
+                "RETURNED",
+                "APPROVED"
+              ]
+            }
+          },
+          {
+            "name": "needsAttention",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 1024,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IgArrivalRegistryGroupsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "IG arrival registry groups",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/candidate-review-queue/ig-arrivals/participations": {
+      "get": {
+        "operationId": "listIgArrivalRegistryParticipations",
+        "parameters": [
+          {
+            "name": "archive",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "current",
+              "type": "string",
+              "enum": [
+                "current",
+                "archive"
+              ]
+            }
+          },
+          {
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationUid",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentStatus",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "UNKNOWN",
+                "NO_DOCUMENTS",
+                "IN_PROGRESS",
+                "RETURNED",
+                "APPROVED"
+              ]
+            }
+          },
+          {
+            "name": "needsAttention",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 1024,
+              "type": "string"
+            }
+          },
+          {
+            "name": "groupKey",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IgArrivalRegistryParticipationsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "IG arrival registry participations",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/v1/candidate-review-queue/ig-arrival-groups": {
       "get": {
         "description": "Person counts use one primary status: completed, returned, inReview, sending, then waitingDocuments. needsAttention may overlap any status. Technical issues do not move a person with a known date and object into the unassigned group.",
@@ -18642,6 +19240,287 @@
           "documentUid",
           "idempotencyKey",
           "position_code_1c"
+        ]
+      },
+      "IgArrivalRegistryLocationDto": {
+        "type": "object",
+        "properties": {
+          "locationUid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "locationUid",
+          "locationName"
+        ]
+      },
+      "IgArrivalRegistryLocationsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IgArrivalRegistryLocationDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "IgArrivalRegistryGroupDto": {
+        "type": "object",
+        "properties": {
+          "groupKey": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "assigned",
+              "issues"
+            ]
+          },
+          "arrivalDate": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          },
+          "locationUid": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "totalParticipationCount": {
+            "type": "number"
+          },
+          "participationCount": {
+            "type": "number"
+          },
+          "needsAttentionCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "groupKey",
+          "group",
+          "arrivalDate",
+          "locationUid",
+          "locationName",
+          "totalParticipationCount",
+          "participationCount",
+          "needsAttentionCount"
+        ]
+      },
+      "IgArrivalRegistrySyncDto": {
+        "type": "object",
+        "properties": {
+          "lastCompletedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "lastCompletedAt"
+        ]
+      },
+      "IgArrivalRegistryGroupsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IgArrivalRegistryGroupDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "sync": {
+            "$ref": "#/components/schemas/IgArrivalRegistrySyncDto"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "sync"
+        ]
+      },
+      "IgArrivalRegistryParticipationDto": {
+        "type": "object",
+        "properties": {
+          "arrivalMemberUid": {
+            "type": "string",
+            "nullable": true
+          },
+          "personUid": {
+            "type": "string"
+          },
+          "code1c": {
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string",
+            "nullable": true
+          },
+          "fullName": {
+            "type": "string",
+            "nullable": true
+          },
+          "arrivalDate": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          },
+          "arrivalDateTime": {
+            "type": "string",
+            "nullable": true,
+            "description": "Local calendar time without UTC offset"
+          },
+          "locationUid": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "participationStatus": {
+            "type": "string",
+            "enum": [
+              "CURRENT",
+              "HISTORICAL",
+              "CANCELLED",
+              "ISSUE"
+            ]
+          },
+          "personState": {
+            "type": "string",
+            "enum": [
+              "CURRENT",
+              "NONE",
+              "CONFLICT"
+            ]
+          },
+          "documentStatus": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "NO_DOCUMENTS",
+              "IN_PROGRESS",
+              "RETURNED",
+              "APPROVED"
+            ]
+          },
+          "approvedDocuments": {
+            "type": "number"
+          },
+          "confirmedDocuments": {
+            "type": "number"
+          },
+          "erpDeliveryStatus": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "NOT_REQUIRED",
+              "PENDING",
+              "NEEDS_ATTENTION",
+              "CONFIRMED"
+            ]
+          },
+          "employmentStatus": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "IN_PROGRESS",
+              "DOCUMENTS_COMPLETED"
+            ]
+          },
+          "oneCEmploymentStatus": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN"
+            ]
+          },
+          "statusScope": {
+            "type": "string",
+            "enum": [
+              "CURRENT_CANDIDATE"
+            ]
+          },
+          "needsAttention": {
+            "type": "boolean"
+          },
+          "issueCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sourceRevision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "arrivalMemberUid",
+          "personUid",
+          "code1c",
+          "candidateId",
+          "fullName",
+          "arrivalDate",
+          "arrivalDateTime",
+          "locationUid",
+          "locationName",
+          "participationStatus",
+          "personState",
+          "documentStatus",
+          "approvedDocuments",
+          "confirmedDocuments",
+          "erpDeliveryStatus",
+          "employmentStatus",
+          "oneCEmploymentStatus",
+          "statusScope",
+          "needsAttention",
+          "issueCodes",
+          "sourceRevision"
+        ]
+      },
+      "IgArrivalRegistryParticipationsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IgArrivalRegistryParticipationDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "sync": {
+            "$ref": "#/components/schemas/IgArrivalRegistrySyncDto"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "sync"
         ]
       },
       "IgArrivalGroupDto": {

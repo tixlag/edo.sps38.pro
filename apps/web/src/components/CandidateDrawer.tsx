@@ -13,6 +13,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+import { formatDateRu } from "../lib/date-format";
 import { LkLink } from "./LkLink";
 import { CandidateStageAccordion } from "./CandidateStageAccordion";
 import { CandidateDrawerHistorySection } from "./CandidateDrawerHistorySection";
@@ -31,6 +32,7 @@ export interface CandidateDrawerProps {
   onClose: () => void;
   returnedHistory?: boolean;
   stage?: string;
+  arrivalContext?: { date?: string; location?: string; status: string };
 }
 
 /**
@@ -51,6 +53,7 @@ export function CandidateDrawer({
   onClose,
   returnedHistory = false,
   stage: stageProp,
+  arrivalContext,
 }: CandidateDrawerProps) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as Record<string, unknown>;
@@ -100,7 +103,9 @@ export function CandidateDrawer({
     (search.stage as string | undefined) ??
     (stageProp ? String(stageProp) : undefined);
 
-  const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({});
+  const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>(
+    {},
+  );
 
   useEffect(() => {
     if (candidateStageParam !== undefined && candidateStageParam !== "") {
@@ -242,6 +247,29 @@ export function CandidateDrawer({
 
         {/* Scrollable Body */}
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          {arrivalContext && (
+            <div
+              role="note"
+              className="border-b border-[var(--border)] bg-[var(--muted)] px-4 py-3 text-xs sm:px-5"
+            >
+              <strong>
+                {arrivalContext.status === "CURRENT"
+                  ? "Выбранный заезд"
+                  : arrivalContext.status === "CANCELLED"
+                    ? "Отменённый заезд"
+                    : arrivalContext.status === "ISSUE"
+                      ? "Заезд с проблемой"
+                      : "Исторический заезд"}
+              </strong>
+              {arrivalContext.date && (
+                <> · {formatDateRu(arrivalContext.date)}</>
+              )}
+              {arrivalContext.location && <> · {arrivalContext.location}</>}
+              <p className="mt-1">
+                Документы и данные ниже показывают текущий профиль кандидата.
+              </p>
+            </div>
+          )}
           {/* Metadata Grid */}
           {!profile && !docs.isLoading && !docs.isError && (
             <p className="border-b border-[var(--border)] px-4 py-3 text-xs text-[var(--muted-foreground)] sm:px-5">
@@ -319,7 +347,7 @@ export function CandidateDrawer({
                           {profile.managerName ?? "Менеджер"}
                         </LkLink>
                       ) : (
-                        profile.managerName ?? "—"
+                        (profile.managerName ?? "—")
                       )}
                     </dd>
                   </div>
@@ -344,7 +372,7 @@ export function CandidateDrawer({
                             : ""}
                         </LkLink>
                       ) : (
-                        profile.mentorName ?? "—"
+                        (profile.mentorName ?? "—")
                       )}
                     </dd>
                   </div>

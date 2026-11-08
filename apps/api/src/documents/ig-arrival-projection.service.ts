@@ -111,6 +111,8 @@ export class IgArrivalProjectionService {
         for (const member of item.participations) {
           const data = {
             arrivalDate: member.arrivalDate,
+            arrivalDateTime: member.arrivalDateTime ?? null,
+            lastSeenRevision: revision,
             locationUid: member.locationUid,
             locationCode1c: member.locationCode1c,
             locationName: member.locationName,

@@ -1,777 +1,706 @@
-import { useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   useGetMe,
-  useListIgArrivalGroups,
-  useListIgArrivalPeople,
-  getListIgArrivalGroupsQueryKey,
-  getListIgArrivalPeopleQueryKey,
-  type IgArrivalGroupDto,
-  type IgArrivalPersonDtoPrimaryStatus,
+  useListIgArrivalRegistryGroups,
+  useListIgArrivalRegistryParticipations,
+  getListIgArrivalRegistryGroupsQueryKey,
+  getListIgArrivalRegistryParticipationsQueryKey,
+  useListIgArrivalRegistryLocations,
+  getListIgArrivalRegistryLocationsQueryKey,
 } from "@edo/api-client";
-import { Badge, Button, Card, CardContent, EmptyState } from "@edo/ui";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Building2,
-  CalendarDays,
-  CheckCircle2,
-  ChevronRight,
-  RefreshCw,
-  Search,
-  Users,
-} from "lucide-react";
+import { Badge, Button, EmptyState } from "@edo/ui";
+import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { SearchSelect } from "./SearchSelect";
 import { formatDateRu } from "../lib/date-format";
-import { candidateInitials } from "../lib/review-groups";
+import { parseIgRegistrySearch } from "../lib/ig-registry-search";
 
 export interface IgArrivalReviewQueueProps {
-  onSelectCandidate: (candidateId: string) => void;
+  onSelectCandidate: (candidateId: string, context: ArrivalContext) => void;
   className?: string;
 }
-
-const PRIMARY_STATUS_CONFIG: Record<
-  IgArrivalPersonDtoPrimaryStatus,
-  {
-    label: string;
-    tone: "default" | "purple" | "warning" | "danger" | "info" | "success";
-  }
-> = {
-  waitingDocuments: { label: "Ожидание документов", tone: "default" },
-  inReview: { label: "На проверке", tone: "purple" },
-  returned: { label: "Возвращён", tone: "danger" },
-  sending: { label: "Отправка в ERP", tone: "info" },
-  completed: { label: "Оформлен", tone: "success" },
+export type ArrivalContext = {
+  memberUid?: string;
+  date?: string;
+  location?: string;
+  status: string;
 };
-
-const ISSUE_CODE_LABELS: Record<string, string> = {
+const issueLabels: Record<string, string> = {
   ARRIVAL_SOURCE_CONFLICT: "Конфликт данных источника",
   ARRIVAL_GROUP_UNASSIGNED: "Не назначен заезд или объект",
   ERP_IG_REQUIREMENTS_CONFLICT: "Конфликт требований ERP",
   DOCUMENT_RETURNED: "Есть возвращённый документ",
   ERP_DELIVERY_NEEDS_ATTENTION: "Ошибка отправки в ERP",
 };
+const documentLabels: Record<string, string> = {
+  UNKNOWN: "Неизвестно",
+  NO_DOCUMENTS: "Нет документов",
+  IN_PROGRESS: "В работе",
+  RETURNED: "Возвращены",
+  APPROVED: "Подтверждены",
+};
+const erpLabels: Record<string, string> = {
+  UNKNOWN: "Неизвестно",
+  NOT_REQUIRED: "Не требуется",
+  PENDING: "Ожидает отправки",
+  NEEDS_ATTENTION: "Требует внимания",
+  CONFIRMED: "Подтверждена",
+};
+const oneCLabels: Record<string, string> = { UNKNOWN: "Неизвестно" };
+const employmentLabels: Record<string, string> = {
+  UNKNOWN: "Неизвестно",
+  IN_PROGRESS: "В работе",
+  DOCUMENTS_COMPLETED: "Документы завершены",
+};
+const participationLabels: Record<string, string> = {
+  CURRENT: "Текущий",
+  HISTORICAL: "Исторический",
+  CANCELLED: "Отменён",
+  ISSUE: "Требует внимания",
+};
+const inputClass =
+  "h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]";
+const headerClass =
+  "sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-left text-xs font-semibold";
+const cellClass = "border-b border-[var(--border)] px-3 py-2 align-top text-xs";
+const frozenClass = "sticky left-0 z-10 bg-[var(--background)]";
 
-function formatIssue(code: string | null | undefined): string {
-  if (!code) return "Требует внимания";
-  return ISSUE_CODE_LABELS[code] ?? code;
+type CommonParams = NonNullable<
+  Parameters<typeof useListIgArrivalRegistryGroups>[0]
+>;
+function arrayValue(value: unknown): string[] {
+  try {
+    const parsed: unknown = JSON.parse(
+      typeof value === "string" ? value : "[]",
+    );
+    return Array.isArray(parsed)
+      ? parsed.filter((v): v is string => typeof v === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
-
-const GROUP_PAGE_SIZE = 50;
-const PEOPLE_PAGE_SIZE = 50;
+function pageValue(value: unknown): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(
+      typeof value === "string" ? value : "{}",
+    );
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, string>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+function dateLabel(date: string) {
+  return date === "issues"
+    ? "Без распределения"
+    : date === "none"
+      ? "Дата не указана"
+      : formatDateRu(date);
+}
 
 export function IgArrivalReviewQueue({
   onSelectCandidate,
   className = "",
 }: IgArrivalReviewQueueProps) {
+  const client = useQueryClient();
   const profile = useGetMe();
-  const permissions = profile.data?.permissions ?? {};
-  const hasIgAccess = ["20011", "20009"].some((rule) =>
-    Object.prototype.hasOwnProperty.call(permissions, rule),
+  const allowed = ["20011", "20009"].some((rule) =>
+    Object.prototype.hasOwnProperty.call(profile.data?.permissions ?? {}, rule),
   );
-
-  // Group search & pagination
-  const [groupSearch, setGroupSearch] = useState("");
-  const [groupOffset, setGroupOffset] = useState(0);
-
-  // Selected group state
-  const [selectedGroup, setSelectedGroup] = useState<IgArrivalGroupDto | null>(
-    null,
-  );
-
-  // People search & pagination & status filter
-  const [peopleSearch, setPeopleSearch] = useState("");
-  const [peopleOffset, setPeopleOffset] = useState(0);
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-
-  const groupsParams = {
-    q: groupSearch.trim() || undefined,
-    limit: GROUP_PAGE_SIZE,
-    offset: groupOffset,
+  const raw = useSearch({ strict: false }) as Record<string, unknown>;
+  const search = parseIgRegistrySearch(raw);
+  const navigate = useNavigate();
+  const update = (patch: Record<string, unknown>, replace = false) =>
+    void navigate({
+      to: "/review-ig",
+      replace,
+      search: (previous: Record<string, unknown>) => {
+        const next = { ...previous };
+        for (const [key, value] of Object.entries(patch)) {
+          if (value === undefined || value === "") delete next[key];
+          else next[key] = value;
+        }
+        return next;
+      },
+    });
+  const changeFilters = (patch: Record<string, unknown>, replace = false) =>
+    update(
+      {
+        ...patch,
+        igCursor: undefined,
+        igGroups: undefined,
+        igDates: undefined,
+        igPages: undefined,
+      },
+      replace,
+    );
+  const [query, setQuery] = useState(String(search.igQ ?? ""));
+  useEffect(() => setQuery(String(search.igQ ?? "")), [search.igQ]);
+  useEffect(() => {
+    if (query.trim() === (search.igQ ?? "")) return;
+    const timer = window.setTimeout(
+      () => changeFilters({ igQ: query.trim() || undefined }, true),
+      350,
+    );
+    return () => window.clearTimeout(timer);
+  }, [query, search.igQ]);
+  const common: CommonParams = {
+    archive: search.igArchive === "archive" ? "archive" : "current",
+    q: search.igQ as string | undefined,
+    dateFrom: search.igDateFrom as string | undefined,
+    dateTo: search.igDateTo as string | undefined,
+    locationUid: search.igLocationUid as string | undefined,
+    documentStatus: search.igDocumentStatus as CommonParams["documentStatus"],
+    needsAttention: search.igNeedsAttention === true ? true : undefined,
+    limit: 50,
   };
-  const groupsQuery = useListIgArrivalGroups(groupsParams, {
+  const [locationQuery, setLocationQuery] = useState("");
+  const locationParams = {
+    archive: common.archive,
+    q: locationQuery.trim() || undefined,
+    limit: 50,
+  };
+  const locations = useListIgArrivalRegistryLocations(locationParams, {
     query: {
-      queryKey: getListIgArrivalGroupsQueryKey(groupsParams),
-      enabled: hasIgAccess,
+      queryKey: getListIgArrivalRegistryLocationsQueryKey(locationParams),
+      enabled: allowed,
     },
   });
-
-  const peopleParams = {
-    group: (selectedGroup?.group ?? "assigned") as "assigned" | "issues",
-    arrivalDate: selectedGroup?.arrivalDate ?? undefined,
-    locationUid: selectedGroup?.locationUid ?? undefined,
-    status: statusFilter === "ALL" ? undefined : (statusFilter as any),
-    q: peopleSearch.trim() || undefined,
-    limit: PEOPLE_PAGE_SIZE,
-    offset: peopleOffset,
+  const selectedLocationParams = {
+    archive: common.archive,
+    locationUid: common.locationUid,
+    limit: 1,
   };
-  const peopleQuery = useListIgArrivalPeople(peopleParams, {
+  const selectedLocation = useListIgArrivalRegistryLocations(
+    selectedLocationParams,
+    {
+      query: {
+        queryKey: getListIgArrivalRegistryLocationsQueryKey(
+          selectedLocationParams,
+        ),
+        enabled: allowed && Boolean(common.locationUid),
+      },
+    },
+  );
+  const invalidRange = Boolean(
+    common.dateFrom && common.dateTo && common.dateFrom > common.dateTo,
+  );
+  const groupParams = {
+    ...common,
+    cursor: search.igCursor as string | undefined,
+  };
+  const groups = useListIgArrivalRegistryGroups(groupParams, {
     query: {
-      queryKey: getListIgArrivalPeopleQueryKey(peopleParams),
-      enabled: hasIgAccess && Boolean(selectedGroup),
+      queryKey: getListIgArrivalRegistryGroupsQueryKey(groupParams),
+      enabled: allowed && !invalidRange,
     },
   });
-
-  const groups = groupsQuery.data?.items ?? [];
-  const assignedGroups = useMemo(
-    () => groups.filter((g) => g.group === "assigned"),
-    [groups],
-  );
-  const issueGroups = useMemo(
-    () => groups.filter((g) => g.group === "issues"),
-    [groups],
-  );
-
-  // Group assigned groups by arrivalDate
-  const groupedByDate = useMemo(() => {
-    const map = new Map<string, IgArrivalGroupDto[]>();
-    for (const group of assignedGroups) {
-      const key = group.arrivalDate ?? "UNSPECIFIED";
-      const list = map.get(key) ?? [];
-      list.push(group);
-      map.set(key, list);
+  const grouped = useMemo(() => {
+    const dates = new Map<string, NonNullable<typeof groups.data>["items"]>();
+    for (const group of groups.data?.items ?? []) {
+      const key =
+        group.group === "issues" ? "issues" : (group.arrivalDate ?? "none");
+      const existing = dates.get(key) ?? [];
+      existing.push(group);
+      dates.set(key, existing);
     }
-    return Array.from(map.entries());
-  }, [assignedGroups]);
-
-  // People returned from server (already filtered by status on backend)
-  const filteredPeople = peopleQuery.data?.items ?? [];
-
-  if (!hasIgAccess) {
+    return [...dates.entries()];
+  }, [groups.data]);
+  const openGroups = arrayValue(search.igGroups);
+  const pages = pageValue(search.igPages);
+  const openDates =
+    search.igDates === undefined
+      ? grouped.map(([date]) => date)
+      : arrayValue(search.igDates);
+  const toggle = (
+    key: "igGroups" | "igDates",
+    current: string[],
+    value: string,
+  ) =>
+    update({
+      [key]: JSON.stringify(
+        current.includes(value)
+          ? current.filter((v) => v !== value)
+          : [...current, value],
+      ),
+    });
+  if (profile.isLoading)
+    return (
+      <p role="status" className="py-4 text-sm">
+        Проверка доступа…
+      </p>
+    );
+  if (!allowed)
     return (
       <div
         role="alert"
-        className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-6 text-sm text-[var(--muted-foreground)]"
+        className="rounded-md border border-[var(--border)] p-4 text-sm"
       >
-        Нет доступа к проверке документов иностранных граждан. Требуется право
-        20011 (EDO_DOCUMENT_REVIEW_IG) или 20009.
+        Нет доступа к проверке документов иностранных граждан.
       </div>
     );
-  }
-
-  // View: Participants of selected group
-  if (selectedGroup) {
-    const isAssigned = selectedGroup.group === "assigned";
-    const groupTitle = isAssigned
-      ? selectedGroup.locationName || "Объект не указан"
-      : "Проблемные и нераспределённые записи";
-    const groupSubtitle = isAssigned && selectedGroup.arrivalDate
-      ? `Заезд от ${formatDateRu(selectedGroup.arrivalDate)}`
-      : "Записи с конфликтами источника или без заезда";
-
-    return (
-      <div className={`space-y-4 ${className}`}>
-        {/* Back navigation & group header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-4">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSelectedGroup(null);
-                setPeopleSearch("");
-                setPeopleOffset(0);
-                setStatusFilter("ALL");
-              }}
-              className="gap-1.5"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Ко всем заездам
-            </Button>
-            <div>
-              <h2 className="text-base font-semibold text-[var(--foreground)]">
-                {groupTitle}
-              </h2>
-              <p className="text-xs text-[var(--muted-foreground)]">
-                {groupSubtitle}
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void peopleQuery.refetch()}
-            disabled={peopleQuery.isFetching}
-            className="gap-1.5"
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${peopleQuery.isFetching ? "animate-spin" : ""}`}
-            />
-            Обновить
-          </Button>
-        </div>
-
-        {/* Selected group summary metric badges */}
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--muted)]/40 p-3 text-xs">
-          <Badge tone="default">Всего: {selectedGroup.total}</Badge>
-          <Badge tone="default">Ожидают: {selectedGroup.waitingDocuments}</Badge>
-          <Badge tone="purple">На проверке: {selectedGroup.inReview}</Badge>
-          <Badge tone="danger">Возвращены: {selectedGroup.returned}</Badge>
-          <Badge tone="success">Подтверждены: {selectedGroup.confirmed}</Badge>
-          <Badge tone="info">Отправка в ERP: {selectedGroup.sending}</Badge>
-          <Badge tone="success">Оформлены: {selectedGroup.completed}</Badge>
-          {selectedGroup.needsAttention > 0 && (
-            <Badge tone="warning" className="gap-1 font-semibold">
-              <AlertTriangle className="h-3 w-3" />
-              Внимание: {selectedGroup.needsAttention}
-            </Badge>
-          )}
-        </div>
-
-        {/* Search & Status filter controls */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="relative min-w-[240px] max-w-sm flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[var(--muted-foreground)]" />
-            <input
-              type="search"
-              placeholder="Поиск участников по ФИО или 1С…"
-              value={peopleSearch}
-              onChange={(e) => {
-                setPeopleSearch(e.target.value);
-                setPeopleOffset(0);
-              }}
-              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] py-1.5 pl-8 pr-3 text-xs text-[var(--foreground)] placeholder-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            {[
-              { id: "ALL", label: "Все" },
-              { id: "waitingDocuments", label: "Ожидают документов" },
-              { id: "inReview", label: "На проверке" },
-              { id: "returned", label: "Возвращены" },
-              { id: "sending", label: "Отправка в ERP" },
-              { id: "completed", label: "Оформлены" },
-              { id: "needsAttention", label: "Требуют внимания" },
-            ].map((tab) => (
-              <Button
-                key={tab.id}
-                size="sm"
-                variant={statusFilter === tab.id ? "default" : "outline"}
-                onClick={() => {
-                  setStatusFilter(tab.id);
-                  setPeopleOffset(0);
-                }}
-                className="text-xs"
-              >
-                {tab.label}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        {/* Loading state */}
-        {peopleQuery.isLoading && (
-          <div
-            role="status"
-            className="flex items-center justify-center p-12 text-sm text-[var(--muted-foreground)]"
-          >
-            <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
-            Загрузка участников заезда…
-          </div>
-        )}
-
-        {/* Error state */}
-        {peopleQuery.isError && (
-          <div
-            role="alert"
-            className="rounded-lg border border-[var(--danger)]/30 bg-[var(--danger)]/10 p-4 text-sm text-[var(--foreground)]"
-          >
-            <div className="flex items-center justify-between">
-              <span>Не удалось загрузить участников заезда.</span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void peopleQuery.refetch()}
-              >
-                Повторить
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!peopleQuery.isLoading &&
-          !peopleQuery.isError &&
-          filteredPeople.length === 0 && (
-            <EmptyState
-              title="Участники не найдены"
-              description={
-                peopleSearch || statusFilter !== "ALL"
-                  ? "По заданным условиям поиска или фильтра участников нет."
-                  : "В этой группе пока нет участников."
-              }
-              action={
-                peopleSearch || statusFilter !== "ALL" ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setPeopleSearch("");
-                      setStatusFilter("ALL");
-                      setPeopleOffset(0);
-                    }}
-                  >
-                    Сбросить фильтры
-                  </Button>
-                ) : undefined
-              }
-            />
-          )}
-
-        {/* Participants table */}
-        {!peopleQuery.isLoading &&
-          !peopleQuery.isError &&
-          filteredPeople.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--background)]">
-              <table className="w-full border-collapse text-left text-xs">
-                <thead>
-                  <tr className="border-b border-[var(--border)] bg-[var(--muted)]/50 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                    <th className="px-4 py-3">ФИО участника</th>
-                    <th className="px-3 py-3">Код 1С</th>
-                    <th className="px-3 py-3">Статус</th>
-                    <th className="px-3 py-3">Документы</th>
-                    <th className="px-3 py-3">Внимание / Проблема</th>
-                    <th className="px-4 py-3 text-right">Действие</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border)]">
-                  {filteredPeople.map((person) => {
-                    const statusConfig =
-                      PRIMARY_STATUS_CONFIG[person.primaryStatus] ?? {
-                        label: person.primaryStatus,
-                        tone: "default",
-                      };
-                    const initials = candidateInitials(person.fullName);
-                    const hasAttention =
-                      person.needsAttention || person.state === "CONFLICT";
-
-                    return (
-                      <tr
-                        key={person.personUid}
-                        className="transition-colors hover:bg-[var(--muted)]/40"
-                      >
-                        {/* Full name & avatar */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-[11px] font-semibold text-[var(--primary)]">
-                              {initials}
-                            </span>
-                            <div>
-                              <div className="font-medium text-[var(--foreground)]">
-                                {person.fullName?.trim() || "Без имени"}
-                              </div>
-                              {person.arrivalMemberUid && (
-                                <div className="text-[10px] text-[var(--muted-foreground)]">
-                                  UID: {person.arrivalMemberUid.slice(0, 8)}…
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* 1C code */}
-                        <td className="px-3 py-3 font-mono text-[11px] text-[var(--muted-foreground)]">
-                          {person.code1c || "—"}
-                        </td>
-
-                        {/* Primary status badge */}
-                        <td className="px-3 py-3">
-                          <Badge tone={statusConfig.tone}>
-                            {statusConfig.label}
-                          </Badge>
-                          {/* NOTE: Operator queue STRICTLY must NOT contain an upload button */}
-                        </td>
-
-                        {/* Documents progress */}
-                        <td className="px-3 py-3">
-                          <div className="space-y-0.5">
-                            <div className="text-[11px] text-[var(--foreground)]">
-                              Подтверждено: {person.confirmedDocuments} /{" "}
-                              {person.approvedDocuments} одобрено
-                            </div>
-                            {person.employmentConfirmed && (
-                              <div className="flex items-center gap-1 text-[10px] font-medium text-[var(--success)]">
-                                <CheckCircle2 className="h-3 w-3" />
-                                Трудоустройство подтверждено
-                              </div>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Attention / issue */}
-                        <td className="px-3 py-3">
-                          {hasAttention ? (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {person.state === "CONFLICT" && (
-                                <Badge tone="danger">Конфликт заезда</Badge>
-                              )}
-                              {person.issueCode && (
-                                <Badge
-                                  tone="warning"
-                                  className="gap-1 font-normal"
-                                >
-                                  <AlertTriangle className="h-3 w-3" />
-                                  {formatIssue(person.issueCode)}
-                                </Badge>
-                              )}
-                              {!person.issueCode && person.state !== "CONFLICT" && (
-                                <Badge
-                                  tone="warning"
-                                  className="gap-1 font-normal"
-                                >
-                                  <AlertTriangle className="h-3 w-3" />
-                                  Требует внимания
-                                </Badge>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-[11px] text-[var(--muted-foreground)]">
-                              —
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-4 py-3 text-right">
-                          {person.candidateId ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                onSelectCandidate(person.candidateId!)
-                              }
-                              className="gap-1 text-xs"
-                            >
-                              Карточка
-                              <ChevronRight className="h-3 w-3" />
-                            </Button>
-                          ) : (
-                            <span className="text-[11px] text-[var(--muted-foreground)]">
-                              Нет профиля
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-        {/* Pagination for people */}
-        {(peopleOffset > 0 || peopleQuery.data?.nextOffset != null) && (
-          <div className="flex items-center justify-between pt-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                setPeopleOffset((prev) => Math.max(0, prev - PEOPLE_PAGE_SIZE))
-              }
-              disabled={peopleOffset === 0 || peopleQuery.isFetching}
-            >
-              Предыдущая
-            </Button>
-            <span className="text-xs text-[var(--muted-foreground)]">
-              Показано с {peopleOffset + 1}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                if (peopleQuery.data?.nextOffset != null) {
-                  setPeopleOffset(peopleQuery.data.nextOffset);
-                }
-              }}
-              disabled={
-                peopleQuery.data?.nextOffset == null || peopleQuery.isFetching
-              }
-            >
-              Следующая
-            </Button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // View: List of arrival groups
   return (
-    <div className={`space-y-6 ${className}`}>
-      {/* Search & refresh bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative min-w-[260px] max-w-md flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[var(--muted-foreground)]" />
+    <div className={`space-y-3 ${className}`}>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex min-w-56 flex-1 flex-col gap-1 text-xs font-medium">
+          Поиск по ФИО или коду 1С
           <input
+            className={inputClass}
             type="search"
-            placeholder="Поиск заездов по ФИО участника или 1С…"
-            value={groupSearch}
-            onChange={(e) => {
-              setGroupSearch(e.target.value);
-              setGroupOffset(0);
-            }}
-            className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] py-1.5 pl-8 pr-3 text-xs text-[var(--foreground)] placeholder-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+            maxLength={128}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
           />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium">
+          Дата с
+          <input
+            className={inputClass}
+            type="date"
+            value={common.dateFrom ?? ""}
+            onChange={(e) => changeFilters({ igDateFrom: e.target.value })}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium">
+          Дата по
+          <input
+            className={inputClass}
+            type="date"
+            value={common.dateTo ?? ""}
+            onChange={(e) => changeFilters({ igDateTo: e.target.value })}
+          />
+        </label>
+        <div className="flex min-w-48 flex-col gap-1 text-xs font-medium">
+          <span>Объект</span>
+          <SearchSelect
+            label="Объект"
+            placeholder="Все объекты"
+            value={common.locationUid}
+            selectedLabel={
+              selectedLocation.data?.items[0]?.locationName ?? undefined
+            }
+            options={(locations.data?.items ?? []).map((item) => ({
+              value: item.locationUid,
+              label: item.locationName ?? "Без названия",
+            }))}
+            onSearchChange={setLocationQuery}
+            onChange={(value) => changeFilters({ igLocationUid: value })}
+            isLoading={locations.isLoading}
+            isError={locations.isError}
+            onRetry={() => void locations.refetch()}
+            emptyText="Объект не найден"
+          />
+          {locations.data?.nextCursor && (
+            <span className="text-[var(--muted-foreground)]">
+              Уточните название для поиска остальных объектов.
+            </span>
+          )}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void groupsQuery.refetch()}
-          disabled={groupsQuery.isFetching}
-          className="gap-1.5"
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${groupsQuery.isFetching ? "animate-spin" : ""}`}
+        <label className="flex flex-col gap-1 text-xs font-medium">
+          Документы
+          <select
+            className={inputClass}
+            value={common.documentStatus ?? ""}
+            onChange={(e) =>
+              changeFilters({ igDocumentStatus: e.target.value })
+            }
+          >
+            <option value="">Все</option>
+            {Object.entries(documentLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex h-9 items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={common.needsAttention === true}
+            onChange={(e) =>
+              changeFilters({ igNeedsAttention: e.target.checked || undefined })
+            }
           />
-          Обновить
+          Требуют внимания
+        </label>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={groups.isFetching}
+          onClick={() => {
+            void groups.refetch();
+            void client.invalidateQueries({
+              queryKey: getListIgArrivalRegistryParticipationsQueryKey({
+                groupKey: "",
+              }).slice(0, 1),
+            });
+          }}
+        >
+          <RefreshCw size={14} /> Обновить
         </Button>
       </div>
-
-      {/* Loading state for groups */}
-      {groupsQuery.isLoading && (
-        <div
-          role="status"
-          className="flex items-center justify-center p-12 text-sm text-[var(--muted-foreground)]"
-        >
-          <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
-          Загрузка списочных заездов…
-        </div>
-      )}
-
-      {/* Error state for groups */}
-      {groupsQuery.isError && (
-        <div
-          role="alert"
-          className="rounded-lg border border-[var(--danger)]/30 bg-[var(--danger)]/10 p-4 text-sm text-[var(--foreground)]"
-        >
-          <div className="flex items-center justify-between">
-            <span>Не удалось загрузить списки заездов.</span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void groupsQuery.refetch()}
-            >
-              Повторить
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!groupsQuery.isLoading && !groupsQuery.isError && groups.length === 0 && (
-        <EmptyState
-          title="Заезды не найдены"
-          description={
-            groupSearch
-              ? "По вашему запросу заезды не найдены. Попробуйте изменить строку поиска."
-              : "На текущий момент нет активных заездов иностранных граждан."
-          }
-          action={
-            groupSearch ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setGroupSearch("")}
-              >
-                Сбросить поиск
-              </Button>
-            ) : undefined
-          }
-        />
-      )}
-
-      {/* Issues Section: groups with group === "issues" */}
-      {issueGroups.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-[var(--warning)]" />
-            <h2 className="text-sm font-semibold text-[var(--foreground)]">
-              Проблемные и нераспределённые записи ({issueGroups.length})
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {issueGroups.map((issueGroup, idx) => (
-              <Card
-                key={`issue-${idx}`}
-                className="border-[var(--warning)]/40 bg-[var(--warning)]/5 transition-shadow hover:shadow-md"
-              >
-                <CardContent className="space-y-3 p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h3 className="text-sm font-semibold text-[var(--foreground)]">
-                        Конфликты и ошибки данных
-                      </h3>
-                      <p className="text-xs text-[var(--muted-foreground)]">
-                        Не назначен заезд, объект или конфликт источника
-                      </p>
-                    </div>
-                    <Badge tone="danger">Проблемы</Badge>
-                  </div>
-
-                  {/* Counters */}
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded bg-[var(--background)] p-2">
-                      <div className="text-[10px] text-[var(--muted-foreground)]">
-                        Всего записей
-                      </div>
-                      <div className="text-base font-bold text-[var(--foreground)]">
-                        {issueGroup.total}
-                      </div>
-                    </div>
-                    <div className="rounded bg-[var(--background)] p-2">
-                      <div className="text-[10px] text-[var(--danger)]">
-                        Требуют внимания
-                      </div>
-                      <div className="text-base font-bold text-[var(--danger)]">
-                        {issueGroup.needsAttention}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1 text-[11px]">
-                    <Badge tone="default">Ожидают: {issueGroup.waitingDocuments}</Badge>
-                    <Badge tone="purple">Проверка: {issueGroup.inReview}</Badge>
-                    <Badge tone="danger">Возврат: {issueGroup.returned}</Badge>
-                  </div>
-
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setSelectedGroup(issueGroup);
-                      setPeopleOffset(0);
-                      setPeopleSearch("");
-                      setStatusFilter("ALL");
-                    }}
-                    className="w-full gap-1.5 text-xs"
-                  >
-                    Открыть проблемный список ({issueGroup.total})
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Assigned Groups Section: grouped by arrivalDate */}
-      {groupedByDate.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-[var(--primary)]" />
-            <h2 className="text-sm font-semibold text-[var(--foreground)]">
-              Заезды по датам и объектам
-            </h2>
-          </div>
-
-          {groupedByDate.map(([dateKey, locationGroups]) => (
-            <div key={dateKey} className="space-y-3">
-              <div className="flex items-center gap-2 border-b border-[var(--border)] pb-1.5">
-                <CalendarDays className="h-4 w-4 text-[var(--muted-foreground)]" />
-                <span className="text-xs font-semibold text-[var(--foreground)]">
-                  {dateKey === "UNSPECIFIED"
-                    ? "Дата не указана"
-                    : `Заезд: ${formatDateRu(dateKey)}`}
-                </span>
-                <Badge tone="default" className="text-[10px]">
-                  Объектов: {locationGroups.length}
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {locationGroups.map((group, gIdx) => (
-                  <Card
-                    key={`${dateKey}-${group.locationUid ?? gIdx}`}
-                    className="transition-shadow hover:shadow-md"
-                  >
-                    <CardContent className="space-y-3 p-4">
-                      {/* Object title */}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-start gap-2">
-                          <Building2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--muted-foreground)]" />
-                          <div>
-                            <h3 className="text-sm font-semibold text-[var(--foreground)]">
-                              {group.locationName || "Объект не указан"}
-                            </h3>
-                            <p className="text-[11px] text-[var(--muted-foreground)]">
-                              Всего человек: {group.total}
-                            </p>
-                          </div>
-                        </div>
-                        {group.needsAttention > 0 && (
-                          <Badge tone="warning" className="gap-1 text-[10px]">
-                            <AlertTriangle className="h-3 w-3" />
-                            {group.needsAttention}
-                          </Badge>
-                        )}
-                      </div>
-
-                      {/* Counters breakdown */}
-                      <div className="flex flex-wrap gap-1 text-[11px]">
-                        <Badge tone="default">Ожидают: {group.waitingDocuments}</Badge>
-                        <Badge tone="purple">На проверке: {group.inReview}</Badge>
-                        <Badge tone="danger">Возвращены: {group.returned}</Badge>
-                        <Badge tone="success">Подтверждены: {group.confirmed}</Badge>
-                        <Badge tone="info">Отправка в ERP: {group.sending}</Badge>
-                        <Badge tone="success">Оформлены: {group.completed}</Badge>
-                      </div>
-
-                      {/* Select group button */}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedGroup(group);
-                          setPeopleOffset(0);
-                          setPeopleSearch("");
-                          setStatusFilter("ALL");
-                        }}
-                        className="w-full gap-1.5 text-xs"
-                      >
-                        Список участников ({group.total})
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Pagination for groups */}
-      {(groupOffset > 0 || groupsQuery.data?.nextOffset != null) && (
-        <div className="flex items-center justify-between pt-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-1" aria-label="Период реестра">
           <Button
             size="sm"
-            variant="outline"
-            onClick={() =>
-              setGroupOffset((prev) => Math.max(0, prev - GROUP_PAGE_SIZE))
-            }
-            disabled={groupOffset === 0 || groupsQuery.isFetching}
+            variant={common.archive === "current" ? "default" : "outline"}
+            onClick={() => changeFilters({ igArchive: undefined })}
           >
-            Предыдущие заезды
+            Текущие
           </Button>
-          <span className="text-xs text-[var(--muted-foreground)]">
-            Показано с {groupOffset + 1}
-          </span>
+          <Button
+            size="sm"
+            variant={common.archive === "archive" ? "default" : "outline"}
+            onClick={() => changeFilters({ igArchive: "archive" })}
+          >
+            Архив
+          </Button>
+        </div>
+        <p className="text-xs text-[var(--muted-foreground)]">
+          {groups.data?.sync.lastCompletedAt
+            ? `Последний завершённый проход: ${new Date(groups.data.sync.lastCompletedAt).toLocaleString("ru-RU")}; актуальность отдельных записей не подтверждена`
+            : "Последний завершённый проход отсутствует; актуальность отдельных записей не подтверждена"}
+        </p>
+      </div>
+      {groups.isError && groups.data && (
+        <div role="alert" className="text-sm">
+          Не удалось обновить реестр; показаны сохранённые данные.{" "}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void groups.refetch()}
+          >
+            Повторить
+          </Button>
+        </div>
+      )}
+      {invalidRange ? (
+        <p role="alert" className="text-sm">
+          Начало периода должно быть не позже конца.
+        </p>
+      ) : groups.isLoading ? (
+        <p role="status" className="py-4 text-sm">
+          Загрузка реестра…
+        </p>
+      ) : groups.isError && !groups.data ? (
+        <div role="alert" className="text-sm">
+          Не удалось загрузить реестр.{" "}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void groups.refetch()}
+          >
+            Повторить
+          </Button>
+        </div>
+      ) : !grouped.length ? (
+        <EmptyState
+          title="Участники не найдены"
+          description="Измените фильтры или выберите другой период."
+        />
+      ) : (
+        <div className="max-h-[70vh] overflow-auto rounded-md border border-[var(--border)]">
+          <table className="w-full min-w-[980px] border-collapse text-left">
+            <thead>
+              <tr>
+                <th className={`${headerClass} left-0 z-30 min-w-64`}>
+                  Дата / объект / участник
+                </th>
+                <th className={headerClass}>Код 1С</th>
+                <th className={headerClass}>Участие</th>
+                <th className={headerClass}>Документы</th>
+                <th className={headerClass}>Доставка ERP</th>
+                <th className={headerClass}>Завершение в ЭДО</th>
+                <th className={headerClass}>Кадры 1С</th>
+                <th className={headerClass}>Внимание</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grouped.map(([date, items]) => (
+                <Fragment key={date}>
+                  <tr className="bg-[var(--muted)]">
+                    <th
+                      colSpan={8}
+                      scope="rowgroup"
+                      className="border-b border-[var(--border)] p-0 text-left"
+                    >
+                      <button
+                        className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+                        aria-expanded={openDates.includes(date)}
+                        onClick={() => toggle("igDates", openDates, date)}
+                      >
+                        {openDates.includes(date) ? (
+                          <ChevronDown size={15} />
+                        ) : (
+                          <ChevronRight size={15} />
+                        )}
+                        {dateLabel(date)}
+                      </button>
+                    </th>
+                  </tr>
+                  {openDates.includes(date) &&
+                    items.map((group) => (
+                      <Fragment key={group.groupKey}>
+                        <tr>
+                          <th
+                            colSpan={8}
+                            scope="rowgroup"
+                            className="border-b border-[var(--border)] bg-[var(--background)] p-0 text-left"
+                          >
+                            <button
+                              className="flex w-full flex-wrap items-center gap-2 py-2 pl-8 pr-3 text-sm font-medium hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+                              aria-expanded={openGroups.includes(
+                                group.groupKey,
+                              )}
+                              onClick={() =>
+                                toggle("igGroups", openGroups, group.groupKey)
+                              }
+                            >
+                              {openGroups.includes(group.groupKey) ? (
+                                <ChevronDown size={15} />
+                              ) : (
+                                <ChevronRight size={15} />
+                              )}
+                              {group.locationName ||
+                                (group.group === "issues"
+                                  ? "Проблемные записи"
+                                  : "Объект не указан")}{" "}
+                              <span className="text-xs font-normal text-[var(--muted-foreground)]">
+                                {group.participationCount ===
+                                group.totalParticipationCount
+                                  ? `${group.participationCount} участников`
+                                  : `${group.participationCount} из ${group.totalParticipationCount} участников`}
+                                {group.needsAttentionCount
+                                  ? ` · требуют внимания: ${group.needsAttentionCount}`
+                                  : ""}
+                              </span>
+                            </button>
+                          </th>
+                        </tr>
+                        {openGroups.includes(group.groupKey) && (
+                          <ParticipationRows
+                            groupKey={group.groupKey}
+                            common={common}
+                            cursor={pages[group.groupKey]}
+                            onPage={(cursor) =>
+                              update({
+                                igPages: JSON.stringify({
+                                  ...pages,
+                                  [group.groupKey]: cursor,
+                                }),
+                              })
+                            }
+                            onSelectCandidate={onSelectCandidate}
+                          />
+                        )}
+                      </Fragment>
+                    ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {(search.igCursor || groups.data?.nextCursor) && (
+        <div className="flex gap-2">
           <Button
             size="sm"
             variant="outline"
-            onClick={() => {
-              if (groupsQuery.data?.nextOffset != null) {
-                setGroupOffset(groupsQuery.data.nextOffset);
-              }
-            }}
-            disabled={
-              groupsQuery.data?.nextOffset == null || groupsQuery.isFetching
+            disabled={!search.igCursor}
+            onClick={() =>
+              update({
+                igCursor: undefined,
+                igGroups: undefined,
+                igPages: undefined,
+              })
             }
           >
-            Следующие заезды
+            В начало
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!groups.data?.nextCursor}
+            onClick={() =>
+              update({
+                igCursor: groups.data?.nextCursor,
+                igGroups: undefined,
+                igPages: undefined,
+              })
+            }
+          >
+            Следующие объекты
           </Button>
         </div>
       )}
     </div>
+  );
+}
+
+function ParticipationRows({
+  groupKey,
+  common,
+  cursor,
+  onPage,
+  onSelectCandidate,
+}: {
+  groupKey: string;
+  common: CommonParams;
+  cursor?: string;
+  onPage: (cursor: string) => void;
+  onSelectCandidate: (id: string, context: ArrivalContext) => void;
+}) {
+  const people = useListIgArrivalRegistryParticipations({
+    ...common,
+    groupKey,
+    cursor,
+  });
+  if (people.isLoading)
+    return (
+      <tr>
+        <td colSpan={8} className={cellClass} role="status">
+          Загрузка участников…
+        </td>
+      </tr>
+    );
+  if (people.isError && !people.data)
+    return (
+      <tr>
+        <td colSpan={8} className={cellClass} role="alert">
+          Не удалось загрузить участников.{" "}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void people.refetch()}
+          >
+            Повторить
+          </Button>
+        </td>
+      </tr>
+    );
+  return (
+    <>
+      {people.isError && people.data && (
+        <tr>
+          <td colSpan={8} className={cellClass} role="alert">
+            Не удалось обновить участников; показаны сохранённые данные.{" "}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void people.refetch()}
+            >
+              Повторить
+            </Button>
+          </td>
+        </tr>
+      )}
+      {people.data?.items.map((person) => (
+        <tr
+          key={person.arrivalMemberUid ?? person.personUid}
+          className="hover:bg-[var(--muted)]/40"
+        >
+          <th
+            scope="row"
+            className={`${cellClass} ${frozenClass} pl-14 text-left font-medium`}
+          >
+            {person.candidateId ? (
+              <button
+                className="text-left underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+                onClick={() =>
+                  onSelectCandidate(person.candidateId!, {
+                    memberUid: person.arrivalMemberUid ?? undefined,
+                    date: person.arrivalDate ?? undefined,
+                    location: person.locationName ?? undefined,
+                    status: person.participationStatus,
+                  })
+                }
+              >
+                {person.fullName || "Без имени"}
+              </button>
+            ) : (
+              <>
+                {person.fullName || "Без имени"}
+                <span className="block font-normal text-[var(--muted-foreground)]">
+                  Нет связанного профиля. Обратитесь к ответственному за
+                  привязку кандидатов.
+                </span>
+              </>
+            )}
+            {person.arrivalDateTime && (
+              <span className="block font-normal text-[var(--muted-foreground)]">
+                {formatDateRu(person.arrivalDateTime.slice(0, 10))} ·{" "}
+                {person.arrivalDateTime.slice(11, 16)}
+              </span>
+            )}
+          </th>
+          <td className={cellClass}>{person.code1c || "—"}</td>
+          <td className={cellClass}>
+            {participationLabels[person.participationStatus] ??
+              person.participationStatus}
+            {person.participationStatus !== "CURRENT" && (
+              <span className="block text-[var(--muted-foreground)]">
+                Статусы текущего профиля
+              </span>
+            )}
+          </td>
+          <td className={cellClass}>
+            <Badge
+              tone={person.documentStatus === "RETURNED" ? "danger" : "default"}
+            >
+              {documentLabels[person.documentStatus] ?? person.documentStatus}
+            </Badge>
+          </td>
+          <td className={cellClass}>
+            {erpLabels[person.erpDeliveryStatus] ?? person.erpDeliveryStatus}
+          </td>
+          <td className={cellClass}>
+            {employmentLabels[person.employmentStatus] ??
+              person.employmentStatus}
+          </td>
+          <td className={cellClass}>{oneCLabels[person.oneCEmploymentStatus] ?? "Неизвестно"}</td>
+          <td className={cellClass}>
+            {person.needsAttention
+              ? person.issueCodes
+                  .map((code) => issueLabels[code] ?? "Требует уточнения")
+                  .join(", ") || "Требует внимания"
+              : "—"}
+          </td>
+        </tr>
+      ))}
+      {!people.data?.items.length && (
+        <tr>
+          <td colSpan={8} className={cellClass}>
+            Нет участников по выбранным фильтрам.
+          </td>
+        </tr>
+      )}
+      {(cursor || people.data?.nextCursor) && (
+        <tr>
+          <td colSpan={8} className={cellClass}>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!cursor}
+                onClick={() => onPage("")}
+              >
+                В начало
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!people.data?.nextCursor}
+                onClick={() => onPage(people.data!.nextCursor!)}
+              >
+                Следующие участники
+              </Button>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }

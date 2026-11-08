@@ -1,3 +1,12 @@
+import { IgArrivalRegistryService } from "./ig-arrival-registry.service";
+import {
+  IgArrivalRegistryQueryDto,
+  IgArrivalRegistryParticipationsQueryDto,
+  IgArrivalRegistryGroupsDto,
+  IgArrivalRegistryParticipationsDto,
+  IgArrivalRegistryLocationsQueryDto,
+  IgArrivalRegistryLocationsDto,
+} from "./dto/ig-arrival-registry.dto";
 import { IgArrivalQueueService } from "./ig-arrival-queue.service";
 import {
   IgArrivalGroupsDto,
@@ -279,7 +288,47 @@ export class ManualDocumentReviewController {
     private readonly delivery: DocumentDeliveryService,
     private readonly events: DocumentEventsService,
     private readonly arrivals: IgArrivalQueueService,
+    private readonly arrivalRegistry: IgArrivalRegistryService,
   ) {}
+  @Get("candidate-review-queue/ig-arrivals/locations")
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_IG)
+  @ApiOperation({
+    operationId: "listIgArrivalRegistryLocations",
+    summary: "Search IG arrival registry locations",
+  })
+  @ApiResponse({ status: 200, type: IgArrivalRegistryLocationsDto })
+  registryLocations(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Query() query: IgArrivalRegistryLocationsQueryDto,
+  ): Promise<IgArrivalRegistryLocationsDto> {
+    return this.arrivalRegistry.locations(principal, query);
+  }
+  @Get("candidate-review-queue/ig-arrivals/groups")
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_IG)
+  @ApiOperation({
+    operationId: "listIgArrivalRegistryGroups",
+    summary: "IG arrival registry groups",
+  })
+  @ApiResponse({ status: 200, type: IgArrivalRegistryGroupsDto })
+  registryGroups(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Query() query: IgArrivalRegistryQueryDto,
+  ): Promise<IgArrivalRegistryGroupsDto> {
+    return this.arrivalRegistry.groups(principal, query);
+  }
+  @Get("candidate-review-queue/ig-arrivals/participations")
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_IG)
+  @ApiOperation({
+    operationId: "listIgArrivalRegistryParticipations",
+    summary: "IG arrival registry participations",
+  })
+  @ApiResponse({ status: 200, type: IgArrivalRegistryParticipationsDto })
+  registryParticipations(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Query() query: IgArrivalRegistryParticipationsQueryDto,
+  ): Promise<IgArrivalRegistryParticipationsDto> {
+    return this.arrivalRegistry.participations(principal, query);
+  }
   @Get("candidate-review-queue/ig-arrival-groups")
   @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_IG)
   @ApiOperation({

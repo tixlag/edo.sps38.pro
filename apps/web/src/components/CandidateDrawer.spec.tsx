@@ -43,6 +43,7 @@ const doc = (id: string, title: string, returnedVersions: unknown[] = []) => ({
 async function render(
   returnedHistory = false,
   stage: string | undefined = "1",
+  arrivalContext?: { date?: string; location?: string; status: string },
 ) {
   container = document.createElement("div");
   document.body.append(container);
@@ -54,6 +55,7 @@ async function render(
         stage={stage}
         profile={null}
         returnedHistory={returnedHistory}
+        arrivalContext={arrivalContext}
         onClose={() => {}}
       />,
     ),
@@ -61,6 +63,17 @@ async function render(
   return container;
 }
 describe("stage candidate drawer", () => {
+  it("identifies the selected historic arrival while showing the current profile", async () => {
+    const view = await render(false, "1", {
+      date: "2026-11-10",
+      location: "Склад",
+      status: "HISTORICAL",
+    });
+    expect(view.textContent).toContain("Исторический заезд");
+    expect(view.textContent).toContain("10.11.2026");
+    expect(view.textContent).toContain("Склад");
+    expect(view.textContent).toContain("текущий профиль");
+  });
   it("shows ERP history for an IG candidate even within a stage", async () => {
     mock.data = {
       candidate: {
