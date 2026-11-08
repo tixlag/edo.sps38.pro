@@ -1395,6 +1395,51 @@ export interface IgArrivalRegistryGroupsDto {
   sync: IgArrivalRegistrySyncDto;
 }
 
+export type IgArrivalRequirementsDtoNextAction =
+  (typeof IgArrivalRequirementsDtoNextAction)[keyof typeof IgArrivalRequirementsDtoNextAction];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRequirementsDtoNextAction = {
+  REVIEW: "REVIEW",
+  RETURNED: "RETURNED",
+  ATTENTION: "ATTENTION",
+  PROCESSING: "PROCESSING",
+  MISSING: "MISSING",
+  COMPLETE: "COMPLETE",
+  UNKNOWN: "UNKNOWN",
+} as const;
+
+export interface IgArrivalRequirementsDto {
+  known: boolean;
+  /** @nullable */
+  required: number | null;
+  /** @nullable */
+  present: number | null;
+  /** @nullable */
+  accepted: number | null;
+  /** @nullable */
+  review: number | null;
+  /** @nullable */
+  returned: number | null;
+  /** @nullable */
+  missing: number | null;
+  /** @nullable */
+  processing: number | null;
+  /** @nullable */
+  completed: boolean | null;
+  nextAction: IgArrivalRequirementsDtoNextAction;
+}
+
+export type IgArrivalRegistryParticipationDtoAction =
+  (typeof IgArrivalRegistryParticipationDtoAction)[keyof typeof IgArrivalRegistryParticipationDtoAction];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRegistryParticipationDtoAction = {
+  REVIEW: "REVIEW",
+  OPEN_CARD: "OPEN_CARD",
+  NONE: "NONE",
+} as const;
+
 export type IgArrivalRegistryParticipationDtoParticipationStatus =
   (typeof IgArrivalRegistryParticipationDtoParticipationStatus)[keyof typeof IgArrivalRegistryParticipationDtoParticipationStatus];
 
@@ -1471,6 +1516,10 @@ export interface IgArrivalRegistryParticipationDto {
   arrivalMemberUid: string | null;
   personUid: string;
   code1c: string;
+  requirements: IgArrivalRequirementsDto;
+  reviewAvailable: number;
+  deliveryNeedsAttention: boolean;
+  action: IgArrivalRegistryParticipationDtoAction;
   /** @nullable */
   candidateId: string | null;
   /** @nullable */
@@ -2901,6 +2950,7 @@ export type ListIgArrivalRegistryGroupsParams = {
   locationUid?: string;
   q?: string;
   documentStatus?: ListIgArrivalRegistryGroupsDocumentStatus;
+  requirementsAction?: ListIgArrivalRegistryGroupsRequirementsAction;
   needsAttention?: boolean;
   limit?: number;
   cursor?: string;
@@ -2927,6 +2977,20 @@ export const ListIgArrivalRegistryGroupsDocumentStatus = {
   APPROVED: "APPROVED",
 } as const;
 
+export type ListIgArrivalRegistryGroupsRequirementsAction =
+  (typeof ListIgArrivalRegistryGroupsRequirementsAction)[keyof typeof ListIgArrivalRegistryGroupsRequirementsAction];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryGroupsRequirementsAction = {
+  REVIEW: "REVIEW",
+  RETURNED: "RETURNED",
+  ATTENTION: "ATTENTION",
+  PROCESSING: "PROCESSING",
+  MISSING: "MISSING",
+  COMPLETE: "COMPLETE",
+  UNKNOWN: "UNKNOWN",
+} as const;
+
 export type ListIgArrivalRegistryParticipationsParams = {
   archive?: ListIgArrivalRegistryParticipationsArchive;
   dateFrom?: string;
@@ -2934,6 +2998,7 @@ export type ListIgArrivalRegistryParticipationsParams = {
   locationUid?: string;
   q?: string;
   documentStatus?: ListIgArrivalRegistryParticipationsDocumentStatus;
+  requirementsAction?: ListIgArrivalRegistryParticipationsRequirementsAction;
   needsAttention?: boolean;
   limit?: number;
   cursor?: string;
@@ -2959,6 +3024,20 @@ export const ListIgArrivalRegistryParticipationsDocumentStatus = {
   IN_PROGRESS: "IN_PROGRESS",
   RETURNED: "RETURNED",
   APPROVED: "APPROVED",
+} as const;
+
+export type ListIgArrivalRegistryParticipationsRequirementsAction =
+  (typeof ListIgArrivalRegistryParticipationsRequirementsAction)[keyof typeof ListIgArrivalRegistryParticipationsRequirementsAction];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryParticipationsRequirementsAction = {
+  REVIEW: "REVIEW",
+  RETURNED: "RETURNED",
+  ATTENTION: "ATTENTION",
+  PROCESSING: "PROCESSING",
+  MISSING: "MISSING",
+  COMPLETE: "COMPLETE",
+  UNKNOWN: "UNKNOWN",
 } as const;
 
 export type ListIgArrivalGroupsParams = {

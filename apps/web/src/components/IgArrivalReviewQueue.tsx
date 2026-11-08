@@ -26,44 +26,20 @@ export type ArrivalContext = {
   location?: string;
   status: string;
 };
-const issueLabels: Record<string, string> = {
-  ARRIVAL_SOURCE_CONFLICT: "Конфликт данных источника",
-  ARRIVAL_GROUP_UNASSIGNED: "Не назначен заезд или объект",
-  ERP_IG_REQUIREMENTS_CONFLICT: "Конфликт требований ERP",
-  DOCUMENT_RETURNED: "Есть возвращённый документ",
-  ERP_DELIVERY_NEEDS_ATTENTION: "Ошибка отправки в ERP",
-};
-const documentLabels: Record<string, string> = {
-  UNKNOWN: "Неизвестно",
-  NO_DOCUMENTS: "Нет документов",
-  IN_PROGRESS: "В работе",
-  RETURNED: "Возвращены",
-  APPROVED: "Подтверждены",
-};
-const erpLabels: Record<string, string> = {
-  UNKNOWN: "Неизвестно",
-  NOT_REQUIRED: "Не требуется",
-  PENDING: "Ожидает отправки",
-  NEEDS_ATTENTION: "Требует внимания",
-  CONFIRMED: "Подтверждена",
-};
-const oneCLabels: Record<string, string> = { UNKNOWN: "Неизвестно" };
-const employmentLabels: Record<string, string> = {
-  UNKNOWN: "Неизвестно",
-  IN_PROGRESS: "В работе",
-  DOCUMENTS_COMPLETED: "Документы завершены",
-};
-const participationLabels: Record<string, string> = {
-  CURRENT: "Текущий",
-  HISTORICAL: "Исторический",
-  CANCELLED: "Отменён",
-  ISSUE: "Требует внимания",
+const requirementLabels: Record<string, string> = {
+  REVIEW: "Проверить документы",
+  RETURNED: "Ожидается исправление",
+  ATTENTION: "Требует уточнения",
+  PROCESSING: "Документы обрабатываются",
+  MISSING: "Ожидаются документы",
+  COMPLETE: "Все обязательные документы приняты",
+  UNKNOWN: "Уточнить комплект",
 };
 const inputClass =
   "h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]";
 const headerClass =
-  "sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-left text-xs font-semibold";
-const cellClass = "border-b border-[var(--border)] px-3 py-2 align-top text-xs";
+  "sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-left text-sm font-semibold";
+const cellClass = "border-b border-[var(--border)] px-3 py-2 align-top text-sm";
 const frozenClass = "sticky left-0 z-10 bg-[var(--background)]";
 
 type CommonParams = NonNullable<
@@ -92,6 +68,32 @@ function pageValue(value: unknown): Record<string, string> {
   } catch {
     return {};
   }
+}
+function stackMap(value: unknown): Record<string, string[]> {
+  try {
+    return JSON.parse(typeof value === "string" ? value : "{}");
+  } catch {
+    return {};
+  }
+}
+function documentCount(count: number) {
+  const n = count % 100;
+  const word =
+    n >= 11 && n <= 14
+      ? "документов"
+      : n % 10 === 1
+        ? "документ"
+        : n % 10 >= 2 && n % 10 <= 4
+          ? "документа"
+          : "документов";
+  return `${count} ${word}`;
+}
+function archivePeriod() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
+  const day = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { igDateFrom: day(start), igDateTo: day(now), igPeriod: "custom" };
 }
 function dateLabel(date: string) {
   return date === "issues"
@@ -134,6 +136,8 @@ export function IgArrivalReviewQueue({
         igGroups: undefined,
         igDates: undefined,
         igPages: undefined,
+        igGroupStack: undefined,
+        igPageStacks: undefined,
       },
       replace,
     );
@@ -147,13 +151,29 @@ export function IgArrivalReviewQueue({
     );
     return () => window.clearTimeout(timer);
   }, [query, search.igQ]);
+  const defaultArchive =
+    search.igArchive === "archive" &&
+    !search.igPeriod &&
+    !search.igDateFrom &&
+    !search.igDateTo;
+  const archiveDefaults = useMemo(archivePeriod, []);
+  useEffect(() => {
+    if (defaultArchive) changeFilters(archiveDefaults, true);
+  }, [defaultArchive]);
   const common: CommonParams = {
     archive: search.igArchive === "archive" ? "archive" : "current",
     q: search.igQ as string | undefined,
-    dateFrom: search.igDateFrom as string | undefined,
-    dateTo: search.igDateTo as string | undefined,
+    dateFrom: (search.igDateFrom ??
+      (defaultArchive ? archiveDefaults.igDateFrom : undefined)) as
+      | string
+      | undefined,
+    dateTo: (search.igDateTo ??
+      (defaultArchive ? archiveDefaults.igDateTo : undefined)) as
+      | string
+      | undefined,
     locationUid: search.igLocationUid as string | undefined,
-    documentStatus: search.igDocumentStatus as CommonParams["documentStatus"],
+    requirementsAction:
+      search.igRequirementsAction as CommonParams["requirementsAction"],
     needsAttention: search.igNeedsAttention === true ? true : undefined,
     limit: 50,
   };
@@ -190,7 +210,9 @@ export function IgArrivalReviewQueue({
   );
   const groupParams = {
     ...common,
-    cursor: search.igCursor as string | undefined,
+    cursor: defaultArchive
+      ? undefined
+      : (search.igCursor as string | undefined),
   };
   const groups = useListIgArrivalRegistryGroups(groupParams, {
     query: {
@@ -209,8 +231,10 @@ export function IgArrivalReviewQueue({
     }
     return [...dates.entries()];
   }, [groups.data]);
-  const openGroups = arrayValue(search.igGroups);
+  const openGroups = defaultArchive ? [] : arrayValue(search.igGroups);
   const pages = pageValue(search.igPages);
+  const groupStack = arrayValue(search.igGroupStack);
+  const pageStacks = stackMap(search.igPageStacks);
   const openDates =
     search.igDates === undefined
       ? grouped.map(([date]) => date)
@@ -261,7 +285,9 @@ export function IgArrivalReviewQueue({
             className={inputClass}
             type="date"
             value={common.dateFrom ?? ""}
-            onChange={(e) => changeFilters({ igDateFrom: e.target.value })}
+            onChange={(e) =>
+              changeFilters({ igDateFrom: e.target.value, igPeriod: "custom" })
+            }
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium">
@@ -270,7 +296,9 @@ export function IgArrivalReviewQueue({
             className={inputClass}
             type="date"
             value={common.dateTo ?? ""}
-            onChange={(e) => changeFilters({ igDateTo: e.target.value })}
+            onChange={(e) =>
+              changeFilters({ igDateTo: e.target.value, igPeriod: "custom" })
+            }
           />
         </label>
         <div className="flex min-w-48 flex-col gap-1 text-xs font-medium">
@@ -300,16 +328,19 @@ export function IgArrivalReviewQueue({
           )}
         </div>
         <label className="flex flex-col gap-1 text-xs font-medium">
-          Документы
+          Что требуется
           <select
             className={inputClass}
-            value={common.documentStatus ?? ""}
+            value={common.requirementsAction ?? ""}
             onChange={(e) =>
-              changeFilters({ igDocumentStatus: e.target.value })
+              changeFilters({
+                igRequirementsAction: e.target.value,
+                igDocumentStatus: undefined,
+              })
             }
           >
             <option value="">Все</option>
-            {Object.entries(documentLabels).map(([value, label]) => (
+            {Object.entries(requirementLabels).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
@@ -342,27 +373,50 @@ export function IgArrivalReviewQueue({
           <RefreshCw size={14} /> Обновить
         </Button>
       </div>
+      <Button
+        size="sm"
+        variant={!common.dateFrom && !common.dateTo ? "default" : "outline"}
+        aria-pressed={!common.dateFrom && !common.dateTo}
+        onClick={() =>
+          changeFilters({
+            igDateFrom: undefined,
+            igDateTo: undefined,
+            igPeriod: "all",
+          })
+        }
+      >
+        Все даты
+      </Button>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-1" aria-label="Период реестра">
           <Button
             size="sm"
             variant={common.archive === "current" ? "default" : "outline"}
-            onClick={() => changeFilters({ igArchive: undefined })}
+            onClick={() =>
+              changeFilters({
+                igArchive: undefined,
+                igDateFrom: undefined,
+                igDateTo: undefined,
+                igPeriod: "all",
+              })
+            }
           >
             Текущие
           </Button>
           <Button
             size="sm"
             variant={common.archive === "archive" ? "default" : "outline"}
-            onClick={() => changeFilters({ igArchive: "archive" })}
+            onClick={() =>
+              changeFilters({ igArchive: "archive", ...archivePeriod() })
+            }
           >
             Архив
           </Button>
         </div>
         <p className="text-xs text-[var(--muted-foreground)]">
           {groups.data?.sync.lastCompletedAt
-            ? `Последний завершённый проход: ${new Date(groups.data.sync.lastCompletedAt).toLocaleString("ru-RU")}; актуальность отдельных записей не подтверждена`
-            : "Последний завершённый проход отсутствует; актуальность отдельных записей не подтверждена"}
+            ? `Последнее обновление данных: ${new Date(groups.data.sync.lastCompletedAt).toLocaleString("ru-RU")}`
+            : "Данные ещё не обновлялись"}
         </p>
       </div>
       {groups.isError && groups.data && (
@@ -403,19 +457,15 @@ export function IgArrivalReviewQueue({
         />
       ) : (
         <div className="max-h-[70vh] overflow-auto rounded-md border border-[var(--border)]">
-          <table className="w-full min-w-[980px] border-collapse text-left">
+          <table className="w-full min-w-[680px] border-collapse text-left">
             <thead>
               <tr>
                 <th className={`${headerClass} left-0 z-30 min-w-64`}>
-                  Дата / объект / участник
+                  Сотрудник
                 </th>
-                <th className={headerClass}>Код 1С</th>
-                <th className={headerClass}>Участие</th>
                 <th className={headerClass}>Документы</th>
-                <th className={headerClass}>Доставка ERP</th>
-                <th className={headerClass}>Завершение в ЭДО</th>
-                <th className={headerClass}>Кадры 1С</th>
-                <th className={headerClass}>Внимание</th>
+                <th className={headerClass}>Что требуется</th>
+                <th className={headerClass}>Действие</th>
               </tr>
             </thead>
             <tbody>
@@ -423,7 +473,7 @@ export function IgArrivalReviewQueue({
                 <Fragment key={date}>
                   <tr className="bg-[var(--muted)]">
                     <th
-                      colSpan={8}
+                      colSpan={4}
                       scope="rowgroup"
                       className="border-b border-[var(--border)] p-0 text-left"
                     >
@@ -446,7 +496,7 @@ export function IgArrivalReviewQueue({
                       <Fragment key={group.groupKey}>
                         <tr>
                           <th
-                            colSpan={8}
+                            colSpan={4}
                             scope="rowgroup"
                             className="border-b border-[var(--border)] bg-[var(--background)] p-0 text-left"
                           >
@@ -485,11 +535,32 @@ export function IgArrivalReviewQueue({
                             groupKey={group.groupKey}
                             common={common}
                             cursor={pages[group.groupKey]}
-                            onPage={(cursor) =>
+                            canGoBack={Boolean(pages[group.groupKey])}
+                            onBack={() => {
+                              const stack = pageStacks[group.groupKey] ?? [];
+                              update({
+                                igPages: JSON.stringify({
+                                  ...pages,
+                                  [group.groupKey]: stack.at(-1) ?? "",
+                                }),
+                                igPageStacks: JSON.stringify({
+                                  ...pageStacks,
+                                  [group.groupKey]: stack.slice(0, -1),
+                                }),
+                              });
+                            }}
+                            onNext={(cursor) =>
                               update({
                                 igPages: JSON.stringify({
                                   ...pages,
                                   [group.groupKey]: cursor,
+                                }),
+                                igPageStacks: JSON.stringify({
+                                  ...pageStacks,
+                                  [group.groupKey]: [
+                                    ...(pageStacks[group.groupKey] ?? []),
+                                    pages[group.groupKey] ?? "",
+                                  ].slice(-50),
                                 }),
                               })
                             }
@@ -512,13 +583,15 @@ export function IgArrivalReviewQueue({
             disabled={!search.igCursor}
             onClick={() =>
               update({
-                igCursor: undefined,
+                igCursor: groupStack.at(-1) || undefined,
+                igGroupStack: JSON.stringify(groupStack.slice(0, -1)),
                 igGroups: undefined,
                 igPages: undefined,
+                igPageStacks: undefined,
               })
             }
           >
-            В начало
+            Назад к объектам
           </Button>
           <Button
             size="sm"
@@ -527,8 +600,12 @@ export function IgArrivalReviewQueue({
             onClick={() =>
               update({
                 igCursor: groups.data?.nextCursor,
+                igGroupStack: JSON.stringify(
+                  [...groupStack, search.igCursor ?? ""].slice(-50),
+                ),
                 igGroups: undefined,
                 igPages: undefined,
+                igPageStacks: undefined,
               })
             }
           >
@@ -544,13 +621,17 @@ function ParticipationRows({
   groupKey,
   common,
   cursor,
-  onPage,
+  canGoBack,
+  onBack,
+  onNext,
   onSelectCandidate,
 }: {
   groupKey: string;
   common: CommonParams;
   cursor?: string;
-  onPage: (cursor: string) => void;
+  canGoBack: boolean;
+  onBack: () => void;
+  onNext: (cursor: string) => void;
   onSelectCandidate: (id: string, context: ArrivalContext) => void;
 }) {
   const people = useListIgArrivalRegistryParticipations({
@@ -561,7 +642,7 @@ function ParticipationRows({
   if (people.isLoading)
     return (
       <tr>
-        <td colSpan={8} className={cellClass} role="status">
+        <td colSpan={4} className={cellClass} role="status">
           Загрузка участников…
         </td>
       </tr>
@@ -569,7 +650,7 @@ function ParticipationRows({
   if (people.isError && !people.data)
     return (
       <tr>
-        <td colSpan={8} className={cellClass} role="alert">
+        <td colSpan={4} className={cellClass} role="alert">
           Не удалось загрузить участников.{" "}
           <Button
             size="sm"
@@ -585,7 +666,7 @@ function ParticipationRows({
     <>
       {people.isError && people.data && (
         <tr>
-          <td colSpan={8} className={cellClass} role="alert">
+          <td colSpan={4} className={cellClass} role="alert">
             Не удалось обновить участников; показаны сохранённые данные.{" "}
             <Button
               size="sm"
@@ -606,9 +687,95 @@ function ParticipationRows({
             scope="row"
             className={`${cellClass} ${frozenClass} pl-14 text-left font-medium`}
           >
-            {person.candidateId ? (
-              <button
-                className="text-left underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+            {person.fullName || "Без имени"}
+            {person.participationStatus !== "CURRENT" && (
+              <span className="mt-1 block">
+                <Badge>
+                  {person.participationStatus === "CANCELLED"
+                    ? "Отменён"
+                    : person.participationStatus === "HISTORICAL"
+                      ? "Исторический"
+                      : "Требует уточнения"}
+                </Badge>
+                {common.archive === "archive" && (
+                  <span className="ml-2 font-normal text-[var(--muted-foreground)]">
+                    Данные текущего профиля
+                  </span>
+                )}
+              </span>
+            )}
+          </th>
+          <td className={cellClass}>
+            {person.requirements.known &&
+            person.requirements.required !== null &&
+            person.requirements.accepted !== null ? (
+              <>
+                <span className="font-medium">
+                  {person.requirements.accepted} из{" "}
+                  {person.requirements.required}
+                </span>
+                <span className="block text-[var(--muted-foreground)]">
+                  обязательных принято
+                </span>
+              </>
+            ) : (
+              "Комплект не определён"
+            )}
+          </td>
+          <td className={cellClass}>
+            {!person.candidateId
+              ? "Нет связанного профиля. Обратитесь к ответственному за привязку кандидатов."
+              : person.deliveryNeedsAttention &&
+                  ["COMPLETE", "UNKNOWN"].includes(
+                    person.requirements.nextAction,
+                  )
+                ? "Передача документов в 1С не подтверждена"
+                : person.requirements.nextAction === "REVIEW"
+                  ? `Проверить ${documentCount(person.reviewAvailable)}`
+                  : person.requirements.nextAction === "MISSING" &&
+                      person.requirements.missing !== null
+                    ? `Ожидается ${documentCount(person.requirements.missing)}`
+                    : (requirementLabels[person.requirements.nextAction] ??
+                      "Требует уточнения")}
+            {person.deliveryNeedsAttention &&
+              !["COMPLETE", "UNKNOWN"].includes(
+                person.requirements.nextAction,
+              ) && (
+                <span className="block text-[var(--muted-foreground)]">
+                  Передача документов в 1С не подтверждена
+                </span>
+              )}
+            {(person.requirements.returned &&
+              person.requirements.nextAction !== "RETURNED") ||
+            (person.requirements.missing &&
+              person.requirements.nextAction !== "MISSING") ? (
+              <span className="block text-[var(--muted-foreground)]">
+                {[
+                  person.requirements.returned &&
+                  person.requirements.nextAction !== "RETURNED"
+                    ? `Возвращено: ${person.requirements.returned}`
+                    : null,
+                  person.requirements.missing &&
+                  person.requirements.nextAction !== "MISSING"
+                    ? `Ожидается: ${person.requirements.missing}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            ) : null}
+            {person.personState === "CONFLICT" && (
+              <span className="block text-[var(--muted-foreground)]">
+                Данные заезда требуют уточнения
+              </span>
+            )}
+          </td>
+          <td className={cellClass}>
+            {person.candidateId && person.action !== "NONE" && (
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label={`${person.action === "REVIEW" ? "Проверить" : "Открыть карточку"}: ${person.fullName || "Без имени"}`}
                 onClick={() =>
                   onSelectCandidate(person.candidateId!, {
                     memberUid: person.arrivalMemberUid ?? undefined,
@@ -618,82 +785,36 @@ function ParticipationRows({
                   })
                 }
               >
-                {person.fullName || "Без имени"}
-              </button>
-            ) : (
-              <>
-                {person.fullName || "Без имени"}
-                <span className="block font-normal text-[var(--muted-foreground)]">
-                  Нет связанного профиля. Обратитесь к ответственному за
-                  привязку кандидатов.
-                </span>
-              </>
+                {person.action === "REVIEW" ? "Проверить" : "Открыть карточку"}
+              </Button>
             )}
-            {person.arrivalDateTime && (
-              <span className="block font-normal text-[var(--muted-foreground)]">
-                {formatDateRu(person.arrivalDateTime.slice(0, 10))} ·{" "}
-                {person.arrivalDateTime.slice(11, 16)}
-              </span>
-            )}
-          </th>
-          <td className={cellClass}>{person.code1c || "—"}</td>
-          <td className={cellClass}>
-            {participationLabels[person.participationStatus] ??
-              person.participationStatus}
-            {person.participationStatus !== "CURRENT" && (
-              <span className="block text-[var(--muted-foreground)]">
-                Статусы текущего профиля
-              </span>
-            )}
-          </td>
-          <td className={cellClass}>
-            <Badge
-              tone={person.documentStatus === "RETURNED" ? "danger" : "default"}
-            >
-              {documentLabels[person.documentStatus] ?? person.documentStatus}
-            </Badge>
-          </td>
-          <td className={cellClass}>
-            {erpLabels[person.erpDeliveryStatus] ?? person.erpDeliveryStatus}
-          </td>
-          <td className={cellClass}>
-            {employmentLabels[person.employmentStatus] ??
-              person.employmentStatus}
-          </td>
-          <td className={cellClass}>{oneCLabels[person.oneCEmploymentStatus] ?? "Неизвестно"}</td>
-          <td className={cellClass}>
-            {person.needsAttention
-              ? person.issueCodes
-                  .map((code) => issueLabels[code] ?? "Требует уточнения")
-                  .join(", ") || "Требует внимания"
-              : "—"}
           </td>
         </tr>
       ))}
       {!people.data?.items.length && (
         <tr>
-          <td colSpan={8} className={cellClass}>
+          <td colSpan={4} className={cellClass}>
             Нет участников по выбранным фильтрам.
           </td>
         </tr>
       )}
       {(cursor || people.data?.nextCursor) && (
         <tr>
-          <td colSpan={8} className={cellClass}>
+          <td colSpan={4} className={cellClass}>
             <div className="flex gap-2">
               <Button
                 size="sm"
                 variant="outline"
-                disabled={!cursor}
-                onClick={() => onPage("")}
+                disabled={!canGoBack}
+                onClick={onBack}
               >
-                В начало
+                Назад к участникам
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 disabled={!people.data?.nextCursor}
-                onClick={() => onPage(people.data!.nextCursor!)}
+                onClick={() => onNext(people.data!.nextCursor!)}
               >
                 Следующие участники
               </Button>

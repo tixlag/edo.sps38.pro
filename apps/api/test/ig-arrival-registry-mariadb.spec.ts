@@ -289,7 +289,7 @@ describe.skipIf(!db)("IG registry on isolated MariaDB", () => {
           })
         ).items[0];
       expect(await read()).toMatchObject({
-        documentStatus: "RETURNED",
+        documentStatus: "UNKNOWN",
         erpDeliveryStatus: "NEEDS_ATTENTION",
         employmentStatus: "IN_PROGRESS",
         needsAttention: true,
@@ -301,7 +301,7 @@ describe.skipIf(!db)("IG registry on isolated MariaDB", () => {
         data: { status: "PENDING" },
       });
       expect(await read()).toMatchObject({
-        documentStatus: "APPROVED",
+        documentStatus: "UNKNOWN",
         erpDeliveryStatus: "PENDING",
         employmentStatus: "IN_PROGRESS",
       });
@@ -320,7 +320,7 @@ describe.skipIf(!db)("IG registry on isolated MariaDB", () => {
         },
       });
       expect(await read()).toMatchObject({
-        documentStatus: "APPROVED",
+        documentStatus: "UNKNOWN",
         erpDeliveryStatus: "CONFIRMED",
         confirmedDocuments: 1,
         employmentStatus: "IN_PROGRESS",
@@ -346,7 +346,7 @@ describe.skipIf(!db)("IG registry on isolated MariaDB", () => {
       expect(await read()).toMatchObject({
         erpDeliveryStatus: "CONFIRMED",
         confirmedDocuments: 1,
-        needsAttention: false,
+        needsAttention: true,
       });
     } finally {
       await prisma.document.deleteMany({

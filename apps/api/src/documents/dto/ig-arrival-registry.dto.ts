@@ -21,6 +21,17 @@ export const DOCUMENT_STATUSES = [
   "APPROVED",
 ] as const;
 export type RegistryDocumentStatus = (typeof DOCUMENT_STATUSES)[number];
+export const REQUIREMENTS_ACTIONS = [
+  "REVIEW",
+  "RETURNED",
+  "ATTENTION",
+  "PROCESSING",
+  "MISSING",
+  "COMPLETE",
+  "UNKNOWN",
+] as const;
+export type RequirementsAction = (typeof REQUIREMENTS_ACTIONS)[number];
+
 export class IgArrivalRegistryQueryDto {
   @ApiPropertyOptional({ enum: ["current", "archive"], default: "current" })
   @IsOptional()
@@ -47,6 +58,10 @@ export class IgArrivalRegistryQueryDto {
   @IsOptional()
   @IsIn(DOCUMENT_STATUSES)
   documentStatus?: RegistryDocumentStatus;
+  @ApiPropertyOptional({ enum: REQUIREMENTS_ACTIONS })
+  @IsOptional()
+  @IsIn(REQUIREMENTS_ACTIONS)
+  requirementsAction?: RequirementsAction;
   @ApiPropertyOptional({ type: Boolean })
   @IsOptional()
   @Transform(({ value }) =>
@@ -89,12 +104,32 @@ export class IgArrivalRegistryGroupDto {
   @ApiProperty() participationCount!: number;
   @ApiProperty() needsAttentionCount!: number;
 }
+export class IgArrivalRequirementsDto {
+  @ApiProperty() known!: boolean;
+  @ApiProperty({ type: Number, nullable: true }) required!: number | null;
+  @ApiProperty({ type: Number, nullable: true }) present!: number | null;
+  @ApiProperty({ type: Number, nullable: true }) accepted!: number | null;
+  @ApiProperty({ type: Number, nullable: true }) review!: number | null;
+  @ApiProperty({ type: Number, nullable: true }) returned!: number | null;
+  @ApiProperty({ type: Number, nullable: true }) missing!: number | null;
+  @ApiProperty({ type: Number, nullable: true }) processing!: number | null;
+  @ApiProperty({ type: Boolean, nullable: true }) completed!: boolean | null;
+  @ApiProperty({ enum: REQUIREMENTS_ACTIONS }) nextAction!: RequirementsAction;
+}
 export class IgArrivalRegistryParticipationDto {
   @ApiProperty({ type: String, nullable: true }) arrivalMemberUid!:
     | string
     | null;
   @ApiProperty() personUid!: string;
   @ApiProperty() code1c!: string;
+  @ApiProperty({ type: IgArrivalRequirementsDto })
+  requirements!: IgArrivalRequirementsDto;
+  @ApiProperty() reviewAvailable!: number;
+  @ApiProperty() deliveryNeedsAttention!: boolean;
+  @ApiProperty({ enum: ["REVIEW", "OPEN_CARD", "NONE"] }) action!:
+    | "REVIEW"
+    | "OPEN_CARD"
+    | "NONE";
   @ApiProperty({ type: String, nullable: true }) candidateId!: string | null;
   @ApiProperty({ type: String, nullable: true }) fullName!: string | null;
   @ApiProperty({ type: String, nullable: true, format: "date" }) arrivalDate!:

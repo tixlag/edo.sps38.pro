@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
   personOverrides: {} as Record<string, unknown>,
   personError: false,
   groupsError: false,
+  groupNext: null as string | null,
+  personNext: null as string | null,
   refetch: vi.fn(),
   select: vi.fn(),
   invalidate: vi.fn(),
@@ -75,7 +77,7 @@ vi.mock("@edo/api-client", () => ({
             needsAttentionCount: 0,
           },
         ],
-        nextCursor: null,
+        nextCursor: state.groupNext,
         sync: { lastCompletedAt: null },
       },
       isLoading: false,
@@ -87,36 +89,53 @@ vi.mock("@edo/api-client", () => ({
   useListIgArrivalRegistryParticipations: (params: { groupKey: string }) => {
     state.personCalls.push(params);
     return {
-      data: state.personError ? undefined : {
-        items: [
-          {
-            arrivalMemberUid: params.groupKey,
-            personUid: params.groupKey,
-            code1c: "123",
-            candidateId: params.groupKey,
-            fullName: params.groupKey === "a" ? "Алиев" : "Каримов",
-            arrivalDate: "2026-11-10",
-            arrivalDateTime: null,
-            locationUid: "1",
-            locationName: "Склад",
-            participationStatus: "CURRENT",
-            personState: "CURRENT",
-            documentStatus: "RETURNED",
-            approvedDocuments: 1,
-            confirmedDocuments: 0,
-            erpDeliveryStatus: "PENDING",
-            employmentStatus: "IN_PROGRESS",
-            statusScope: "CURRENT_CANDIDATE",
-            needsAttention: false,
-            issueCodes: [],
-            sourceRevision: "1",
-            oneCEmploymentStatus: "UNKNOWN",
-            ...state.personOverrides,
+      data: state.personError
+        ? undefined
+        : {
+            items: [
+              {
+                arrivalMemberUid: params.groupKey,
+                personUid: params.groupKey,
+                code1c: "123",
+                candidateId: params.groupKey,
+                fullName: params.groupKey === "a" ? "Алиев" : "Каримов",
+                arrivalDate: "2026-11-10",
+                arrivalDateTime: null,
+                locationUid: "1",
+                locationName: "Склад",
+                participationStatus: "CURRENT",
+                personState: "CURRENT",
+                documentStatus: "RETURNED",
+                approvedDocuments: 1,
+                confirmedDocuments: 0,
+                erpDeliveryStatus: "PENDING",
+                employmentStatus: "IN_PROGRESS",
+                statusScope: "CURRENT_CANDIDATE",
+                needsAttention: false,
+                issueCodes: [],
+                sourceRevision: "1",
+                oneCEmploymentStatus: "UNKNOWN",
+                requirements: {
+                  known: true,
+                  required: 4,
+                  present: 3,
+                  accepted: 2,
+                  review: 1,
+                  returned: 1,
+                  missing: 1,
+                  processing: 0,
+                  completed: false,
+                  nextAction: "REVIEW",
+                },
+                deliveryNeedsAttention: false,
+                reviewAvailable: 1,
+                action: "REVIEW",
+                ...state.personOverrides,
+              },
+            ],
+            nextCursor: state.personNext,
+            sync: { lastCompletedAt: null },
           },
-        ],
-        nextCursor: null,
-        sync: { lastCompletedAt: null },
-      },
       isLoading: false,
       isError: state.personError,
       isFetching: false,
@@ -145,11 +164,198 @@ afterEach(async () => {
   state.personOverrides = {};
   state.personError = false;
   state.groupsError = false;
+  state.groupNext = null;
+  state.personNext = null;
   state.refetch.mockClear();
   state.select.mockClear();
   state.invalidate.mockClear();
 });
 describe("arrival registry", () => {
+  it("shows the archive default period and lets the operator select all dates", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 10, 9, 12));
+    try {
+      state.search = { view: "arrivals", igArchive: "archive" };
+      const view = await render();
+      expect(state.groupCalls).toContainEqual(
+        expect.objectContaining({
+          dateFrom: "2026-10-10",
+          dateTo: "2026-11-09",
+        }),
+      );
+      expect(
+        (view.querySelector('input[type="date"]') as HTMLInputElement).value,
+      ).toBe("2026-10-10");
+      await act(async () =>
+        [...view.querySelectorAll("button")]
+          .find((button) => button.textContent === "Все даты")!
+          .click(),
+      );
+      expect(state.search.igPeriod).toBe("all");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("drops an old all-dates cursor when a legacy archive URL gains the default period", async () => {
+    state.search = {
+      view: "arrivals",
+      igArchive: "archive",
+      igCursor: "old-cursor",
+      igPages: '{"a":"old-page"}',
+    };
+    await render();
+    expect(state.search.igCursor).toBeUndefined();
+    expect(state.search.igPages).toBeUndefined();
+  });
+  it("records each current cursor when advancing group and participant pages", async () => {
+    state.search = {
+      view: "arrivals",
+      igCursor: "group-1",
+      igGroups: '["a"]',
+      igPages: '{"a":"person-1"}',
+      igPageStacks: '{"a":[""]}',
+      igGroupStack: '[""]',
+    };
+    state.groupNext = "group-2";
+    state.personNext = "person-2";
+    const view = await render();
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find((button) => button.textContent === "Следующие участники")!
+        .click(),
+    );
+    expect(state.search.igPages).toBe('{"a":"person-2"}');
+    expect(state.search.igPageStacks).toBe('{"a":["","person-1"]}');
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find((button) => button.textContent === "Следующие объекты")!
+        .click(),
+    );
+    expect(state.search.igCursor).toBe("group-2");
+    expect(state.search.igGroupStack).toBe('["","group-1"]');
+  });
+  it("returns to the immediately previous group and participant pages", async () => {
+    state.search = {
+      view: "arrivals",
+      igCursor: "g2",
+      igGroupStack: '["","g1"]',
+      igGroups: '["a"]',
+      igPages: '{"a":"p2"}',
+      igPageStacks: '{"a":["","p1"]}',
+    };
+    const view = await render();
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find((button) => button.textContent === "Назад к участникам")!
+        .click(),
+    );
+    expect(state.search.igPages).toBe('{"a":"p1"}');
+    expect(state.search.igPageStacks).toBe('{"a":[""]}');
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find((button) => button.textContent === "Назад к объектам")!
+        .click(),
+    );
+    expect(state.search.igCursor).toBe("g1");
+    expect(state.search.igGroupStack).toBe('[""]');
+  });
+  it("renders four HR columns and one review action from server requirements", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    const view = await render();
+    expect(
+      [...view.querySelectorAll("thead th")].map((th) => th.textContent),
+    ).toEqual(["Сотрудник", "Документы", "Что требуется", "Действие"]);
+    expect(view.textContent).toContain("2 из 4");
+    expect(view.textContent).toContain("Проверить 1 документ");
+    expect(view.textContent).not.toContain("00003465");
+    expect(view.textContent).not.toContain("Доставка ERP");
+    expect(
+      view.querySelector('button[aria-label="Проверить: Алиев"]'),
+    ).not.toBeNull();
+    expect(view.querySelector('button[aria-label="Алиев"]')).toBeNull();
+  });
+  it("does not label an active conflicting participation as archived", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.personOverrides = {
+      participationStatus: "ISSUE",
+      personState: "CONFLICT",
+      action: "OPEN_CARD",
+    };
+    const view = await render();
+    expect(view.querySelector("tbody")?.textContent).not.toContain("Архив");
+    expect(view.textContent).toContain("Требует уточнения");
+    expect(
+      view.querySelector('button[aria-label="Открыть карточку: Алиев"]'),
+    ).not.toBeNull();
+  });
+  it("describes one missing document grammatically", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.personOverrides = {
+      requirements: {
+        known: true,
+        required: 4,
+        present: 3,
+        accepted: 3,
+        review: 0,
+        returned: 0,
+        missing: 1,
+        processing: 0,
+        completed: false,
+        nextAction: "MISSING",
+      },
+      action: "OPEN_CARD",
+    };
+    const view = await render();
+    expect(view.textContent).toContain("Ожидается 1 документ");
+  });
+  it("sends the server-side requirements filter", async () => {
+    state.search = {
+      view: "arrivals",
+      igGroups: '["a"]',
+      igRequirementsAction: "MISSING",
+    };
+    await render();
+    expect(state.groupCalls).toContainEqual(
+      expect.objectContaining({ requirementsAction: "MISSING" }),
+    );
+    expect(state.personCalls).toContainEqual(
+      expect.objectContaining({ groupKey: "a", requirementsAction: "MISSING" }),
+    );
+  });
+  it("shows a delivery problem without hiding a review action", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.personOverrides = { deliveryNeedsAttention: true };
+    const view = await render();
+    expect(view.textContent).toContain(
+      "Передача документов в 1С не подтверждена",
+    );
+    expect(
+      view.querySelector('button[aria-label="Проверить: Алиев"]'),
+    ).not.toBeNull();
+  });
+  it("keeps review actionable when requirements are unknown", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.personOverrides = {
+      requirements: {
+        known: false,
+        required: null,
+        present: null,
+        accepted: null,
+        review: null,
+        returned: null,
+        missing: null,
+        processing: null,
+        completed: null,
+        nextAction: "REVIEW",
+      },
+      action: "REVIEW",
+    };
+    const view = await render();
+    expect(view.textContent).toContain("Комплект не определён");
+    expect(
+      view.querySelector('button[aria-label="Проверить: Алиев"]'),
+    ).not.toBeNull();
+  });
   it("refreshes expanded participant data along with groups", async () => {
     state.search = { view: "arrivals", igGroups: '["a"]' };
     const view = await render();
@@ -165,9 +371,7 @@ describe("arrival registry", () => {
     const view = await render();
     expect(view.textContent).toContain("Склад");
     expect(view.textContent).toContain("Не удалось обновить");
-    expect(view.textContent).toContain(
-      "актуальность отдельных записей не подтверждена",
-    );
+    expect(view.textContent).toContain("Не удалось обновить реестр");
   });
   it("resets cursors and expanded groups when switching to archive", async () => {
     state.search = {
@@ -182,12 +386,21 @@ describe("arrival registry", () => {
         .find((button) => button.textContent === "Архив")!
         .click(),
     );
-    expect(state.search).toEqual({ view: "arrivals", igArchive: "archive" });
+    expect(state.search).toEqual(
+      expect.objectContaining({
+        view: "arrivals",
+        igArchive: "archive",
+        igPeriod: "custom",
+      }),
+    );
+    expect(state.search.igCursor).toBeUndefined();
+    expect(state.search.igGroups).toBeUndefined();
   });
   it("explains an unlinked candidate and renders no candidate action", async () => {
     state.search = { view: "arrivals", igGroups: '["a"]' };
     state.personOverrides = {
       candidateId: null,
+      action: "NONE",
       needsAttention: true,
       issueCodes: ["unrecognised"],
     };
@@ -195,7 +408,7 @@ describe("arrival registry", () => {
     expect(view.textContent).toContain(
       "Обратитесь к ответственному за привязку кандидатов",
     );
-    expect(view.textContent).toContain("Требует уточнения");
+    expect(view.textContent).toContain("Нет связанного профиля");
     expect(view.textContent).not.toContain("unrecognised");
     expect(
       [...view.querySelectorAll("button")].some(
@@ -219,14 +432,17 @@ describe("arrival registry", () => {
     state.search = {
       view: "arrivals",
       igArchive: "archive",
+      igPeriod: "all",
       igGroups: '["a"]',
     };
     state.personOverrides = { participationStatus: "HISTORICAL" };
     const view = await render();
-    expect(view.textContent).toContain("Статусы текущего профиля");
+    expect(view.textContent).toContain("Исторический");
     await act(async () =>
       [...view.querySelectorAll("button")]
-        .find((button) => button.textContent === "Алиев")!
+        .find(
+          (button) => button.getAttribute("aria-label") === "Проверить: Алиев",
+        )!
         .click(),
     );
     expect(state.select).toHaveBeenCalledWith("a", {
@@ -281,13 +497,13 @@ describe("arrival registry", () => {
       igDates: '["2026-11-10"]',
       igGroups: '["a","b"]',
       igArchive: "archive",
+      igPeriod: "all",
     };
     const view = await render();
     expect(view.textContent).toContain("Алиев");
     expect(view.textContent).toContain("Каримов");
-    expect(view.textContent).toContain("Возвращены");
-    expect(view.textContent).toContain("Ожидает отправки");
-    expect(view.textContent).toContain("Неизвестно");
+    expect(view.textContent).toContain("Возвращено: 1");
+    expect(view.textContent).toContain("2 из 4");
     expect(view.textContent).not.toContain("Загрузить документы");
     expect(state.personCalls).toEqual(
       expect.arrayContaining([

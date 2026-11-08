@@ -33,6 +33,7 @@ export interface CandidateStageAccordionProps {
   reviewGroup?: "RU" | "IG" | null;
   candidateId: string;
   isOpen: boolean;
+  showProgress?: boolean;
   onToggle: () => void;
   onReviewDocument?: (docId: string, version?: number) => void;
   className?: string;
@@ -47,6 +48,7 @@ export function CandidateStageAccordion({
   reviewGroup,
   candidateId,
   isOpen,
+  showProgress = true,
   onToggle,
   onReviewDocument,
   className,
@@ -116,8 +118,7 @@ export function CandidateStageAccordion({
       return {
         key: `missing-prev-${missing.code}`,
         title: missing.title || matchingPrev.title,
-        status:
-          matchingPrev.state === "REUSED" ? "REUSED" : matchingPrev.state,
+        status: matchingPrev.state === "REUSED" ? "REUSED" : matchingPrev.state,
         previousDocument: matchingPrev,
         isMissing: false,
       };
@@ -186,8 +187,7 @@ export function CandidateStageAccordion({
       return {
         key: `add-missing-prev-${missing.code}`,
         title: missing.title || matchingPrev.title,
-        status:
-          matchingPrev.state === "REUSED" ? "REUSED" : matchingPrev.state,
+        status: matchingPrev.state === "REUSED" ? "REUSED" : matchingPrev.state,
         previousDocument: matchingPrev,
         isMissing: false,
       };
@@ -235,7 +235,12 @@ export function CandidateStageAccordion({
         aria-expanded={isOpen}
         className="flex w-full flex-col p-3.5 text-left transition-colors hover:bg-[var(--muted-soft)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] sm:p-4"
       >
-        <div className="mb-2.5 flex w-full items-center justify-between gap-3">
+        <div
+          className={cn(
+            "flex w-full items-center justify-between gap-3",
+            showProgress && "mb-2.5",
+          )}
+        >
           <div className="flex min-w-0 items-center gap-2.5">
             {stage !== null ? (
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-xs font-bold text-[var(--primary)]">
@@ -252,9 +257,11 @@ export function CandidateStageAccordion({
           </div>
 
           <div className="flex shrink-0 items-center gap-2.5">
-            <span className="text-xs font-medium text-[var(--muted-foreground)]">
-              {confirmedCount} из {totalRequired}
-            </span>
+            {showProgress && (
+              <span className="text-xs font-medium text-[var(--muted-foreground)]">
+                {confirmedCount} из {totalRequired}
+              </span>
+            )}
             <ChevronDown
               className={cn(
                 "h-4 w-4 text-[var(--muted-foreground)] transition-transform duration-200",
@@ -266,12 +273,14 @@ export function CandidateStageAccordion({
         </div>
 
         {/* Progress Bar */}
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--muted)]">
-          <div
-            className="h-full bg-[var(--primary)] transition-all duration-300"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
+        {showProgress && (
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--muted)]">
+            <div
+              className="h-full bg-[var(--primary)] transition-all duration-300"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        )}
       </button>
 
       {/* Accordion Content */}
@@ -279,7 +288,10 @@ export function CandidateStageAccordion({
         <div className="space-y-4 px-3.5 pb-4 pt-1 sm:px-4 sm:pb-5">
           {/* Required documents */}
           {allRequiredCards.length > 0 ? (
-            <section aria-label="Обязательные документы" className="space-y-2.5">
+            <section
+              aria-label="Обязательные документы"
+              className="space-y-2.5"
+            >
               <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
                 Обязательные
               </h4>
@@ -306,7 +318,10 @@ export function CandidateStageAccordion({
 
           {/* Additional documents */}
           {allAdditionalCards.length > 0 && (
-            <section aria-label="Дополнительные документы" className="space-y-2.5 pt-2">
+            <section
+              aria-label="Дополнительные документы"
+              className="space-y-2.5 pt-2"
+            >
               <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
                 Дополнительные
               </h4>

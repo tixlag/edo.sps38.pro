@@ -1,9 +1,22 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Optional,
+  Logger,
+} from "@nestjs/common";
+import { DocumentCatalogService } from "./document-catalog.service";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { PrismaService } from "../prisma/prisma.service";
 import { requireReviewGroup } from "./review-group";
+import {
+  requirementsJoin,
+  requirementsKnown,
+  requirementsAction,
+  requirementsReviewAvailable,
+} from "./ig-arrival-requirements.sql";
+import { REQUIREMENTS_ACTIONS } from "./dto/ig-arrival-registry.dto";
 import type {
   IgArrivalRegistryQueryDto,
   IgArrivalRegistryParticipationsQueryDto,
@@ -21,6 +34,7 @@ type Filters = {
   locationUid: string | null;
   q: string | null;
   documentStatus: string | null;
+  requirementsAction: string | null;
   needsAttention: boolean | null;
 };
 type GroupRow = {
@@ -41,12 +55,28 @@ type ParticipationRow = Omit<
   | "sourceRevision"
   | "statusScope"
   | "oneCEmploymentStatus"
+  | "requirements"
+  | "reviewAvailable"
+  | "action"
+  | "deliveryNeedsAttention"
 > & {
   approvedDocuments: bigint;
   confirmedDocuments: bigint;
   needsAttention: number | boolean;
   issueCode: string | null;
   sourceRevision: bigint;
+  deliveryNeedsAttention: number | boolean;
+  requirementsKnown: number | boolean;
+  requiredCount: bigint | null;
+  presentCount: bigint | null;
+  acceptedCount: bigint | null;
+  reviewCount: bigint | null;
+  returnedCount: bigint | null;
+  missingCount: bigint | null;
+  processingCount: bigint | null;
+  attentionCount: bigint | null;
+  reviewAvailable: bigint;
+  requirementsAction: IgArrivalRegistryParticipationDto["requirements"]["nextAction"];
 };
 const encode = (v: unknown) =>
   Buffer.from(JSON.stringify(v)).toString("base64url");
@@ -79,6 +109,8 @@ function filters(q: IgArrivalRegistryQueryDto): Filters {
     (q.q?.length ?? 0) > 128 ||
     (q.archive && !["current", "archive"].includes(q.archive)) ||
     (q.needsAttention !== undefined && typeof q.needsAttention !== "boolean") ||
+    (q.requirementsAction &&
+      !REQUIREMENTS_ACTIONS.includes(q.requirementsAction)) ||
     (q.documentStatus &&
       ![
         "UNKNOWN",
@@ -100,6 +132,7 @@ function filters(q: IgArrivalRegistryQueryDto): Filters {
     locationUid: q.locationUid?.toLowerCase() ?? null,
     q: q.q?.trim() || null,
     documentStatus: q.documentStatus ?? null,
+    requirementsAction: q.requirementsAction ?? null,
     needsAttention: q.needsAttention ?? null,
   };
 }
@@ -154,17 +187,16 @@ function cursor(
 }
 const hasReturned = Prisma.sql`EXISTS (SELECT 1 FROM documents d WHERE d.candidateId=p.candidateId AND d.status='RETURNED')`;
 const hasDoc = Prisma.sql`EXISTS (SELECT 1 FROM documents d WHERE d.candidateId=p.candidateId)`;
-const hasProgress = Prisma.sql`EXISTS (SELECT 1 FROM documents d WHERE d.candidateId=p.candidateId AND d.status NOT IN ('APPROVED','SIGNED','RETURNED'))`;
 const approvedCount = Prisma.sql`(SELECT COUNT(*) FROM documents d WHERE d.candidateId=p.candidateId AND d.status IN ('APPROVED','SIGNED'))`;
 const validReceipt = Prisma.sql`x.status='SENT' AND x.transport='multipart-v2' AND EXISTS (SELECT 1 FROM erp_document_attempts a WHERE a.deliveryId=x.id AND a.id=(SELECT latest.id FROM erp_document_attempts latest WHERE latest.deliveryId=x.id ORDER BY latest.startedAt DESC,latest.id DESC LIMIT 1) AND a.receiptValidated=1 AND a.finishedAt IS NOT NULL AND a.errorCode IS NULL)`;
 const reused = Prisma.sql`(v.ocrSource='PREVIOUS_LINK' AND (COALESCE(JSON_UNQUOTE(JSON_EXTRACT(v.ocrRaw,'$.source')),'')='ERP' OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(v.ocrRaw,'$.deliveredHistorically')),'')='true'))`;
 const confirmedCount = Prisma.sql`(SELECT COUNT(*) FROM documents d JOIN document_versions v ON v.documentId=d.id AND v.version=d.currentVersion LEFT JOIN erp_document_deliveries x ON x.versionId=v.id WHERE d.candidateId=p.candidateId AND d.status IN ('APPROVED','SIGNED') AND v.status IN ('APPROVED','SIGNED') AND (${reused} OR ${validReceipt}))`;
 const deliveryProblem = Prisma.sql`EXISTS (SELECT 1 FROM documents d JOIN document_versions v ON v.documentId=d.id AND v.version=d.currentVersion LEFT JOIN erp_document_deliveries x ON x.versionId=v.id WHERE d.candidateId=p.candidateId AND d.status IN ('APPROVED','SIGNED') AND NOT COALESCE(${reused},0) AND (x.id IS NULL OR x.status IN ('WAITING_CONTRACT','REQUIRES_MANUAL') OR (x.status='SENT' AND NOT (${validReceipt}))))`;
-const docStatus = Prisma.sql`CASE WHEN p.candidateId IS NULL THEN 'UNKNOWN' WHEN ${hasReturned} THEN 'RETURNED' WHEN ${hasProgress} THEN 'IN_PROGRESS' WHEN ${hasDoc} THEN 'APPROVED' ELSE 'NO_DOCUMENTS' END`;
+const docStatus = Prisma.sql`CASE WHEN NOT ${requirementsKnown()} THEN 'UNKNOWN' WHEN req.returnedCount>0 THEN 'RETURNED' WHEN req.acceptedCount=req.requiredCount THEN 'APPROVED' WHEN NOT ${hasDoc} AND req.presentCount=0 THEN 'NO_DOCUMENTS' ELSE 'IN_PROGRESS' END`;
 const sourceIssue = Prisma.sql`EXISTS (SELECT 1 FROM ig_arrival_issues i WHERE i.personHash=SHA2(p.personUid,256) AND i.active=1)`;
-const problem = Prisma.sql`(p.state='CONFLICT' OR ${sourceIssue} OR p.bindingError IS NOT NULL OR p.candidateId IS NULL OR COALESCE(c.igRequirementsConflict,0)=1 OR m.arrivalDate IS NULL OR m.locationUid IS NULL OR ${hasReturned} OR ${deliveryProblem})`;
-const common = (f: Filters) =>
-  Prisma.sql`FROM ig_arrival_persons p LEFT JOIN ig_arrival_members m ON m.personUid=p.personUid AND m.lastSeenRevision=p.revision ${f.archive === "current" ? Prisma.sql`AND ((p.state='CURRENT' AND m.arrivalMemberUid=p.currentMemberUid) OR (p.state='CONFLICT' AND m.cancelled=0))` : Prisma.empty} LEFT JOIN candidates c ON c.id=p.candidateId`;
+const problem = Prisma.sql`(p.state='CONFLICT' OR ${sourceIssue} OR p.bindingError IS NOT NULL OR p.candidateId IS NULL OR COALESCE(c.igRequirementsConflict,0)=1 OR m.arrivalDate IS NULL OR m.locationUid IS NULL OR ${hasReturned} OR ${deliveryProblem} OR ${requirementsReviewAvailable}>0 OR COALESCE(req.attentionCount,0)>0 OR NOT ${requirementsKnown()})`;
+const common = (f: Filters, includeRequirements = true) =>
+  Prisma.sql`FROM ig_arrival_persons p LEFT JOIN ig_arrival_members m ON m.personUid=p.personUid AND m.lastSeenRevision=p.revision ${f.archive === "current" ? Prisma.sql`AND ((p.state='CURRENT' AND m.arrivalMemberUid=p.currentMemberUid) OR (p.state='CONFLICT' AND m.cancelled=0))` : Prisma.empty} LEFT JOIN candidates c ON c.id=p.candidateId ${includeRequirements ? requirementsJoin(f) : Prisma.empty}`;
 function base(f: Filters) {
   const archive =
     f.archive === "current"
@@ -173,7 +205,7 @@ function base(f: Filters) {
   return Prisma.sql`WHERE p.igVerified=1 AND (c.id IS NULL OR (c.chatUuid IS NULL AND (c.citizenship IS NULL OR LOWER(c.citizenship)<>'ru'))) AND ${archive} ${f.dateFrom ? Prisma.sql`AND m.arrivalDate>=${f.dateFrom}` : Prisma.empty} ${f.dateTo ? Prisma.sql`AND m.arrivalDate<=${f.dateTo}` : Prisma.empty} ${f.locationUid ? Prisma.sql`AND m.locationUid=${f.locationUid}` : Prisma.empty}`;
 }
 function extra(f: Filters) {
-  return Prisma.sql`${f.q ? Prisma.sql`AND (LOCATE(${f.q},COALESCE(m.fullName,c.fullName,''))>0 OR LOCATE(${f.q},p.code1c)>0)` : Prisma.empty} ${f.documentStatus ? Prisma.sql`AND ${docStatus}=${f.documentStatus}` : Prisma.empty} ${f.needsAttention !== null ? Prisma.sql`AND ${problem}=${f.needsAttention ? 1 : 0}` : Prisma.empty}`;
+  return Prisma.sql`${f.q ? Prisma.sql`AND (LOCATE(${f.q},COALESCE(m.fullName,c.fullName,''))>0 OR LOCATE(${f.q},p.code1c)>0)` : Prisma.empty} ${f.documentStatus ? Prisma.sql`AND ${docStatus}=${f.documentStatus}` : Prisma.empty} ${f.needsAttention !== null ? Prisma.sql`AND ${problem}=${f.needsAttention ? 1 : 0}` : Prisma.empty} ${f.requirementsAction ? Prisma.sql`AND ${requirementsAction()}=${f.requirementsAction}` : Prisma.empty}`;
 }
 const isIssues = Prisma.sql`(p.state='CONFLICT' OR m.arrivalDate IS NULL OR m.locationUid IS NULL)`;
 const orderType = Prisma.sql`CASE WHEN ${isIssues} THEN '0' ELSE '1' END`;
@@ -181,7 +213,17 @@ const orderDate = Prisma.sql`CASE WHEN ${isIssues} THEN '' ELSE m.arrivalDate EN
 const orderLocation = Prisma.sql`CASE WHEN ${isIssues} THEN '' ELSE m.locationUid END`;
 @Injectable()
 export class IgArrivalRegistryService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(IgArrivalRegistryService.name);
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly catalog?: DocumentCatalogService,
+  ) {}
+  private refreshCatalog(): void {
+    if (this.catalog)
+      void this.catalog
+        .ensure()
+        .catch(() => this.logger.warn("Document catalog refresh unavailable"));
+  }
   private async sync() {
     const row = await this.prisma.igArrivalSyncState.findUnique({
       where: { id: "singleton" },
@@ -194,6 +236,7 @@ export class IgArrivalRegistryService {
     q: IgArrivalRegistryQueryDto,
   ): Promise<IgArrivalRegistryGroupsDto> {
     requireReviewGroup(principal, "IG");
+    this.refreshCatalog();
     const f = filters(q),
       limit = q.limit ?? 50,
       after = cursor(q.cursor, f, "groups", null);
@@ -245,7 +288,7 @@ export class IgArrivalRegistryService {
     const rows = await this.prisma.$queryRaw<
       { locationUid: string; locationName: string | null }[]
     >(
-      Prisma.sql`SELECT m.locationUid,MAX(m.locationName) AS locationName ${common(f)} ${base(f)} AND m.locationUid IS NOT NULL ${f.q ? Prisma.sql`AND (LOCATE(${f.q},COALESCE(m.locationName,''))>0 OR LOCATE(${f.q},m.locationUid)>0)` : Prisma.empty} ${after ? Prisma.sql`AND m.locationUid>${after[0]}` : Prisma.empty} GROUP BY m.locationUid ORDER BY m.locationUid LIMIT ${limit + 1}`,
+      Prisma.sql`SELECT m.locationUid,MAX(m.locationName) AS locationName ${common(f, false)} ${base(f)} AND m.locationUid IS NOT NULL ${f.q ? Prisma.sql`AND (LOCATE(${f.q},COALESCE(m.locationName,''))>0 OR LOCATE(${f.q},m.locationUid)>0)` : Prisma.empty} ${after ? Prisma.sql`AND m.locationUid>${after[0]}` : Prisma.empty} GROUP BY m.locationUid ORDER BY m.locationUid LIMIT ${limit + 1}`,
     );
     const items = rows.slice(0, limit),
       last = items.at(-1);
@@ -262,6 +305,7 @@ export class IgArrivalRegistryService {
     q: IgArrivalRegistryParticipationsQueryDto,
   ): Promise<IgArrivalRegistryParticipationsDto> {
     requireReviewGroup(principal, "IG");
+    this.refreshCatalog();
     const f = filters(q),
       limit = q.limit ?? 50,
       key = parseGroup(q.groupKey),
@@ -272,24 +316,65 @@ export class IgArrivalRegistryService {
         : Prisma.sql`AND ${isIssues}`;
     const uid = Prisma.sql`COALESCE(m.arrivalMemberUid,CONCAT('~',p.personUid))`;
     const rows = await this.prisma.$queryRaw<ParticipationRow[]>(
-      Prisma.sql`SELECT m.arrivalMemberUid,p.personUid,p.code1c,p.candidateId,COALESCE(m.fullName,c.fullName) AS fullName,m.arrivalDate,m.arrivalDateTime,m.locationUid,m.locationName,CASE WHEN m.arrivalMemberUid IS NULL THEN 'ISSUE' WHEN m.cancelled=1 THEN 'CANCELLED' WHEN p.state='CONFLICT' THEN 'ISSUE' WHEN p.state='CURRENT' AND p.currentMemberUid=m.arrivalMemberUid THEN 'CURRENT' ELSE 'HISTORICAL' END AS participationStatus,p.state AS personState,${docStatus} AS documentStatus,${approvedCount} AS approvedDocuments,${confirmedCount} AS confirmedDocuments,CASE WHEN p.candidateId IS NULL THEN 'UNKNOWN' WHEN ${approvedCount}=0 THEN 'NOT_REQUIRED' WHEN ${deliveryProblem} THEN 'NEEDS_ATTENTION' WHEN ${confirmedCount}<${approvedCount} THEN 'PENDING' ELSE 'CONFIRMED' END AS erpDeliveryStatus,CASE WHEN p.candidateId IS NULL THEN 'UNKNOWN' WHEN c.igCompletionVerified=1 AND c.igCompletedAt IS NOT NULL THEN 'DOCUMENTS_COMPLETED' ELSE 'IN_PROGRESS' END AS employmentStatus,CASE WHEN ${problem} THEN 1 ELSE 0 END AS needsAttention,CASE WHEN p.state='CONFLICT' THEN 'ARRIVAL_SOURCE_CONFLICT' WHEN p.bindingError IS NOT NULL THEN p.bindingError WHEN ${sourceIssue} THEN (SELECT i.code FROM ig_arrival_issues i WHERE i.personHash=SHA2(p.personUid,256) AND i.active=1 ORDER BY i.updatedAt DESC,i.id DESC LIMIT 1) WHEN m.arrivalDate IS NULL OR m.locationUid IS NULL THEN 'ARRIVAL_GROUP_UNASSIGNED' WHEN c.igRequirementsConflict=1 THEN 'ERP_IG_REQUIREMENTS_CONFLICT' WHEN ${hasReturned} THEN 'DOCUMENT_RETURNED' WHEN ${deliveryProblem} THEN 'ERP_DELIVERY_NEEDS_ATTENTION' ELSE NULL END AS issueCode,p.revision AS sourceRevision ${common(f)} ${base(f)} ${selector} ${extra(f)} ${after ? Prisma.sql`AND ${uid}>${after[0]}` : Prisma.empty} ORDER BY ${uid} LIMIT ${limit + 1}`,
+      Prisma.sql`SELECT m.arrivalMemberUid,p.personUid,p.code1c,p.candidateId,COALESCE(m.fullName,c.fullName) AS fullName,m.arrivalDate,m.arrivalDateTime,m.locationUid,m.locationName,CASE WHEN m.arrivalMemberUid IS NULL THEN 'ISSUE' WHEN m.cancelled=1 THEN 'CANCELLED' WHEN p.state='CONFLICT' THEN 'ISSUE' WHEN p.state='CURRENT' AND p.currentMemberUid=m.arrivalMemberUid THEN 'CURRENT' ELSE 'HISTORICAL' END AS participationStatus,p.state AS personState,${docStatus} AS documentStatus,${approvedCount} AS approvedDocuments,${confirmedCount} AS confirmedDocuments,CASE WHEN p.candidateId IS NULL THEN 'UNKNOWN' WHEN ${approvedCount}=0 THEN 'NOT_REQUIRED' WHEN ${deliveryProblem} THEN 'NEEDS_ATTENTION' WHEN ${confirmedCount}<${approvedCount} THEN 'PENDING' ELSE 'CONFIRMED' END AS erpDeliveryStatus,CASE WHEN p.candidateId IS NULL THEN 'UNKNOWN' WHEN c.igCompletionVerified=1 AND c.igCompletedAt IS NOT NULL THEN 'DOCUMENTS_COMPLETED' ELSE 'IN_PROGRESS' END AS employmentStatus,CASE WHEN ${problem} THEN 1 ELSE 0 END AS needsAttention,CASE WHEN p.state='CONFLICT' THEN 'ARRIVAL_SOURCE_CONFLICT' WHEN p.bindingError IS NOT NULL THEN p.bindingError WHEN ${sourceIssue} THEN (SELECT i.code FROM ig_arrival_issues i WHERE i.personHash=SHA2(p.personUid,256) AND i.active=1 ORDER BY i.updatedAt DESC,i.id DESC LIMIT 1) WHEN m.arrivalDate IS NULL OR m.locationUid IS NULL THEN 'ARRIVAL_GROUP_UNASSIGNED' WHEN c.igRequirementsConflict=1 THEN 'ERP_IG_REQUIREMENTS_CONFLICT' WHEN ${hasReturned} THEN 'DOCUMENT_RETURNED' WHEN ${deliveryProblem} THEN 'ERP_DELIVERY_NEEDS_ATTENTION' ELSE NULL END AS issueCode,p.revision AS sourceRevision,${requirementsKnown()} AS requirementsKnown, CASE WHEN ${deliveryProblem} THEN 1 ELSE 0 END AS deliveryNeedsAttention, req.requiredCount,req.presentCount,req.acceptedCount,req.reviewCount,req.returnedCount,req.missingCount,req.processingCount,req.attentionCount,${requirementsReviewAvailable} AS reviewAvailable,${requirementsAction()} AS requirementsAction ${common(f)} ${base(f)} ${selector} ${extra(f)} ${after ? Prisma.sql`AND ${uid}>${after[0]}` : Prisma.empty} ORDER BY ${uid} LIMIT ${limit + 1}`,
     );
     const page = rows.slice(0, limit),
       last = page.at(-1);
     return {
-      items: page.map(({ issueCode, ...r }) => ({
-        ...r,
-        approvedDocuments: Number(r.approvedDocuments),
-        confirmedDocuments: Number(r.confirmedDocuments),
-        needsAttention: Boolean(r.needsAttention),
-        issueCodes: [
-          ...(issueCode ? [issueCode] : []),
-          ...(r.candidateId === null ? ["PROFILE_MISSING"] : []),
-        ],
-        sourceRevision: String(r.sourceRevision),
-        statusScope: "CURRENT_CANDIDATE",
-        oneCEmploymentStatus: "UNKNOWN",
-      })),
+      items: page.map(
+        ({
+          issueCode,
+          deliveryNeedsAttention,
+          requirementsKnown: rawKnown,
+          requiredCount,
+          presentCount,
+          acceptedCount,
+          reviewCount,
+          returnedCount,
+          missingCount,
+          processingCount,
+          attentionCount,
+          reviewAvailable,
+          requirementsAction: nextAction,
+          ...r
+        }) => ({
+          ...r,
+          deliveryNeedsAttention: Boolean(deliveryNeedsAttention),
+          requirements: {
+            known: Boolean(rawKnown),
+            required: rawKnown ? Number(requiredCount) : null,
+            present: rawKnown ? Number(presentCount) : null,
+            accepted: rawKnown ? Number(acceptedCount) : null,
+            review: rawKnown ? Number(reviewCount) : null,
+            returned: rawKnown ? Number(returnedCount) : null,
+            missing: rawKnown ? Number(missingCount) : null,
+            processing: rawKnown ? Number(processingCount) : null,
+            completed: rawKnown
+              ? Number(requiredCount) > 0 &&
+                Number(acceptedCount) === Number(requiredCount) &&
+                Number(attentionCount) === 0
+              : null,
+            nextAction,
+          },
+          reviewAvailable: Number(reviewAvailable),
+          action:
+            r.candidateId === null
+              ? "NONE"
+              : Number(reviewAvailable) > 0
+                ? "REVIEW"
+                : "OPEN_CARD",
+          approvedDocuments: Number(r.approvedDocuments),
+          confirmedDocuments: Number(r.confirmedDocuments),
+          needsAttention: Boolean(r.needsAttention),
+          issueCodes: [
+            ...(issueCode ? [issueCode] : []),
+            ...(r.candidateId === null ? ["PROFILE_MISSING"] : []),
+          ],
+          sourceRevision: String(r.sourceRevision),
+          statusScope: "CURRENT_CANDIDATE",
+          oneCEmploymentStatus: "UNKNOWN",
+        }),
+      ),
       nextCursor:
         rows.length > limit && last
           ? encode([

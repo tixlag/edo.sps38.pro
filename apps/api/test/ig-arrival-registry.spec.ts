@@ -54,4 +54,19 @@ describe("IG arrival registry", () => {
       sync: { lastCompletedAt: "2026-11-01T00:00:00.000Z" },
     });
   });
+  it("triggers catalog refresh without blocking listing when integration fails", async () => {
+    const prisma = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      igArrivalSyncState: { findUnique: vi.fn().mockResolvedValue(null) },
+    };
+    const ensure = vi.fn().mockRejectedValue(new Error("offline"));
+    const service = new IgArrivalRegistryService(
+      prisma as never,
+      { ensure } as never,
+    );
+    await expect(
+      service.groups({ accessRules: { "20011": [] } } as never, {}),
+    ).resolves.toMatchObject({ items: [] });
+    expect(ensure).toHaveBeenCalledOnce();
+  });
 });

@@ -5614,6 +5614,23 @@
             }
           },
           {
+            "name": "requirementsAction",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "REVIEW",
+                "RETURNED",
+                "ATTENTION",
+                "PROCESSING",
+                "MISSING",
+                "COMPLETE",
+                "UNKNOWN"
+              ]
+            }
+          },
+          {
             "name": "needsAttention",
             "required": false,
             "in": "query",
@@ -5820,6 +5837,23 @@
                 "IN_PROGRESS",
                 "RETURNED",
                 "APPROVED"
+              ]
+            }
+          },
+          {
+            "name": "requirementsAction",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "REVIEW",
+                "RETURNED",
+                "ATTENTION",
+                "PROCESSING",
+                "MISSING",
+                "COMPLETE",
+                "UNKNOWN"
               ]
             }
           },
@@ -19361,6 +19395,70 @@
           "sync"
         ]
       },
+      "IgArrivalRequirementsDto": {
+        "type": "object",
+        "properties": {
+          "known": {
+            "type": "boolean"
+          },
+          "required": {
+            "type": "number",
+            "nullable": true
+          },
+          "present": {
+            "type": "number",
+            "nullable": true
+          },
+          "accepted": {
+            "type": "number",
+            "nullable": true
+          },
+          "review": {
+            "type": "number",
+            "nullable": true
+          },
+          "returned": {
+            "type": "number",
+            "nullable": true
+          },
+          "missing": {
+            "type": "number",
+            "nullable": true
+          },
+          "processing": {
+            "type": "number",
+            "nullable": true
+          },
+          "completed": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "nextAction": {
+            "type": "string",
+            "enum": [
+              "REVIEW",
+              "RETURNED",
+              "ATTENTION",
+              "PROCESSING",
+              "MISSING",
+              "COMPLETE",
+              "UNKNOWN"
+            ]
+          }
+        },
+        "required": [
+          "known",
+          "required",
+          "present",
+          "accepted",
+          "review",
+          "returned",
+          "missing",
+          "processing",
+          "completed",
+          "nextAction"
+        ]
+      },
       "IgArrivalRegistryParticipationDto": {
         "type": "object",
         "properties": {
@@ -19373,6 +19471,23 @@
           },
           "code1c": {
             "type": "string"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/IgArrivalRequirementsDto"
+          },
+          "reviewAvailable": {
+            "type": "number"
+          },
+          "deliveryNeedsAttention": {
+            "type": "boolean"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "REVIEW",
+              "OPEN_CARD",
+              "NONE"
+            ]
           },
           "candidateId": {
             "type": "string",
@@ -19480,6 +19595,10 @@
           "arrivalMemberUid",
           "personUid",
           "code1c",
+          "requirements",
+          "reviewAvailable",
+          "deliveryNeedsAttention",
+          "action",
           "candidateId",
           "fullName",
           "arrivalDate",

@@ -15,7 +15,7 @@ import { CandidateDocumentError } from "./candidate-document.error";
 import { CandidateDocumentErrorCode as Code } from "./dto/candidate-error.dto";
 import { erpDocumentHeaders } from "./erp-document-auth";
 
-const CATALOG_TTL_MS = 24 * 60 * 60_000;
+export const CATALOG_TTL_MS = 24 * 60 * 60_000;
 const RETRY_MS = 90_000;
 const REFRESH_LOCK_KEY = "edo:document-catalog:refresh";
 type RefreshResult = "done" | "busy";

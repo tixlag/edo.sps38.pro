@@ -211,12 +211,14 @@ export function CandidateDrawer({
           <div className="flex shrink-0 items-center gap-3">
             <div className="flex flex-col items-end gap-1">
               <span className="text-xs font-medium text-[var(--muted-foreground)]">
-                {formatDocumentProgress(
-                  profile?.approvedDocuments ?? 0,
-                  profile?.requiredDocuments,
-                )}
+                {arrivalContext
+                  ? "Обязательные документы — по этапам ниже"
+                  : formatDocumentProgress(
+                      profile?.approvedDocuments ?? 0,
+                      profile?.requiredDocuments,
+                    )}
               </span>
-              {progressPercent !== null && (
+              {!arrivalContext && progressPercent !== null && (
                 <span
                   role="progressbar"
                   aria-label="Прогресс подтверждения документов"
@@ -429,6 +431,7 @@ export function CandidateDrawer({
               <div className="space-y-3">
                 {stages.map((stg, index) => (
                   <CandidateStageAccordion
+                    showProgress={!arrivalContext}
                     key={`stage-${stg.stage ?? "none"}-${index}`}
                     stage={stg.stage}
                     title={stg.title}

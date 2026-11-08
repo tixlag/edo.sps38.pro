@@ -12,6 +12,7 @@ describe("arrival registry URL", () => {
         igDateTo: "2026-11-30",
         igLocationUid: "loc-1",
         igDocumentStatus: "RETURNED",
+        igRequirementsAction: "REVIEW",
         igNeedsAttention: "true",
         igGroups: JSON.stringify(["group-a", "group-b"]),
         igDates: JSON.stringify(["2026-11-10"]),
@@ -26,6 +27,7 @@ describe("arrival registry URL", () => {
       igDateTo: "2026-11-30",
       igLocationUid: "loc-1",
       igDocumentStatus: "RETURNED",
+      igRequirementsAction: "REVIEW",
       igNeedsAttention: true,
       igGroups: JSON.stringify(["group-a", "group-b"]),
       igDates: JSON.stringify(["2026-11-10"]),
@@ -47,6 +49,19 @@ describe("arrival registry URL", () => {
     ).toEqual({
       igParticipation:
         '{"memberUid":"m1","date":"2026-01-01","location":"Склад","status":"HISTORICAL"}',
+    });
+  });
+  it("retains bounded page histories and the explicit all-dates choice", () => {
+    expect(
+      parseIgRegistrySearch({
+        igPeriod: "all",
+        igGroupStack: '["","cursor-1"]',
+        igPageStacks: '{"group-a":["","person-1"]}',
+      }),
+    ).toEqual({
+      igPeriod: "all",
+      igGroupStack: '["","cursor-1"]',
+      igPageStacks: '{"group-a":["","person-1"]}',
     });
   });
   it("rejects malformed or unsupported untrusted search values", () => {
