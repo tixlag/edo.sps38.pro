@@ -2,417 +2,537 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { IgArrivalReviewQueue } from "./IgArrivalReviewQueue";
-import type {
-  IgArrivalGroupDto,
-  IgArrivalPersonDto,
-} from "@edo/api-client";
 
-const mockState = vi.hoisted(() => ({
-  permissions: { "20011": [] } as Record<string, unknown>,
-  groupsQuery: vi.fn(),
-  peopleQuery: vi.fn(),
-  groupsData: {
-    items: [] as IgArrivalGroupDto[],
-    nextOffset: null as number | null,
-  },
-  peopleData: {
-    items: [] as IgArrivalPersonDto[],
-    nextOffset: null as number | null,
-  },
-  isLoadingGroups: false,
-  isLoadingPeople: false,
-  isErrorGroups: false,
-  isErrorPeople: false,
+const state = vi.hoisted(() => ({
+  search: { view: "arrivals" } as Record<string, unknown>,
+  groupCalls: [] as unknown[],
+  personCalls: [] as unknown[],
+  personOverrides: {} as Record<string, unknown>,
+  personError: false,
+  groupsError: false,
+  groupNext: null as string | null,
+  personNext: null as string | null,
+  refetch: vi.fn(),
+  select: vi.fn(),
+  invalidate: vi.fn(),
 }));
-
+vi.mock("@tanstack/react-router", () => ({
+  useSearch: () => state.search,
+  useNavigate:
+    () =>
+    (options: {
+      search: (previous: Record<string, unknown>) => Record<string, unknown>;
+    }) => {
+      state.search = options.search(state.search);
+    },
+}));
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: state.invalidate }),
+}));
 vi.mock("@edo/api-client", () => ({
-  getListIgArrivalGroupsQueryKey: (params: unknown) => [
-    "ig-arrival-groups",
+  getListIgArrivalRegistryParticipationsQueryKey: () => ["people"],
+  getListIgArrivalRegistryGroupsQueryKey: (params: unknown) => [
+    "groups",
     params,
   ],
-  getListIgArrivalPeopleQueryKey: (params: unknown) => [
-    "ig-arrival-people",
+  getListIgArrivalRegistryLocationsQueryKey: (params: unknown) => [
+    "locations",
     params,
   ],
-  useGetMe: () => ({
-    data: { permissions: mockState.permissions },
+  useListIgArrivalRegistryLocations: (params: { locationUid?: string }) => ({
+    data: {
+      items: params.locationUid
+        ? [{ locationUid: "selected", locationName: "Склад Восток" }]
+        : [{ locationUid: "1", locationName: "Склад" }],
+      nextCursor: null,
+    },
     isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
   }),
-  useListIgArrivalGroups: (...args: unknown[]) => {
-    mockState.groupsQuery(...args);
+  useGetMe: () => ({ data: { permissions: { "20011": [] } } }),
+  useListIgArrivalRegistryGroups: (params: unknown) => {
+    state.groupCalls.push(params);
     return {
-      data: mockState.groupsData,
-      isLoading: mockState.isLoadingGroups,
+      data: {
+        items: [
+          {
+            groupKey: "a",
+            group: "assigned",
+            arrivalDate: "2026-11-10",
+            locationUid: "1",
+            locationName: "Склад",
+            participationCount: 1,
+            totalParticipationCount: 1,
+            needsAttentionCount: 0,
+          },
+          {
+            groupKey: "b",
+            group: "assigned",
+            arrivalDate: "2026-11-10",
+            locationUid: "2",
+            locationName: "Завод",
+            participationCount: 1,
+            totalParticipationCount: 1,
+            needsAttentionCount: 0,
+          },
+        ],
+        nextCursor: state.groupNext,
+        sync: { lastCompletedAt: null },
+      },
+      isLoading: false,
+      isError: state.groupsError,
       isFetching: false,
-      isError: mockState.isErrorGroups,
       refetch: vi.fn(),
     };
   },
-  useListIgArrivalPeople: (...args: unknown[]) => {
-    mockState.peopleQuery(...args);
+  useListIgArrivalRegistryParticipations: (params: { groupKey: string }) => {
+    state.personCalls.push(params);
     return {
-      data: mockState.peopleData,
-      isLoading: mockState.isLoadingPeople,
+      data: state.personError
+        ? undefined
+        : {
+            items: [
+              {
+                arrivalMemberUid: params.groupKey,
+                personUid: params.groupKey,
+                code1c: "123",
+                candidateId: params.groupKey,
+                fullName: params.groupKey === "a" ? "Алиев" : "Каримов",
+                arrivalDate: "2026-11-10",
+                arrivalDateTime: null,
+                locationUid: "1",
+                locationName: "Склад",
+                participationStatus: "CURRENT",
+                personState: "CURRENT",
+                documentStatus: "RETURNED",
+                approvedDocuments: 1,
+                confirmedDocuments: 0,
+                erpDeliveryStatus: "PENDING",
+                employmentStatus: "IN_PROGRESS",
+                statusScope: "CURRENT_CANDIDATE",
+                needsAttention: false,
+                issueCodes: [],
+                sourceRevision: "1",
+                oneCEmploymentStatus: "UNKNOWN",
+                requirements: {
+                  known: true,
+                  required: 4,
+                  present: 3,
+                  accepted: 2,
+                  review: 1,
+                  returned: 1,
+                  missing: 1,
+                  processing: 0,
+                  completed: false,
+                  nextAction: "REVIEW",
+                },
+                deliveryNeedsAttention: false,
+                reviewAvailable: 1,
+                action: "REVIEW",
+                ...state.personOverrides,
+              },
+            ],
+            nextCursor: state.personNext,
+            sync: { lastCompletedAt: null },
+          },
+      isLoading: false,
+      isError: state.personError,
       isFetching: false,
-      isError: mockState.isErrorPeople,
-      refetch: vi.fn(),
+      refetch: state.refetch,
     };
   },
 }));
-
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-
 let root: Root | undefined;
-let container: HTMLDivElement | undefined;
-
-async function renderComponent(onSelectCandidate = vi.fn()) {
+let container: HTMLDivElement;
+async function render() {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   await act(async () =>
-    root!.render(
-      <IgArrivalReviewQueue onSelectCandidate={onSelectCandidate} />,
-    ),
+    root!.render(<IgArrivalReviewQueue onSelectCandidate={state.select} />),
   );
-  return { container, onSelectCandidate };
+  return container;
 }
-
 afterEach(async () => {
   await act(async () => root?.unmount());
   container?.remove();
-  vi.clearAllMocks();
-  mockState.permissions = { "20011": [] };
-  mockState.groupsData = { items: [], nextOffset: null };
-  mockState.peopleData = { items: [], nextOffset: null };
-  mockState.isLoadingGroups = false;
-  mockState.isLoadingPeople = false;
-  mockState.isErrorGroups = false;
-  mockState.isErrorPeople = false;
+  state.search = { view: "arrivals" };
+  state.groupCalls = [];
+  state.personCalls = [];
+  state.personOverrides = {};
+  state.personError = false;
+  state.groupsError = false;
+  state.groupNext = null;
+  state.personNext = null;
+  state.refetch.mockClear();
+  state.select.mockClear();
+  state.invalidate.mockClear();
 });
+describe("arrival registry", () => {
+  it("does not invent an arrival time when the source has no time", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    const view = await render();
+    expect(view.textContent).not.toContain("Прибытие:");
+  });
 
-describe("IgArrivalReviewQueue", () => {
-  it("renders arrival groups and metrics breakdown", async () => {
-    mockState.groupsData = {
-      items: [
-        {
-          group: "assigned",
-          arrivalDate: "2026-11-10",
-          locationUid: "loc-warehouse-1",
-          locationName: "Склад №1",
-          total: 12,
-          approved: 8,
-          confirmed: 6,
-          issues: 0,
-          waitingDocuments: 3,
-          inReview: 2,
-          returned: 1,
-          completed: 5,
-          sending: 1,
-          needsAttention: 1,
-        },
-        {
-          group: "issues",
-          arrivalDate: null,
-          locationUid: null,
-          locationName: null,
-          total: 2,
-          approved: 0,
-          confirmed: 0,
-          issues: 2,
-          waitingDocuments: 0,
-          inReview: 0,
-          returned: 1,
-          completed: 0,
-          sending: 0,
-          needsAttention: 2,
-        },
-      ],
-      nextOffset: null,
+  it("shows the archive default period and lets the operator select all dates", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 10, 9, 12));
+    try {
+      state.search = { view: "arrivals", igArchive: "archive" };
+      const view = await render();
+      expect(state.groupCalls).toContainEqual(
+        expect.objectContaining({
+          dateFrom: "2026-10-10",
+          dateTo: "2026-11-09",
+        }),
+      );
+      expect(
+        (view.querySelector('input[type="date"]') as HTMLInputElement).value,
+      ).toBe("2026-10-10");
+      await act(async () =>
+        [...view.querySelectorAll("button")]
+          .find((button) => button.textContent === "Все даты")!
+          .click(),
+      );
+      expect(state.search.igPeriod).toBe("all");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("drops an old all-dates cursor when a legacy archive URL gains the default period", async () => {
+    state.search = {
+      view: "arrivals",
+      igArchive: "archive",
+      igCursor: "old-cursor",
+      igPages: '{"a":"old-page"}',
     };
-
-    const { container: view } = await renderComponent();
-
-    // Check date and object header
-    expect(view.textContent).toContain("Заезд: 10.11.2026");
-    expect(view.textContent).toContain("Склад №1");
-    expect(view.textContent).toContain("Всего человек: 12");
-
-    // Check metric badges for assigned group
-    expect(view.textContent).toContain("Ожидают: 3");
-    expect(view.textContent).toContain("На проверке: 2");
-    expect(view.textContent).toContain("Возвращены: 1");
-    expect(view.textContent).toContain("Подтверждены: 6");
-    expect(view.textContent).toContain("Отправка в ERP: 1");
-    expect(view.textContent).toContain("Оформлены: 5");
-
-    // Check separate issues section
+    await render();
+    expect(state.search.igCursor).toBeUndefined();
+    expect(state.search.igPages).toBeUndefined();
+  });
+  it("records each current cursor when advancing group and participant pages", async () => {
+    state.search = {
+      view: "arrivals",
+      igCursor: "group-1",
+      igGroups: '["a"]',
+      igPages: '{"a":"person-1"}',
+      igPageStacks: '{"a":[""]}',
+      igGroupStack: '[""]',
+    };
+    state.groupNext = "group-2";
+    state.personNext = "person-2";
+    const view = await render();
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find((button) => button.textContent === "Следующие участники")!
+        .click(),
+    );
+    expect(state.search.igPages).toBe('{"a":"person-2"}');
+    expect(state.search.igPageStacks).toBe('{"a":["","person-1"]}');
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find((button) => button.textContent === "Следующие объекты")!
+        .click(),
+    );
+    expect(state.search.igCursor).toBe("group-2");
+    expect(state.search.igGroupStack).toBe('["","group-1"]');
+  });
+  it("returns to the immediately previous group and participant pages", async () => {
+    state.search = {
+      view: "arrivals",
+      igCursor: "g2",
+      igGroupStack: '["","g1"]',
+      igGroups: '["a"]',
+      igPages: '{"a":"p2"}',
+      igPageStacks: '{"a":["","p1"]}',
+    };
+    const view = await render();
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find((button) => button.textContent === "Назад к участникам")!
+        .click(),
+    );
+    expect(state.search.igPages).toBe('{"a":"p1"}');
+    expect(state.search.igPageStacks).toBe('{"a":[""]}');
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find((button) => button.textContent === "Назад к объектам")!
+        .click(),
+    );
+    expect(state.search.igCursor).toBe("g1");
+    expect(state.search.igGroupStack).toBe('[""]');
+  });
+  it("renders four HR columns and one review action from server requirements", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    const view = await render();
+    expect(
+      [...view.querySelectorAll("thead th")].map((th) => th.textContent),
+    ).toEqual(["Сотрудник", "Документы", "Что требуется", "Действие"]);
+    expect(view.textContent).toContain("2 из 4");
+    expect(view.textContent).toContain("Проверить 1 документ");
+    expect(view.textContent).not.toContain("00003465");
+    expect(view.textContent).not.toContain("Доставка ERP");
+    expect(
+      view.querySelector('button[aria-label="Проверить: Алиев"]'),
+    ).not.toBeNull();
+    expect(view.querySelector('button[aria-label="Алиев"]')).toBeNull();
+  });
+  it("does not label an active conflicting participation as archived", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.personOverrides = {
+      participationStatus: "ISSUE",
+      personState: "CONFLICT",
+      action: "OPEN_CARD",
+    };
+    const view = await render();
+    expect(view.querySelector("tbody")?.textContent).not.toContain("Архив");
+    expect(view.textContent).toContain("Требует уточнения");
+    expect(
+      view.querySelector('button[aria-label="Открыть карточку: Алиев"]'),
+    ).not.toBeNull();
+  });
+  it("warns about a site cancellation without marking the participation cancelled", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.personOverrides = {
+      participationStatus: "CURRENT",
+      issueCodes: ["ARRIVAL_SITE_STATUS_CANCELLED"],
+    };
+    const view = await render();
     expect(view.textContent).toContain(
-      "Проблемные и нераспределённые записи (1)",
+      "По участку указан статус отмены заезда",
     );
-    expect(view.textContent).toContain("Всего записей");
-    expect(view.textContent).toContain("Требуют внимания");
+    expect(view.textContent).not.toContain("Отменён");
   });
-
-  it("loads participants when clicking an arrival group", async () => {
-    mockState.groupsData = {
-      items: [
-        {
-          group: "assigned",
-          arrivalDate: "2026-11-10",
-          locationUid: "loc-warehouse-1",
-          locationName: "Склад №1",
-          total: 1,
-          approved: 1,
-          confirmed: 1,
-          issues: 0,
-          waitingDocuments: 0,
-          inReview: 0,
-          returned: 0,
-          completed: 1,
-          sending: 0,
-          needsAttention: 0,
-        },
-      ],
-      nextOffset: null,
+  it("describes one missing document grammatically", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.personOverrides = {
+      requirements: {
+        known: true,
+        required: 4,
+        present: 3,
+        accepted: 3,
+        review: 0,
+        returned: 0,
+        missing: 1,
+        processing: 0,
+        completed: false,
+        nextAction: "MISSING",
+      },
+      action: "OPEN_CARD",
     };
-
-    mockState.peopleData = {
-      items: [
-        {
-          personUid: "p-1",
-          code1c: "1C-0099",
-          candidateId: "cand-1",
-          fullName: "Алиев Рустам",
-          arrivalMemberUid: "mem-1",
-          state: "CURRENT",
-          approvedDocuments: 3,
-          confirmedDocuments: 3,
-          employmentConfirmed: true,
-          primaryStatus: "completed",
-          needsAttention: false,
-          issueCode: null,
-        },
-      ],
-      nextOffset: null,
+    const view = await render();
+    expect(view.textContent).toContain("Ожидается 1 документ");
+  });
+  it("sends the server-side requirements filter", async () => {
+    state.search = {
+      view: "arrivals",
+      igGroups: '["a"]',
+      igRequirementsAction: "MISSING",
     };
-
-    const { container: view } = await renderComponent();
-
-    // Find and click the button to open participants
-    const openBtn = [...view.querySelectorAll("button")].find((btn) =>
-      btn.textContent?.includes("Список участников (1)"),
+    await render();
+    expect(state.groupCalls).toContainEqual(
+      expect.objectContaining({ requirementsAction: "MISSING" }),
     );
-    expect(openBtn).toBeDefined();
-
-    await act(async () => openBtn!.click());
-
-    // Verify useListIgArrivalPeople was called with matching parameters
-    expect(mockState.peopleQuery).toHaveBeenCalledWith(
+    expect(state.personCalls).toContainEqual(
+      expect.objectContaining({ groupKey: "a", requirementsAction: "MISSING" }),
+    );
+  });
+  it("shows a delivery problem without hiding a review action", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.personOverrides = { deliveryNeedsAttention: true };
+    const view = await render();
+    expect(view.textContent).toContain(
+      "Передача документов в 1С не подтверждена",
+    );
+    expect(
+      view.querySelector('button[aria-label="Проверить: Алиев"]'),
+    ).not.toBeNull();
+  });
+  it("keeps review actionable when requirements are unknown", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.personOverrides = {
+      requirements: {
+        known: false,
+        required: null,
+        present: null,
+        accepted: null,
+        review: null,
+        returned: null,
+        missing: null,
+        processing: null,
+        completed: null,
+        nextAction: "REVIEW",
+      },
+      action: "REVIEW",
+    };
+    const view = await render();
+    expect(view.textContent).toContain("Комплект не определён");
+    expect(
+      view.querySelector('button[aria-label="Проверить: Алиев"]'),
+    ).not.toBeNull();
+  });
+  it("refreshes expanded participant data along with groups", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    const view = await render();
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find((button) => button.textContent?.includes("Обновить"))!
+        .click(),
+    );
+    expect(state.invalidate).toHaveBeenCalledWith({ queryKey: ["people"] });
+  });
+  it("keeps cached groups visible with a warning if refresh fails", async () => {
+    state.groupsError = true;
+    const view = await render();
+    expect(view.textContent).toContain("Склад");
+    expect(view.textContent).toContain("Не удалось обновить");
+    expect(view.textContent).toContain("Не удалось обновить реестр");
+  });
+  it("resets cursors and expanded groups when switching to archive", async () => {
+    state.search = {
+      view: "arrivals",
+      igCursor: "cursor",
+      igGroups: '["a"]',
+      igPages: '{"a":"page"}',
+    };
+    const view = await render();
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find((button) => button.textContent === "Архив")!
+        .click(),
+    );
+    expect(state.search).toEqual(
       expect.objectContaining({
-        group: "assigned",
-        arrivalDate: "2026-11-10",
-        locationUid: "loc-warehouse-1",
+        view: "arrivals",
+        igArchive: "archive",
+        igPeriod: "custom",
       }),
-      expect.anything(),
     );
-
-    // Verify participant row rendering
-    expect(view.textContent).toContain("Алиев Рустам");
-    expect(view.textContent).toContain("1C-0099");
-    expect(view.textContent).toContain("Оформлен");
-    expect(view.textContent).toContain("Подтверждено: 3 / 3 одобрено");
-    expect(view.textContent).toContain("Трудоустройство подтверждено");
+    expect(state.search.igCursor).toBeUndefined();
+    expect(state.search.igGroups).toBeUndefined();
   });
-
-  it("strictly does NOT render any 'Загрузить документы' button in the operator view", async () => {
-    mockState.groupsData = {
-      items: [
-        {
-          group: "assigned",
-          arrivalDate: "2026-11-10",
-          locationUid: "loc-warehouse-1",
-          locationName: "Склад №1",
-          total: 1,
-          approved: 0,
-          confirmed: 0,
-          issues: 0,
-          waitingDocuments: 1,
-          inReview: 0,
-          returned: 0,
-          completed: 0,
-          sending: 0,
-          needsAttention: 0,
-        },
-      ],
-      nextOffset: null,
+  it("explains an unlinked candidate and renders no candidate action", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.personOverrides = {
+      candidateId: null,
+      action: "NONE",
+      needsAttention: true,
+      issueCodes: ["unrecognised"],
     };
-
-    mockState.peopleData = {
-      items: [
-        {
-          personUid: "p-2",
-          code1c: "1C-0100",
-          candidateId: "cand-2",
-          fullName: "Бакиров Фарух",
-          arrivalMemberUid: "mem-2",
-          state: "CURRENT",
-          approvedDocuments: 0,
-          confirmedDocuments: 0,
-          employmentConfirmed: false,
-          primaryStatus: "waitingDocuments",
-          needsAttention: false,
-          issueCode: null,
-        },
-      ],
-      nextOffset: null,
-    };
-
-    const { container: view } = await renderComponent();
-
-    // Open group
-    const openBtn = [...view.querySelectorAll("button")].find((btn) =>
-      btn.textContent?.includes("Список участников"),
+    const view = await render();
+    expect(view.textContent).toContain(
+      "Обратитесь к ответственному за привязку кандидатов",
     );
-    await act(async () => openBtn!.click());
-
-    // Verify participant has waitingDocuments status
-    expect(view.textContent).toContain("Бакиров Фарух");
-    expect(view.textContent).toContain("Ожидание документов");
-
-    // Strictly ensure no button contains "Загрузить документы" or "Загрузить"
+    expect(view.textContent).toContain("Нет связанного профиля");
+    expect(view.textContent).not.toContain("unrecognised");
+    expect(
+      [...view.querySelectorAll("button")].some(
+        (button) => button.textContent === "Алиев",
+      ),
+    ).toBe(false);
+  });
+  it("allows retry of a failed group independently", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.personError = true;
+    const view = await render();
+    expect(view.textContent).toContain("Не удалось загрузить участников");
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find((button) => button.textContent === "Повторить")!
+        .click(),
+    );
+    expect(state.refetch).toHaveBeenCalledOnce();
+  });
+  it("passes the selected historical participation when opening its profile", async () => {
+    state.search = {
+      view: "arrivals",
+      igArchive: "archive",
+      igPeriod: "all",
+      igGroups: '["a"]',
+    };
+    state.personOverrides = {
+      participationStatus: "HISTORICAL",
+      arrivalDateTime: "2026-11-10T14:35:00",
+    };
+    const view = await render();
+    expect(view.textContent).toContain("Исторический");
+    expect(view.textContent).toContain("Прибытие: 14:35");
+    await act(async () =>
+      [...view.querySelectorAll("button")]
+        .find(
+          (button) => button.getAttribute("aria-label") === "Проверить: Алиев",
+        )!
+        .click(),
+    );
+    expect(state.select).toHaveBeenCalledWith("a", {
+      memberUid: "a",
+      date: "2026-11-10",
+      arrivalDateTime: "2026-11-10T14:35:00",
+      location: "Склад",
+      status: "HISTORICAL",
+    });
+  });
+  it("debounces the person search before updating the URL", async () => {
+    vi.useFakeTimers();
+    try {
+      const view = await render();
+      const input = view.querySelector(
+        'input[type="search"]',
+      ) as HTMLInputElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!;
+      await act(async () => {
+        setter.call(input, "Ал");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(200);
+        setter.call(input, "Алиев");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      expect(state.search.igQ).toBeUndefined();
+      await act(async () => vi.advanceTimersByTime(349));
+      expect(state.search.igQ).toBeUndefined();
+      await act(async () => vi.advanceTimersByTime(1));
+      expect(state.search.igQ).toBe("Алиев");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("resolves a selected object name from its URL even outside the options page", async () => {
+    state.search = { view: "arrivals", igLocationUid: "selected" };
+    const view = await render();
+    expect(
+      (view.querySelector('[aria-label="Объект"]') as HTMLInputElement).value,
+    ).toBe("Склад Восток");
+    expect(state.groupCalls).toContainEqual(
+      expect.objectContaining({ locationUid: "selected" }),
+    );
+  });
+  it("restores several open groups and displays independent statuses without document upload", async () => {
+    state.search = {
+      view: "arrivals",
+      igDates: '["2026-11-10"]',
+      igGroups: '["a","b"]',
+      igArchive: "archive",
+      igPeriod: "all",
+    };
+    const view = await render();
+    expect(view.textContent).toContain("Алиев");
+    expect(view.textContent).toContain("Каримов");
+    expect(view.textContent).toContain("Возвращено: 1");
+    expect(view.textContent).toContain("2 из 4");
     expect(view.textContent).not.toContain("Загрузить документы");
-    const allButtons = [...view.querySelectorAll("button")];
-    const uploadBtn = allButtons.find((btn) =>
-      /загрузить/i.test(btn.textContent ?? ""),
-    );
-    expect(uploadBtn).toBeUndefined();
-  });
-
-  it("calls onSelectCandidate when clicking a participant card / action", async () => {
-    mockState.groupsData = {
-      items: [
-        {
-          group: "assigned",
-          arrivalDate: "2026-11-10",
-          locationUid: "loc-warehouse-1",
-          locationName: "Склад №1",
-          total: 1,
-          approved: 1,
-          confirmed: 0,
-          issues: 0,
-          waitingDocuments: 0,
-          inReview: 1,
-          returned: 0,
-          completed: 0,
-          sending: 0,
-          needsAttention: 0,
-        },
-      ],
-      nextOffset: null,
-    };
-
-    mockState.peopleData = {
-      items: [
-        {
-          personUid: "p-3",
-          code1c: "1C-0101",
-          candidateId: "target-candidate-42",
-          fullName: "Каримов Даврон",
-          arrivalMemberUid: "mem-3",
-          state: "CURRENT",
-          approvedDocuments: 1,
-          confirmedDocuments: 0,
-          employmentConfirmed: false,
-          primaryStatus: "inReview",
-          needsAttention: false,
-          issueCode: null,
-        },
-      ],
-      nextOffset: null,
-    };
-
-    const onSelectCandidate = vi.fn();
-    const { container: view } = await renderComponent(onSelectCandidate);
-
-    // Open group
-    const openBtn = [...view.querySelectorAll("button")].find((btn) =>
-      btn.textContent?.includes("Список участников"),
-    );
-    await act(async () => openBtn!.click());
-
-    // Click "Карточка" button
-    const cardBtn = [...view.querySelectorAll("button")].find((btn) =>
-      btn.textContent?.includes("Карточка"),
-    );
-    expect(cardBtn).toBeDefined();
-
-    await act(async () => cardBtn!.click());
-
-    expect(onSelectCandidate).toHaveBeenCalledWith("target-candidate-42");
-  });
-
-  it("returns back to all arrival groups when clicking 'Ко всем заездам'", async () => {
-    mockState.groupsData = {
-      items: [
-        {
-          group: "assigned",
-          arrivalDate: "2026-11-10",
-          locationUid: "loc-warehouse-1",
-          locationName: "Склад №1",
-          total: 5,
-          approved: 2,
-          confirmed: 1,
-          issues: 0,
-          waitingDocuments: 1,
-          inReview: 1,
-          returned: 0,
-          completed: 1,
-          sending: 0,
-          needsAttention: 0,
-        },
-      ],
-      nextOffset: null,
-    };
-
-    const { container: view } = await renderComponent();
-
-    // Open group
-    const openBtn = [...view.querySelectorAll("button")].find((btn) =>
-      btn.textContent?.includes("Список участников"),
-    );
-    await act(async () => openBtn!.click());
-
-    expect(view.textContent).toContain("Склад №1");
-    expect(view.textContent).toContain("Заезд от 10.11.2026");
-
-    // Click back button
-    const backBtn = [...view.querySelectorAll("button")].find((btn) =>
-      btn.textContent?.includes("Ко всем заездам"),
-    );
-    expect(backBtn).toBeDefined();
-    await act(async () => backBtn!.click());
-
-    // Verified back in group view
-    expect(view.textContent).toContain("Заезды по датам и объектам");
-    expect(view.textContent).toContain("Всего человек: 5");
-  });
-
-  it("blocks access when principal lacks 20011 or 20009", async () => {
-    // Principal has only 20002 (RU review)
-    mockState.permissions = { "20002": [] };
-
-    const { container: view } = await renderComponent();
-
-    expect(view.textContent).toContain(
-      "Нет доступа к проверке документов иностранных граждан",
-    );
-    expect(view.querySelector('[role="alert"]')).not.toBeNull();
-    // Query must not run
-    expect(mockState.groupsQuery).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        query: expect.objectContaining({ enabled: false }),
-      }),
+    expect(state.personCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ groupKey: "a", archive: "archive" }),
+        expect.objectContaining({ groupKey: "b", archive: "archive" }),
+      ]),
     );
   });
 });

@@ -39,6 +39,8 @@ vi.mock("@edo/api-client", () => ({
   getListEmployeeDocumentsQueryKey: () => ["employee-docs"],
   getListReviewDocumentsQueryKey: () => ["review-docs"],
   getListCandidateReviewQueueQueryKey: () => ["candidate-review-queue"],
+  getListIgArrivalRegistryGroupsQueryKey: () => ["arrival-groups"],
+  getListIgArrivalRegistryParticipationsQueryKey: () => ["arrival-people"],
   getGetCandidateDetailsQueryKey: (id: string) => ["candidate", id],
   getGetDocumentFileDownloadQueryKey: () => ["file-download"],
   useGetDocumentFileDownload: vi.fn(() => ({
@@ -239,6 +241,7 @@ function renderWorkspace(
   fireImgLoad(container);
   return {
     container,
+    client,
     rerender: render,
     cleanup: () => {
       act(() => {
@@ -453,6 +456,52 @@ describe("DocumentReviewWorkspace hover vs select", () => {
         hasUnsavedChanges: false,
         busy: false,
       });
+    } finally {
+      view.cleanup();
+    }
+  });
+  it("invalidates both arrival registry queries after saving document changes", async () => {
+    const data = buildData();
+    vi.mocked(useEditDocumentFields).mockImplementation(((options: {
+      mutation: { onSuccess: (value: DocumentVersionDto) => Promise<void> };
+    }) => ({
+      mutate: () => void options.mutation.onSuccess(data),
+      isPending: false,
+    })) as never);
+    const view = renderWorkspace(data);
+    try {
+      view.client.setQueryData(["arrival-groups", { archive: "current" }], {
+        items: [],
+      });
+      view.client.setQueryData(["arrival-people", { groupKey: "a" }], {
+        items: [],
+      });
+      click(
+        view.container.querySelector('[aria-label="Подставить OCR: Фамилия"]')!,
+      );
+      // Force a real changed field rather than relying on unchanged OCR.
+      const input = view.container.querySelector(
+        '[data-field-row="last_name"] textarea',
+      ) as HTMLTextAreaElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!;
+      await act(async () => {
+        setter.call(input, "Петров");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => {
+        saveButton(view.container).click();
+      });
+      expect(
+        view.client.getQueryState(["arrival-groups", { archive: "current" }])
+          ?.isInvalidated,
+      ).toBe(true);
+      expect(
+        view.client.getQueryState(["arrival-people", { groupKey: "a" }])
+          ?.isInvalidated,
+      ).toBe(true);
     } finally {
       view.cleanup();
     }

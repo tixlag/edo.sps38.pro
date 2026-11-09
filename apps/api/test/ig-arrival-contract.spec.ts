@@ -27,6 +27,22 @@ describe("ERP arrival wire contract", () => {
   it("accepts a current calendar literal and stable member", () => {
     expect(arrivalStateSchema.parse(current)).toMatchObject(current);
   });
+  it("retains valid local arrival time and rejects impossible time or UTC", () => {
+    const withTime = (arrivalDateTime: string) => ({
+      ...current,
+      participations: [{ ...current.participations[0], arrivalDateTime }],
+    });
+    expect(
+      arrivalStateSchema.parse(withTime("2026-11-05T13:20:45"))
+        .participations[0],
+    ).toHaveProperty("arrivalDateTime", "2026-11-05T13:20:45");
+    expect(
+      arrivalStateSchema.safeParse(withTime("2026-11-05T25:00:00")).success,
+    ).toBe(false);
+    expect(
+      arrivalStateSchema.safeParse(withTime("2026-11-05T13:20:45Z")).success,
+    ).toBe(false);
+  });
   it("requires explicit pagination end", () => {
     expect(arrivalPageSchema.safeParse({ items: [] }).success).toBe(false);
     expect(

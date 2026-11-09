@@ -508,6 +508,7 @@ export class CandidatePreviousDocumentsSyncService {
               originalVerified: doc.verifiedOriginal,
               sourceId: doc.id,
               knownValid,
+              previouslyConfirmed: old?.status === "CONFIRMED",
             },
             isIg,
           );

@@ -19,6 +19,12 @@ const nullableText = z.string().max(512).nullable();
 export const arrivalParticipationSchema = z.object({
   arrivalMemberUid: uuid,
   arrivalDate: calendar.nullable(),
+  arrivalDateTime: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/)
+    .refine((value) => calendar.safeParse(value.slice(0, 10)).success)
+    .nullable()
+    .optional(),
   locationUid: uuid.nullable(),
   locationCode1c: nullableText,
   locationName: nullableText,

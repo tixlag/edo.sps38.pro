@@ -98,7 +98,7 @@ export class IgArrivalGroupsDto {
 }
 export class IgArrivalPersonDto {
   @ApiProperty({ format: "uuid" }) personUid!: string;
-  @ApiProperty() code1c!: string;
+  @ApiProperty({ type: String, nullable: true }) code1c!: string | null;
   @ApiProperty({ type: String, nullable: true }) candidateId!: string | null;
   @ApiProperty({ type: String, nullable: true }) fullName!: string | null;
   @ApiProperty({ type: String, nullable: true, format: "uuid" })

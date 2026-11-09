@@ -1158,7 +1158,10 @@ model DocumentExpirationAlert {
 
 model IgArrivalPerson {
   personUid String @id @db.VarChar(36)
-  code1c String @unique @db.VarChar(64)
+  code1c String? @db.VarChar(64)
+  rawSourceCode1c String? @db.Text
+  factsSeenGeneration BigInt?
+  factsMissingPasses Int @default(0)
   revision BigInt @default(0)
   state String @db.VarChar(16)
   currentMemberUid String? @unique @db.VarChar(36)
@@ -1175,16 +1178,26 @@ model IgArrivalPerson {
   igVerified Boolean @default(false)
   updatedAt DateTime @updatedAt @db.DateTime(3)
   @@index([state, personUid])
+  @@index([code1c])
   @@index([igVerified, state, personUid])
   @@index([syncPending, updatedAt])
   @@map("ig_arrival_persons")
 }
 model IgArrivalMember {
   arrivalMemberUid String @id @db.VarChar(36)
+  sourceKey String? @unique @db.VarChar(128)
+  sourceMemberUid String? @db.VarChar(36)
+  factsSeenGeneration BigInt?
+  factsMissingPasses Int @default(0)
+  factsArchived Boolean @default(false)
+  latestSiteStatusCancelled Boolean?
+  factsIdentityIssue String? @db.VarChar(64)
   personUid String @db.VarChar(36)
   owner IgArrivalPerson @relation("IgArrivalOwner", fields: [personUid], references: [personUid], onDelete: Cascade)
   currentFor IgArrivalPerson? @relation("IgArrivalCurrent")
   arrivalDate String? @db.Char(10)
+  arrivalDateTime String? @db.Char(19)
+  lastSeenRevision BigInt?
   locationUid String? @db.VarChar(36)
   locationCode1c String? @db.VarChar(512)
   locationName String? @db.VarChar(512)
@@ -1193,7 +1206,9 @@ model IgArrivalMember {
   managerCode1c String? @db.VarChar(512)
   cancelled Boolean
   @@index([arrivalDate, locationUid])
+  @@index([lastSeenRevision, arrivalDate, locationUid])
   @@index([personUid])
+  @@index([sourceMemberUid])
   @@map("ig_arrival_members")
 }
 
@@ -1211,6 +1226,9 @@ model IgArrivalIssue {
 
 model IgArrivalSyncState {
   id String @id @db.VarChar(32)
+  factsFinishedGeneration BigInt?
+  factsScanGeneration BigInt?
+  factsScanIncomplete Boolean @default(false)
   cursor String? @db.VarChar(128)
   completedAt DateTime? @db.DateTime(3)
   lockToken String? @db.VarChar(64)

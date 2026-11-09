@@ -15,6 +15,8 @@ import {
   useStartDocumentOcr,
   getListReviewDocumentsQueryKey,
   getListCandidateReviewQueueQueryKey,
+  getListIgArrivalRegistryGroupsQueryKey,
+  getListIgArrivalRegistryParticipationsQueryKey,
   getGetCandidateDetailsQueryKey,
   type DocumentVersionDto,
   type DocumentDeliveryAttemptDto,
@@ -234,6 +236,8 @@ export function DocumentReviewWorkspace({
             }),
           ]
         : []),
+      client.invalidateQueries({ queryKey: getListIgArrivalRegistryGroupsQueryKey() }),
+      client.invalidateQueries({ queryKey: getListIgArrivalRegistryParticipationsQueryKey({ groupKey: "" }).slice(0, 1) }),
       client.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
     ]);
   };

@@ -122,6 +122,20 @@ describe("IG completion", () => {
       ]),
     ).toEqual(["valid"]);
   });
+  it("counts a previously confirmed registration original with unknown expiry", () => {
+    const uid = "26b930ce-6462-11ec-80cc-002590854e7f";
+    const previous = usablePreviousUids([
+      { documentUid: uid, expiresAt: null, fields: {} },
+    ]);
+    expect(previous).toEqual([uid]);
+    expect(
+      igRequiredDocumentsComplete(
+        [{ id: "registration", erpUid: uid }],
+        [],
+        previous,
+      ),
+    ).toBe(true);
+  });
   it("blocks whole employment and records a catalog conflict when required patent or migration is absent", async () => {
     const candidate = {
       id: "current",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatDateRu,
+  formatLocalArrivalTime,
   formatDateTimeRu,
   isDateFieldName,
   maskDateRuInput,
@@ -9,6 +10,22 @@ import {
 } from "./date-format";
 
 describe("date-format", () => {
+  it("preserves local ERP arrival time without timezone conversion or missing-time fallback", () => {
+    expect(formatLocalArrivalTime("2026-11-10T14:35:42")).toBe("14:35");
+    expect(formatLocalArrivalTime("2026-11-10T00:00:00")).toBe("00:00");
+    for (const value of [
+      null,
+      undefined,
+      "",
+      "2026-11-10",
+      "2026-11-10T14:35:00Z",
+      "2026-02-31T14:35:00",
+      "2026-11-10T24:00:00",
+    ]) {
+      expect(formatLocalArrivalTime(value)).toBeUndefined();
+    }
+  });
+
   it("formats valid ISO dates strictly as dd.mm.yyyy", () => {
     expect(formatDateRu("1990-05-07")).toBe("07.05.1990");
     expect(formatDateRu("1990-02-31")).toBe("—");
@@ -30,9 +47,7 @@ describe("date-format", () => {
   });
 
   it("preserves the ISO calendar date when normalizing timestamps", () => {
-    expect(normalizeDateForApi("1990-05-07T00:00:00.000Z")).toBe(
-      "1990-05-07",
-    );
+    expect(normalizeDateForApi("1990-05-07T00:00:00.000Z")).toBe("1990-05-07");
     expect(formatDateRu("1990-05-07T00:00:00.000Z")).toBe("07.05.1990");
   });
 

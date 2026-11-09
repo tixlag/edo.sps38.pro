@@ -1,3 +1,4 @@
+import { parseIgRegistrySearch } from "../lib/ig-registry-search";
 import {
   useCallback,
   useEffect,
@@ -789,6 +790,7 @@ export function ReviewPage({
         const next: Record<string, unknown> = { ...prev };
         delete next.candidate;
         delete next.candidateStage;
+        delete next.igParticipation;
         return next;
       },
     });
@@ -1041,7 +1043,9 @@ export function ReviewPage({
       )}
       {reviewGroup === "IG" && igView === "arrivals" ? (
         <IgArrivalReviewQueue
-          onSelectCandidate={(candidateId) => openCandidate(candidateId)}
+          onSelectCandidate={(candidateId, context) => {
+            void navigate({ to: base, search: (prev: Record<string, unknown>) => ({ ...prev, candidate: candidateId, candidateStage: undefined, igParticipation: JSON.stringify(context) }) });
+          }}
         />
       ) : (
         <>
@@ -1375,6 +1379,7 @@ export function ReviewPage({
           candidateId={drawerCandidateId}
           stage={filters.candidateStage}
           profile={drawerGroup?.candidate ?? null}
+          arrivalContext={typeof parseIgRegistrySearch(rawSearch).igParticipation === "string" ? JSON.parse(parseIgRegistrySearch(rawSearch).igParticipation as string) : undefined}
           returnedHistory={filters.status === "RETURNED"}
           onClose={closeCandidate}
         />
@@ -1489,7 +1494,7 @@ export function ReviewDocumentPage({
     <div className="flex min-h-full min-w-0 flex-col overflow-y-auto p-3 sm:p-4">
       <Link
         to={readOnly ? "/history" : base}
-        search={{ ...parseReviewSearchParams(search) }}
+        search={{ ...parseReviewSearchParams(search), ...parseIgRegistrySearch(search) }}
         onClick={(event) => {
           if (!readOnly && !canNavigate()) event.preventDefault();
         }}

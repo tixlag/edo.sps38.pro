@@ -70,7 +70,7 @@ export class IgArrivalProjectionService {
         update: {},
       });
       await tx.$queryRaw`SELECT code1c FROM ig_employment_states WHERE code1c = ${item.code1c} FOR UPDATE`;
-      const occupiedCode = await tx.igArrivalPerson.findUnique({
+      const occupiedCode = await tx.igArrivalPerson.findFirst({
         where: { code1c: item.code1c },
       });
       if (occupiedCode && occupiedCode.personUid !== item.personUid)
@@ -111,6 +111,8 @@ export class IgArrivalProjectionService {
         for (const member of item.participations) {
           const data = {
             arrivalDate: member.arrivalDate,
+            arrivalDateTime: member.arrivalDateTime ?? null,
+            lastSeenRevision: revision,
             locationUid: member.locationUid,
             locationCode1c: member.locationCode1c,
             locationName: member.locationName,

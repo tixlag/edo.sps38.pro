@@ -1348,6 +1348,215 @@ export interface DocumentUploadGrantRequestDto {
   candidate_profile?: CandidateSnapshotDto;
 }
 
+export interface IgArrivalRegistryLocationDto {
+  locationUid: string;
+  /** @nullable */
+  locationName: string | null;
+}
+
+export interface IgArrivalRegistryLocationsDto {
+  items: IgArrivalRegistryLocationDto[];
+  /** @nullable */
+  nextCursor: string | null;
+}
+
+export type IgArrivalRegistryGroupDtoGroup =
+  (typeof IgArrivalRegistryGroupDtoGroup)[keyof typeof IgArrivalRegistryGroupDtoGroup];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRegistryGroupDtoGroup = {
+  assigned: "assigned",
+  issues: "issues",
+} as const;
+
+export interface IgArrivalRegistryGroupDto {
+  groupKey: string;
+  group: IgArrivalRegistryGroupDtoGroup;
+  /** @nullable */
+  arrivalDate: string | null;
+  /** @nullable */
+  locationUid: string | null;
+  /** @nullable */
+  locationName: string | null;
+  totalParticipationCount: number;
+  participationCount: number;
+  needsAttentionCount: number;
+}
+
+export interface IgArrivalRegistrySyncDto {
+  /** @nullable */
+  lastCompletedAt: string | null;
+}
+
+export interface IgArrivalRegistryGroupsDto {
+  items: IgArrivalRegistryGroupDto[];
+  /** @nullable */
+  nextCursor: string | null;
+  sync: IgArrivalRegistrySyncDto;
+}
+
+export type IgArrivalRequirementsDtoNextAction =
+  (typeof IgArrivalRequirementsDtoNextAction)[keyof typeof IgArrivalRequirementsDtoNextAction];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRequirementsDtoNextAction = {
+  REVIEW: "REVIEW",
+  RETURNED: "RETURNED",
+  ATTENTION: "ATTENTION",
+  PROCESSING: "PROCESSING",
+  MISSING: "MISSING",
+  COMPLETE: "COMPLETE",
+  UNKNOWN: "UNKNOWN",
+} as const;
+
+export interface IgArrivalRequirementsDto {
+  known: boolean;
+  /** @nullable */
+  required: number | null;
+  /** @nullable */
+  present: number | null;
+  /** @nullable */
+  accepted: number | null;
+  /** @nullable */
+  review: number | null;
+  /** @nullable */
+  returned: number | null;
+  /** @nullable */
+  missing: number | null;
+  /** @nullable */
+  processing: number | null;
+  /** @nullable */
+  completed: boolean | null;
+  nextAction: IgArrivalRequirementsDtoNextAction;
+}
+
+export type IgArrivalRegistryParticipationDtoAction =
+  (typeof IgArrivalRegistryParticipationDtoAction)[keyof typeof IgArrivalRegistryParticipationDtoAction];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRegistryParticipationDtoAction = {
+  REVIEW: "REVIEW",
+  OPEN_CARD: "OPEN_CARD",
+  NONE: "NONE",
+} as const;
+
+export type IgArrivalRegistryParticipationDtoParticipationStatus =
+  (typeof IgArrivalRegistryParticipationDtoParticipationStatus)[keyof typeof IgArrivalRegistryParticipationDtoParticipationStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRegistryParticipationDtoParticipationStatus = {
+  CURRENT: "CURRENT",
+  HISTORICAL: "HISTORICAL",
+  CANCELLED: "CANCELLED",
+  ISSUE: "ISSUE",
+} as const;
+
+export type IgArrivalRegistryParticipationDtoPersonState =
+  (typeof IgArrivalRegistryParticipationDtoPersonState)[keyof typeof IgArrivalRegistryParticipationDtoPersonState];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRegistryParticipationDtoPersonState = {
+  CURRENT: "CURRENT",
+  NONE: "NONE",
+  CONFLICT: "CONFLICT",
+} as const;
+
+export type IgArrivalRegistryParticipationDtoDocumentStatus =
+  (typeof IgArrivalRegistryParticipationDtoDocumentStatus)[keyof typeof IgArrivalRegistryParticipationDtoDocumentStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRegistryParticipationDtoDocumentStatus = {
+  UNKNOWN: "UNKNOWN",
+  NO_DOCUMENTS: "NO_DOCUMENTS",
+  IN_PROGRESS: "IN_PROGRESS",
+  RETURNED: "RETURNED",
+  APPROVED: "APPROVED",
+} as const;
+
+export type IgArrivalRegistryParticipationDtoErpDeliveryStatus =
+  (typeof IgArrivalRegistryParticipationDtoErpDeliveryStatus)[keyof typeof IgArrivalRegistryParticipationDtoErpDeliveryStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRegistryParticipationDtoErpDeliveryStatus = {
+  UNKNOWN: "UNKNOWN",
+  NOT_REQUIRED: "NOT_REQUIRED",
+  PENDING: "PENDING",
+  NEEDS_ATTENTION: "NEEDS_ATTENTION",
+  CONFIRMED: "CONFIRMED",
+} as const;
+
+export type IgArrivalRegistryParticipationDtoEmploymentStatus =
+  (typeof IgArrivalRegistryParticipationDtoEmploymentStatus)[keyof typeof IgArrivalRegistryParticipationDtoEmploymentStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRegistryParticipationDtoEmploymentStatus = {
+  UNKNOWN: "UNKNOWN",
+  IN_PROGRESS: "IN_PROGRESS",
+  DOCUMENTS_COMPLETED: "DOCUMENTS_COMPLETED",
+} as const;
+
+export type IgArrivalRegistryParticipationDtoOneCEmploymentStatus =
+  (typeof IgArrivalRegistryParticipationDtoOneCEmploymentStatus)[keyof typeof IgArrivalRegistryParticipationDtoOneCEmploymentStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRegistryParticipationDtoOneCEmploymentStatus = {
+  UNKNOWN: "UNKNOWN",
+} as const;
+
+export type IgArrivalRegistryParticipationDtoStatusScope =
+  (typeof IgArrivalRegistryParticipationDtoStatusScope)[keyof typeof IgArrivalRegistryParticipationDtoStatusScope];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRegistryParticipationDtoStatusScope = {
+  CURRENT_CANDIDATE: "CURRENT_CANDIDATE",
+} as const;
+
+export interface IgArrivalRegistryParticipationDto {
+  /** @nullable */
+  arrivalMemberUid: string | null;
+  personUid: string;
+  /** @nullable */
+  code1c: string | null;
+  requirements: IgArrivalRequirementsDto;
+  reviewAvailable: number;
+  deliveryNeedsAttention: boolean;
+  action: IgArrivalRegistryParticipationDtoAction;
+  /** @nullable */
+  candidateId: string | null;
+  /** @nullable */
+  fullName: string | null;
+  /** @nullable */
+  arrivalDate: string | null;
+  /**
+   * Local calendar time without UTC offset
+   * @nullable
+   */
+  arrivalDateTime: string | null;
+  /** @nullable */
+  locationUid: string | null;
+  /** @nullable */
+  locationName: string | null;
+  participationStatus: IgArrivalRegistryParticipationDtoParticipationStatus;
+  personState: IgArrivalRegistryParticipationDtoPersonState;
+  documentStatus: IgArrivalRegistryParticipationDtoDocumentStatus;
+  approvedDocuments: number;
+  confirmedDocuments: number;
+  erpDeliveryStatus: IgArrivalRegistryParticipationDtoErpDeliveryStatus;
+  employmentStatus: IgArrivalRegistryParticipationDtoEmploymentStatus;
+  oneCEmploymentStatus: IgArrivalRegistryParticipationDtoOneCEmploymentStatus;
+  statusScope: IgArrivalRegistryParticipationDtoStatusScope;
+  needsAttention: boolean;
+  issueCodes: string[];
+  sourceRevision: string;
+}
+
+export interface IgArrivalRegistryParticipationsDto {
+  items: IgArrivalRegistryParticipationDto[];
+  /** @nullable */
+  nextCursor: string | null;
+  sync: IgArrivalRegistrySyncDto;
+}
+
 export type IgArrivalGroupDtoGroup =
   (typeof IgArrivalGroupDtoGroup)[keyof typeof IgArrivalGroupDtoGroup];
 
@@ -1406,7 +1615,8 @@ export const IgArrivalPersonDtoPrimaryStatus = {
 
 export interface IgArrivalPersonDto {
   personUid: string;
-  code1c: string;
+  /** @nullable */
+  code1c: string | null;
   /** @nullable */
   candidateId: string | null;
   /** @nullable */
@@ -2717,6 +2927,120 @@ export type GetCandidateDocumentDraftParams = {
   chat_uuid?: string;
   code_1c?: string;
 };
+
+export type ListIgArrivalRegistryLocationsParams = {
+  archive?: ListIgArrivalRegistryLocationsArchive;
+  q?: string;
+  locationUid?: string;
+  limit?: number;
+  cursor?: string;
+};
+
+export type ListIgArrivalRegistryLocationsArchive =
+  (typeof ListIgArrivalRegistryLocationsArchive)[keyof typeof ListIgArrivalRegistryLocationsArchive];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryLocationsArchive = {
+  current: "current",
+  archive: "archive",
+} as const;
+
+export type ListIgArrivalRegistryGroupsParams = {
+  archive?: ListIgArrivalRegistryGroupsArchive;
+  dateFrom?: string;
+  dateTo?: string;
+  locationUid?: string;
+  q?: string;
+  documentStatus?: ListIgArrivalRegistryGroupsDocumentStatus;
+  requirementsAction?: ListIgArrivalRegistryGroupsRequirementsAction;
+  needsAttention?: boolean;
+  limit?: number;
+  cursor?: string;
+};
+
+export type ListIgArrivalRegistryGroupsArchive =
+  (typeof ListIgArrivalRegistryGroupsArchive)[keyof typeof ListIgArrivalRegistryGroupsArchive];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryGroupsArchive = {
+  current: "current",
+  archive: "archive",
+} as const;
+
+export type ListIgArrivalRegistryGroupsDocumentStatus =
+  (typeof ListIgArrivalRegistryGroupsDocumentStatus)[keyof typeof ListIgArrivalRegistryGroupsDocumentStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryGroupsDocumentStatus = {
+  UNKNOWN: "UNKNOWN",
+  NO_DOCUMENTS: "NO_DOCUMENTS",
+  IN_PROGRESS: "IN_PROGRESS",
+  RETURNED: "RETURNED",
+  APPROVED: "APPROVED",
+} as const;
+
+export type ListIgArrivalRegistryGroupsRequirementsAction =
+  (typeof ListIgArrivalRegistryGroupsRequirementsAction)[keyof typeof ListIgArrivalRegistryGroupsRequirementsAction];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryGroupsRequirementsAction = {
+  REVIEW: "REVIEW",
+  RETURNED: "RETURNED",
+  ATTENTION: "ATTENTION",
+  PROCESSING: "PROCESSING",
+  MISSING: "MISSING",
+  COMPLETE: "COMPLETE",
+  UNKNOWN: "UNKNOWN",
+} as const;
+
+export type ListIgArrivalRegistryParticipationsParams = {
+  archive?: ListIgArrivalRegistryParticipationsArchive;
+  dateFrom?: string;
+  dateTo?: string;
+  locationUid?: string;
+  q?: string;
+  documentStatus?: ListIgArrivalRegistryParticipationsDocumentStatus;
+  requirementsAction?: ListIgArrivalRegistryParticipationsRequirementsAction;
+  needsAttention?: boolean;
+  limit?: number;
+  cursor?: string;
+  groupKey: string;
+};
+
+export type ListIgArrivalRegistryParticipationsArchive =
+  (typeof ListIgArrivalRegistryParticipationsArchive)[keyof typeof ListIgArrivalRegistryParticipationsArchive];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryParticipationsArchive = {
+  current: "current",
+  archive: "archive",
+} as const;
+
+export type ListIgArrivalRegistryParticipationsDocumentStatus =
+  (typeof ListIgArrivalRegistryParticipationsDocumentStatus)[keyof typeof ListIgArrivalRegistryParticipationsDocumentStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryParticipationsDocumentStatus = {
+  UNKNOWN: "UNKNOWN",
+  NO_DOCUMENTS: "NO_DOCUMENTS",
+  IN_PROGRESS: "IN_PROGRESS",
+  RETURNED: "RETURNED",
+  APPROVED: "APPROVED",
+} as const;
+
+export type ListIgArrivalRegistryParticipationsRequirementsAction =
+  (typeof ListIgArrivalRegistryParticipationsRequirementsAction)[keyof typeof ListIgArrivalRegistryParticipationsRequirementsAction];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryParticipationsRequirementsAction = {
+  REVIEW: "REVIEW",
+  RETURNED: "RETURNED",
+  ATTENTION: "ATTENTION",
+  PROCESSING: "PROCESSING",
+  MISSING: "MISSING",
+  COMPLETE: "COMPLETE",
+  UNKNOWN: "UNKNOWN",
+} as const;
 
 export type ListIgArrivalGroupsParams = {
   limit?: number;
@@ -6961,6 +7285,274 @@ export const useCreateCandidateDocumentUploadGrant = <
 
   return useMutation(mutationOptions);
 };
+
+/**
+ * @summary Search IG arrival registry locations
+ */
+export const listIgArrivalRegistryLocations = (
+  params?: ListIgArrivalRegistryLocationsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<IgArrivalRegistryLocationsDto>({
+    url: `/api/v1/candidate-review-queue/ig-arrivals/locations`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListIgArrivalRegistryLocationsQueryKey = (
+  params?: ListIgArrivalRegistryLocationsParams,
+) => {
+  return [
+    `/api/v1/candidate-review-queue/ig-arrivals/locations`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListIgArrivalRegistryLocationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listIgArrivalRegistryLocations>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListIgArrivalRegistryLocationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listIgArrivalRegistryLocations>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListIgArrivalRegistryLocationsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listIgArrivalRegistryLocations>>
+  > = ({ signal }) => listIgArrivalRegistryLocations(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listIgArrivalRegistryLocations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListIgArrivalRegistryLocationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listIgArrivalRegistryLocations>>
+>;
+export type ListIgArrivalRegistryLocationsQueryError = ApiErrorDto;
+
+/**
+ * @summary Search IG arrival registry locations
+ */
+
+export function useListIgArrivalRegistryLocations<
+  TData = Awaited<ReturnType<typeof listIgArrivalRegistryLocations>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListIgArrivalRegistryLocationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listIgArrivalRegistryLocations>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListIgArrivalRegistryLocationsQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary IG arrival registry groups
+ */
+export const listIgArrivalRegistryGroups = (
+  params?: ListIgArrivalRegistryGroupsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<IgArrivalRegistryGroupsDto>({
+    url: `/api/v1/candidate-review-queue/ig-arrivals/groups`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListIgArrivalRegistryGroupsQueryKey = (
+  params?: ListIgArrivalRegistryGroupsParams,
+) => {
+  return [
+    `/api/v1/candidate-review-queue/ig-arrivals/groups`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListIgArrivalRegistryGroupsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listIgArrivalRegistryGroups>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListIgArrivalRegistryGroupsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listIgArrivalRegistryGroups>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListIgArrivalRegistryGroupsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listIgArrivalRegistryGroups>>
+  > = ({ signal }) => listIgArrivalRegistryGroups(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listIgArrivalRegistryGroups>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListIgArrivalRegistryGroupsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listIgArrivalRegistryGroups>>
+>;
+export type ListIgArrivalRegistryGroupsQueryError = ApiErrorDto;
+
+/**
+ * @summary IG arrival registry groups
+ */
+
+export function useListIgArrivalRegistryGroups<
+  TData = Awaited<ReturnType<typeof listIgArrivalRegistryGroups>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListIgArrivalRegistryGroupsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listIgArrivalRegistryGroups>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListIgArrivalRegistryGroupsQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary IG arrival registry participations
+ */
+export const listIgArrivalRegistryParticipations = (
+  params: ListIgArrivalRegistryParticipationsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<IgArrivalRegistryParticipationsDto>({
+    url: `/api/v1/candidate-review-queue/ig-arrivals/participations`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListIgArrivalRegistryParticipationsQueryKey = (
+  params: ListIgArrivalRegistryParticipationsParams,
+) => {
+  return [
+    `/api/v1/candidate-review-queue/ig-arrivals/participations`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListIgArrivalRegistryParticipationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listIgArrivalRegistryParticipations>>,
+  TError = ApiErrorDto,
+>(
+  params: ListIgArrivalRegistryParticipationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listIgArrivalRegistryParticipations>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListIgArrivalRegistryParticipationsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listIgArrivalRegistryParticipations>>
+  > = ({ signal }) => listIgArrivalRegistryParticipations(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listIgArrivalRegistryParticipations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListIgArrivalRegistryParticipationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listIgArrivalRegistryParticipations>>
+>;
+export type ListIgArrivalRegistryParticipationsQueryError = ApiErrorDto;
+
+/**
+ * @summary IG arrival registry participations
+ */
+
+export function useListIgArrivalRegistryParticipations<
+  TData = Awaited<ReturnType<typeof listIgArrivalRegistryParticipations>>,
+  TError = ApiErrorDto,
+>(
+  params: ListIgArrivalRegistryParticipationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listIgArrivalRegistryParticipations>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListIgArrivalRegistryParticipationsQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
 
 /**
  * Person counts use one primary status: completed, returned, inReview, sending, then waitingDocuments. needsAttention may overlap any status. Technical issues do not move a person with a known date and object into the unassigned group.

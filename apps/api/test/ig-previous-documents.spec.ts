@@ -136,6 +136,46 @@ describe("IG previous ERP documents", () => {
     );
     expect(tx.igEmploymentState.findFirst).toHaveBeenCalled();
   });
+  it.each([
+    ["CONFIRMED", "CONFIRMED"],
+    ["REQUIRES_REVIEW", undefined],
+  ] as const)(
+    "preserves only already confirmed expiring original when its expiry becomes unknown (%s)",
+    async (oldStatus, expectedStatus) => {
+      const { service, row, tx, erp } = setup();
+      const documentUid = "26b930ce-6462-11ec-80cc-002590854e7f";
+      tx.candidatePreviousDocument.findMany.mockResolvedValue([
+        {
+          sourceId: "prior-registration",
+          documentUid,
+          status: oldStatus,
+          fields: { isInvalid: false },
+          expiresAt: new Date("2099-01-01"),
+          originalAvailable: true,
+          originalVerified: true,
+        },
+      ] as never);
+      erp.request.mockResolvedValue({
+        items: [
+          {
+            id: "prior-registration",
+            documentUid,
+            title: "Registration",
+            fields: {},
+            expiresAt: null,
+            originalAvailable: true,
+            isInvalid: false,
+            recheckStatus: "REQUIRES_REVIEW",
+          },
+        ],
+      } as never);
+      await service.previous(row.id, actor({ "20011": [] }));
+      const args = tx.candidatePreviousDocument.upsert.mock.calls[0][0] as {
+        update: { status?: string };
+      };
+      expect(args.update.status).toBe(expectedStatus);
+    },
+  );
   it.each([null, undefined])(
     "auto-confirms ERP record with missing or null invalidity %s when not marked invalid (FIX-06)",
     async (isInvalid) => {

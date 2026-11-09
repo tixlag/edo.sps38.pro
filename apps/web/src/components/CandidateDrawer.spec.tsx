@@ -43,6 +43,12 @@ const doc = (id: string, title: string, returnedVersions: unknown[] = []) => ({
 async function render(
   returnedHistory = false,
   stage: string | undefined = "1",
+  arrivalContext?: {
+    date?: string;
+    arrivalDateTime?: string;
+    location?: string;
+    status: string;
+  },
 ) {
   container = document.createElement("div");
   document.body.append(container);
@@ -54,6 +60,7 @@ async function render(
         stage={stage}
         profile={null}
         returnedHistory={returnedHistory}
+        arrivalContext={arrivalContext}
         onClose={() => {}}
       />,
     ),
@@ -61,6 +68,93 @@ async function render(
   return container;
 }
 describe("stage candidate drawer", () => {
+  it("does not show the legacy aggregate for an arrival context", async () => {
+    mock.data = {
+      candidate: {
+        id: "c1",
+        fullName: "Кандидат",
+        approvedDocuments: 1,
+        requiredDocuments: 3,
+      },
+      documents: [],
+    };
+    const view = await render(false, "1", { status: "CURRENT" });
+    expect(view.textContent).toContain(
+      "Обязательные документы — по этапам ниже",
+    );
+    expect(view.textContent).not.toContain("Подтверждено 1 из 3");
+    expect(view.querySelector('[role="progressbar"]')).toBeNull();
+  });
+  it("retains the ordinary candidate aggregate and progress bar", async () => {
+    mock.data = {
+      candidate: {
+        id: "c1",
+        fullName: "Кандидат",
+        approvedDocuments: 1,
+        requiredDocuments: 3,
+      },
+      documents: [],
+    };
+    const view = await render();
+    expect(view.textContent).toContain("Подтверждено 1 из 3");
+    expect(
+      view.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow"),
+    ).toBe("33");
+  });
+  it("identifies the selected historic arrival while showing the current profile", async () => {
+    const view = await render(false, "1", {
+      date: "2026-11-10",
+      arrivalDateTime: "2026-11-10T14:35:00",
+      location: "Склад",
+      status: "HISTORICAL",
+    });
+    expect(view.textContent).toContain("Исторический заезд");
+    expect(view.textContent).toContain("10.11.2026, 14:35");
+    expect(view.textContent).toContain("Склад");
+    expect(view.textContent).toContain("текущий профиль");
+  });
+  it("hides stage totals in arrival context while preserving stage documents", async () => {
+    mock.data = {
+      candidate: {
+        id: "c1",
+        fullName: "Кандидат",
+        approvedDocuments: 0,
+        requiredDocuments: 1,
+      },
+      stageDocuments: {
+        required: { documents: [doc("a", "Паспорт")], missingDocuments: [] },
+        additional: { documents: [], missingDocuments: [] },
+      },
+    };
+    const view = await render(false, "1", { status: "CURRENT" });
+    const stage = [...view.querySelectorAll("button")].find((button) =>
+      button.querySelector("h3"),
+    )!;
+    expect(stage.textContent).not.toContain("0 из 1");
+    expect(stage.querySelector('[style*="width"]')).toBeNull();
+    expect(view.textContent).toContain("Паспорт");
+    expect(view.textContent).toContain("Проверить документ");
+  });
+  it("keeps stage totals in the ordinary drawer", async () => {
+    mock.data = {
+      candidate: {
+        id: "c1",
+        fullName: "Кандидат",
+        approvedDocuments: 0,
+        requiredDocuments: 1,
+      },
+      stageDocuments: {
+        required: { documents: [doc("a", "Паспорт")], missingDocuments: [] },
+        additional: { documents: [], missingDocuments: [] },
+      },
+    };
+    const view = await render();
+    const stage = [...view.querySelectorAll("button")].find((button) =>
+      button.querySelector("h3"),
+    )!;
+    expect(stage.textContent).toContain("0 из 1");
+    expect(stage.querySelector('[style*="width"]')).not.toBeNull();
+  });
   it("shows ERP history for an IG candidate even within a stage", async () => {
     mock.data = {
       candidate: {

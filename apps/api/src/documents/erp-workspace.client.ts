@@ -1,4 +1,5 @@
 import { arrivalPageSchema } from "./ig-arrival-contract";
+import { arrivalFactsPageSchema } from "./ig-arrival-facts-contract";
 import {
   BadRequestException,
   ConflictException,
@@ -235,7 +236,9 @@ export class ErpWorkspaceClient {
           throw new BadRequestException("INVALID_CURSOR");
         }
         throw new ServiceUnavailableException(
-          body === undefined ? "ERP_UNAVAILABLE" : "ERP_OPERATION_RESULT_UNKNOWN",
+          body === undefined
+            ? "ERP_UNAVAILABLE"
+            : "ERP_OPERATION_RESULT_UNKNOWN",
         );
       }
       await response.body?.cancel();
@@ -292,6 +295,19 @@ export class ErpWorkspaceClient {
     )
       throw new Error("INVALID_ARRIVAL_PAGE");
     return this.request("ig-arrivals", arrivalPageSchema, {
+      limit: String(limit),
+      ...(cursor ? { cursor } : {}),
+    });
+  }
+  arrivalFactsPage(limit: number, cursor?: string) {
+    if (
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 100 ||
+      (cursor !== undefined && (!cursor || cursor.length > 1024))
+    )
+      throw new Error("INVALID_ARRIVAL_PAGE");
+    return this.request("ig-arrivals", arrivalFactsPageSchema, {
       limit: String(limit),
       ...(cursor ? { cursor } : {}),
     });

@@ -95,6 +95,7 @@ export function isPreviousDocumentValid(
     originalVerified?: boolean;
     sourceId?: string;
     knownValid?: boolean;
+    previouslyConfirmed?: boolean;
   },
   isIg = true,
 ): boolean {
@@ -112,6 +113,9 @@ export function isPreviousDocumentValid(
     return !isPreviousDocumentExpired(doc.expiresAt);
   }
 
+  // A previously confirmed and verified original remains usable without an expiry date.
+  if (isIg && doc.previouslyConfirmed === true) return true;
+
   // If expiry date is missing:
   // 1. Documents that strictly require an expiration date cannot be assumed indefinite
   if (isIg && requiresExpirationDate(doc.documentUid)) {
@@ -124,8 +128,12 @@ export function isPreviousDocumentValid(
   if (!isIg) return true;
 
   // 4. Ordinary historical documents without an explicit expiration requirement
-  if (doc.knownValid === true || fields.isInvalid === false || fields.isInvalid === null) return true;
+  if (
+    doc.knownValid === true ||
+    fields.isInvalid === false ||
+    fields.isInvalid === null
+  )
+    return true;
 
   return false;
 }
-

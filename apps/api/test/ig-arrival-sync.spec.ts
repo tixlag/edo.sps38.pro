@@ -26,6 +26,7 @@ function fixture(customConfig?: Record<string, string | undefined>) {
   };
   const projection = { apply: vi.fn(async () => true) };
   const updateMany = vi.fn(async () => ({ count: 1 }));
+  let factsFinishedGeneration: bigint | null = 1n;
   let syncStateRow: {
     id: string;
     cursor: string | null;
@@ -46,7 +47,8 @@ function fixture(customConfig?: Record<string, string | undefined>) {
     },
     igArrivalSyncState: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
-        if (where.id === "singleton") return syncStateRow;
+        if (where.id === "singleton" && syncStateRow)
+          return { ...syncStateRow, factsFinishedGeneration };
         return null;
       }),
       create: vi.fn(async ({ data }: { data: any }) => {
@@ -172,9 +174,25 @@ function fixture(customConfig?: Record<string, string | undefined>) {
     setSyncState: (row: typeof syncStateRow) => {
       syncStateRow = row;
     },
+    setFactsFinishedGeneration: (generation: bigint | null) => {
+      factsFinishedGeneration = generation;
+    },
   };
 }
 describe("IG arrival synchronization", () => {
+  it("does not deliver before a complete facts scan", async () => {
+    const { worker, prisma, setFactsFinishedGeneration } = fixture();
+    setFactsFinishedGeneration(null);
+    const sender = vi.fn();
+    vi.stubGlobal("fetch", sender);
+    try {
+      await worker.sync();
+      expect(prisma.igArrivalPerson.findMany).not.toHaveBeenCalled();
+      expect(sender).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it("continues valid people after an invalid source item and never archives missing people", async () => {
     const { erp, projection, worker } = fixture();
     erp.arrivalPage.mockResolvedValueOnce({
@@ -263,6 +281,11 @@ describe("IG arrival synchronization", () => {
     );
     try {
       await worker.sync();
+      expect(prisma.igArrivalPerson.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ factsSeenGeneration: { lte: 1n } }),
+        }),
+      );
       expect(prisma.igArrivalPerson.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
