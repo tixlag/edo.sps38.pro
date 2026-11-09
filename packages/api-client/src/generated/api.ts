@@ -1515,7 +1515,8 @@ export interface IgArrivalRegistryParticipationDto {
   /** @nullable */
   arrivalMemberUid: string | null;
   personUid: string;
-  code1c: string;
+  /** @nullable */
+  code1c: string | null;
   requirements: IgArrivalRequirementsDto;
   reviewAvailable: number;
   deliveryNeedsAttention: boolean;
@@ -1614,7 +1615,8 @@ export const IgArrivalPersonDtoPrimaryStatus = {
 
 export interface IgArrivalPersonDto {
   personUid: string;
-  code1c: string;
+  /** @nullable */
+  code1c: string | null;
   /** @nullable */
   candidateId: string | null;
   /** @nullable */

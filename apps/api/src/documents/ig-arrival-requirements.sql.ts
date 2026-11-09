@@ -25,7 +25,7 @@ const fallbackPrior = () =>
   Prisma.sql`((d.id IS NULL OR d.status='DRAFT') AND ${prior()})`;
 const accepted = () =>
   Prisma.sql`((d.status IN ('APPROVED','SIGNED') AND v.status IN ('APPROVED','SIGNED')) OR ${fallbackPrior()})`;
-const reviewAvailable = Prisma.sql`(SELECT COUNT(*) FROM documents rd JOIN document_versions rv ON rv.documentId=rd.id AND rv.version=rd.currentVersion WHERE rd.candidateId=p.candidateId AND rd.status='IN_REVIEW' AND rv.status='IN_REVIEW')`;
+const reviewAvailable = Prisma.sql`(SELECT COUNT(*) FROM documents rd JOIN document_versions rv ON rv.documentId=rd.id AND rv.version=rd.currentVersion WHERE rd.candidateId=c.id AND rd.status='IN_REVIEW' AND rv.status='IN_REVIEW')`;
 export function requirementsJoin(filters: {
   dateFrom: string | null;
   dateTo: string | null;
@@ -35,10 +35,10 @@ export function requirementsJoin(filters: {
   const search = filters.q;
   const memberFilter =
     filters.dateFrom || filters.dateTo || filters.locationUid
-      ? Prisma.sql`AND EXISTS (SELECT 1 FROM ig_arrival_members fm WHERE fm.personUid=rp.personUid AND fm.lastSeenRevision=rp.revision ${filters.dateFrom ? Prisma.sql`AND fm.arrivalDate>=${filters.dateFrom}` : Prisma.empty} ${filters.dateTo ? Prisma.sql`AND fm.arrivalDate<=${filters.dateTo}` : Prisma.empty} ${filters.locationUid ? Prisma.sql`AND fm.locationUid=${filters.locationUid}` : Prisma.empty})`
+      ? Prisma.sql`AND EXISTS (SELECT 1 FROM ig_arrival_members fm WHERE fm.personUid=rp.personUid ${filters.dateFrom ? Prisma.sql`AND fm.arrivalDate>=${filters.dateFrom}` : Prisma.empty} ${filters.dateTo ? Prisma.sql`AND fm.arrivalDate<=${filters.dateTo}` : Prisma.empty} ${filters.locationUid ? Prisma.sql`AND fm.locationUid=${filters.locationUid}` : Prisma.empty})`
       : Prisma.empty;
   const searchFilter = search
-    ? Prisma.sql`AND (LOCATE(${search},rp.code1c)>0 OR LOCATE(${search},COALESCE(c.fullName,''))>0 OR EXISTS (SELECT 1 FROM ig_arrival_members sm WHERE sm.personUid=rp.personUid AND sm.lastSeenRevision=rp.revision AND LOCATE(${search},COALESCE(sm.fullName,''))>0))`
+    ? Prisma.sql`AND (LOCATE(${search},rp.code1c)>0 OR LOCATE(${search},COALESCE(c.fullName,''))>0 OR EXISTS (SELECT 1 FROM ig_arrival_members sm WHERE sm.personUid=rp.personUid AND LOCATE(${search},COALESCE(sm.fullName,''))>0))`
     : Prisma.empty;
   const previous = fallbackPrior();
   return Prisma.sql`LEFT JOIN (
@@ -57,15 +57,15 @@ export function requirementsJoin(filters: {
  LEFT JOIN documents d ON d.candidateId=c.id AND d.documentTypeId=t.id
  LEFT JOIN document_versions v ON v.documentId=d.id AND v.version=d.currentVersion
  GROUP BY c.id
- ) req ON req.candidateId=p.candidateId`;
+ ) req ON req.candidateId=c.id`;
 }
 export function requirementsKnown() {
   const cutoff = new Date(Date.now() - CATALOG_TTL_MS);
-  return Prisma.sql`(p.candidateId IS NOT NULL AND c.positionCode IS NOT NULL AND c.positionCode<>'' AND c.citizenship IS NOT NULL AND c.citizenship<>'' AND COALESCE(c.igRequirementsConflict,0)=0 AND p.state<>'CONFLICT' AND p.bindingError IS NULL AND NOT EXISTS (SELECT 1 FROM ig_arrival_issues srcIssue WHERE srcIssue.personHash=SHA2(p.personUid,256) AND srcIssue.active=1) AND COALESCE(req.migrationRequired,0)=1 AND COALESCE(req.patentRequired,0)=1 AND EXISTS (SELECT 1 FROM document_types fresh WHERE fresh.catalogSyncedAt IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM document_types stale WHERE stale.catalogSyncedAt IS NOT NULL AND stale.catalogSyncedAt < ${cutoff})
+  return Prisma.sql`(c.id IS NOT NULL AND c.positionCode IS NOT NULL AND c.positionCode<>'' AND c.citizenship IS NOT NULL AND c.citizenship<>'' AND COALESCE(c.igRequirementsConflict,0)=0 AND p.state<>'CONFLICT' AND p.bindingError IS NULL AND NOT EXISTS (SELECT 1 FROM ig_arrival_issues srcIssue WHERE srcIssue.personHash=SHA2(p.personUid,256) AND srcIssue.active=1) AND COALESCE(req.migrationRequired,0)=1 AND COALESCE(req.patentRequired,0)=1 AND EXISTS (SELECT 1 FROM document_types fresh WHERE fresh.catalogSyncedAt IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM document_types stale WHERE stale.catalogSyncedAt IS NOT NULL AND stale.catalogSyncedAt < ${cutoff})
  AND NOT ((c.sexKnown=0 OR c.sex IS NULL OR c.sex NOT IN ('male','female')) AND EXISTS (SELECT 1 FROM document_types t WHERE t.catalogSyncedAt IS NOT NULL AND t.code='MILITARY' AND ${requiredType}))
  AND NOT ((c.projectCode IS NULL OR c.projectCode='') AND EXISTS (SELECT 1 FROM document_types t WHERE t.catalogSyncedAt IS NOT NULL AND NOT (${requiredType}) AND EXISTS (SELECT 1 FROM document_type_stage_rules sr JOIN document_type_stage_projects sp ON sp.ruleId=sr.id WHERE sr.documentTypeId=t.id))) )`;
 }
 export function requirementsAction() {
-  return Prisma.sql`CASE WHEN ${reviewAvailable}>0 THEN 'REVIEW' WHEN EXISTS (SELECT 1 FROM documents returnedDoc WHERE returnedDoc.candidateId=p.candidateId AND returnedDoc.status='RETURNED') THEN 'RETURNED' WHEN NOT ${requirementsKnown()} THEN 'UNKNOWN' WHEN req.attentionCount>0 THEN 'ATTENTION' WHEN req.processingCount>0 THEN 'PROCESSING' WHEN req.missingCount>0 THEN 'MISSING' WHEN req.acceptedCount=req.requiredCount THEN 'COMPLETE' ELSE 'ATTENTION' END`;
+  return Prisma.sql`CASE WHEN ${reviewAvailable}>0 THEN 'REVIEW' WHEN EXISTS (SELECT 1 FROM documents returnedDoc WHERE returnedDoc.candidateId=c.id AND returnedDoc.status='RETURNED') THEN 'RETURNED' WHEN NOT ${requirementsKnown()} THEN 'UNKNOWN' WHEN req.attentionCount>0 THEN 'ATTENTION' WHEN req.processingCount>0 THEN 'PROCESSING' WHEN req.missingCount>0 THEN 'MISSING' WHEN req.acceptedCount=req.requiredCount THEN 'COMPLETE' ELSE 'ATTENTION' END`;
 }
 export const requirementsReviewAvailable = reviewAvailable;

@@ -121,7 +121,7 @@ export class IgArrivalRegistryParticipationDto {
     | string
     | null;
   @ApiProperty() personUid!: string;
-  @ApiProperty() code1c!: string;
+  @ApiProperty({ type: String, nullable: true }) code1c!: string | null;
   @ApiProperty({ type: IgArrivalRequirementsDto })
   requirements!: IgArrivalRequirementsDto;
   @ApiProperty() reviewAvailable!: number;

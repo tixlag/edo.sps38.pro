@@ -294,6 +294,18 @@ describe("arrival registry", () => {
       view.querySelector('button[aria-label="Открыть карточку: Алиев"]'),
     ).not.toBeNull();
   });
+  it("warns about a site cancellation without marking the participation cancelled", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.personOverrides = {
+      participationStatus: "CURRENT",
+      issueCodes: ["ARRIVAL_SITE_STATUS_CANCELLED"],
+    };
+    const view = await render();
+    expect(view.textContent).toContain(
+      "По участку указан статус отмены заезда",
+    );
+    expect(view.textContent).not.toContain("Отменён");
+  });
   it("describes one missing document grammatically", async () => {
     state.search = { view: "arrivals", igGroups: '["a"]' };
     state.personOverrides = {

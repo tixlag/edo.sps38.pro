@@ -19470,7 +19470,8 @@
             "type": "string"
           },
           "code1c": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "requirements": {
             "$ref": "#/components/schemas/IgArrivalRequirementsDto"
@@ -19741,7 +19742,8 @@
             "format": "uuid"
           },
           "code1c": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "candidateId": {
             "type": "string",

@@ -5,7 +5,13 @@ import { IgArrivalRegistryService } from "../src/documents/ig-arrival-registry.s
 import { MIGRATION_UID } from "../src/ocr/ocr-profile";
 import { EMPLOYMENT_PATENT_UID } from "../src/documents/reemployment-document-policy";
 const db = process.env.EDO_HR_TEST_DATABASE_URL;
-if (db && db !== "mysql://root:edo-registry-test-only@127.0.0.1:32772/edo")
+if (
+  db &&
+  ![
+    "mysql://root:edo-registry-test-only@127.0.0.1:32772/edo",
+    "mysql://root:arrival_v2_test@127.0.0.1:13387/edo",
+  ].includes(db)
+)
   throw new Error("Refuse non-task database");
 describe.skipIf(!db)(
   "IG registry HR requirements on clean disposable MariaDB",
@@ -22,6 +28,15 @@ describe.skipIf(!db)(
     beforeAll(async () => {
       prisma = new PrismaService({ datasourceUrl: db });
       registry = new IgArrivalRegistryService(prisma);
+      await prisma.igArrivalSyncState.upsert({
+        where: { id: "singleton" },
+        create: {
+          id: "singleton",
+          generation: 1n,
+          factsFinishedGeneration: 1n,
+        },
+        update: { generation: 1n, factsFinishedGeneration: 1n },
+      });
       const types = await Promise.all(
         [MIGRATION_UID, EMPLOYMENT_PATENT_UID, randomUUID()].map((erpUid, i) =>
           prisma.documentType.create({
@@ -54,6 +69,7 @@ describe.skipIf(!db)(
           code1c,
           candidateId,
           revision: 1n,
+          factsSeenGeneration: 1n,
           state: "CURRENT",
           sourceHash: "x",
           sourcePayload: {},
@@ -61,6 +77,9 @@ describe.skipIf(!db)(
           members: {
             create: {
               arrivalMemberUid: member,
+              sourceMemberUid: member,
+              sourceKey: `2026-11-05T00:00:00|${personUid}|${location}`,
+              factsSeenGeneration: 1n,
               arrivalDate: "2026-11-05",
               locationUid: location,
               locationCode1c: null,

@@ -185,7 +185,7 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
       throw error;
     } finally {
       try {
-        await this.deliverPending(totalDeadline);
+        await this.exportPending(totalDeadline);
       } catch (e) {
         this.logger.warn(
           `Failed final deliverPending: ${e instanceof Error ? e.message : String(e)}`,
@@ -353,8 +353,10 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
       });
     });
   }
-  private async deliverPending(deadline: number): Promise<void> {
-    const endpoint = this.config.get<string>("EDO_ARRIVAL_CONTEXTS_URL")?.trim(),
+  async exportPending(deadline: number): Promise<void> {
+    const endpoint = this.config
+        .get<string>("EDO_ARRIVAL_CONTEXTS_URL")
+        ?.trim(),
       token = this.config.get<string>("EDO_ADAPTATION_SYNC_TOKEN")?.trim();
     if (!endpoint || !token) return;
     let url: URL;
@@ -379,8 +381,18 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
       );
       return;
     }
+    const completed = await this.prisma.igArrivalSyncState.findUnique({
+      where: { id: "singleton" },
+      select: { factsFinishedGeneration: true },
+    });
+    if (completed?.factsFinishedGeneration == null) return;
     const rows = await this.prisma.igArrivalPerson.findMany({
       where: {
+        factsSeenGeneration: { lte: completed.factsFinishedGeneration },
+        OR: [
+          { state: { not: "CURRENT" } },
+          { currentMember: { is: { factsIdentityIssue: null } } },
+        ],
         syncPending: true,
         igVerified: true,
         bindingError: null,

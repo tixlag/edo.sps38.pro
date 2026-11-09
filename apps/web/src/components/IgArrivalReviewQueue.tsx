@@ -770,7 +770,20 @@ function ParticipationRows({
                   .join(" · ")}
               </span>
             ) : null}
-            {person.personState === "CONFLICT" && (
+            {person.issueCodes.includes("ARRIVAL_SITE_STATUS_CANCELLED") && (
+              <span className="block text-[var(--muted-foreground)]">
+                По участку указан статус отмены заезда. Проверьте участие.
+              </span>
+            )}
+            {(person.personState === "CONFLICT" ||
+              person.issueCodes.some((code) =>
+                [
+                  "DUPLICATE_ARRIVAL_MEMBER_UID",
+                  "ARRIVAL_IDENTITY_UNVERIFIED",
+                  "ARRIVAL_IDENTITY_CONFLICT",
+                  "ARRIVAL_MEMBER_OWNER_CONFLICT",
+                ].includes(code),
+              )) && (
               <span className="block text-[var(--muted-foreground)]">
                 Данные заезда требуют уточнения
               </span>

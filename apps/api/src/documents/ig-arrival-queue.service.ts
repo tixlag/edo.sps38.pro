@@ -1,3 +1,4 @@
+import { safeArrivalCandidate } from "./ig-arrival-safe-binding.sql";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
@@ -27,7 +28,7 @@ type GroupRow = {
 };
 type PersonRow = {
   personUid: string;
-  code1c: string;
+  code1c: string | null;
   candidateId: string | null;
   fullName: string | null;
   arrivalMemberUid: string | null;
@@ -46,12 +47,12 @@ type PersonRow = {
 };
 const sourceIssue = Prisma.sql`EXISTS (SELECT 1 FROM ig_arrival_issues i WHERE i.personHash = SHA2(p.personUid, 256) AND i.active = 1)`;
 const issue = Prisma.sql`(p.state = 'CONFLICT' OR m.arrivalDate IS NULL OR m.locationUid IS NULL)`;
-const approved = Prisma.sql`EXISTS (SELECT 1 FROM documents d WHERE d.candidateId = p.candidateId AND d.status IN ('APPROVED', 'SIGNED'))`;
+const approved = Prisma.sql`EXISTS (SELECT 1 FROM documents d WHERE d.candidateId = c.id AND d.status IN ('APPROVED', 'SIGNED'))`;
 const confirmed = Prisma.sql`(c.igCompletionVerified = 1 AND c.igCompletedAt IS NOT NULL)`;
-const returned = Prisma.sql`EXISTS (SELECT 1 FROM documents d WHERE d.candidateId = p.candidateId AND d.status = 'RETURNED')`;
-const inReview = Prisma.sql`EXISTS (SELECT 1 FROM documents d WHERE d.candidateId = p.candidateId AND d.status IN ('IN_REVIEW','OCR_PENDING','UPLOADED'))`;
-const deliveryProblem = Prisma.sql`EXISTS (SELECT 1 FROM documents d JOIN document_versions v ON v.documentId = d.id AND v.version = d.currentVersion LEFT JOIN erp_document_deliveries x ON x.versionId = v.id WHERE d.candidateId = p.candidateId AND d.status IN ('APPROVED','SIGNED') AND (x.id IS NULL OR x.status IN ('WAITING_CONTRACT','REQUIRES_MANUAL') OR (x.status = 'SENT' AND NOT EXISTS (SELECT 1 FROM erp_document_attempts a WHERE a.deliveryId = x.id AND a.receiptValidated = 1 AND a.finishedAt IS NOT NULL AND a.errorCode IS NULL))))`;
-const sending = Prisma.sql`EXISTS (SELECT 1 FROM documents d JOIN document_versions v ON v.documentId = d.id AND v.version = d.currentVersion LEFT JOIN erp_document_deliveries x ON x.versionId = v.id WHERE d.candidateId = p.candidateId AND d.status IN ('APPROVED','SIGNED') AND (x.id IS NULL OR x.status <> 'SENT' OR NOT EXISTS (SELECT 1 FROM erp_document_attempts a WHERE a.deliveryId = x.id AND a.receiptValidated = 1 AND a.finishedAt IS NOT NULL AND a.errorCode IS NULL)))`;
+const returned = Prisma.sql`EXISTS (SELECT 1 FROM documents d WHERE d.candidateId = c.id AND d.status = 'RETURNED')`;
+const inReview = Prisma.sql`EXISTS (SELECT 1 FROM documents d WHERE d.candidateId = c.id AND d.status IN ('IN_REVIEW','OCR_PENDING','UPLOADED'))`;
+const deliveryProblem = Prisma.sql`EXISTS (SELECT 1 FROM documents d JOIN document_versions v ON v.documentId = d.id AND v.version = d.currentVersion LEFT JOIN erp_document_deliveries x ON x.versionId = v.id WHERE d.candidateId = c.id AND d.status IN ('APPROVED','SIGNED') AND (x.id IS NULL OR x.status IN ('WAITING_CONTRACT','REQUIRES_MANUAL') OR (x.status = 'SENT' AND NOT EXISTS (SELECT 1 FROM erp_document_attempts a WHERE a.deliveryId = x.id AND a.receiptValidated = 1 AND a.finishedAt IS NOT NULL AND a.errorCode IS NULL))))`;
+const sending = Prisma.sql`EXISTS (SELECT 1 FROM documents d JOIN document_versions v ON v.documentId = d.id AND v.version = d.currentVersion LEFT JOIN erp_document_deliveries x ON x.versionId = v.id WHERE d.candidateId = c.id AND d.status IN ('APPROVED','SIGNED') AND (x.id IS NULL OR x.status <> 'SENT' OR NOT EXISTS (SELECT 1 FROM erp_document_attempts a WHERE a.deliveryId = x.id AND a.receiptValidated = 1 AND a.finishedAt IS NOT NULL AND a.errorCode IS NULL)))`;
 const primaryStatus = Prisma.sql`CASE WHEN ${confirmed} THEN 'completed' WHEN ${returned} THEN 'returned' WHEN ${inReview} THEN 'inReview' WHEN ${sending} THEN 'sending' ELSE 'waitingDocuments' END`;
 const problem = Prisma.sql`(p.state = 'CONFLICT' OR ${sourceIssue} OR p.bindingError IS NOT NULL OR c.igRequirementsConflict = 1 OR m.arrivalDate IS NULL OR m.locationUid IS NULL OR ${returned} OR ${deliveryProblem})`;
 function bounds(q: IgArrivalPageQueryDto) {
@@ -98,7 +99,7 @@ export class IgArrivalQueueService {
           SUM(CASE WHEN ${primaryStatus} = 'completed' THEN 1 ELSE 0 END) AS completed,
           SUM(CASE WHEN ${primaryStatus} = 'sending' THEN 1 ELSE 0 END) AS sending
    FROM ig_arrival_persons p LEFT JOIN ig_arrival_members m ON m.arrivalMemberUid = p.currentMemberUid
-   LEFT JOIN candidates c ON c.id = p.candidateId
+   LEFT JOIN candidates c ON c.id = p.candidateId AND ${safeArrivalCandidate}
    WHERE p.igVerified = 1 AND p.state IN ('CURRENT','CONFLICT') ${filter(q)}
    GROUP BY CASE WHEN ${issue} THEN NULL ELSE m.arrivalDate END, CASE WHEN ${issue} THEN NULL ELSE m.locationUid END
    ORDER BY arrivalDate IS NULL DESC, arrivalDate ASC, locationUid ASC LIMIT ${limit + 1} OFFSET ${offset}`);
@@ -158,13 +159,13 @@ export class IgArrivalQueueService {
           ? Prisma.sql`AND (${primaryStatus} = ${q.status})`
           : Prisma.empty;
     const rows = await this.prisma.$queryRaw<PersonRow[]>(Prisma.sql`
-   SELECT p.personUid, p.code1c, p.candidateId, COALESCE(m.fullName, c.fullName) AS fullName, p.currentMemberUid AS arrivalMemberUid, p.state,
-    (SELECT COUNT(*) FROM documents d WHERE d.candidateId = p.candidateId AND d.status IN ('APPROVED','SIGNED')) AS approvedDocuments,
-    (SELECT COUNT(*) FROM documents d JOIN document_versions v ON v.documentId = d.id AND v.version = d.currentVersion JOIN erp_document_deliveries x ON x.versionId = v.id AND x.status = 'SENT' AND x.transport = 'multipart-v2' WHERE d.candidateId = p.candidateId AND d.status IN ('APPROVED','SIGNED') AND v.status IN ('APPROVED','SIGNED') AND EXISTS (SELECT 1 FROM erp_document_attempts a WHERE a.deliveryId = x.id AND a.receiptValidated = 1 AND a.finishedAt IS NOT NULL AND a.errorCode IS NULL)) AS confirmedDocuments,
+   SELECT p.personUid, p.code1c, c.id AS candidateId, COALESCE(m.fullName, c.fullName) AS fullName, p.currentMemberUid AS arrivalMemberUid, p.state,
+    (SELECT COUNT(*) FROM documents d WHERE d.candidateId = c.id AND d.status IN ('APPROVED','SIGNED')) AS approvedDocuments,
+    (SELECT COUNT(*) FROM documents d JOIN document_versions v ON v.documentId = d.id AND v.version = d.currentVersion JOIN erp_document_deliveries x ON x.versionId = v.id AND x.status = 'SENT' AND x.transport = 'multipart-v2' WHERE d.candidateId = c.id AND d.status IN ('APPROVED','SIGNED') AND v.status IN ('APPROVED','SIGNED') AND EXISTS (SELECT 1 FROM erp_document_attempts a WHERE a.deliveryId = x.id AND a.receiptValidated = 1 AND a.finishedAt IS NOT NULL AND a.errorCode IS NULL)) AS confirmedDocuments,
     CASE WHEN ${confirmed} THEN 1 ELSE 0 END AS employmentConfirmed,
     ${primaryStatus} AS primaryStatus, CASE WHEN ${problem} THEN 1 ELSE 0 END AS needsAttention,
     CASE WHEN p.state = 'CONFLICT' THEN 'ARRIVAL_SOURCE_CONFLICT' WHEN p.bindingError IS NOT NULL THEN p.bindingError WHEN ${sourceIssue} THEN (SELECT i.code FROM ig_arrival_issues i WHERE i.personHash = SHA2(p.personUid, 256) AND i.active = 1 ORDER BY i.updatedAt DESC LIMIT 1) WHEN m.arrivalDate IS NULL OR m.locationUid IS NULL THEN 'ARRIVAL_GROUP_UNASSIGNED' WHEN c.igRequirementsConflict = 1 THEN 'ERP_IG_REQUIREMENTS_CONFLICT' WHEN ${returned} THEN 'DOCUMENT_RETURNED' WHEN ${deliveryProblem} THEN 'ERP_DELIVERY_NEEDS_ATTENTION' ELSE NULL END AS issueCode
-   FROM ig_arrival_persons p LEFT JOIN ig_arrival_members m ON m.arrivalMemberUid = p.currentMemberUid LEFT JOIN candidates c ON c.id = p.candidateId
+   FROM ig_arrival_persons p LEFT JOIN ig_arrival_members m ON m.arrivalMemberUid = p.currentMemberUid LEFT JOIN candidates c ON c.id = p.candidateId AND ${safeArrivalCandidate}
    WHERE p.igVerified = 1 AND p.state IN ('CURRENT','CONFLICT') ${groupFilter} ${filter(q)} ${statusCondition}
    ORDER BY COALESCE(m.fullName, c.fullName, ''), p.personUid LIMIT ${limit + 1} OFFSET ${offset}`);
     return {
