@@ -102,15 +102,26 @@ export class IgArrivalFactsProjectionService {
       let revision =
         person.sourceHash === hash ? person.revision : person.revision + 1n;
       let factIdentityChanged = false;
+      const memberCounts = new Map<string, number>();
+      for (const fact of item.participations) {
+        if (fact.arrivalMemberUid)
+          memberCounts.set(
+            fact.arrivalMemberUid,
+            (memberCounts.get(fact.arrivalMemberUid) ?? 0) + 1,
+          );
+      }
       for (const fact of item.participations) {
         let row = await tx.igArrivalMember.findUnique({
           where: { sourceKey: fact.sourceKey },
         });
-        const duplicate = issues.some(
-          (issue) =>
-            issue.code === "DUPLICATE_ARRIVAL_MEMBER_UID" &&
-            issue.sourceKey === fact.sourceKey,
-        );
+        const duplicate =
+          (!!fact.arrivalMemberUid &&
+            (memberCounts.get(fact.arrivalMemberUid) ?? 0) > 1) ||
+          issues.some(
+            (issue) =>
+              issue.code === "DUPLICATE_ARRIVAL_MEMBER_UID" &&
+              issue.sourceKey === fact.sourceKey,
+          );
         if (duplicate && fact.arrivalMemberUid) {
           const quarantined = await tx.igArrivalMember.updateMany({
             where: {
@@ -261,9 +272,10 @@ export class IgArrivalFactsProjectionService {
           })
         : null;
       if (duplicatedCode) bindingError = "ARRIVAL_PERSON_CODE_CONFLICT";
-      const eligible =
-        verified &&
-        !duplicatedCode &&
+      const eligible = verified && !duplicatedCode;
+      // Downstream arrival context has stricter participation identity rules.
+      const contextEligible =
+        eligible &&
         state === "CURRENT" &&
         current &&
         current.sourceKey &&
@@ -282,14 +294,25 @@ export class IgArrivalFactsProjectionService {
         if (possible.length > 1) bindingError = "ARRIVAL_OWNER_AMBIGUOUS";
         else {
           let candidate = possible[0];
+          const assigned = candidate
+            ? await tx.igArrivalPerson.findFirst({
+                where: {
+                  candidateId: candidate.id,
+                  personUid: { not: item.personUid },
+                },
+              })
+            : null;
           if (
-            candidate &&
-            (candidate.code1c !== canonicalCode ||
-              candidate.chatUuid ||
-              candidate.erpUid ||
-              candidate.reviewGroup === "RU" ||
-              candidate.citizenship?.toLowerCase() === "ru" ||
-              (candidate.personUid && candidate.personUid !== item.personUid))
+            assigned ||
+            (candidateId && candidateId !== candidate?.id) ||
+            (candidate &&
+              (candidate.code1c !== canonicalCode ||
+                candidate.chatUuid ||
+                candidate.erpUid ||
+                candidate.reviewGroup === "RU" ||
+                candidate.citizenship?.toLowerCase() === "ru" ||
+                (candidate.personUid &&
+                  candidate.personUid !== item.personUid)))
           )
             bindingError = "ARRIVAL_OWNER_CONFLICT";
           else {
@@ -300,7 +323,9 @@ export class IgArrivalFactsProjectionService {
                   personUid: item.personUid,
                   code1c: canonicalCode,
                   reviewGroup: "IG",
-                  fullName: current.fullName,
+                  fullName:
+                    item.participations.find((fact) => fact.fullName)
+                      ?.fullName ?? null,
                 },
               });
             else if (!candidate.personUid || !candidate.reviewGroup)
@@ -308,25 +333,15 @@ export class IgArrivalFactsProjectionService {
                 where: { id: candidate.id },
                 data: { personUid: item.personUid, reviewGroup: "IG" },
               });
-            const assigned = await tx.igArrivalPerson.findFirst({
-              where: {
-                candidateId: candidate.id,
-                personUid: { not: item.personUid },
+            candidateId = candidate.id;
+            await tx.igEmploymentState.upsert({
+              where: { code1c: canonicalCode },
+              create: {
+                code1c: canonicalCode,
+                currentCandidateId: candidate.id,
               },
+              update: {},
             });
-            if (assigned || (candidateId && candidateId !== candidate.id))
-              bindingError = "ARRIVAL_OWNER_CONFLICT";
-            else {
-              candidateId = candidate.id;
-              await tx.igEmploymentState.upsert({
-                where: { code1c: canonicalCode },
-                create: {
-                  code1c: canonicalCode,
-                  currentCandidateId: candidate.id,
-                },
-                update: {},
-              });
-            }
           }
         }
       }
@@ -338,7 +353,7 @@ export class IgArrivalFactsProjectionService {
       const contextState =
         active.length === 0
           ? "NONE"
-          : eligible && !bindingError && candidateId
+          : contextEligible && !bindingError && candidateId
             ? "CURRENT"
             : "CONFLICT";
       const payload = canonicalCode

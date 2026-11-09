@@ -38,7 +38,7 @@ export async function syncArrivalFacts(
   const seenPeople = new Set<string>();
   while (Date.now() < deadline) {
     const page = arrivalFactsPageSchema.parse(
-      await erp.arrivalFactsPage(1, cursor),
+      await erp.arrivalFactsPage(50, cursor),
     );
     const issues = page.issues.map((issue) => sourceIssue.safeParse(issue));
     const items = page.items.map((item) =>
@@ -117,6 +117,9 @@ export async function syncArrivalFacts(
           lease,
         );
       }
+      // ERP cursors are person UUID keysets. Persist only after the entire
+      // person has been handled, so interruption resumes within a large page.
+      await progress.checkpoint?.(item.personUid, !complete);
     }
     if (page.nextCursor === null) {
       if (complete) await projection.finish(lease);

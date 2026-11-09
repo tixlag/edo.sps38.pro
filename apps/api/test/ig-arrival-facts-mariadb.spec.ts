@@ -1,5 +1,7 @@
 import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { MIGRATION_UID } from "../src/ocr/ocr-profile";
+import { EMPLOYMENT_PATENT_UID } from "../src/documents/reemployment-document-policy";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { IgArrivalFactsWorker } from "../src/documents/ig-arrival-facts-worker";
 import { IgArrivalRegistryService } from "../src/documents/ig-arrival-registry.service";
@@ -153,6 +155,65 @@ describe.skipIf(!db)("factual arrivals in isolated MariaDB", () => {
     expect(p.igVerified).toBe(false);
     expect(p.bindingError).toBeTruthy();
   });
+  it("shows identity mismatch without exposing person documents", async () => {
+    const p = randomUUID(),
+      loc = randomUUID(),
+      code = `ig-${randomUUID()}`;
+    const svc = new IgArrivalFactsProjectionService(
+      prisma,
+      { logInTransaction: vi.fn() } as never,
+      {
+        identity: vi
+          .fn()
+          .mockResolvedValue({
+            personUid: randomUUID(),
+            code1C: code,
+            recipientType: "person",
+            reviewGroup: "IG",
+            chatUuid: null,
+            erpUid: null,
+          }),
+      } as never,
+    );
+    await svc.apply(
+      {
+        personUid: p,
+        code1c: code,
+        participations: [
+          {
+            ...item.participations[0],
+            sourceKey: `${period}|${p}|${loc}`,
+            locationUid: loc,
+          },
+        ],
+      },
+      lease,
+      [],
+    );
+    const registry = new IgArrivalRegistryService(prisma),
+      principal = { uuid: "test", accessRules: { "20011": [] } } as never;
+    const group = (await registry.groups(principal, { q: code })).items[0];
+    const row = (
+      await registry.participations(principal, {
+        q: code,
+        groupKey: group.groupKey,
+      })
+    ).items[0];
+    expect(row).toMatchObject({
+      personUid: p,
+      candidateId: null,
+      action: "NONE",
+      documentStatus: "UNKNOWN",
+    });
+    expect(
+      (
+        await prisma.igArrivalPerson.findUniqueOrThrow({
+          where: { personUid: p },
+        })
+      ).igVerified,
+    ).toBe(false);
+    await prisma.igArrivalPerson.delete({ where: { personUid: p } });
+  });
   it("archives a missing fact only after two complete fenced passes", async () => {
     const legacyUid = randomUUID();
     await prisma.igArrivalMember.create({
@@ -260,6 +321,249 @@ describe.skipIf(!db)("factual arrivals in isolated MariaDB", () => {
     await prisma.igArrivalPerson.delete({ where: { personUid: p } });
     await prisma.igEmploymentState.deleteMany({ where: { code1c: code } });
     await prisma.candidate.deleteMany({ where: { id: linked.candidateId! } });
+  });
+  it("shows the same person documents across legacy and multiple dated arrivals", async () => {
+    const p = randomUUID(),
+      loc1 = randomUUID(),
+      loc2 = randomUUID();
+    const code = `ig-${randomUUID()}`;
+    const svc = new IgArrivalFactsProjectionService(
+      prisma,
+      { logInTransaction: vi.fn() } as never,
+      {
+        identity: vi.fn().mockResolvedValue({
+          personUid: p,
+          code1C: code,
+          recipientType: "person",
+          reviewGroup: "IG",
+          chatUuid: null,
+          erpUid: null,
+        }),
+      } as never,
+    );
+    const first = {
+      ...item.participations[0],
+      sourceKey: `${period}|${p}|${loc1}`,
+      locationUid: loc1,
+      arrivalMemberUid: null,
+    };
+    const second = {
+      ...first,
+      sourceKey: `${period}|${p}|${loc2}`,
+      locationUid: loc2,
+      arrivalDate: "2026-11-08",
+    };
+    const currentLease = { ...lease, generation: 250n };
+    await prisma.igArrivalSyncState.update({
+      where: { id: "singleton" },
+      data: { generation: 250n },
+    });
+    await svc.apply(
+      { personUid: p, code1c: code, participations: [first] },
+      currentLease,
+      [],
+    );
+    const candidateId = (
+      await prisma.igArrivalPerson.findUniqueOrThrow({
+        where: { personUid: p },
+      })
+    ).candidateId!;
+    expect(candidateId).toBeTruthy();
+    const types = await Promise.all(
+      [MIGRATION_UID, EMPLOYMENT_PATENT_UID].map((erpUid) =>
+        prisma.documentType.create({
+          data: {
+            code: `FACT_${randomUUID()}`,
+            title: "Required",
+            erpUid,
+            allForeign: true,
+            catalogSyncedAt: new Date(),
+          },
+        }),
+      ),
+    );
+    await prisma.candidate.update({
+      where: { id: candidateId },
+      data: {
+        citizenship: "uz",
+        positionCode: "position",
+        profileSyncedAt: new Date(),
+      },
+    });
+    await svc.finish(currentLease);
+    const registry = new IgArrivalRegistryService(prisma);
+    const principal = { uuid: "test", accessRules: { "20011": [] } } as never;
+    const emptyGroup = (await registry.groups(principal, { q: code })).items[0];
+    const empty = (
+      await registry.participations(principal, {
+        q: code,
+        groupKey: emptyGroup.groupKey,
+      })
+    ).items[0];
+    expect(empty).toMatchObject({
+      candidateId,
+      action: "OPEN_CARD",
+      documentStatus: "NO_DOCUMENTS",
+      requirements: { known: true, present: 0, missing: 2 },
+    });
+    const doc = await prisma.document.create({
+      data: {
+        candidateId,
+        status: "APPROVED",
+        versions: {
+          create: { version: 1, status: "APPROVED", storageKey: "test" },
+        },
+      },
+    });
+    await svc.apply(
+      { personUid: p, code1c: code, participations: [first, second] },
+      currentLease,
+      [],
+    );
+    await svc.finish(currentLease);
+    const read = async () => {
+      const groups = await registry.groups(principal, { q: code });
+      expect(groups.items).toHaveLength(2);
+      expect(groups.items.every((g) => g.group === "assigned")).toBe(true);
+      return Promise.all(
+        groups.items.map(
+          async (g) =>
+            (
+              await registry.participations(principal, {
+                q: code,
+                groupKey: g.groupKey,
+              })
+            ).items[0],
+        ),
+      );
+    };
+    const rows = await read();
+    expect(
+      rows.every(
+        (r) => r.candidateId === candidateId && r.approvedDocuments === 1,
+      ),
+    ).toBe(true);
+    expect(rows.every((r) => r.requirements.known === true)).toBe(true);
+    await svc.apply(
+      {
+        personUid: p,
+        code1c: code,
+        participations: [{ ...first, arrivalDate: "2026-11-09" }, second],
+      },
+      currentLease,
+      [],
+    );
+    const moved = await read();
+    expect(moved.map((r) => r.arrivalDate)).toContain("2026-11-09");
+    expect(
+      moved.every(
+        (r) => r.candidateId === candidateId && r.approvedDocuments === 1,
+      ),
+    ).toBe(true);
+    await prisma.igArrivalPerson.delete({ where: { personUid: p } });
+    await prisma.igEmploymentState.deleteMany({ where: { code1c: code } });
+    await prisma.document.delete({ where: { id: doc.id } });
+    await prisma.candidate.delete({ where: { id: candidateId } });
+    await prisma.documentType.deleteMany({
+      where: { id: { in: types.map((t) => t.id) } },
+    });
+    await prisma.igArrivalSyncState.update({
+      where: { id: "singleton" },
+      data: { generation: 100n },
+    });
+  });
+  it("retains distinct facts with a repeated source UUID and no ERP issue", async () => {
+    const p = randomUUID(),
+      loc1 = randomUUID(),
+      loc2 = randomUUID(),
+      uid = randomUUID();
+    const code = `ig-${randomUUID()}`,
+      generation = 260n;
+    const currentLease = { ...lease, generation };
+    const svc = new IgArrivalFactsProjectionService(
+      prisma,
+      { logInTransaction: vi.fn() } as never,
+      {
+        identity: vi.fn().mockResolvedValue({
+          personUid: p,
+          code1C: code,
+          recipientType: "person",
+          reviewGroup: "IG",
+          chatUuid: null,
+          erpUid: null,
+        }),
+      } as never,
+    );
+    const first = {
+      ...item.participations[0],
+      sourceKey: `${period}|${p}|${loc1}`,
+      locationUid: loc1,
+      arrivalMemberUid: uid,
+    };
+    const second = {
+      ...first,
+      sourceKey: `${period}|${p}|${loc2}`,
+      locationUid: loc2,
+      arrivalDate: "2026-11-08",
+    };
+    await prisma.igArrivalSyncState.update({
+      where: { id: "singleton" },
+      data: { generation },
+    });
+    const data = {
+      personUid: p,
+      code1c: code,
+      participations: [first, second],
+    };
+    await svc.apply(data, currentLease, []);
+    await svc.apply(data, currentLease, []);
+    await svc.finish(currentLease);
+    const members = await prisma.igArrivalMember.findMany({
+      where: { personUid: p },
+    });
+    expect(members).toHaveLength(2);
+    expect(new Set(members.map((m) => m.sourceKey))).toEqual(
+      new Set([first.sourceKey, second.sourceKey]),
+    );
+    const candidateId = (
+      await prisma.igArrivalPerson.findUniqueOrThrow({
+        where: { personUid: p },
+      })
+    ).candidateId!;
+    const doc = await prisma.document.create({
+      data: {
+        candidateId,
+        status: "APPROVED",
+        versions: {
+          create: { version: 1, status: "APPROVED", storageKey: "test" },
+        },
+      },
+    });
+    const registry = new IgArrivalRegistryService(prisma),
+      principal = { uuid: "test", accessRules: { "20011": [] } } as never;
+    const groups = (await registry.groups(principal, { q: code })).items;
+    expect(groups).toHaveLength(2);
+    for (const group of groups) {
+      const row = (
+        await registry.participations(principal, {
+          q: code,
+          groupKey: group.groupKey,
+        })
+      ).items[0];
+      expect(row).toMatchObject({
+        candidateId,
+        approvedDocuments: 1,
+        needsAttention: true,
+      });
+    }
+    await prisma.igArrivalPerson.delete({ where: { personUid: p } });
+    await prisma.igEmploymentState.deleteMany({ where: { code1c: code } });
+    await prisma.document.delete({ where: { id: doc.id } });
+    await prisma.candidate.delete({ where: { id: candidateId } });
+    await prisma.igArrivalSyncState.update({
+      where: { id: "singleton" },
+      data: { generation: 100n },
+    });
   });
   it("changes Surveys context and revision after two absent passes", async () => {
     const p = randomUUID(),
@@ -639,7 +943,7 @@ describe.skipIf(!db)("factual arrivals in isolated MariaDB", () => {
         groupKey: group.groupKey,
       })
     ).items[0];
-    expect(after.candidateId).toBeNull();
+    expect(after.candidateId).toBe(before.candidateId);
     expect(after.issueCodes).toContain("DUPLICATE_ARRIVAL_MEMBER_UID");
     await prisma.igArrivalMember.update({
       where: { arrivalMemberUid: uid },

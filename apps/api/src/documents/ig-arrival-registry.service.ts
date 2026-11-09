@@ -210,7 +210,7 @@ function base(f: Filters) {
 function extra(f: Filters) {
   return Prisma.sql`${f.q ? Prisma.sql`AND (LOCATE(${f.q},COALESCE(m.fullName,c.fullName,''))>0 OR LOCATE(${f.q},COALESCE(p.rawSourceCode1c,p.code1c))>0)` : Prisma.empty} ${f.documentStatus ? Prisma.sql`AND ${docStatus}=${f.documentStatus}` : Prisma.empty} ${f.needsAttention !== null ? Prisma.sql`AND ${problem}=${f.needsAttention ? 1 : 0}` : Prisma.empty} ${f.requirementsAction ? Prisma.sql`AND ${requirementsAction()}=${f.requirementsAction}` : Prisma.empty}`;
 }
-const isIssues = Prisma.sql`(p.state='CONFLICT' OR m.arrivalDate IS NULL OR m.locationUid IS NULL)`;
+const isIssues = Prisma.sql`(m.arrivalDate IS NULL OR m.locationUid IS NULL)`;
 const orderType = Prisma.sql`CASE WHEN ${isIssues} THEN '0' ELSE '1' END`;
 const orderDate = Prisma.sql`CASE WHEN ${isIssues} THEN '' ELSE m.arrivalDate END`;
 const orderLocation = Prisma.sql`CASE WHEN ${isIssues} THEN '' ELSE m.locationUid END`;

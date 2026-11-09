@@ -772,7 +772,7 @@ describe.skipIf(!db)(
       }
     });
 
-    it("treats active source revision conflicts as unknown completeness", async () => {
+    it("keeps requirements visible with an active source warning", async () => {
       const issueId = createHash("sha256").update(randomUUID()).digest("hex");
       await prisma.igArrivalIssue.create({
         data: {
@@ -791,7 +791,7 @@ describe.skipIf(!db)(
           })
         ).items[0];
         expect(row).toMatchObject({
-          requirements: { known: false, completed: null },
+          requirements: { known: true, completed: false, missing: 3 },
           needsAttention: true,
         });
       } finally {
