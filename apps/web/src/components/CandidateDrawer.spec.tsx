@@ -43,7 +43,12 @@ const doc = (id: string, title: string, returnedVersions: unknown[] = []) => ({
 async function render(
   returnedHistory = false,
   stage: string | undefined = "1",
-  arrivalContext?: { date?: string; location?: string; status: string },
+  arrivalContext?: {
+    date?: string;
+    arrivalDateTime?: string;
+    location?: string;
+    status: string;
+  },
 ) {
   container = document.createElement("div");
   document.body.append(container);
@@ -99,11 +104,12 @@ describe("stage candidate drawer", () => {
   it("identifies the selected historic arrival while showing the current profile", async () => {
     const view = await render(false, "1", {
       date: "2026-11-10",
+      arrivalDateTime: "2026-11-10T14:35:00",
       location: "Склад",
       status: "HISTORICAL",
     });
     expect(view.textContent).toContain("Исторический заезд");
-    expect(view.textContent).toContain("10.11.2026");
+    expect(view.textContent).toContain("10.11.2026, 14:35");
     expect(view.textContent).toContain("Склад");
     expect(view.textContent).toContain("текущий профиль");
   });

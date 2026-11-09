@@ -13,7 +13,7 @@ import {
 import { Badge, Button, EmptyState } from "@edo/ui";
 import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { SearchSelect } from "./SearchSelect";
-import { formatDateRu } from "../lib/date-format";
+import { formatDateRu, formatLocalArrivalTime } from "../lib/date-format";
 import { parseIgRegistrySearch } from "../lib/ig-registry-search";
 
 export interface IgArrivalReviewQueueProps {
@@ -23,6 +23,7 @@ export interface IgArrivalReviewQueueProps {
 export type ArrivalContext = {
   memberUid?: string;
   date?: string;
+  arrivalDateTime?: string;
   location?: string;
   status: string;
 };
@@ -688,6 +689,11 @@ function ParticipationRows({
             className={`${cellClass} ${frozenClass} pl-14 text-left font-medium`}
           >
             {person.fullName || "Без имени"}
+            {formatLocalArrivalTime(person.arrivalDateTime) && (
+              <span className="block font-normal text-[var(--muted-foreground)]">
+                Прибытие: {formatLocalArrivalTime(person.arrivalDateTime)}
+              </span>
+            )}
             {person.participationStatus !== "CURRENT" && (
               <span className="mt-1 block">
                 <Badge>
@@ -780,6 +786,9 @@ function ParticipationRows({
                   onSelectCandidate(person.candidateId!, {
                     memberUid: person.arrivalMemberUid ?? undefined,
                     date: person.arrivalDate ?? undefined,
+                    ...(formatLocalArrivalTime(person.arrivalDateTime)
+                      ? { arrivalDateTime: person.arrivalDateTime! }
+                      : {}),
                     location: person.locationName ?? undefined,
                     status: person.participationStatus,
                   })

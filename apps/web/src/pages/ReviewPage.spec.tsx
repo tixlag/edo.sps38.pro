@@ -552,7 +552,7 @@ describe("review document navigation", () => {
       igGroups: '["group-a","group-b"]',
       igPages: '{"group-a":"next"}',
       igParticipation:
-        '{"memberUid":"member-1","date":"2026-11-10","location":"Склад","status":"HISTORICAL"}',
+        '{"memberUid":"member-1","date":"2026-11-10","arrivalDateTime":"2026-11-10T14:35:00","location":"Склад","status":"HISTORICAL"}',
     });
     await renderDocument();
     const link = state.links.find((item) => item.to === "/review-ig");
@@ -564,7 +564,7 @@ describe("review document navigation", () => {
         igGroups: '["group-a","group-b"]',
         igPages: '{"group-a":"next"}',
         igParticipation:
-          '{"memberUid":"member-1","date":"2026-11-10","location":"Склад","status":"HISTORICAL"}',
+          '{"memberUid":"member-1","date":"2026-11-10","arrivalDateTime":"2026-11-10T14:35:00","location":"Склад","status":"HISTORICAL"}',
         candidate: "candidate-1",
         candidateStage: "2",
       }),

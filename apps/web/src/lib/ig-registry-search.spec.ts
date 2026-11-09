@@ -41,6 +41,7 @@ describe("arrival registry URL", () => {
         igParticipation: JSON.stringify({
           memberUid: "m1",
           date: "2026-01-01",
+          arrivalDateTime: "2026-01-01T14:35:00",
           location: "Склад",
           status: "HISTORICAL",
           extra: "ignored",
@@ -48,7 +49,7 @@ describe("arrival registry URL", () => {
       }),
     ).toEqual({
       igParticipation:
-        '{"memberUid":"m1","date":"2026-01-01","location":"Склад","status":"HISTORICAL"}',
+        '{"memberUid":"m1","date":"2026-01-01","arrivalDateTime":"2026-01-01T14:35:00","location":"Склад","status":"HISTORICAL"}',
     });
   });
   it("retains bounded page histories and the explicit all-dates choice", () => {

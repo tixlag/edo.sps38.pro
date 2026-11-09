@@ -276,6 +276,57 @@ describe.skipIf(!db)(
         });
       }
     });
+    it("counts a confirmed registration original with unknown expiry in HR requirements", async () => {
+      const uid = "26b930ce-6462-11ec-80cc-002590854e7f";
+      const type = await prisma.documentType.findUniqueOrThrow({
+        where: { id: typeIds[2] },
+      });
+      await prisma.documentType.update({
+        where: { id: type.id },
+        data: { erpUid: uid },
+      });
+      const previous = await prisma.candidatePreviousDocument.create({
+        data: {
+          candidateId,
+          sourceId: randomUUID(),
+          documentUid: uid,
+          title: "Registration",
+          fields: {},
+          expiresAt: null,
+          originalAvailable: true,
+          originalVerified: true,
+          status: "CONFIRMED",
+        },
+      });
+      try {
+        const group = (await registry.groups(reviewer, { q: code1c })).items[0];
+        const read = async () =>
+          (
+            await registry.participations(reviewer, {
+              q: code1c,
+              groupKey: group.groupKey,
+            })
+          ).items[0];
+        expect(await read()).toMatchObject({
+          requirements: { known: true, accepted: 1, present: 1, missing: 2 },
+        });
+        await prisma.candidatePreviousDocument.update({
+          where: { id: previous.id },
+          data: { status: "REQUIRES_REVIEW" },
+        });
+        expect(await read()).toMatchObject({
+          requirements: { known: true, accepted: 0, present: 0, missing: 3 },
+        });
+      } finally {
+        await prisma.candidatePreviousDocument.delete({
+          where: { id: previous.id },
+        });
+        await prisma.documentType.update({
+          where: { id: type.id },
+          data: { erpUid: type.erpUid },
+        });
+      }
+    });
     it("recognises only usable prior evidence and respects JSON boolean semantics", async () => {
       const type = await prisma.documentType.findUniqueOrThrow({
         where: { id: typeIds[2] },

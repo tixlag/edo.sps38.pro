@@ -89,3 +89,16 @@ export function maskDateRuInput(value: string): string {
   if (digits.length <= 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
   return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
 }
+
+/** ERP arrival time is a local calendar literal, never an instant to convert. */
+export function formatLocalArrivalTime(
+  value: string | null | undefined,
+): string | undefined {
+  if (
+    !value ||
+    !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(value)
+  )
+    return undefined;
+  if (formatDateRu(value.slice(0, 10)) === "—") return undefined;
+  return value.slice(11, 16);
+}

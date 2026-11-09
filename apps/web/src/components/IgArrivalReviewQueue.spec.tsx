@@ -171,6 +171,12 @@ afterEach(async () => {
   state.invalidate.mockClear();
 });
 describe("arrival registry", () => {
+  it("does not invent an arrival time when the source has no time", async () => {
+    state.search = { view: "arrivals", igGroups: '["a"]' };
+    const view = await render();
+    expect(view.textContent).not.toContain("Прибытие:");
+  });
+
   it("shows the archive default period and lets the operator select all dates", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 10, 9, 12));
@@ -435,9 +441,13 @@ describe("arrival registry", () => {
       igPeriod: "all",
       igGroups: '["a"]',
     };
-    state.personOverrides = { participationStatus: "HISTORICAL" };
+    state.personOverrides = {
+      participationStatus: "HISTORICAL",
+      arrivalDateTime: "2026-11-10T14:35:00",
+    };
     const view = await render();
     expect(view.textContent).toContain("Исторический");
+    expect(view.textContent).toContain("Прибытие: 14:35");
     await act(async () =>
       [...view.querySelectorAll("button")]
         .find(
@@ -448,6 +458,7 @@ describe("arrival registry", () => {
     expect(state.select).toHaveBeenCalledWith("a", {
       memberUid: "a",
       date: "2026-11-10",
+      arrivalDateTime: "2026-11-10T14:35:00",
       location: "Склад",
       status: "HISTORICAL",
     });

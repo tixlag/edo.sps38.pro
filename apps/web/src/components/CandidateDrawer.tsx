@@ -13,7 +13,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { formatDateRu } from "../lib/date-format";
+import { formatDateRu, formatLocalArrivalTime } from "../lib/date-format";
 import { LkLink } from "./LkLink";
 import { CandidateStageAccordion } from "./CandidateStageAccordion";
 import { CandidateDrawerHistorySection } from "./CandidateDrawerHistorySection";
@@ -32,7 +32,12 @@ export interface CandidateDrawerProps {
   onClose: () => void;
   returnedHistory?: boolean;
   stage?: string;
-  arrivalContext?: { date?: string; location?: string; status: string };
+  arrivalContext?: {
+    date?: string;
+    arrivalDateTime?: string;
+    location?: string;
+    status: string;
+  };
 }
 
 /**
@@ -79,6 +84,10 @@ export function CandidateDrawer({
     };
   }, []);
 
+  const arrivalTime = formatLocalArrivalTime(arrivalContext?.arrivalDateTime);
+  const arrivalDate = arrivalTime
+    ? arrivalContext?.arrivalDateTime?.slice(0, 10)
+    : arrivalContext?.date;
   const profile = docs.data?.candidate ?? queueProfile;
   const fullName = profile?.fullName?.trim() || null;
   const heading = fullName ?? "Профиль кандидата";
@@ -263,8 +272,12 @@ export function CandidateDrawer({
                       ? "Заезд с проблемой"
                       : "Исторический заезд"}
               </strong>
-              {arrivalContext.date && (
-                <> · {formatDateRu(arrivalContext.date)}</>
+              {arrivalDate && (
+                <>
+                  {" "}
+                  · {formatDateRu(arrivalDate)}
+                  {arrivalTime && `, ${arrivalTime}`}
+                </>
               )}
               {arrivalContext.location && <> · {arrivalContext.location}</>}
               <p className="mt-1">

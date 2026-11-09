@@ -647,6 +647,68 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
     ).toBe(false);
   });
 
+  it("keeps a verified previously confirmed expiring document with unknown expiry, but not a new one", () => {
+    const prior = {
+      documentUid: "26b930ce-6462-11ec-80cc-002590854e7f",
+      expiresAt: null,
+      fields: {},
+      originalAvailable: true,
+      originalVerified: true,
+    };
+    expect(
+      isPreviousDocumentValid({ ...prior, previouslyConfirmed: true }),
+    ).toBe(true);
+    expect(
+      isPreviousDocumentValid({
+        ...prior,
+        previouslyConfirmed: false,
+        knownValid: true,
+      }),
+    ).toBe(false);
+    expect(
+      isPreviousDocumentValid({
+        ...prior,
+        previouslyConfirmed: true,
+        originalVerified: false,
+      }),
+    ).toBe(false);
+    expect(
+      isPreviousDocumentValid({
+        ...prior,
+        previouslyConfirmed: true,
+        originalAvailable: false,
+      }),
+    ).toBe(false);
+    expect(
+      isPreviousDocumentValid({
+        ...prior,
+        previouslyConfirmed: true,
+        fields: { isInvalid: true },
+      }),
+    ).toBe(false);
+    expect(
+      isPreviousDocumentValid({
+        ...prior,
+        previouslyConfirmed: true,
+        expiresAt: new Date("2000-01-01"),
+      }),
+    ).toBe(false);
+    expect(
+      isPreviousDocumentValid({
+        ...prior,
+        previouslyConfirmed: true,
+        documentUid: MIGRATION_UID,
+      }),
+    ).toBe(false);
+    expect(
+      isPreviousDocumentValid({
+        ...prior,
+        previouslyConfirmed: true,
+        documentUid: EMPLOYMENT_PATENT_UID,
+      }),
+    ).toBe(false);
+  });
+
   // Scenario F
   it("Scenario F: RU candidate auto-confirms without requiring IG probePersonOriginal", () => {
     // RU candidate does not run probePersonOriginal, so originalVerified is false

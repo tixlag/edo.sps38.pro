@@ -102,7 +102,13 @@ export function parseIgRegistrySearch(
         )
       ) {
         const clean = Object.fromEntries(
-          ["memberUid", "date", "location", "status"].flatMap((key) =>
+          [
+            "memberUid",
+            "date",
+            "arrivalDateTime",
+            "location",
+            "status",
+          ].flatMap((key) =>
             typeof value[key] === "string" &&
             (value[key] as string).length <= 512
               ? [[key, value[key]]]
