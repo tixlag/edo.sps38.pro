@@ -122,7 +122,7 @@ describe("document catalog cached snapshot", () => {
   const settle = async (count: number) => {
     await vi.waitFor(() => expect(commits).toBe(count));
   };
-  it("returns only applicable stages for each applicable document", async () => {
+  it("returns single ERP stage and category for each applicable document", async () => {
     syncedAt = new Date();
     const base = (await prisma.documentType.findMany())[0];
     const rule = {
@@ -136,13 +136,13 @@ describe("document catalog cached snapshot", () => {
     prisma.documentType.findMany.mockResolvedValueOnce([
       {
         ...base,
+        stage: 3,
         stageRules: [
           {
             ...rule,
-            stage: 7,
+            stage: 3,
             positions: [{ code1c: "001", required: false }],
           },
-          { ...rule, stage: 3, allRu: true },
           { ...rule, stage: 3, allRu: true },
           { ...rule, stage: null, projects: [{ code1c: "project" }] },
           { ...rule, stage: 9, countries: [{ code: "uz" }] },
@@ -154,12 +154,44 @@ describe("document catalog cached snapshot", () => {
         allRu: false,
         stageRules: [{ ...rule, stage: 4 }],
       },
+      {
+        ...base,
+        code: "OPTIONAL",
+        stage: 1,
+        allRu: false,
+        stageRules: [
+          {
+            ...rule,
+            stage: 1,
+            positions: [{ code1c: "001", required: false }],
+          },
+        ],
+      },
       { ...base, code: "LEGACY", stage: 2, stageRules: [] },
     ]);
     const result = await service().list("001", "ru", null, "project");
-    expect(result.items.map(({ code, stages }) => ({ code, stages }))).toEqual([
-      { code: "PASSPORT", stages: [3, 7, null] },
-      { code: "LEGACY", stages: [2] },
+    expect(
+      result.items.map(({ code, stages, stageDetails }) => ({
+        code,
+        stages,
+        stageDetails,
+      })),
+    ).toEqual([
+      {
+        code: "PASSPORT",
+        stages: [3],
+        stageDetails: [{ stage: 3, category: "required" }],
+      },
+      {
+        code: "OPTIONAL",
+        stages: [1],
+        stageDetails: [{ stage: 1, category: "additional" }],
+      },
+      {
+        code: "LEGACY",
+        stages: [2],
+        stageDetails: [{ stage: 2, category: "required" }],
+      },
     ]);
   });
   it("uses the persisted synchronization time for 24 hours, including after restart", async () => {

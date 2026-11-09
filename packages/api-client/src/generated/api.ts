@@ -464,6 +464,21 @@ export interface CandidateDocumentContextDto {
   candidateSnapshot?: CandidateSnapshotDto;
 }
 
+export type DocumentStageCategory =
+  (typeof DocumentStageCategory)[keyof typeof DocumentStageCategory];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentStageCategory = {
+  required: "required",
+  additional: "additional",
+} as const;
+
+export interface CatalogDocumentStageCategoryDto {
+  /** @nullable */
+  stage: number | null;
+  category: DocumentStageCategory;
+}
+
 export type DocumentDefinitionDtoKind =
   (typeof DocumentDefinitionDtoKind)[keyof typeof DocumentDefinitionDtoKind];
 
@@ -488,6 +503,8 @@ export interface CatalogDocumentTypeDto {
   documentUid: string;
   /** Applicable stage numbers; null denotes a document without a stage */
   stages: (number | null)[];
+  /** Detailed category (required/additional) for each applicable stage */
+  stageDetails?: CatalogDocumentStageCategoryDto[];
   fields: DocumentDefinitionDto[];
 }
 

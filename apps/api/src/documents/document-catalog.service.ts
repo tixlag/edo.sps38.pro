@@ -300,28 +300,35 @@ export class DocumentCatalogService {
     return {
       items: types
         .filter((t) => applicable(t, position, citizenship, sex, project))
-        .map((t) => ({
-          code: t.code,
-          title: t.title,
-          documentUid: t.erpUid!,
-          stages: [
-            ...new Set(
-              (t.stageRules?.length ? t.stageRules : [t])
-                .filter(
-                  (rule) =>
-                    classifyRule(rule, position, citizenship, project) !== null,
-                )
-                .map((rule) => rule.stage ?? null),
-            ),
-          ].sort((a, b) => (a ?? Infinity) - (b ?? Infinity)),
-          fields: t.definitions.map((f) => ({
-            name: f.name,
-            label: FIELD_LABELS[f.name],
-            kind: f.kind,
-            required: f.required,
-            ordinal: f.ordinal,
-          })),
-        })),
+        .map((t) => {
+          const stage = t.stage ?? null;
+          const rules = t.stageRules?.length ? t.stageRules : [t];
+          const categories = rules
+            .map((rule) =>
+              classifyRule(rule, position, citizenship, project),
+            )
+            .filter(
+              (cat): cat is "required" | "additional" => cat !== null,
+            );
+          const category: "required" | "additional" = categories.includes("required")
+            ? "required"
+            : "additional";
+
+          return {
+            code: t.code,
+            title: t.title,
+            documentUid: t.erpUid!,
+            stages: [stage],
+            stageDetails: [{ stage, category }],
+            fields: t.definitions.map((f) => ({
+              name: f.name,
+              label: FIELD_LABELS[f.name],
+              kind: f.kind,
+              required: f.required,
+              ordinal: f.ordinal,
+            })),
+          };
+        }),
     };
   }
 }

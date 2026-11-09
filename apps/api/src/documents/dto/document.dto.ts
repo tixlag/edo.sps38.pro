@@ -559,6 +559,17 @@ export class DocumentDefinitionDto {
   @ApiProperty() required!: boolean;
   @ApiProperty() ordinal!: number;
 }
+export class CatalogDocumentStageCategoryDto {
+  @ApiProperty({ type: Number, nullable: true })
+  stage!: number | null;
+
+  @ApiProperty({
+    enum: ["required", "additional"],
+    enumName: "DocumentStageCategory",
+  })
+  category!: "required" | "additional";
+}
+
 export class CatalogDocumentTypeDto extends DocumentTypeDto {
   @ApiProperty({ format: "uuid" }) documentUid!: string;
   @ApiProperty({
@@ -568,6 +579,12 @@ export class CatalogDocumentTypeDto extends DocumentTypeDto {
       "Applicable stage numbers; null denotes a document without a stage",
   })
   stages!: (number | null)[];
+  @ApiPropertyOptional({
+    type: [CatalogDocumentStageCategoryDto],
+    description:
+      "Detailed category (required/additional) for each applicable stage",
+  })
+  stageDetails?: CatalogDocumentStageCategoryDto[];
   @ApiProperty({ type: [DocumentDefinitionDto] })
   fields!: DocumentDefinitionDto[];
 }
