@@ -107,6 +107,7 @@ export interface ReviewQueueFilters {
   /** Exact manager code_1c (review facets). */
   managerCode1c?: string;
   managerId?: string;
+  statusId?: string;
   /** Exact mentor code_1c (review facets). */
   mentorCode1c?: string;
   hasMentor?: boolean;
@@ -174,6 +175,7 @@ export function parseReviewSearchParams(
     citizenship: textParam(raw.citizenship),
     managerCode1c: textParam(raw.managerCode1c),
     managerId: textParam(raw.managerId),
+    statusId: textParam(raw.statusId),
     mentorCode1c: textParam(raw.mentorCode1c),
     hasMentor: booleanParam(raw.hasMentor),
     birthDateFrom: dateParam(raw.birthDateFrom),
@@ -199,6 +201,7 @@ export function hasActiveReviewFilters(filters: ReviewQueueFilters): boolean {
     filters.managerName ??
     (filters.managerUnassigned ? "unassigned" : undefined) ??
     filters.candidateId ??
+    filters.statusId ??
     filters.documentTypeCode ??
     filters.citizenship ??
     filters.managerCode1c ??
