@@ -3,7 +3,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { LkNotificationService } from "../lk/lk-notification.service";
 import { candidateReviewGroup } from "./review-group";
 
-export interface NotifyDocumentReviewParams {
+export interface NotifyDocumentReadyForReviewParams {
   documentId: string;
   version: number;
   candidateId?: string | null;
@@ -20,7 +20,7 @@ export class DocumentNotificationService {
   ) {}
 
   async notifyDocumentReadyForReview(
-    params: NotifyDocumentReviewParams,
+    params: NotifyDocumentReadyForReviewParams,
   ): Promise<void> {
     if (!this.lkNotifications) return;
     try {
@@ -74,16 +74,16 @@ export class DocumentNotificationService {
 
       await this.lkNotifications.sendNotification({
         recipientCodes1c: [managerCode1c],
-        title: "Нужно проверить документ",
-        content: `Обработка OCR завершена. Документ «${docTitle}» кандидата **${candidateName}** ожидает проверки. Проверьте его правильность.`,
+        title: "Документ готов к проверке",
+        content: `Документ «${docTitle}» кандидата **${candidateName}** ожидает проверки. Проверьте его правильность.`,
         type: "toast",
         targetType: "candidate_document_upload",
         targetUrl,
-        idempotencyKey: `document-review:${params.documentId}:${params.version}`,
+        idempotencyKey: `document-review-ready:${params.documentId}:${params.version}`,
       });
     } catch (error) {
       this.logger.warn(
-        `Failed to send document review notification for doc ${params.documentId}: ${
+        `Failed to send document upload notification for doc ${params.documentId}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );

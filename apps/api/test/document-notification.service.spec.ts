@@ -27,7 +27,7 @@ describe("DocumentNotificationService", () => {
     return { service, prisma, lk };
   };
 
-  it("sends review notification to manager for RU candidate with correct targetUrl", async () => {
+  it("sends OCR review-ready notification to RU manager with correct targetUrl", async () => {
     const { service, lk } = createService({
       prisma: {
         candidate: {
@@ -61,16 +61,16 @@ describe("DocumentNotificationService", () => {
     expect(lk.sendNotification).toHaveBeenCalledTimes(1);
     expect(lk.sendNotification).toHaveBeenCalledWith({
       recipientCodes1c: ["HR-100"],
-      title: "Нужно проверить документ",
-      content: "Обработка OCR завершена. Документ «Паспорт РФ» кандидата **Иванов Иван Иванович** ожидает проверки. Проверьте его правильность.",
+      title: "Документ готов к проверке",
+      content: "Документ «Паспорт РФ» кандидата **Иванов Иван Иванович** ожидает проверки. Проверьте его правильность.",
       type: "toast",
       targetType: "candidate_document_upload",
       targetUrl: "/review/candidates/cand-ru-1?document=doc-1",
-      idempotencyKey: "document-review:doc-1:1",
+      idempotencyKey: "document-review-ready:doc-1:1",
     });
   });
 
-  it("sends review notification to manager for IG candidate with /review-ig URL", async () => {
+  it("sends OCR review-ready notification to IG manager with /review-ig URL", async () => {
     const { service, lk } = createService({
       prisma: {
         candidate: {
@@ -104,12 +104,12 @@ describe("DocumentNotificationService", () => {
     expect(lk.sendNotification).toHaveBeenCalledTimes(1);
     expect(lk.sendNotification).toHaveBeenCalledWith({
       recipientCodes1c: ["MGR-200"],
-      title: "Нужно проверить документ",
-      content: "Обработка OCR завершена. Документ «Патент на работу» кандидата **Каримов Алишер** ожидает проверки. Проверьте его правильность.",
+      title: "Документ готов к проверке",
+      content: "Документ «Патент на работу» кандидата **Каримов Алишер** ожидает проверки. Проверьте его правильность.",
       type: "toast",
       targetType: "candidate_document_upload",
       targetUrl: "/review-ig?candidate=cand-ig-2",
-      idempotencyKey: "document-review:doc-2:2",
+      idempotencyKey: "document-review-ready:doc-2:2",
     });
   });
 

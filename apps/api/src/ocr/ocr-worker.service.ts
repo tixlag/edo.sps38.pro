@@ -3,6 +3,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
@@ -11,6 +12,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { StorageService } from "../storage/storage.service";
 import { DocumentUploadService } from "../documents/document-upload.service";
+import { DocumentNotificationService } from "../documents/document-notification.service";
 import {
   OcrService,
   validateOcrResult,
@@ -19,7 +21,6 @@ import {
 } from "./ocr.service";
 import { OcrQueueService } from "./ocr-queue.service";
 import { documentReturnReason } from "./document-check";
-import { DocumentNotificationService } from "../documents/document-notification.service";
 
 const LEASE_MS = 120_000;
 const MAX_ATTEMPTS = 5;
@@ -42,7 +43,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
-    private readonly notifications?: DocumentNotificationService,
+    @Optional() private readonly notifications?: DocumentNotificationService,
   ) {}
 
   private get requestTimeout(): number {
@@ -217,17 +218,12 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
             throw new Error("OCR_CONTRACT_INVALID");
         }
       }
-      const readyForReview = await this.complete(
+      await this.complete(
         jobId,
         token,
         checked,
         JSON.parse(raw) as Prisma.InputJsonValue,
       );
-      if (readyForReview)
-        await this.notifications?.notifyDocumentReadyForReview({
-          documentId: request.documentId,
-          version: request.version,
-        });
     } catch (error) {
       const contractError =
         error instanceof Error &&
@@ -277,13 +273,16 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     token: string,
     result: OcrResult,
     raw: Prisma.InputJsonValue,
-  ): Promise<boolean> {
-    return this.prisma.$transaction(async (tx) => {
+  ): Promise<void> {
+    let readyForReview:
+      | { documentId: string; version: number; candidateId: string }
+      | undefined;
+    await this.prisma.$transaction(async (tx) => {
       const initial = await tx.ocrJob.findUnique({
         where: { id: jobId },
         include: { version: { include: { submission: true } } },
       });
-      if (!initial) return false;
+      if (!initial) return;
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${initial.candidateId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM documents WHERE id = ${initial.version.documentId} FOR UPDATE`;
       const manual = !!initial.version.submission;
@@ -307,7 +306,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
             cleanupPending: false,
           },
         });
-        return false;
+        return;
       }
       const candidateReturn =
         result.outcome === "REJECTED" &&
@@ -344,7 +343,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           errorCode: null,
         },
       });
-      if (!changed.count) return false;
+      if (!changed.count) return;
       const status = returned ? "RETURNED" : "IN_REVIEW";
       const rejectionReason = returned
         ? result.rejectionKind === "DOCUMENT_TYPE_MISMATCH"
@@ -503,6 +502,12 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           ...(passToReview ? { automaticReturnLimitReached: true } : {}),
         },
       });
+      if (status === "IN_REVIEW")
+        readyForReview = {
+          documentId: initial.version.documentId,
+          version: initial.version.version,
+          candidateId: initial.candidateId,
+        };
       if (returned)
         await this.audit.logInTransaction(tx, {
           actorId: "ocr-document-check",
@@ -518,8 +523,9 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
             automatic: true,
           },
         });
-      return !returned;
     });
+    if (readyForReview)
+      await this.notifications?.notifyDocumentReadyForReview(readyForReview);
   }
 
   async failAttempt(
