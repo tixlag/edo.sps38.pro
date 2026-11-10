@@ -134,6 +134,8 @@ export class IgArrivalRegistryParticipationDto {
     | "NONE";
   @ApiProperty({ type: String, nullable: true }) candidateId!: string | null;
   @ApiProperty({ type: String, nullable: true }) fullName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) citizenship!: string | null;
+  @ApiProperty({ type: String, nullable: true }) positionName!: string | null;
   @ApiProperty({ type: String, nullable: true, format: "date" }) arrivalDate!:
     | string
     | null;

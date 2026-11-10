@@ -103,6 +103,8 @@ vi.mock("@edo/api-client", () => ({
                 code1c: "123",
                 candidateId: params.groupKey,
                 fullName: params.groupKey === "a" ? "Алиев" : "Каримов",
+                citizenship: null,
+                positionName: null,
                 arrivalDate: "2026-11-10",
                 arrivalDateTime: null,
                 locationUid: "1",
@@ -274,10 +276,17 @@ describe("arrival registry", () => {
     ]);
   });
 
-  it("does not invent an arrival time when the source has no time", async () => {
+  it("does not invent an arrival time when the source has no time or midnight and renders citizenship and position", async () => {
     state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
+    state.personOverrides = {
+      arrivalDateTime: "2026-11-10T00:00:00",
+      citizenship: "by",
+      positionName: "Механик",
+    };
     const view = await render();
     expect(view.textContent).not.toContain("Прибытие:");
+    expect(view.textContent).toContain("BY");
+    expect(view.textContent).toContain("Механик");
   });
 
   it("shows the archive default period and lets the operator select all dates", async () => {

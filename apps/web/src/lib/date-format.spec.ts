@@ -12,7 +12,8 @@ import {
 describe("date-format", () => {
   it("preserves local ERP arrival time without timezone conversion or missing-time fallback", () => {
     expect(formatLocalArrivalTime("2026-11-10T14:35:42")).toBe("14:35");
-    expect(formatLocalArrivalTime("2026-11-10T00:00:00")).toBe("00:00");
+    expect(formatLocalArrivalTime("2026-11-10T00:01:00")).toBe("00:01");
+    expect(formatLocalArrivalTime("2026-11-10T00:00:00")).toBeUndefined();
     for (const value of [
       null,
       undefined,

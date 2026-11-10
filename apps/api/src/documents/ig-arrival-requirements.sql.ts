@@ -61,7 +61,7 @@ export function requirementsJoin(filters: {
 }
 export function requirementsKnown() {
   const cutoff = new Date(Date.now() - CATALOG_TTL_MS);
-  return Prisma.sql`(c.id IS NOT NULL AND c.positionCode IS NOT NULL AND c.positionCode<>'' AND c.citizenship IS NOT NULL AND c.citizenship<>'' AND COALESCE(c.igRequirementsConflict,0)=0 AND p.bindingError IS NULL AND COALESCE(req.migrationRequired,0)=1 AND COALESCE(req.patentRequired,0)=1 AND EXISTS (SELECT 1 FROM document_types fresh WHERE fresh.catalogSyncedAt IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM document_types stale WHERE stale.catalogSyncedAt IS NOT NULL AND stale.catalogSyncedAt < ${cutoff})
+  return Prisma.sql`(c.id IS NOT NULL AND c.positionCode IS NOT NULL AND c.positionCode<>'' AND c.citizenship IS NOT NULL AND c.citizenship<>'' AND COALESCE(c.igRequirementsConflict,0)=0 AND p.bindingError IS NULL AND COALESCE(req.migrationRequired,0)=1 AND (COALESCE(req.patentRequired,0)=1 OR LOWER(c.citizenship) IN ('by','kz','am','kg')) AND EXISTS (SELECT 1 FROM document_types fresh WHERE fresh.catalogSyncedAt IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM document_types stale WHERE stale.catalogSyncedAt IS NOT NULL AND stale.catalogSyncedAt < ${cutoff})
  AND NOT ((c.sexKnown=0 OR c.sex IS NULL OR c.sex NOT IN ('male','female')) AND EXISTS (SELECT 1 FROM document_types t WHERE t.catalogSyncedAt IS NOT NULL AND t.code='MILITARY' AND ${requiredType}))
  AND NOT ((c.projectCode IS NULL OR c.projectCode='') AND EXISTS (SELECT 1 FROM document_types t WHERE t.catalogSyncedAt IS NOT NULL AND NOT (${requiredType}) AND EXISTS (SELECT 1 FROM document_type_stage_rules sr JOIN document_type_stage_projects sp ON sp.ruleId=sr.id WHERE sr.documentTypeId=t.id))) )`;
 }

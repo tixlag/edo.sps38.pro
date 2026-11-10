@@ -90,7 +90,7 @@ export function maskDateRuInput(value: string): string {
   return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
 }
 
-/** ERP arrival time is a local calendar literal, never an instant to convert. */
+/** ERP arrival time is a local calendar literal, never an instant to convert. Midnight (00:00) represents an unspecified time of day. */
 export function formatLocalArrivalTime(
   value: string | null | undefined,
 ): string | undefined {
@@ -100,5 +100,7 @@ export function formatLocalArrivalTime(
   )
     return undefined;
   if (formatDateRu(value.slice(0, 10)) === "—") return undefined;
-  return value.slice(11, 16);
+  const time = value.slice(11, 16);
+  if (time === "00:00") return undefined;
+  return time;
 }

@@ -144,9 +144,8 @@ export function CandidateDrawer({
   }, []);
 
   const arrivalTime = formatLocalArrivalTime(arrivalContext?.arrivalDateTime);
-  const arrivalDate = arrivalTime
-    ? arrivalContext?.arrivalDateTime?.slice(0, 10)
-    : arrivalContext?.date;
+  const arrivalDate =
+    arrivalContext?.arrivalDateTime?.slice(0, 10) ?? arrivalContext?.date;
   const profile = docs.data?.candidate ?? queueProfile;
   const fullName = profile?.fullName?.trim() || null;
   const heading = fullName ?? "Профиль кандидата";

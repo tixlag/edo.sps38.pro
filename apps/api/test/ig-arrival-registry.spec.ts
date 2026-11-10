@@ -69,4 +69,60 @@ describe("IG arrival registry", () => {
     ).resolves.toMatchObject({ items: [] });
     expect(ensure).toHaveBeenCalledOnce();
   });
+  it("maps candidate citizenship and positionName in participations", async () => {
+    const prisma = {
+      $queryRaw: vi.fn().mockResolvedValue([
+        {
+          arrivalMemberUid: "member-1",
+          personUid: "person-1",
+          code1c: "code-1",
+          candidateId: "cand-1",
+          fullName: "Еленский Руслан",
+          citizenship: "by",
+          positionName: "Механик",
+          arrivalDate: "2026-11-02",
+          arrivalDateTime: "2026-11-02T00:00:00",
+          locationUid: "loc-1",
+          locationName: "Site",
+          factIdentityIssue: null,
+          latestSiteStatusCancelled: false,
+          participationStatus: "CURRENT",
+          personState: "CURRENT",
+          documentStatus: "IN_PROGRESS",
+          approvedDocuments: 0n,
+          confirmedDocuments: 0n,
+          erpDeliveryStatus: "NOT_REQUIRED",
+          employmentStatus: "IN_PROGRESS",
+          needsAttention: 0,
+          issueCode: null,
+          sourceRevision: 1n,
+          requirementsKnown: 1,
+          deliveryNeedsAttention: 0,
+          requiredCount: 5n,
+          presentCount: 2n,
+          acceptedCount: 2n,
+          reviewCount: 1n,
+          returnedCount: 0n,
+          missingCount: 3n,
+          processingCount: 0n,
+          attentionCount: 0n,
+          reviewAvailable: 1n,
+          requirementsAction: "REVIEW",
+        },
+      ]),
+      igArrivalSyncState: { findUnique: vi.fn().mockResolvedValue(null) },
+    };
+    const service = new IgArrivalRegistryService(prisma as never);
+    const result = await service.participations(
+      { accessRules: { "20011": [] } } as never,
+      { groupKey: "issues" },
+    );
+    expect(result.items[0]).toMatchObject({
+      fullName: "Еленский Руслан",
+      citizenship: "by",
+      positionName: "Механик",
+      requirements: { known: true, required: 5 },
+      action: "REVIEW",
+    });
+  });
 });

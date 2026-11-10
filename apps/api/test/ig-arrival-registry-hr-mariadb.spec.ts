@@ -877,5 +877,41 @@ describe.skipIf(!db)(
         await prisma.igArrivalMember.update({ where: { arrivalMemberUid: member }, data: { sourceMemberUid: member, factsIdentityIssue: null } });
       }
     });
+    it("knows requirements and returns citizenship and position for EAEU citizens without an employment patent", async () => {
+      await prisma.candidate.update({
+        where: { id: candidateId },
+        data: { citizenship: "by", positionName: "Механик" },
+      });
+      const patentTypeId = typeIds[1];
+      await prisma.documentType.update({
+        where: { id: patentTypeId },
+        data: { allForeign: false },
+      });
+      const uzRule = await prisma.documentTypeStageRule.create({
+        data: {
+          documentTypeId: patentTypeId,
+          stage: 4,
+          countries: { create: { code: "uz" } },
+        },
+      });
+      try {
+        const group = (await registry.groups(reviewer, { q: code1c })).items[0];
+        const row = (await registry.participations(reviewer, { q: code1c, groupKey: group.groupKey })).items[0];
+        expect(row.citizenship).toBe("by");
+        expect(row.positionName).toBe("Механик");
+        expect(row.requirements.known).toBe(true);
+        expect(row.issueCodes).not.toContain("ERP_IG_REQUIREMENTS_CONFLICT");
+      } finally {
+        await prisma.documentTypeStageRule.delete({ where: { id: uzRule.id } });
+        await prisma.documentType.update({
+          where: { id: patentTypeId },
+          data: { allForeign: true },
+        });
+        await prisma.candidate.update({
+          where: { id: candidateId },
+          data: { citizenship: "uz", positionName: null },
+        });
+      }
+    });
   },
 );

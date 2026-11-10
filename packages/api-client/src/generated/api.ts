@@ -1575,6 +1575,10 @@ export interface IgArrivalRegistryParticipationDto {
   /** @nullable */
   fullName: string | null;
   /** @nullable */
+  citizenship: string | null;
+  /** @nullable */
+  positionName: string | null;
+  /** @nullable */
   arrivalDate: string | null;
   /**
    * Local calendar time without UTC offset

@@ -19672,6 +19672,14 @@
             "type": "string",
             "nullable": true
           },
+          "citizenship": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionName": {
+            "type": "string",
+            "nullable": true
+          },
           "arrivalDate": {
             "type": "string",
             "nullable": true,
@@ -19776,6 +19784,8 @@
           "action",
           "candidateId",
           "fullName",
+          "citizenship",
+          "positionName",
           "arrivalDate",
           "arrivalDateTime",
           "locationUid",
