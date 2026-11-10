@@ -56,6 +56,12 @@ export class CandidateDocumentsService {
     )
       return;
 
+    // The drawer/enrichment worker may already have refreshed the same snapshot.
+    if (
+      candidate.previousDocumentsSyncedAt &&
+      Date.now() - candidate.previousDocumentsSyncedAt.getTime() < 5 * 60_000
+    )
+      return;
     const candidateCode1c = candidate.code1c ?? code1c ?? null;
     const identityKey = `${candidate.erpUid}:${candidateCode1c ?? ""}:${candidate.personUid ?? ""}`;
     const previous = this.previousSyncs.get(candidate.id);

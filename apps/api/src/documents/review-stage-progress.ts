@@ -1,5 +1,5 @@
 import { classifyRule, excludedForSex } from "./document-contract";
-import { needsNewIgDocument } from "./reemployment-document-policy";
+import { isPatentExempt, needsNewIgDocument } from "./reemployment-document-policy";
 
 type Type = {
   id: string;
@@ -80,7 +80,9 @@ export function classifyStageType(
     profile.citizenship,
     profile.projectCode,
   );
-  return category;
+  return category === "required" && isPatentExempt(type.erpUid, profile.citizenship)
+    ? "additional"
+    : category;
 }
 
 export function reviewStageProgress(

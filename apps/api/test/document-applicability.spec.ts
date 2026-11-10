@@ -130,3 +130,19 @@ describe("ERP catalog applicability", () => {
     ).toMatchObject({ required: { missing: 1 } });
   });
 });
+
+
+describe("EAEU patent exemption", () => {
+  const patent = { id: "patent", code: "PATENT", erpUid: "e87d5a10-d248-11eb-80c7-002590854e7f", stage: 4, allForeign: true, allRu: false, requiredForAll: false, positions: [] };
+  it.each(["by", "kz", "am", "kg"])("excludes allForeign patent from required counts for %s", (citizenship) => {
+    for (const type of [patent, { ...patent, stageRules: [{ ...patent }] }]) {
+      expect(requiredApplicable(type, "position", citizenship)).toBe(false);
+      const [progress] = reviewStageProgress([type], [], { citizenship, positionCode: "position", sex: null });
+      expect(progress.required.missing).toBe(0);
+      expect(progress.additional.missing).toBe(1);
+    }
+  });
+  it.each(["uz", "tj"])("keeps patent required for %s", (citizenship) => {
+    expect(requiredApplicable(patent, "position", citizenship)).toBe(true);
+  });
+});

@@ -877,40 +877,36 @@ describe.skipIf(!db)(
         await prisma.igArrivalMember.update({ where: { arrivalMemberUid: member }, data: { sourceMemberUid: member, factsIdentityIssue: null } });
       }
     });
-    it("knows requirements and returns citizenship and position for EAEU citizens without an employment patent", async () => {
-      await prisma.candidate.update({
-        where: { id: candidateId },
-        data: { citizenship: "by", positionName: "Механик" },
-      });
-      const patentTypeId = typeIds[1];
-      await prisma.documentType.update({
-        where: { id: patentTypeId },
-        data: { allForeign: false },
-      });
-      const uzRule = await prisma.documentTypeStageRule.create({
-        data: {
-          documentTypeId: patentTypeId,
-          stage: 4,
-          countries: { create: { code: "uz" } },
-        },
-      });
+    it.each(["by", "kz", "am", "kg"])("excludes an allForeign patent from EAEU queue requirements for %s", async (citizenship) => {
+      await prisma.candidate.update({ where: { id: candidateId }, data: { citizenship, positionName: "Механик" } });
       try {
-        const group = (await registry.groups(reviewer, { q: code1c })).items[0];
-        const row = (await registry.participations(reviewer, { q: code1c, groupKey: group.groupKey })).items[0];
-        expect(row.citizenship).toBe("by");
-        expect(row.positionName).toBe("Механик");
-        expect(row.requirements.known).toBe(true);
-        expect(row.issueCodes).not.toContain("ERP_IG_REQUIREMENTS_CONFLICT");
+        for (const stageRule of [false, true]) {
+          let ruleId: string | undefined;
+          if (stageRule) {
+            ruleId = (await prisma.documentTypeStageRule.create({ data: { documentTypeId: typeIds[1], stage: 4, allForeign: true } })).id;
+          }
+          try {
+            const group = (await registry.groups(reviewer, { q: code1c })).items[0];
+            const row = (await registry.participations(reviewer, { q: code1c, groupKey: group.groupKey })).items[0];
+            expect(row.citizenship).toBe(citizenship);
+            expect(row.positionName).toBe("Механик");
+            expect(row.requirements).toMatchObject({ known: true, required: 2, missing: 2 });
+            expect(row.issueCodes).not.toContain("ERP_IG_REQUIREMENTS_CONFLICT");
+            const approved = [];
+            try {
+              for (const typeId of [typeIds[0], typeIds[2]])
+                approved.push(await prisma.document.create({ data: { candidateId, documentTypeId: typeId, currentVersion: 1, status: "APPROVED", versions: { create: { version: 1, status: "APPROVED", storageKey: "test" } } } }));
+              const complete = (await registry.participations(reviewer, { q: code1c, groupKey: group.groupKey, requirementsAction: "COMPLETE" })).items[0];
+              expect(complete.requirements).toMatchObject({ required: 2, accepted: 2, missing: 0, completed: true, nextAction: "COMPLETE" });
+            } finally {
+              await prisma.document.deleteMany({ where: { id: { in: approved.map((doc) => doc.id) } } });
+            }
+          } finally {
+            if (ruleId) await prisma.documentTypeStageRule.delete({ where: { id: ruleId } });
+          }
+        }
       } finally {
-        await prisma.documentTypeStageRule.delete({ where: { id: uzRule.id } });
-        await prisma.documentType.update({
-          where: { id: patentTypeId },
-          data: { allForeign: true },
-        });
-        await prisma.candidate.update({
-          where: { id: candidateId },
-          data: { citizenship: "uz", positionName: null },
-        });
+        await prisma.candidate.update({ where: { id: candidateId }, data: { citizenship: "uz", positionName: null } });
       }
     });
   },

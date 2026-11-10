@@ -188,14 +188,14 @@ describe("IG completion", () => {
     );
   });
 
-  it("does not require an employment patent for EAEU citizens", async () => {
+  it.each(["by", "kz", "am", "kg"])("does not require an allForeign patent for %s", async (citizenship) => {
     const candidate = {
       id: "current",
       igCompletedAt: null,
       igCompletionVerified: false,
       igRequirementsConflict: true,
       positionCode: "1",
-      citizenship: "by",
+      citizenship,
       sexKnown: false,
       projectCode: null,
     };
@@ -205,6 +205,10 @@ describe("IG completion", () => {
       },
       documentType: {
         findMany: vi.fn().mockResolvedValue([
+          {
+            ...types[1], // patent remains in the ERP catalog
+            requiredForAll: false, allRu: false, allForeign: true, positions: [],
+          },
           {
             ...types[0], // migration card
             requiredForAll: false,

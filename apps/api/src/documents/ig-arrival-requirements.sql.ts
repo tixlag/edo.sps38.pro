@@ -5,7 +5,8 @@ import { CATALOG_TTL_MS } from "./document-catalog.service";
 
 // SQL counterpart to requiredApplicable: stage rules replace the legacy type rule.
 // The same predicate is used for listing and server-side filtering.
-const requiredType = Prisma.sql`NOT (t.code='MILITARY' AND c.sexKnown=1 AND COALESCE(c.sex,'')='female') AND (
+const patentApplicable = Prisma.sql`NOT (COALESCE(LOWER(t.erpUid),'')=${EMPLOYMENT_PATENT_UID.toLowerCase()} AND LOWER(TRIM(c.citizenship)) IN ('by','kz','am','kg'))`;
+const requiredType = Prisma.sql`${patentApplicable} AND NOT (t.code='MILITARY' AND c.sexKnown=1 AND COALESCE(c.sex,'')='female') AND (
   (EXISTS (SELECT 1 FROM document_type_stage_rules sr WHERE sr.documentTypeId=t.id)
     AND EXISTS (SELECT 1 FROM document_type_stage_rules sr WHERE sr.documentTypeId=t.id AND (
       sr.requiredForAll=1 OR (LOWER(c.citizenship)='ru' AND sr.allRu=1) OR (LOWER(c.citizenship)<>'ru' AND sr.allForeign=1)
@@ -63,7 +64,7 @@ export function requirementsKnown() {
   const cutoff = new Date(Date.now() - CATALOG_TTL_MS);
   return Prisma.sql`(c.id IS NOT NULL AND c.positionCode IS NOT NULL AND c.positionCode<>'' AND c.citizenship IS NOT NULL AND c.citizenship<>'' AND COALESCE(c.igRequirementsConflict,0)=0 AND p.bindingError IS NULL AND COALESCE(req.migrationRequired,0)=1 AND (COALESCE(req.patentRequired,0)=1 OR LOWER(c.citizenship) IN ('by','kz','am','kg')) AND EXISTS (SELECT 1 FROM document_types fresh WHERE fresh.catalogSyncedAt IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM document_types stale WHERE stale.catalogSyncedAt IS NOT NULL AND stale.catalogSyncedAt < ${cutoff})
  AND NOT ((c.sexKnown=0 OR c.sex IS NULL OR c.sex NOT IN ('male','female')) AND EXISTS (SELECT 1 FROM document_types t WHERE t.catalogSyncedAt IS NOT NULL AND t.code='MILITARY' AND ${requiredType}))
- AND NOT ((c.projectCode IS NULL OR c.projectCode='') AND EXISTS (SELECT 1 FROM document_types t WHERE t.catalogSyncedAt IS NOT NULL AND NOT (${requiredType}) AND EXISTS (SELECT 1 FROM document_type_stage_rules sr JOIN document_type_stage_projects sp ON sp.ruleId=sr.id WHERE sr.documentTypeId=t.id))) )`;
+ AND NOT ((c.projectCode IS NULL OR c.projectCode='') AND EXISTS (SELECT 1 FROM document_types t WHERE t.catalogSyncedAt IS NOT NULL AND ${patentApplicable} AND NOT (${requiredType}) AND EXISTS (SELECT 1 FROM document_type_stage_rules sr JOIN document_type_stage_projects sp ON sp.ruleId=sr.id WHERE sr.documentTypeId=t.id))) )`;
 }
 export function requirementsAction() {
   return Prisma.sql`CASE WHEN ${reviewAvailable}>0 THEN 'REVIEW' WHEN EXISTS (SELECT 1 FROM documents returnedDoc WHERE returnedDoc.candidateId=c.id AND returnedDoc.status='RETURNED') THEN 'RETURNED' WHEN NOT ${requirementsKnown()} THEN 'UNKNOWN' WHEN req.attentionCount>0 THEN 'ATTENTION' WHEN req.processingCount>0 THEN 'PROCESSING' WHEN req.missingCount>0 THEN 'MISSING' WHEN req.acceptedCount=req.requiredCount THEN 'COMPLETE' ELSE 'ATTENTION' END`;

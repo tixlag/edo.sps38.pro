@@ -13,6 +13,16 @@ export function isEaeuCitizenship(
   return (EAEU_CITIZENSHIP_CODES as readonly string[]).includes(normalized);
 }
 
+export function isPatentExempt(
+  documentUid: string | null | undefined,
+  citizenship: string | null | undefined,
+): boolean {
+  return (
+    documentUid?.toLowerCase() === EMPLOYMENT_PATENT_UID &&
+    isEaeuCitizenship(citizenship)
+  );
+}
+
 export function needsNewIgDocument(documentUid: string | null): boolean {
   return (
     documentUid !== null && freshIgDocuments.has(documentUid.toLowerCase())
