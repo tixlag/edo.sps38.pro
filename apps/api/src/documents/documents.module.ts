@@ -61,7 +61,6 @@ import { OwnDocumentHistoryController } from "./own-document-history.controller"
 import { ErpAdaptationGrantsController } from "./erp-adaptation-grants.controller";
 import { ExpirationModule } from "../expiration/expiration.module";
 import { LkModule } from "../lk/lk.module";
-import { DocumentNotificationService } from "./document-notification.service";
 
 @Module({
   imports: [
@@ -93,7 +92,6 @@ import { DocumentNotificationService } from "./document-notification.service";
     IgEmploymentService,
     IgProfileEnrichmentService,
     CandidatePreviousDocumentsSyncService,
-    DocumentNotificationService,
     ErpCandidateClient,
   ],
   providers: [
@@ -129,7 +127,6 @@ import { DocumentNotificationService } from "./document-notification.service";
     DocumentStreamGuard,
     DocumentUploadGrantService,
     DocumentUploadGrantGuard,
-    DocumentNotificationService,
   ],
 })
 export class DocumentsModule {}

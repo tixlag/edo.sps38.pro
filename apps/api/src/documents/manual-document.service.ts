@@ -24,7 +24,6 @@ import {
 import { changedProfileFields, snapshotUpdateInput } from "./candidate-profile";
 import type { StagedUpload } from "./document-upload.service";
 import { igUploadOwner } from "./ig-upload-owner";
-import { DocumentNotificationService } from "./document-notification.service";
 import { resolveCandidateIdentity } from "./candidate-identity";
 import { ErpCandidateClient } from "./erp-candidate.client";
 import type { ReviewGroup } from "./review-group";
@@ -37,7 +36,6 @@ export class ManualDocumentService {
     private readonly audit: AuditService,
     private readonly catalog: DocumentCatalogService,
     @Optional() private readonly config?: ConfigService,
-    @Optional() private readonly notifications?: DocumentNotificationService,
     @Optional() private readonly candidates?: ErpCandidateClient,
   ) {}
 
@@ -234,13 +232,6 @@ export class ManualDocumentService {
         });
         return queuedJobId;
       });
-      if (this.notifications) {
-        await this.notifications.notifyDocumentUploaded({
-          documentId: reserved.submission.version.documentId,
-          version: reserved.submission.version.version,
-          candidateId: reserved.submission.version.document.candidateId,
-        });
-      }
       return { ...this.accepted(reserved.submission, acceptedStatus), jobId };
     } catch (error) {
       await this.fail(reserved.submission.id, token);
@@ -286,12 +277,7 @@ export class ManualDocumentService {
             const personUidToLink =
               metadata.candidateSnapshot?.personUid ?? null;
             let erpUid = metadata.candidateSnapshot?.erpUid ?? null;
-            const resolver =
-              this.candidates ??
-              (this.notifications &&
-              "resolveIdentityByChat" in this.notifications
-                ? (this.notifications as unknown as ErpCandidateClient)
-                : undefined);
+            const resolver = this.candidates;
             if (!erpUid && metadata.chat_uuid && resolver) {
               try {
                 const resolved = await resolver.resolveIdentityByChat(
