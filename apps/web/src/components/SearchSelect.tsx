@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, X } from "lucide-react";
 
 /**
@@ -8,6 +8,7 @@ import { ChevronDown, X } from "lucide-react";
 export interface SearchSelectOption {
   value: string;
   label: string;
+  group?: string;
 }
 
 export interface SearchSelectProps {
@@ -301,25 +302,41 @@ export function SearchSelect({
           )}
           {!isLoading &&
             !isError &&
-            options.map((option, index) => (
-              <li
-                key={option.value}
-                id={`${listboxId}-${index}`}
-                role="option"
-                aria-selected={option.value === normalizedValue}
-                data-highlighted={index === highlight || undefined}
-                onMouseDown={(event) => event.preventDefault()}
-                onMouseMove={() => {
-                  if (highlight !== index) setHighlight(index);
-                }}
-                onClick={() => commit(option.value, option.label)}
-                className={`cursor-pointer px-3 py-1.5 text-sm text-[var(--foreground)] ${
-                  index === highlight ? "bg-[var(--muted)]" : ""
-                } ${option.value === normalizedValue ? "font-semibold" : ""}`}
-              >
-                {option.label}
-              </li>
-            ))}
+            options.map((option, index) => {
+              const prevOption = index > 0 ? options[index - 1] : undefined;
+              const showGroupHeader =
+                Boolean(option.group) && option.group !== prevOption?.group;
+
+              return (
+                <Fragment key={option.value}>
+                  {showGroupHeader && (
+                    <li
+                      role="presentation"
+                      aria-hidden="true"
+                      className="select-none px-3 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)] border-t border-[var(--border)] first:border-t-0"
+                    >
+                      {option.group}
+                    </li>
+                  )}
+                  <li
+                    id={`${listboxId}-${index}`}
+                    role="option"
+                    aria-selected={option.value === normalizedValue}
+                    data-highlighted={index === highlight || undefined}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseMove={() => {
+                      if (highlight !== index) setHighlight(index);
+                    }}
+                    onClick={() => commit(option.value, option.label)}
+                    className={`cursor-pointer px-3 py-1.5 text-sm text-[var(--foreground)] ${
+                      index === highlight ? "bg-[var(--muted)]" : ""
+                    } ${option.value === normalizedValue ? "font-semibold" : ""}`}
+                  >
+                    {option.label}
+                  </li>
+                </Fragment>
+              );
+            })}
         </ul>
       )}
     </div>

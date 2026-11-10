@@ -3,6 +3,34 @@ import type { Prisma } from "@prisma/client";
 import type { CandidateSnapshot } from "./document-contract";
 import { candidateReviewGroup } from "./review-group";
 
+export const DEFAULT_EXCLUDED_RU_STATUS_IDS = [
+  "Заезд",
+  "Отказ",
+  "ЗаездПодтвержден",
+] as const;
+
+export const DEFAULT_EXCLUDED_RU_STATUS_NAMES = [
+  "Заезд/выход",
+  "Отказ",
+  "Заезд подтвержден",
+] as const;
+
+export function buildDefaultExcludedRuStatusWhere() {
+  return {
+    OR: [
+      { statusId: null },
+      {
+        NOT: {
+          OR: [
+            { statusId: { in: [...DEFAULT_EXCLUDED_RU_STATUS_IDS] } },
+            { statusName: { in: [...DEFAULT_EXCLUDED_RU_STATUS_NAMES] } },
+          ],
+        },
+      },
+    ],
+  };
+}
+
 /** Review queue profile filters (all optional, combined with AND). */
 export interface ReviewProfileFilters {
   q?: string;
@@ -313,19 +341,7 @@ export function buildCandidateProfileWhere(
   if (statusId) {
     and.push({ statusId });
   } else if (filters.reviewGroup === "RU") {
-    and.push({
-      OR: [
-        { statusId: null },
-        {
-          NOT: {
-            OR: [
-              { statusId: { in: ["Заезд", "Отказ"] } },
-              { statusName: { in: ["Заезд/выход", "Отказ"] } },
-            ],
-          },
-        },
-      ],
-    });
+    and.push(buildDefaultExcludedRuStatusWhere());
   }
   if (and.length === 0) return undefined;
   return and.length === 1 ? and[0] : { AND: and };

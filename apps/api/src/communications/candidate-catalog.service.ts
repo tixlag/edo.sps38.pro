@@ -19,7 +19,10 @@ import {
   candidateIdentityTransaction,
   resolveCandidateIdentity,
 } from "../documents/candidate-identity";
-import { toCandidateProfile } from "../documents/candidate-profile";
+import {
+  buildDefaultExcludedRuStatusWhere,
+  toCandidateProfile,
+} from "../documents/candidate-profile";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { ErpCommunicationsClient } from "./erp-communications.client";
 import type { CommunicationCandidatesQueryDto } from "./communications.dto";
@@ -261,21 +264,7 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
           reviewGroupWhere("RU"),
           ...(query.statusId
             ? [{ statusId: query.statusId }]
-            : [
-                {
-                  OR: [
-                    { statusId: null },
-                    {
-                      NOT: {
-                        OR: [
-                          { statusId: { in: ["Заезд", "Отказ"] } },
-                          { statusName: { in: ["Заезд/выход", "Отказ"] } },
-                        ],
-                      },
-                    },
-                  ],
-                },
-              ]),
+            : [buildDefaultExcludedRuStatusWhere()]),
           ...(query.managerId ? [{ managerId: query.managerId }] : []),
           ...(query.projectCode ? [{ projectCode: query.projectCode }] : []),
           ...(query.positionCode ? [{ positionCode: query.positionCode }] : []),

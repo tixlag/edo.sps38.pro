@@ -15,6 +15,7 @@ import { CANDIDATE_CONTROL } from "../components/CandidateForm";
 import { CreateCandidate } from "../components/CreateCandidate";
 import { SearchSelect } from "../components/SearchSelect";
 import { findCurrentUserAsManager } from "../lib/manager-default";
+import { buildGroupedCandidateStatusOptions } from "../lib/candidate-status-groups";
 import { hasAccessRule } from "../lib/audit-types";
 import { formatDocumentProgress } from "../lib/review-groups";
 
@@ -129,10 +130,9 @@ function CandidateCatalog() {
         <SearchSelect
           label="Статус кандидата"
           value={value("statusId")}
-          options={(statuses.data?.items ?? []).map((item) => ({
-            value: item.id,
-            label: item.name,
-          }))}
+          options={buildGroupedCandidateStatusOptions(
+            statuses.data?.items ?? [],
+          )}
           onChange={(statusId) => commit({ statusId })}
           isLoading={statuses.isLoading}
           isError={statuses.isError}

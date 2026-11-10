@@ -17,6 +17,7 @@ import {
 import {
   useGetReviewDocumentFacets,
   useListCandidateStatuses,
+  getListCandidateStatusesQueryKey,
   useListDocumentTypes,
   useListPositions,
   useListReviewCandidates,
@@ -65,6 +66,7 @@ import { IgArrivalReviewQueue } from "../components/IgArrivalReviewQueue";
 import { DateFilter } from "../components/DateFilter";
 import { LkLink } from "../components/LkLink";
 import { findCurrentUserAsManager } from "../lib/manager-default";
+import { buildGroupedCandidateStatusOptions } from "../lib/candidate-status-groups";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
 import { formatDateTimeRu } from "../lib/date-format";
 import {
@@ -515,6 +517,7 @@ export function ReviewPage({
   });
   const statuses = useListCandidateStatuses({
     query: {
+      queryKey: getListCandidateStatusesQueryKey(),
       enabled: canReview && reviewGroup === "RU",
     },
   });
@@ -647,11 +650,7 @@ export function ReviewPage({
     (person) => person.code1c === filters.managerCode1c,
   )?.name;
   const statusOptions: SearchSelectOption[] = useMemo(
-    () =>
-      (statuses.data?.items ?? []).map((item) => ({
-        value: item.id,
-        label: item.name,
-      })),
+    () => buildGroupedCandidateStatusOptions(statuses.data?.items ?? []),
     [statuses.data],
   );
   const statusLabel =

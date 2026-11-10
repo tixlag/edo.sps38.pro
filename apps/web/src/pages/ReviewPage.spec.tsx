@@ -52,6 +52,7 @@ vi.mock("@edo/api-client", () => {
       isError: false,
     }),
     getListCatalogManagersQueryKey: () => ["catalog-managers"],
+    getListCandidateStatusesQueryKey: () => ["candidate-statuses"],
     useGetDocumentInfo: () => ({ data: state.documentInfo }),
     useGetCandidateDetails: () => ({ data: { documents: state.documentList } }),
     useListCandidateReviewQueue: (...args: unknown[]) => {
@@ -206,16 +207,28 @@ describe("RU and IG review pages", () => {
       expect.anything(),
     );
   });
-  it("allows selecting a candidate status filter in RU review", async () => {
+  it("allows selecting a candidate status filter in RU review with grouped options", async () => {
     state.permissions = { "20002": [] };
     state.statuses = [
-      { id: "Заезд", name: "Заезд/выход" },
+      { id: "Подбор", name: "Подбор" },
+      { id: "ЗаездПодтвержден", name: "Заезд подтвержден" },
       { id: "Отказ", name: "Отказ" },
     ];
     const view = await render("RU");
-    expect(
-      view.querySelector('input[aria-label="Статус кандидата"]'),
-    ).not.toBeNull();
+    const input = view.querySelector(
+      'input[aria-label="Статус кандидата"]',
+    ) as HTMLInputElement;
+    expect(input).not.toBeNull();
+    await act(async () => {
+      input.focus();
+    });
+    const listbox = view.querySelector('ul[aria-label="Статус кандидата"]');
+    expect(listbox).not.toBeNull();
+    const groupHeaders = listbox?.querySelectorAll('[role="presentation"]');
+    expect(groupHeaders?.length).toBe(3);
+    expect(groupHeaders?.[0].textContent).toBe("Подбор и скрининг");
+    expect(groupHeaders?.[1].textContent).toBe("Заезд и оформление");
+    expect(groupHeaders?.[2].textContent).toBe("Остальные статусы");
   });
   it("opens all candidates by default in RU while keeping IG on the review queue", async () => {
     state.permissions = { "20002": [] };

@@ -366,4 +366,34 @@ describe("SearchSelect", () => {
       view.cleanup();
     }
   });
+
+  it("renders group headers for grouped options without affecting option selection", () => {
+    const groupedOptions = [
+      { value: "s1", label: "Подбор", group: "Подбор и скрининг" },
+      { value: "s2", label: "В работе", group: "Подбор и скрининг" },
+      { value: "s3", label: "Заезд/выход", group: "Заезд и оформление" },
+    ];
+    const view = renderSelect({ options: groupedOptions, value: undefined });
+    try {
+      act(() => {
+        view.input().focus();
+      });
+      const listbox = view.listbox();
+      expect(listbox).not.toBeNull();
+      const headers = listbox?.querySelectorAll('[role="presentation"]');
+      expect(headers?.length).toBe(2);
+      expect(headers?.[0].textContent).toBe("Подбор и скрининг");
+      expect(headers?.[1].textContent).toBe("Заезд и оформление");
+
+      // Options remain cleanly selectable
+      const options = listbox?.querySelectorAll('[role="option"]');
+      expect(options?.length).toBe(3);
+      act(() => {
+        options?.[2].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(view.onChange).toHaveBeenCalledWith("s3");
+    } finally {
+      view.cleanup();
+    }
+  });
 });

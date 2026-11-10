@@ -218,8 +218,8 @@ describe("candidate review queue", () => {
             {
               NOT: {
                 OR: [
-                  { statusId: { in: ["Заезд", "Отказ"] } },
-                  { statusName: { in: ["Заезд/выход", "Отказ"] } },
+                  { statusId: { in: ["Заезд", "Отказ", "ЗаездПодтвержден"] } },
+                  { statusName: { in: ["Заезд/выход", "Отказ", "Заезд подтвержден"] } },
                 ],
               },
             },
@@ -234,12 +234,12 @@ describe("candidate review queue", () => {
     await reads.candidateReviewQueue(principal, {
       status: "ALL",
       reviewGroup: "RU",
-      statusId: "Заезд",
+      statusId: "ЗаездПодтвержден",
     });
     expect(prisma.candidate.findMany).toHaveBeenCalled();
     const where = prisma.candidate.findMany.mock.calls[0][0].where;
     expect(where.AND).toEqual(
-      expect.arrayContaining([{ statusId: "Заезд" }]),
+      expect.arrayContaining([{ statusId: "ЗаездПодтвержден" }]),
     );
   });
   it("requires a matching uploaded document when filtering all candidates by document type", async () => {
