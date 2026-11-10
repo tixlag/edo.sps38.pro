@@ -202,6 +202,22 @@ describe("CandidatePreviousDocumentCard", () => {
   });
 
   it("displays rejection reason when status is RETURNED", async () => {
+    const currentDocument: CandidateDocumentSummaryDto = {
+      id: "doc-returned",
+      documentUid: "uid-returned",
+      deliveryStatus: "NONE",
+      documentTypeCode: "CONTRACT",
+      title: "Трудовой договор",
+      status: "RETURNED",
+      currentVersion: 1,
+      revision: 1,
+      ocrStatus: null,
+      ocrErrorCode: null,
+      pendingDeliveryVersions: [],
+      submittedAt: "2026-11-05T10:00:00Z",
+      reviewedAt: "2026-11-05T12:00:00Z",
+      reviewedBy: "ocr-document-check",
+    };
     const returnedVersion: ReturnedDocumentVersionDto = {
       version: 1,
       rejectionReason: "Неразборчивая подпись и печать",
@@ -215,12 +231,15 @@ describe("CandidatePreviousDocumentCard", () => {
       candidateId: "cand-1",
       title: "Трудовой договор",
       status: "RETURNED",
+      currentDocument,
       returnedVersion,
     });
 
     expect(container?.textContent).toContain("Возвращён");
     expect(container?.textContent).toContain("Причина возврата:");
     expect(container?.textContent).toContain("Неразборчивая подпись и печать");
+    expect(container?.textContent).toContain("Текущая версия: 1");
+    expect(container?.textContent).not.toContain("Проверить документ");
   });
 
   it("calls getCandidatePreviousDocumentOriginal and opens tab when 'Открыть документ' is clicked", async () => {

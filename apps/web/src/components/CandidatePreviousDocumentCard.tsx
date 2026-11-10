@@ -329,19 +329,21 @@ export function CandidatePreviousDocumentCard({
           <div className="text-xs text-[var(--muted-foreground)]">
             Текущая версия: {currentDocument.currentVersion}
           </div>
-          <Button
-            size="sm"
-            aria-label={`${title}, версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
-            onClick={() =>
-              onReviewCurrent?.(
-                currentDocument.id,
-                currentDocument.currentVersion ?? returnedVersion?.version,
-              )
-            }
-            className="text-xs font-medium"
-          >
-            Проверить документ
-          </Button>
+          {effectiveStatus !== "RETURNED" && (
+            <Button
+              size="sm"
+              aria-label={`${title}, версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
+              onClick={() =>
+                onReviewCurrent?.(
+                  currentDocument.id,
+                  currentDocument.currentVersion ?? returnedVersion?.version,
+                )
+              }
+              className="text-xs font-medium"
+            >
+              Проверить документ
+            </Button>
+          )}
         </div>
       )}
     </div>

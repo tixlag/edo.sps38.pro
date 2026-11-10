@@ -358,6 +358,106 @@
         ]
       }
     },
+    "/api/v1/notifications/my": {
+      "get": {
+        "operationId": "getMyNotifications",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "all",
+              "type": "string",
+              "enum": [
+                "all",
+                "unread",
+                "read"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Список уведомлений с количеством непрочитанных",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Получить список уведомлений текущего пользователя из ЛК",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/read": {
+      "post": {
+        "operationId": "markNotificationsRead",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkNotificationsReadDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Количество отмеченных уведомлений",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkNotificationsReadResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Отметить уведомления текущего пользователя как прочитанные",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
     "/api/v1/me": {
       "get": {
         "operationId": "getMe",
@@ -765,7 +865,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentListDto"
+                  "$ref": "#/components/schemas/OwnDocumentListDto"
                 }
               }
             }
@@ -8464,106 +8564,6 @@
         "summary": "Получить список документов с истекающим сроком действия",
         "tags": [
           "expirations"
-        ]
-      }
-    },
-    "/api/v1/notifications/my": {
-      "get": {
-        "operationId": "getMyNotifications",
-        "parameters": [
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 100,
-              "default": 20,
-              "type": "number"
-            }
-          },
-          {
-            "name": "offset",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 0,
-              "default": 0,
-              "type": "number"
-            }
-          },
-          {
-            "name": "status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": "all",
-              "type": "string",
-              "enum": [
-                "all",
-                "unread",
-                "read"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Список уведомлений с количеством непрочитанных",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotificationsListResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "access-jwt": []
-          }
-        ],
-        "summary": "Получить список уведомлений текущего пользователя из ЛК",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/api/v1/notifications/read": {
-      "post": {
-        "operationId": "markNotificationsRead",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MarkNotificationsReadDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Количество отмеченных уведомлений",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MarkNotificationsReadResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "access-jwt": []
-          }
-        ],
-        "summary": "Отметить уведомления текущего пользователя как прочитанные",
-        "tags": [
-          "notifications"
         ]
       }
     },
@@ -17087,6 +17087,137 @@
           "total"
         ]
       },
+      "NotificationTargetDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Тип цели"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL перехода"
+          },
+          "meta": {
+            "type": "object",
+            "description": "Метаданные цели"
+          }
+        }
+      },
+      "NotificationItemDto": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "description": "UUID уведомления"
+          },
+          "title": {
+            "type": "string",
+            "description": "Заголовок"
+          },
+          "content": {
+            "type": "string",
+            "description": "Текст (поддерживает Markdown)"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "toast",
+              "modal"
+            ],
+            "description": "Тип отображения"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "Дата создания (ISO 8601)"
+          },
+          "readAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Дата прочтения (ISO 8601 или null)"
+          },
+          "authorName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Имя автора"
+          },
+          "authorAvatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL аватара автора"
+          },
+          "target": {
+            "nullable": true,
+            "description": "Целевое действие",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationTargetDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "uuid",
+          "title",
+          "content",
+          "type",
+          "createdAt",
+          "readAt"
+        ]
+      },
+      "NotificationsListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Список уведомлений",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationItemDto"
+            }
+          },
+          "unreadCount": {
+            "type": "number",
+            "description": "Количество непрочитанных уведомлений"
+          },
+          "total": {
+            "type": "number",
+            "description": "Общее количество уведомлений"
+          }
+        },
+        "required": [
+          "items",
+          "unreadCount",
+          "total"
+        ]
+      },
+      "MarkNotificationsReadDto": {
+        "type": "object",
+        "properties": {
+          "notificationUuids": {
+            "description": "Список UUID уведомлений для отметки прочитанными",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "all": {
+            "type": "boolean",
+            "description": "Отметить все уведомления пользователя прочитанными"
+          }
+        }
+      },
+      "MarkNotificationsReadResponseDto": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "number",
+            "description": "Количество обновлённых записей"
+          }
+        },
+        "required": [
+          "updated"
+        ]
+      },
       "LocationScopeDto": {
         "type": "object",
         "properties": {
@@ -18076,7 +18207,7 @@
           "candidate"
         ]
       },
-      "DocumentListDto": {
+      "OwnDocumentListDto": {
         "type": "object",
         "properties": {
           "items": {
@@ -18084,10 +18215,18 @@
             "items": {
               "$ref": "#/components/schemas/DocumentDto"
             }
+          },
+          "reusedDocumentUids": {
+            "description": "Confirmed reusable previous document types",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
-          "items"
+          "items",
+          "reusedDocumentUids"
         ]
       },
       "CandidateDocumentDraftFieldDto": {
@@ -18208,28 +18347,6 @@
         "required": [
           "context",
           "catalog"
-        ]
-      },
-      "OwnDocumentListDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DocumentDto"
-            }
-          },
-          "reusedDocumentUids": {
-            "description": "Confirmed reusable previous document types",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "items",
-          "reusedDocumentUids"
         ]
       },
       "OwnHistoricalFileDto": {
@@ -19275,6 +19392,20 @@
         "required": [
           "candidate",
           "documents"
+        ]
+      },
+      "DocumentListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "EmployeeDocumentListDto": {
@@ -20452,137 +20583,6 @@
         "required": [
           "items",
           "total"
-        ]
-      },
-      "NotificationTargetDto": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "Тип цели"
-          },
-          "url": {
-            "type": "string",
-            "description": "URL перехода"
-          },
-          "meta": {
-            "type": "object",
-            "description": "Метаданные цели"
-          }
-        }
-      },
-      "NotificationItemDto": {
-        "type": "object",
-        "properties": {
-          "uuid": {
-            "type": "string",
-            "description": "UUID уведомления"
-          },
-          "title": {
-            "type": "string",
-            "description": "Заголовок"
-          },
-          "content": {
-            "type": "string",
-            "description": "Текст (поддерживает Markdown)"
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "toast",
-              "modal"
-            ],
-            "description": "Тип отображения"
-          },
-          "createdAt": {
-            "type": "string",
-            "description": "Дата создания (ISO 8601)"
-          },
-          "readAt": {
-            "type": "string",
-            "nullable": true,
-            "description": "Дата прочтения (ISO 8601 или null)"
-          },
-          "authorName": {
-            "type": "string",
-            "nullable": true,
-            "description": "Имя автора"
-          },
-          "authorAvatarUrl": {
-            "type": "string",
-            "nullable": true,
-            "description": "URL аватара автора"
-          },
-          "target": {
-            "nullable": true,
-            "description": "Целевое действие",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/NotificationTargetDto"
-              }
-            ]
-          }
-        },
-        "required": [
-          "uuid",
-          "title",
-          "content",
-          "type",
-          "createdAt",
-          "readAt"
-        ]
-      },
-      "NotificationsListResponseDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "description": "Список уведомлений",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/NotificationItemDto"
-            }
-          },
-          "unreadCount": {
-            "type": "number",
-            "description": "Количество непрочитанных уведомлений"
-          },
-          "total": {
-            "type": "number",
-            "description": "Общее количество уведомлений"
-          }
-        },
-        "required": [
-          "items",
-          "unreadCount",
-          "total"
-        ]
-      },
-      "MarkNotificationsReadDto": {
-        "type": "object",
-        "properties": {
-          "notificationUuids": {
-            "description": "Список UUID уведомлений для отметки прочитанными",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "all": {
-            "type": "boolean",
-            "description": "Отметить все уведомления пользователя прочитанными"
-          }
-        }
-      },
-      "MarkNotificationsReadResponseDto": {
-        "type": "object",
-        "properties": {
-          "updated": {
-            "type": "number",
-            "description": "Количество обновлённых записей"
-          }
-        },
-        "required": [
-          "updated"
         ]
       },
       "AnnotationPreferenceDto": {

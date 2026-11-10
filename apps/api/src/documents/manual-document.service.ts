@@ -234,13 +234,6 @@ export class ManualDocumentService {
         });
         return queuedJobId;
       });
-      if (this.notifications) {
-        await this.notifications.notifyDocumentUploaded({
-          documentId: reserved.submission.version.documentId,
-          version: reserved.submission.version.version,
-          candidateId: reserved.submission.version.document.candidateId,
-        });
-      }
       return { ...this.accepted(reserved.submission, acceptedStatus), jobId };
     } catch (error) {
       await this.fail(reserved.submission.id, token);

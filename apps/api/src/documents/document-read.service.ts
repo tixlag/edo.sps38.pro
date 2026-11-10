@@ -1305,14 +1305,31 @@ export class DocumentReadService {
       ),
       currentVersion: { gt: 0 },
     });
-    if (!state?.currentCandidateId)
+    const chatCandidate =
+      !state?.currentCandidateId && scope.chat_uuid
+        ? await this.prisma.candidate.findFirst({
+            where: { chatUuid: scope.chat_uuid, erpDeleted: false },
+            select: {
+              id: true,
+              reviewGroup: true,
+              citizenship: true,
+              chatUuid: true,
+            },
+          })
+        : null;
+    const previousCandidateId =
+      state?.currentCandidateId ?? chatCandidate?.id;
+    if (!previousCandidateId)
       return { ...result, reusedDocumentUids: [] };
+    const isIg = state?.currentCandidateId
+      ? true
+      : candidateReviewGroup(chatCandidate!) === "IG";
     const previous = await this.prisma.candidatePreviousDocument.findMany({
       where: {
-        candidateId: state.currentCandidateId,
+        candidateId: previousCandidateId,
         status: "CONFIRMED",
         originalAvailable: true,
-        OR: [{ originalVerified: true }, { candidate: reviewGroupWhere("RU") }],
+        ...(isIg ? { originalVerified: true } : {}),
       },
     });
     const current = new Set(
@@ -1320,7 +1337,7 @@ export class DocumentReadService {
     );
     return {
       ...result,
-      reusedDocumentUids: usablePreviousUids(previous).filter(
+      reusedDocumentUids: usablePreviousUids(previous, isIg).filter(
         (uid) => !current.has(uid),
       ),
     };

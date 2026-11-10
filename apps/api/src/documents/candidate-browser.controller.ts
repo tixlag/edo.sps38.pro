@@ -75,7 +75,7 @@ export class BrowserCandidateDocumentsController {
     operationId: "getCandidateDocuments",
     summary: "Document statuses for a verified candidate chat",
   })
-  @ApiResponse({ status: 200, type: DocumentListDto })
+  @ApiResponse({ status: 200, type: OwnDocumentListDto })
   statuses(@Param("chatUuid", ParseUUIDPipe) uuid: string) {
     return this.documents.statuses(uuid.toLowerCase());
   }

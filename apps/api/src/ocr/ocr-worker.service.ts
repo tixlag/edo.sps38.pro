@@ -19,6 +19,7 @@ import {
 } from "./ocr.service";
 import { OcrQueueService } from "./ocr-queue.service";
 import { documentReturnReason } from "./document-check";
+import { DocumentNotificationService } from "../documents/document-notification.service";
 
 const LEASE_MS = 120_000;
 const MAX_ATTEMPTS = 5;
@@ -41,6 +42,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
+    private readonly notifications?: DocumentNotificationService,
   ) {}
 
   private get requestTimeout(): number {
@@ -215,12 +217,17 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
             throw new Error("OCR_CONTRACT_INVALID");
         }
       }
-      await this.complete(
+      const readyForReview = await this.complete(
         jobId,
         token,
         checked,
         JSON.parse(raw) as Prisma.InputJsonValue,
       );
+      if (readyForReview)
+        await this.notifications?.notifyDocumentReadyForReview({
+          documentId: request.documentId,
+          version: request.version,
+        });
     } catch (error) {
       const contractError =
         error instanceof Error &&
@@ -270,13 +277,13 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     token: string,
     result: OcrResult,
     raw: Prisma.InputJsonValue,
-  ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+  ): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
       const initial = await tx.ocrJob.findUnique({
         where: { id: jobId },
         include: { version: { include: { submission: true } } },
       });
-      if (!initial) return;
+      if (!initial) return false;
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${initial.candidateId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM documents WHERE id = ${initial.version.documentId} FOR UPDATE`;
       const manual = !!initial.version.submission;
@@ -300,7 +307,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
             cleanupPending: false,
           },
         });
-        return;
+        return false;
       }
       const candidateReturn =
         result.outcome === "REJECTED" &&
@@ -337,7 +344,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           errorCode: null,
         },
       });
-      if (!changed.count) return;
+      if (!changed.count) return false;
       const status = returned ? "RETURNED" : "IN_REVIEW";
       const rejectionReason = returned
         ? result.rejectionKind === "DOCUMENT_TYPE_MISMATCH"
@@ -511,6 +518,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
             automatic: true,
           },
         });
+      return !returned;
     });
   }
 

@@ -271,6 +271,92 @@ export interface EmployeeListResponseDto {
   total: number;
 }
 
+/**
+ * Метаданные цели
+ */
+export type NotificationTargetDtoMeta = { [key: string]: unknown };
+
+export interface NotificationTargetDto {
+  /** Тип цели */
+  type?: string;
+  /** URL перехода */
+  url?: string;
+  /** Метаданные цели */
+  meta?: NotificationTargetDtoMeta;
+}
+
+/**
+ * Тип отображения
+ */
+export type NotificationItemDtoType =
+  (typeof NotificationItemDtoType)[keyof typeof NotificationItemDtoType];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const NotificationItemDtoType = {
+  toast: "toast",
+  modal: "modal",
+} as const;
+
+/**
+ * Целевое действие
+ * @nullable
+ */
+export type NotificationItemDtoTarget = NotificationTargetDto | null;
+
+export interface NotificationItemDto {
+  /** UUID уведомления */
+  uuid: string;
+  /** Заголовок */
+  title: string;
+  /** Текст (поддерживает Markdown) */
+  content: string;
+  /** Тип отображения */
+  type: NotificationItemDtoType;
+  /** Дата создания (ISO 8601) */
+  createdAt: string;
+  /**
+   * Дата прочтения (ISO 8601 или null)
+   * @nullable
+   */
+  readAt: string | null;
+  /**
+   * Имя автора
+   * @nullable
+   */
+  authorName?: string | null;
+  /**
+   * URL аватара автора
+   * @nullable
+   */
+  authorAvatarUrl?: string | null;
+  /**
+   * Целевое действие
+   * @nullable
+   */
+  target?: NotificationItemDtoTarget;
+}
+
+export interface NotificationsListResponseDto {
+  /** Список уведомлений */
+  items: NotificationItemDto[];
+  /** Количество непрочитанных уведомлений */
+  unreadCount: number;
+  /** Общее количество уведомлений */
+  total: number;
+}
+
+export interface MarkNotificationsReadDto {
+  /** Список UUID уведомлений для отметки прочитанными */
+  notificationUuids?: string[];
+  /** Отметить все уведомления пользователя прочитанными */
+  all?: boolean;
+}
+
+export interface MarkNotificationsReadResponseDto {
+  /** Количество обновлённых записей */
+  updated: number;
+}
+
 export interface LocationScopeDto {
   all: boolean;
   locationIds: number[];
@@ -743,8 +829,10 @@ export interface DocumentDto {
   candidate: DocumentDtoCandidate;
 }
 
-export interface DocumentListDto {
+export interface OwnDocumentListDto {
   items: DocumentDto[];
+  /** Confirmed reusable previous document types */
+  reusedDocumentUids: string[];
 }
 
 export type CandidateDocumentDraftFieldDtoValue = string | null | boolean;
@@ -782,12 +870,6 @@ export interface DocumentUploadGrantDto {
 export interface CandidateDocumentFormsDto {
   context: CandidateDocumentContextDto;
   catalog: CatalogDocumentTypesDto;
-}
-
-export interface OwnDocumentListDto {
-  items: DocumentDto[];
-  /** Confirmed reusable previous document types */
-  reusedDocumentUids: string[];
 }
 
 export interface OwnHistoricalFileDto {
@@ -1313,6 +1395,10 @@ export interface CandidateDetailsDto {
   documentGroups?: CandidateDetailsDtoDocumentGroups;
   /** @nullable */
   stages?: CandidateStageItemDto[] | null;
+}
+
+export interface DocumentListDto {
+  items: DocumentDto[];
 }
 
 export interface EmployeeDocumentListDto {
@@ -1897,92 +1983,6 @@ export interface ExpirationItemsResponseDto {
   items: ExpirationItemDto[];
   /** Общее количество записей под фильтром */
   total: number;
-}
-
-/**
- * Метаданные цели
- */
-export type NotificationTargetDtoMeta = { [key: string]: unknown };
-
-export interface NotificationTargetDto {
-  /** Тип цели */
-  type?: string;
-  /** URL перехода */
-  url?: string;
-  /** Метаданные цели */
-  meta?: NotificationTargetDtoMeta;
-}
-
-/**
- * Тип отображения
- */
-export type NotificationItemDtoType =
-  (typeof NotificationItemDtoType)[keyof typeof NotificationItemDtoType];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const NotificationItemDtoType = {
-  toast: "toast",
-  modal: "modal",
-} as const;
-
-/**
- * Целевое действие
- * @nullable
- */
-export type NotificationItemDtoTarget = NotificationTargetDto | null;
-
-export interface NotificationItemDto {
-  /** UUID уведомления */
-  uuid: string;
-  /** Заголовок */
-  title: string;
-  /** Текст (поддерживает Markdown) */
-  content: string;
-  /** Тип отображения */
-  type: NotificationItemDtoType;
-  /** Дата создания (ISO 8601) */
-  createdAt: string;
-  /**
-   * Дата прочтения (ISO 8601 или null)
-   * @nullable
-   */
-  readAt: string | null;
-  /**
-   * Имя автора
-   * @nullable
-   */
-  authorName?: string | null;
-  /**
-   * URL аватара автора
-   * @nullable
-   */
-  authorAvatarUrl?: string | null;
-  /**
-   * Целевое действие
-   * @nullable
-   */
-  target?: NotificationItemDtoTarget;
-}
-
-export interface NotificationsListResponseDto {
-  /** Список уведомлений */
-  items: NotificationItemDto[];
-  /** Количество непрочитанных уведомлений */
-  unreadCount: number;
-  /** Общее количество уведомлений */
-  total: number;
-}
-
-export interface MarkNotificationsReadDto {
-  /** Список UUID уведомлений для отметки прочитанными */
-  notificationUuids?: string[];
-  /** Отметить все уведомления пользователя прочитанными */
-  all?: boolean;
-}
-
-export interface MarkNotificationsReadResponseDto {
-  /** Количество обновлённых записей */
-  updated: number;
 }
 
 export interface AnnotationPreferenceDto {
@@ -2917,6 +2917,22 @@ export const GetDashboardReviewGroup = {
   ALL: "ALL",
 } as const;
 
+export type GetMyNotificationsParams = {
+  limit?: number;
+  offset?: number;
+  status?: GetMyNotificationsStatus;
+};
+
+export type GetMyNotificationsStatus =
+  (typeof GetMyNotificationsStatus)[keyof typeof GetMyNotificationsStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetMyNotificationsStatus = {
+  all: "all",
+  unread: "unread",
+  read: "read",
+} as const;
+
 /**
  * Provide metadata for manual review or documentTypeCode for legacy OCR; at least one is required.
  */
@@ -3350,22 +3366,6 @@ export const GetExpiringItemsReviewGroup = {
   RU: "RU",
   IG: "IG",
   ALL: "ALL",
-} as const;
-
-export type GetMyNotificationsParams = {
-  limit?: number;
-  offset?: number;
-  status?: GetMyNotificationsStatus;
-};
-
-export type GetMyNotificationsStatus =
-  (typeof GetMyNotificationsStatus)[keyof typeof GetMyNotificationsStatus];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const GetMyNotificationsStatus = {
-  all: "all",
-  unread: "unread",
-  read: "read",
 } as const;
 
 export type ListAnnotationsParams = {
@@ -4038,6 +4038,172 @@ export function useGetEmployee<
 }
 
 /**
+ * @summary Получить список уведомлений текущего пользователя из ЛК
+ */
+export const getMyNotifications = (
+  params?: GetMyNotificationsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<NotificationsListResponseDto>({
+    url: `/api/v1/notifications/my`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetMyNotificationsQueryKey = (
+  params?: GetMyNotificationsParams,
+) => {
+  return [`/api/v1/notifications/my`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetMyNotificationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyNotifications>>,
+  TError = unknown,
+>(
+  params?: GetMyNotificationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyNotifications>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMyNotificationsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyNotifications>>
+  > = ({ signal }) => getMyNotifications(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyNotifications>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyNotificationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyNotifications>>
+>;
+export type GetMyNotificationsQueryError = unknown;
+
+/**
+ * @summary Получить список уведомлений текущего пользователя из ЛК
+ */
+
+export function useGetMyNotifications<
+  TData = Awaited<ReturnType<typeof getMyNotifications>>,
+  TError = unknown,
+>(
+  params?: GetMyNotificationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyNotifications>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyNotificationsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Отметить уведомления текущего пользователя как прочитанные
+ */
+export const markNotificationsRead = (
+  markNotificationsReadDto: MarkNotificationsReadDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<MarkNotificationsReadResponseDto>({
+    url: `/api/v1/notifications/read`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: markNotificationsReadDto,
+    signal,
+  });
+};
+
+export const getMarkNotificationsReadMutationOptions = <
+  TError = unknown,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof markNotificationsRead>>,
+    TError,
+    { data: MarkNotificationsReadDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof markNotificationsRead>>,
+  TError,
+  { data: MarkNotificationsReadDto },
+  TContext
+> => {
+  const mutationKey = ["markNotificationsRead"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof markNotificationsRead>>,
+    { data: MarkNotificationsReadDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return markNotificationsRead(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MarkNotificationsReadMutationResult = NonNullable<
+  Awaited<ReturnType<typeof markNotificationsRead>>
+>;
+export type MarkNotificationsReadMutationBody = MarkNotificationsReadDto;
+export type MarkNotificationsReadMutationError = unknown;
+
+/**
+ * @summary Отметить уведомления текущего пользователя как прочитанные
+ */
+export const useMarkNotificationsRead = <
+  TError = unknown,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof markNotificationsRead>>,
+    TError,
+    { data: MarkNotificationsReadDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof markNotificationsRead>>,
+  TError,
+  { data: MarkNotificationsReadDto },
+  TContext
+> => {
+  const mutationOptions = getMarkNotificationsReadMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
  * @summary Current LK profile, permissions and location scope
  */
 export const getMe = (signal?: AbortSignal) => {
@@ -4361,7 +4527,7 @@ export const getCandidateDocuments = (
   chatUuid: string,
   signal?: AbortSignal,
 ) => {
-  return customInstance<DocumentListDto>({
+  return customInstance<OwnDocumentListDto>({
     url: `/api/candidate-documents/by-chat/${chatUuid}/statuses`,
     method: "GET",
     signal,
@@ -8995,172 +9161,6 @@ export function useGetExpiringItems<
 
   return query;
 }
-
-/**
- * @summary Получить список уведомлений текущего пользователя из ЛК
- */
-export const getMyNotifications = (
-  params?: GetMyNotificationsParams,
-  signal?: AbortSignal,
-) => {
-  return customInstance<NotificationsListResponseDto>({
-    url: `/api/v1/notifications/my`,
-    method: "GET",
-    params,
-    signal,
-  });
-};
-
-export const getGetMyNotificationsQueryKey = (
-  params?: GetMyNotificationsParams,
-) => {
-  return [`/api/v1/notifications/my`, ...(params ? [params] : [])] as const;
-};
-
-export const getGetMyNotificationsQueryOptions = <
-  TData = Awaited<ReturnType<typeof getMyNotifications>>,
-  TError = unknown,
->(
-  params?: GetMyNotificationsParams,
-  options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getMyNotifications>>,
-      TError,
-      TData
-    >;
-  },
-) => {
-  const { query: queryOptions } = options ?? {};
-
-  const queryKey =
-    queryOptions?.queryKey ?? getGetMyNotificationsQueryKey(params);
-
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getMyNotifications>>
-  > = ({ signal }) => getMyNotifications(params, signal);
-
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getMyNotifications>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
-};
-
-export type GetMyNotificationsQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getMyNotifications>>
->;
-export type GetMyNotificationsQueryError = unknown;
-
-/**
- * @summary Получить список уведомлений текущего пользователя из ЛК
- */
-
-export function useGetMyNotifications<
-  TData = Awaited<ReturnType<typeof getMyNotifications>>,
-  TError = unknown,
->(
-  params?: GetMyNotificationsParams,
-  options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getMyNotifications>>,
-      TError,
-      TData
-    >;
-  },
-): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetMyNotificationsQueryOptions(params, options);
-
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
-
-  query.queryKey = queryOptions.queryKey;
-
-  return query;
-}
-
-/**
- * @summary Отметить уведомления текущего пользователя как прочитанные
- */
-export const markNotificationsRead = (
-  markNotificationsReadDto: MarkNotificationsReadDto,
-  signal?: AbortSignal,
-) => {
-  return customInstance<MarkNotificationsReadResponseDto>({
-    url: `/api/v1/notifications/read`,
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    data: markNotificationsReadDto,
-    signal,
-  });
-};
-
-export const getMarkNotificationsReadMutationOptions = <
-  TError = unknown,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof markNotificationsRead>>,
-    TError,
-    { data: MarkNotificationsReadDto },
-    TContext
-  >;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof markNotificationsRead>>,
-  TError,
-  { data: MarkNotificationsReadDto },
-  TContext
-> => {
-  const mutationKey = ["markNotificationsRead"];
-  const { mutation: mutationOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey } };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof markNotificationsRead>>,
-    { data: MarkNotificationsReadDto }
-  > = (props) => {
-    const { data } = props ?? {};
-
-    return markNotificationsRead(data);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type MarkNotificationsReadMutationResult = NonNullable<
-  Awaited<ReturnType<typeof markNotificationsRead>>
->;
-export type MarkNotificationsReadMutationBody = MarkNotificationsReadDto;
-export type MarkNotificationsReadMutationError = unknown;
-
-/**
- * @summary Отметить уведомления текущего пользователя как прочитанные
- */
-export const useMarkNotificationsRead = <
-  TError = unknown,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof markNotificationsRead>>,
-    TError,
-    { data: MarkNotificationsReadDto },
-    TContext
-  >;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof markNotificationsRead>>,
-  TError,
-  { data: MarkNotificationsReadDto },
-  TContext
-> => {
-  const mutationOptions = getMarkNotificationsReadMutationOptions(options);
-
-  return useMutation(mutationOptions);
-};
 
 /**
  * @summary Read annotation participation preference
