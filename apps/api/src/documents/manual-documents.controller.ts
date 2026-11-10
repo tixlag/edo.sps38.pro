@@ -493,7 +493,11 @@ export class ManualDocumentReviewController {
     );
   }
   @Sse("document-status-events")
-  @RequireAccessRule(EdoAccessRule.ACCESS)
+  @RequireAccessRule(
+    EdoAccessRule.ACCESS,
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
   @ApiProduces("text/event-stream")
   @ApiOperation({
     operationId: "streamReviewDocumentStatuses",
