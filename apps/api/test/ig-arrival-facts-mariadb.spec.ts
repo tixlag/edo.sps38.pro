@@ -626,7 +626,7 @@ describe.skipIf(!db)("factual arrivals in isolated MariaDB", () => {
       data: { generation: 100n },
     });
   });
-  it("hides trusted candidate binding until its generation completes", async () => {
+  it("publishes trusted employee binding before the global scan completes", async () => {
     const p = randomUUID(),
       loc = randomUUID(),
       uid = randomUUID(),
@@ -668,7 +668,7 @@ describe.skipIf(!db)("factual arrivals in isolated MariaDB", () => {
     expect(
       (await registry.participations(principal, { groupKey: group.groupKey }))
         .items[0].candidateId,
-    ).toBeNull();
+    ).toBeTruthy();
     await svc.finish(currentLease);
     const candidateId = (
       await registry.participations(principal, { groupKey: group.groupKey })
@@ -682,7 +682,7 @@ describe.skipIf(!db)("factual arrivals in isolated MariaDB", () => {
       data: { generation: 100n },
     });
   });
-  it("shows all duplicated source UUID facts separately with warnings and without candidates", async () => {
+  it("keeps distinct facts without treating repeated participation UUID as a document issue", async () => {
     const people = [randomUUID(), randomUUID()],
       loc = randomUUID(),
       uid = randomUUID();
@@ -743,7 +743,7 @@ describe.skipIf(!db)("factual arrivals in isolated MariaDB", () => {
           r.candidateId === null &&
           r.approvedDocuments === 0 &&
           r.action === "NONE" &&
-          r.issueCodes.includes("DUPLICATE_ARRIVAL_MEMBER_UID"),
+          !r.issueCodes.includes("DUPLICATE_ARRIVAL_MEMBER_UID"),
       ),
     ).toBe(true);
     await prisma.igArrivalPerson.deleteMany({
@@ -881,7 +881,7 @@ describe.skipIf(!db)("factual arrivals in isolated MariaDB", () => {
       data: { generation: 100n },
     });
   });
-  it("quarantines an earlier trusted owner as soon as a duplicate UID is reported", async () => {
+  it("preserves the verified employee despite a repeated participation UID", async () => {
     const p1 = randomUUID(),
       p2 = randomUUID(),
       loc = randomUUID(),
@@ -944,7 +944,7 @@ describe.skipIf(!db)("factual arrivals in isolated MariaDB", () => {
       })
     ).items[0];
     expect(after.candidateId).toBe(before.candidateId);
-    expect(after.issueCodes).toContain("DUPLICATE_ARRIVAL_MEMBER_UID");
+    expect(after.issueCodes).not.toContain("DUPLICATE_ARRIVAL_MEMBER_UID");
     await prisma.igArrivalMember.update({
       where: { arrivalMemberUid: uid },
       data: { factsIdentityIssue: "ARRIVAL_IDENTITY_CONFLICT" },

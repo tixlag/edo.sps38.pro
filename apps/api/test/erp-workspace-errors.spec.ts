@@ -93,3 +93,61 @@ describe("ERP workspace conflicts", () => {
     });
   });
 });
+
+describe("ERP workspace cancellation", () => {
+  it("cancels a stalled response body after headers", async () => {
+    const controller = new AbortController();
+    let cancelled = false;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new ReadableStream({
+      start(stream) { stream.enqueue(new TextEncoder().encode('{"items":')); },
+      cancel() { cancelled = true; },
+    }), { headers: { "content-type": "application/json" } })));
+    const client = new ErpWorkspaceClient(config);
+    const result = client.employmentHistory("worker", "person", controller.signal);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    controller.abort(new Error("job deadline"));
+    await expect(result).rejects.toThrow("job deadline");
+    expect(cancelled).toBe(true);
+  }, 1000);
+
+  it("cancels original verification while reading the body", async () => {
+    const controller = new AbortController();
+    let cancelled = false;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new ReadableStream({
+      start(stream) { stream.enqueue(new TextEncoder().encode("%PDF-")); },
+      cancel() { cancelled = true; },
+    }), { headers: { "content-type": "application/pdf" } })));
+    const result = new ErpWorkspaceClient(config).probePersonOriginal("worker", "person", "doc", controller.signal);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    controller.abort(new Error("job deadline"));
+    await expect(result).rejects.toThrow("job deadline");
+    expect(cancelled).toBe(true);
+  }, 1000);
+});
+
+describe("ERP body cleanup deadlines", () => {
+  it("does not wait for a stalled stream cancellation after its deadline", async () => {
+    const controller = new AbortController();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new ReadableStream({
+      start(stream) { stream.enqueue(new TextEncoder().encode("%PDF-")); },
+      cancel() { return new Promise<void>(() => undefined); },
+    }), { headers: { "content-type": "application/pdf" } })));
+    const result = new ErpWorkspaceClient(config).personOriginal("worker", "person", "doc", controller.signal);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    controller.abort(new Error("job deadline"));
+    await expect(result).rejects.toThrow("job deadline");
+  }, 500);
+});
+
+describe("ERP error body cancellation", () => {
+  it.each([400, 409])("keeps the job deadline when an HTTP %s error body stalls", async (status) => {
+    const controller = new AbortController();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new ReadableStream({
+      start(stream) { stream.enqueue(new TextEncoder().encode("{")); },
+    }), { status })));
+    const result = new ErpWorkspaceClient(config).employmentHistory("worker", "person", controller.signal);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    controller.abort(new Error("job deadline"));
+    await expect(result).rejects.toThrow("job deadline");
+  });
+});

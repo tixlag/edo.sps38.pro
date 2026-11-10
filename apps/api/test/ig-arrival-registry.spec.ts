@@ -42,7 +42,7 @@ describe("IG arrival registry", () => {
       igArrivalSyncState: {
         findUnique: vi
           .fn()
-          .mockResolvedValue({ completedAt: new Date("2026-11-01T00:00:00Z") }),
+          .mockResolvedValue({ completedAt: new Date("2026-11-01T00:00:00Z"), factsFinishedGeneration: 1n }),
       },
     };
     const service = new IgArrivalRegistryService(prisma as never);
@@ -51,7 +51,7 @@ describe("IG arrival registry", () => {
     ).resolves.toEqual({
       items: [],
       nextCursor: null,
-      sync: { lastCompletedAt: "2026-11-01T00:00:00.000Z" },
+      sync: { status: "COMPLETE", lastCompletedAt: "2026-11-01T00:00:00.000Z" },
     });
   });
   it("triggers catalog refresh without blocking listing when integration fails", async () => {

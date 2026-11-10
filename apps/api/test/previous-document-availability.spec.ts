@@ -13,6 +13,7 @@ const previous = (patch: Partial<CandidatePreviousDocument> = {}) => ({
   fields: { recordDate: "2025-10-12" },
   expiresAt: new Date("2100-01-01"),
   originalAvailable: true,
+  originalVerified: true,
   reviewedAt: new Date("2026-01-01"),
   ...patch,
 });
@@ -66,6 +67,13 @@ describe("previous employment document availability", () => {
       [{ originalAvailable: false }, "ORIGINAL_UNAVAILABLE"],
     ] as const)
       expect(previousDocumentState(previous(patch), true)).toBe(state);
+  });
+  it("does not count a manual confirmation as accepted while its original is unchecked", () => {
+    const doc = previous({ originalVerified: false });
+    expect(previousDocumentState(doc, true)).toBe("ORIGINAL_UNAVAILABLE");
+    expect(previousDocumentAvailability(types, [doc], [], true)[0].originalAvailable).toBe(false);
+    expect(doc.status).toBe("CONFIRMED");
+    expect(previousDocumentState(doc, false)).toBe("REUSED");
   });
   it("retains the requirement for a fresh migration document on an IG arrival", () => {
     expect(

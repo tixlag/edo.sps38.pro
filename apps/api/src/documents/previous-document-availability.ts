@@ -20,6 +20,7 @@ type Previous = Pick<
   | "fields"
   | "expiresAt"
   | "originalAvailable"
+  | "originalVerified"
   | "reviewedAt"
 >;
 
@@ -41,7 +42,7 @@ export function previousDocumentState(
     ["REPLACE", "MISSING"].includes(doc.status)
   )
     return "REPLACE_REQUIRED";
-  if (!doc.originalAvailable || doc.status === "ORIGINAL_UNAVAILABLE")
+  if (!doc.originalAvailable || (isIg && !doc.originalVerified) || doc.status === "ORIGINAL_UNAVAILABLE")
     return "ORIGINAL_UNAVAILABLE";
   return doc.status === "CONFIRMED" ? "REUSED" : "REQUIRES_REVIEW";
 }
@@ -101,7 +102,7 @@ export function previousDocumentAvailability(
         state: previousDocumentState(doc, isIg),
         expiresAt: doc.expiresAt?.toISOString().slice(0, 10) ?? null,
         recordedAt,
-        originalAvailable: doc.originalAvailable,
+        originalAvailable: doc.originalAvailable && (!isIg || doc.originalVerified),
         source: isEdo ? ("EDO" as const) : ("ERP" as const),
         sourceDescription: isEdo
           ? "Из прошлого оформления в ЭДО"

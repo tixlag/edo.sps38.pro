@@ -772,7 +772,7 @@ describe.skipIf(!db)(
       }
     });
 
-    it("keeps requirements visible with an active source warning", async () => {
+    it("does not mark employee documents problematic because of a legacy source warning", async () => {
       const issueId = createHash("sha256").update(randomUUID()).digest("hex");
       await prisma.igArrivalIssue.create({
         data: {
@@ -792,7 +792,7 @@ describe.skipIf(!db)(
         ).items[0];
         expect(row).toMatchObject({
           requirements: { known: true, completed: false, missing: 3 },
-          needsAttention: true,
+          needsAttention: false,
         });
       } finally {
         await prisma.igArrivalIssue.delete({ where: { id: issueId } });
@@ -857,6 +857,24 @@ describe.skipIf(!db)(
           where: { id: { in: typeIds } },
           data: { catalogSyncedAt: new Date() },
         });
+      }
+    });
+    it("opens verified employee documents without a finished global scan or participation UUID", async () => {
+      await prisma.igArrivalSyncState.update({ where: { id: "singleton" }, data: { factsFinishedGeneration: null, factsScanIncomplete: true } });
+      await prisma.igArrivalPerson.update({ where: { personUid }, data: { state: "CONFLICT" } });
+      await prisma.igArrivalMember.update({ where: { arrivalMemberUid: member }, data: { sourceMemberUid: null, factsIdentityIssue: "ARRIVAL_IDENTITY_UNVERIFIED" } });
+      try {
+        const group = (await registry.groups(reviewer, { q: code1c })).items[0];
+        const row = (await registry.participations(reviewer, { q: code1c, groupKey: group.groupKey })).items[0];
+        expect(row.candidateId).toBe(candidateId);
+        expect(row.action).toBe("OPEN_CARD");
+        expect(row.participationStatus).toBe("CURRENT");
+        expect(row.issueCodes).not.toContain("ARRIVAL_IDENTITY_UNVERIFIED");
+        expect(row.issueCodes).not.toContain("ARRIVAL_SOURCE_CONFLICT");
+      } finally {
+        await prisma.igArrivalSyncState.update({ where: { id: "singleton" }, data: { factsFinishedGeneration: 1n, factsScanIncomplete: false } });
+        await prisma.igArrivalPerson.update({ where: { personUid }, data: { state: "CURRENT" } });
+        await prisma.igArrivalMember.update({ where: { arrivalMemberUid: member }, data: { sourceMemberUid: member, factsIdentityIssue: null } });
       }
     });
   },

@@ -11,6 +11,8 @@ const state = vi.hoisted(() => ({
   personError: false,
   groupsError: false,
   groupNext: null as string | null,
+  syncStatus: "COMPLETE",
+  navigations: [] as { replace?: boolean }[],
   personNext: null as string | null,
   refetch: vi.fn(),
   select: vi.fn(),
@@ -22,7 +24,9 @@ vi.mock("@tanstack/react-router", () => ({
     () =>
     (options: {
       search: (previous: Record<string, unknown>) => Record<string, unknown>;
+      replace?: boolean;
     }) => {
+      state.navigations.push({ replace: options.replace });
       state.search = options.search(state.search);
     },
 }));
@@ -78,7 +82,7 @@ vi.mock("@edo/api-client", () => ({
           },
         ],
         nextCursor: state.groupNext,
-        sync: { lastCompletedAt: null },
+        sync: { status: state.syncStatus, lastCompletedAt: null },
       },
       isLoading: false,
       isError: state.groupsError,
@@ -134,7 +138,7 @@ vi.mock("@edo/api-client", () => ({
               },
             ],
             nextCursor: state.personNext,
-            sync: { lastCompletedAt: null },
+            sync: { status: state.syncStatus, lastCompletedAt: null },
           },
       isLoading: false,
       isError: state.personError,
@@ -165,14 +169,113 @@ afterEach(async () => {
   state.personError = false;
   state.groupsError = false;
   state.groupNext = null;
+  state.syncStatus = "COMPLETE";
+  state.navigations = [];
   state.personNext = null;
   state.refetch.mockClear();
   state.select.mockClear();
   state.invalidate.mockClear();
 });
 describe("arrival registry", () => {
+  it("uses Irkutsk month start in the first request without hiding future arrivals", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-12-31T17:00:00Z"));
+    try {
+      await render();
+      expect(state.groupCalls[0]).toMatchObject({
+        dateFrom: "2027-01-01",
+        dateTo: undefined,
+      });
+      expect(state.search.igDateFrom).toBe("2027-01-01");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it.each([
+    { igPeriod: "all" },
+    { igPeriod: "custom" },
+    { igDateFrom: "2026-09-01", igDateTo: "2026-10-20" },
+    { igDateTo: "2026-10-20" },
+  ])("preserves an explicit current period %j", async (period) => {
+    state.search = { view: "arrivals", ...period };
+    await render();
+    expect(state.groupCalls[0]).toMatchObject({
+      dateFrom: "igDateFrom" in period ? period.igDateFrom : undefined,
+      dateTo: "igDateTo" in period ? period.igDateTo : undefined,
+    });
+    expect(state.navigations).toHaveLength(0);
+  });
+  it("replaces the URL and clears incompatible pagination when applying the month default", async () => {
+    state.search = {
+      view: "arrivals",
+      igCursor: "old",
+      igGroups: '["a"]',
+      igPages: '{"a":"old"}',
+    };
+    await render();
+    expect(state.navigations).toEqual([{ replace: true }]);
+    expect(state.groupCalls[0]).toMatchObject({ cursor: undefined });
+    expect(state.search.igCursor).toBeUndefined();
+    expect(state.search.igGroups).toBeUndefined();
+    expect(state.search.igPages).toBeUndefined();
+  });
+  it("shows a single shared degraded sync warning for all expanded groups", async () => {
+    state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a","b"]' };
+    state.syncStatus = "DEGRADED";
+    const view = await render();
+    expect(
+      view.textContent?.match(/Данные реестра обновлены не полностью/g),
+    ).toHaveLength(1);
+    expect(view.textContent).toContain("Алиев");
+    expect(view.textContent).toContain("Каримов");
+  });
+  it.each([
+    "ARRIVAL_IDENTITY_UNVERIFIED",
+    "ARRIVAL_IDENTITY_CONFLICT",
+    "ARRIVAL_MEMBER_OWNER_CONFLICT",
+    "DUPLICATE_ARRIVAL_MEMBER_UID",
+  ])(
+    "does not show a personal warning for legacy identity code %s",
+    async (code) => {
+      state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
+      state.personOverrides = { personState: "CONFLICT", issueCodes: [code] };
+      const view = await render();
+      expect(view.textContent).not.toContain("Данные заезда требуют уточнения");
+      expect(view.textContent).not.toContain(code);
+    },
+  );
+  it("opens documents by clicking the employee name", async () => {
+    state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
+    const view = await render();
+    const name = [...view.querySelectorAll("button")].find(
+      (b) => b.textContent === "Алиев",
+    );
+    expect(name).toBeDefined();
+    expect(name!.tagName).toBe("BUTTON");
+    expect(name!.getAttribute("type")).toBe("button");
+    await act(async () => name!.click());
+    const nameSelection = state.select.mock.calls[0];
+    await act(async () =>
+      view
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Проверить: Алиев"]',
+        )!
+        .click(),
+    );
+    expect(nameSelection).toEqual(state.select.mock.calls[1]);
+    expect(nameSelection).toEqual([
+      "a",
+      {
+        memberUid: "a",
+        date: "2026-11-10",
+        location: "Склад",
+        status: "CURRENT",
+      },
+    ]);
+  });
+
   it("does not invent an arrival time when the source has no time", async () => {
-    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
     const view = await render();
     expect(view.textContent).not.toContain("Прибытие:");
   });
@@ -183,12 +286,10 @@ describe("arrival registry", () => {
     try {
       state.search = { view: "arrivals", igArchive: "archive" };
       const view = await render();
-      expect(state.groupCalls).toContainEqual(
-        expect.objectContaining({
-          dateFrom: "2026-10-10",
-          dateTo: "2026-11-09",
-        }),
-      );
+      expect(state.groupCalls[0]).toMatchObject({
+        dateFrom: "2026-10-10",
+        dateTo: "2026-11-09",
+      });
       expect(
         (view.querySelector('input[type="date"]') as HTMLInputElement).value,
       ).toBe("2026-10-10");
@@ -198,6 +299,43 @@ describe("arrival registry", () => {
           .click(),
       );
       expect(state.search.igPeriod).toBe("all");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it.each([
+    { igPeriod: "all" },
+    { igPeriod: "custom" },
+    { igDateFrom: "2026-08-01", igDateTo: "2026-08-31" },
+  ])("preserves an explicit archive period %j", async (period) => {
+    state.search = { view: "arrivals", igArchive: "archive", ...period };
+    await render();
+    expect(state.groupCalls[0]).toMatchObject({
+      archive: "archive",
+      dateFrom: "igDateFrom" in period ? period.igDateFrom : undefined,
+      dateTo: "igDateTo" in period ? period.igDateTo : undefined,
+    });
+    expect(state.navigations).toHaveLength(0);
+  });
+  it("returns to the current month when leaving the archive", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-12-31T17:00:00Z"));
+    try {
+      state.search = {
+        view: "arrivals",
+        igArchive: "archive",
+        igPeriod: "all",
+      };
+      const view = await render();
+      await act(async () =>
+        [...view.querySelectorAll("button")]
+          .find((button) => button.textContent === "Текущие")!
+          .click(),
+      );
+      expect(state.search.igArchive).toBeUndefined();
+      expect(state.search.igDateFrom).toBe("2027-01-01");
+      expect(state.search.igDateTo).toBeUndefined();
+      expect(state.search.igPeriod).toBe("custom");
     } finally {
       vi.useRealTimers();
     }
@@ -216,6 +354,7 @@ describe("arrival registry", () => {
   it("records each current cursor when advancing group and participant pages", async () => {
     state.search = {
       view: "arrivals",
+      igPeriod: "all",
       igCursor: "group-1",
       igGroups: '["a"]',
       igPages: '{"a":"person-1"}',
@@ -243,6 +382,7 @@ describe("arrival registry", () => {
   it("returns to the immediately previous group and participant pages", async () => {
     state.search = {
       view: "arrivals",
+      igPeriod: "all",
       igCursor: "g2",
       igGroupStack: '["","g1"]',
       igGroups: '["a"]',
@@ -266,7 +406,7 @@ describe("arrival registry", () => {
     expect(state.search.igGroupStack).toBe('[""]');
   });
   it("renders four HR columns and one review action from server requirements", async () => {
-    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
     const view = await render();
     expect(
       [...view.querySelectorAll("thead th")].map((th) => th.textContent),
@@ -281,7 +421,7 @@ describe("arrival registry", () => {
     expect(view.querySelector('button[aria-label="Алиев"]')).toBeNull();
   });
   it("does not label an active conflicting participation as archived", async () => {
-    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
     state.personOverrides = {
       participationStatus: "ISSUE",
       personState: "CONFLICT",
@@ -289,13 +429,16 @@ describe("arrival registry", () => {
     };
     const view = await render();
     expect(view.querySelector("tbody")?.textContent).not.toContain("Архив");
-    expect(view.textContent).toContain("Требует уточнения");
+    expect(view.textContent).not.toContain("Данные заезда требуют уточнения");
+    expect(view.querySelector("tbody")?.textContent).not.toContain(
+      "Требует уточнения",
+    );
     expect(
       view.querySelector('button[aria-label="Открыть карточку: Алиев"]'),
     ).not.toBeNull();
   });
   it("warns about a site cancellation without marking the participation cancelled", async () => {
-    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
     state.personOverrides = {
       participationStatus: "CURRENT",
       issueCodes: ["ARRIVAL_SITE_STATUS_CANCELLED"],
@@ -307,7 +450,7 @@ describe("arrival registry", () => {
     expect(view.textContent).not.toContain("Отменён");
   });
   it("describes one missing document grammatically", async () => {
-    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
     state.personOverrides = {
       requirements: {
         known: true,
@@ -330,6 +473,7 @@ describe("arrival registry", () => {
     state.search = {
       view: "arrivals",
       igGroups: '["a"]',
+      igPeriod: "all",
       igRequirementsAction: "MISSING",
     };
     await render();
@@ -341,7 +485,7 @@ describe("arrival registry", () => {
     );
   });
   it("shows a delivery problem without hiding a review action", async () => {
-    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
     state.personOverrides = { deliveryNeedsAttention: true };
     const view = await render();
     expect(view.textContent).toContain(
@@ -352,7 +496,7 @@ describe("arrival registry", () => {
     ).not.toBeNull();
   });
   it("keeps review actionable when requirements are unknown", async () => {
-    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
     state.personOverrides = {
       requirements: {
         known: false,
@@ -375,7 +519,7 @@ describe("arrival registry", () => {
     ).not.toBeNull();
   });
   it("refreshes expanded participant data along with groups", async () => {
-    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
     const view = await render();
     await act(async () =>
       [...view.querySelectorAll("button")]
@@ -415,7 +559,7 @@ describe("arrival registry", () => {
     expect(state.search.igGroups).toBeUndefined();
   });
   it("explains an unlinked candidate and renders no candidate action", async () => {
-    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
     state.personOverrides = {
       candidateId: null,
       action: "NONE",
@@ -426,7 +570,7 @@ describe("arrival registry", () => {
     expect(view.textContent).toContain(
       "Обратитесь к ответственному за привязку кандидатов",
     );
-    expect(view.textContent).toContain("Нет связанного профиля");
+    expect(view.textContent).toContain("Связь с профилем не подтверждена");
     expect(view.textContent).not.toContain("unrecognised");
     expect(
       [...view.querySelectorAll("button")].some(
@@ -435,7 +579,7 @@ describe("arrival registry", () => {
     ).toBe(false);
   });
   it("allows retry of a failed group independently", async () => {
-    state.search = { view: "arrivals", igGroups: '["a"]' };
+    state.search = { view: "arrivals", igPeriod: "all", igGroups: '["a"]' };
     state.personError = true;
     const view = await render();
     expect(view.textContent).toContain("Не удалось загрузить участников");

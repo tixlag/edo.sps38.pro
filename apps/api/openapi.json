@@ -388,6 +388,102 @@
         ]
       }
     },
+    "/api/v1/candidates/{candidateId}/enrichment": {
+      "post": {
+        "operationId": "requestCandidateEnrichment",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateEnrichmentDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Prioritize loading the IG employee profile and document history",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/candidate-documents/by-chat/{chatUuid}/context": {
       "get": {
         "operationId": "getCandidateDocumentContext",
@@ -17080,6 +17176,72 @@
           "locationScope"
         ]
       },
+      "ApiErrorDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number"
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "correlationId": {
+            "type": "string",
+            "nullable": true
+          },
+          "path": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "statusCode",
+          "message",
+          "correlationId",
+          "path"
+        ]
+      },
+      "CandidateEnrichmentDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "READY",
+              "RETRY"
+            ]
+          },
+          "profileReady": {
+            "type": "boolean"
+          },
+          "documentsReady": {
+            "type": "boolean"
+          },
+          "retryAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "status",
+          "profileReady",
+          "documentsReady",
+          "retryAt"
+        ]
+      },
       "CandidateDocumentErrorCode": {
         "type": "string",
         "enum": [
@@ -18133,41 +18295,6 @@
           "erpAvailable"
         ]
       },
-      "ApiErrorDto": {
-        "type": "object",
-        "properties": {
-          "statusCode": {
-            "type": "number"
-          },
-          "message": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            ]
-          },
-          "correlationId": {
-            "type": "string",
-            "nullable": true
-          },
-          "path": {
-            "type": "string",
-            "nullable": true
-          }
-        },
-        "required": [
-          "statusCode",
-          "message",
-          "correlationId",
-          "path"
-        ]
-      },
       "UploadAcceptedDto": {
         "type": "object",
         "properties": {
@@ -19094,6 +19221,9 @@
       "CandidateDetailsDto": {
         "type": "object",
         "properties": {
+          "enrichment": {
+            "$ref": "#/components/schemas/CandidateEnrichmentDto"
+          },
           "candidate": {
             "$ref": "#/components/schemas/CandidateProfileDto"
           },
@@ -19396,6 +19526,15 @@
       "IgArrivalRegistrySyncDto": {
         "type": "object",
         "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "NOT_STARTED",
+              "IN_PROGRESS",
+              "DEGRADED",
+              "COMPLETE"
+            ]
+          },
           "lastCompletedAt": {
             "type": "string",
             "nullable": true,
@@ -19403,6 +19542,7 @@
           }
         },
         "required": [
+          "status",
           "lastCompletedAt"
         ]
       },

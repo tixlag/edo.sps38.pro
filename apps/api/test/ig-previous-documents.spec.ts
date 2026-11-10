@@ -170,7 +170,7 @@ describe("IG previous ERP documents", () => {
         ],
       } as never);
       await service.previous(row.id, actor({ "20011": [] }));
-      const args = tx.candidatePreviousDocument.upsert.mock.calls[0][0] as {
+      const args = tx.candidatePreviousDocument.upsert.mock.calls.at(-1)![0] as {
         update: { status?: string };
       };
       expect(args.update.status).toBe(expectedStatus);
@@ -443,6 +443,8 @@ describe("IG previous ERP documents", () => {
       "person-documents-by-code",
       expect.anything(),
       { code1c: "worker", personUid },
+      undefined,
+      undefined,
     );
     expect(audit.logInTransaction).toHaveBeenCalledWith(
       expect.anything(),
@@ -462,6 +464,8 @@ describe("IG previous ERP documents", () => {
       "person-documents-by-code",
       expect.anything(),
       { code1c: "worker", personUid },
+      undefined,
+      undefined,
     );
   });
   it("includes EDO documents from earlier cycles for the same verified person", async () => {

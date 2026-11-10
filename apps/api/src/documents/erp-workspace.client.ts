@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { z } from "zod";
+import type { ReadableStreamReadResult } from "node:stream/web";
 
 const uuid = z
   .string()
@@ -151,11 +152,13 @@ export const personMatchesSchema = z.object({
 /** Shared narrow ERP business bridge. No automatic retries of mutations. */
 @Injectable()
 export class ErpWorkspaceClient {
+  private readonly responseSignals = new WeakMap<Response, AbortSignal>();
   constructor(private readonly config: ConfigService) {}
   private async response(
     action: string,
     query: Record<string, string>,
     body?: unknown,
+    signal?: AbortSignal,
   ) {
     const endpoint = this.config.get<string>("ERP_COMMUNICATIONS_URL"),
       token = this.config.get<string>("ERP_CANDIDATE_TOKEN"),
@@ -179,6 +182,11 @@ export class ErpWorkspaceClient {
     url.searchParams.set("action", action);
     for (const [key, value] of Object.entries(query))
       url.searchParams.set(key, value);
+    const deadline = AbortSignal.timeout(body === undefined ? 15000 : 45000);
+    const requestSignal = signal
+      ? AbortSignal.any([signal, deadline])
+      : deadline;
+    requestSignal.throwIfAborted();
     let response: Response;
     try {
       response = await fetch(url, {
@@ -190,13 +198,16 @@ export class ErpWorkspaceClient {
           ...(body === undefined ? {} : { "Content-Type": "application/json" }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(body === undefined ? 15000 : 45000),
+        signal: requestSignal,
       });
     } catch {
+      signal?.throwIfAborted();
       throw new ServiceUnavailableException(
         body === undefined ? "ERP_UNAVAILABLE" : "ERP_OPERATION_RESULT_UNKNOWN",
       );
     }
+    this.responseSignals.set(response, requestSignal);
+    requestSignal.throwIfAborted();
     if (!response.ok) {
       if (response.status === 409) {
         let code: unknown;
@@ -205,6 +216,7 @@ export class ErpWorkspaceClient {
           code = (JSON.parse(bytes.toString("utf8")) as { code?: unknown })
             .code;
         } catch {
+          signal?.throwIfAborted();
           // Unknown or oversized upstream bodies must never leak to the client.
         }
         throw new ConflictException(
@@ -230,6 +242,7 @@ export class ErpWorkspaceClient {
             err = "INVALID_CURSOR";
           }
         } catch {
+          signal?.throwIfAborted();
           // Unknown or oversized upstream bodies must never leak to the client.
         }
         if (err === "INVALID_CURSOR") {
@@ -255,8 +268,9 @@ export class ErpWorkspaceClient {
     schema: z.ZodType<T>,
     query: Record<string, string> = {},
     body?: unknown,
+    signal?: AbortSignal,
   ): Promise<T> {
-    const response = await this.response(action, query, body);
+    const response = await this.response(action, query, body, signal);
     const bytes = await this.readBounded(response, 2 * 1024 * 1024);
     try {
       return schema.parse(JSON.parse(bytes.toString("utf8")));
@@ -272,7 +286,10 @@ export class ErpWorkspaceClient {
     const reader = response.body.getReader();
     try {
       for (;;) {
-        const r = await reader.read();
+        const r = await this.readChunk(
+          reader,
+          this.responseSignals.get(response),
+        );
         if (r.done) break;
         size += r.value.length;
         if (size > limit)
@@ -285,6 +302,33 @@ export class ErpWorkspaceClient {
       await reader.cancel().catch(() => undefined);
     }
     return Buffer.concat(chunks);
+  }
+  /** Fetch resolves at headers; explicitly bound streamed body reads as well. */
+  private async readChunk(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    signal?: AbortSignal,
+  ): Promise<ReadableStreamReadResult<Uint8Array>> {
+    signal?.throwIfAborted();
+    if (!signal) return reader.read();
+    return new Promise((resolve, reject) => {
+      const abort = () => {
+        // Reject before cancellation can resolve the pending read as EOF.
+        reject(signal.reason);
+        void reader.cancel().catch(() => undefined);
+      };
+      signal.addEventListener("abort", abort, { once: true });
+      reader.read().then(
+        (part) => {
+          signal.removeEventListener("abort", abort);
+          resolve(part);
+        },
+        (error) => {
+          signal.removeEventListener("abort", abort);
+          reject(error);
+        },
+      );
+      if (signal.aborted) abort();
+    });
   }
   arrivalPage(limit: number, cursor?: string) {
     if (
@@ -312,19 +356,27 @@ export class ErpWorkspaceClient {
       ...(cursor ? { cursor } : {}),
     });
   }
-  async identity(code1c: string) {
-    const identity = await this.request("identity", erpIdentitySchema, {
-      code1c,
-    });
+  async identity(code1c: string, signal?: AbortSignal) {
+    const identity = await this.request(
+      "identity",
+      erpIdentitySchema,
+      {
+        code1c,
+      },
+      undefined,
+      signal,
+    );
     if (identity.code1C !== code1c)
       throw new ConflictException("ERP_IDENTITY_MISMATCH");
     return identity;
   }
-  employmentHistory(code1c: string, personUid: string) {
+  employmentHistory(code1c: string, personUid: string, signal?: AbortSignal) {
     return this.request(
       "person-employment-history",
       erpEmploymentHistorySchema,
       { code1c, personUid },
+      undefined,
+      signal,
     );
   }
   card(erpUid: string) {
@@ -341,16 +393,40 @@ export class ErpWorkspaceClient {
         response.headers.get("content-type") ?? "application/octet-stream",
     };
   }
+  async probeCandidateOriginal(
+    erpUid: string,
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    const response = await this.response(
+      "person-document-original",
+      { candidate: erpUid, id },
+      undefined,
+      signal,
+    );
+    return this.verifyOriginalResponse(response);
+  }
+
   async probePersonOriginal(
     code1c: string,
     personUid: string,
     id: string,
+    signal?: AbortSignal,
   ): Promise<boolean> {
-    const response = await this.response("person-document-original-by-code", {
-      code1c,
-      personUid,
-      id,
-    });
+    const response = await this.response(
+      "person-document-original-by-code",
+      {
+        code1c,
+        personUid,
+        id,
+      },
+      undefined,
+      signal,
+    );
+    return this.verifyOriginalResponse(response);
+  }
+
+  private async verifyOriginalResponse(response: Response): Promise<boolean> {
     const mime = response.headers
       .get("content-type")
       ?.split(";")[0]
@@ -381,7 +457,10 @@ export class ErpWorkspaceClient {
     let prefix = Buffer.alloc(0);
     try {
       for (;;) {
-        const part = await reader.read();
+        const part = await this.readChunk(
+          reader,
+          this.responseSignals.get(response),
+        );
         if (part.done) {
           const detected = prefix.subarray(0, 5).equals(Buffer.from("%PDF-"))
             ? "application/pdf"
@@ -421,12 +500,22 @@ export class ErpWorkspaceClient {
       await reader.cancel().catch(() => undefined);
     }
   }
-  async personOriginal(code1c: string, personUid: string, id: string) {
-    const response = await this.response("person-document-original-by-code", {
-      code1c,
-      personUid,
-      id,
-    });
+  async personOriginal(
+    code1c: string,
+    personUid: string,
+    id: string,
+    signal?: AbortSignal,
+  ) {
+    const response = await this.response(
+      "person-document-original-by-code",
+      {
+        code1c,
+        personUid,
+        id,
+      },
+      undefined,
+      signal,
+    );
     return {
       bytes: await this.readBounded(response, 100 * 1024 * 1024),
       mimeType:

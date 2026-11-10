@@ -307,6 +307,36 @@ export interface MeResponseDto {
   locationScope: LocationScopeDto;
 }
 
+export type ApiErrorDtoMessage = string | string[];
+
+export interface ApiErrorDto {
+  statusCode: number;
+  message: ApiErrorDtoMessage;
+  /** @nullable */
+  correlationId: string | null;
+  /** @nullable */
+  path: string | null;
+}
+
+export type CandidateEnrichmentDtoStatus =
+  (typeof CandidateEnrichmentDtoStatus)[keyof typeof CandidateEnrichmentDtoStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateEnrichmentDtoStatus = {
+  PENDING: "PENDING",
+  RUNNING: "RUNNING",
+  READY: "READY",
+  RETRY: "RETRY",
+} as const;
+
+export interface CandidateEnrichmentDto {
+  status: CandidateEnrichmentDtoStatus;
+  profileReady: boolean;
+  documentsReady: boolean;
+  /** @nullable */
+  retryAt: string | null;
+}
+
 export type CandidateDocumentErrorCode =
   (typeof CandidateDocumentErrorCode)[keyof typeof CandidateDocumentErrorCode];
 
@@ -784,17 +814,6 @@ export interface OwnHistoricalDocumentDto {
 export interface OwnDocumentHistoryDto {
   items: OwnHistoricalDocumentDto[];
   erpAvailable: boolean;
-}
-
-export type ApiErrorDtoMessage = string | string[];
-
-export interface ApiErrorDto {
-  statusCode: number;
-  message: ApiErrorDtoMessage;
-  /** @nullable */
-  correlationId: string | null;
-  /** @nullable */
-  path: string | null;
 }
 
 /**
@@ -1278,6 +1297,7 @@ export type CandidateDetailsDtoDocumentGroups =
   CandidateStageDocumentsDto | null;
 
 export interface CandidateDetailsDto {
+  enrichment?: CandidateEnrichmentDto;
   candidate: CandidateProfileDto;
   documents: CandidateDocumentSummaryDto[];
   /** Applicable previous-employment documents without a submitted current replacement; eligibility is decided by the backend */
@@ -1400,7 +1420,19 @@ export interface IgArrivalRegistryGroupDto {
   needsAttentionCount: number;
 }
 
+export type IgArrivalRegistrySyncDtoStatus =
+  (typeof IgArrivalRegistrySyncDtoStatus)[keyof typeof IgArrivalRegistrySyncDtoStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const IgArrivalRegistrySyncDtoStatus = {
+  NOT_STARTED: "NOT_STARTED",
+  IN_PROGRESS: "IN_PROGRESS",
+  DEGRADED: "DEGRADED",
+  COMPLETE: "COMPLETE",
+} as const;
+
 export interface IgArrivalRegistrySyncDto {
+  status: IgArrivalRegistrySyncDtoStatus;
   /** @nullable */
   lastCompletedAt: string | null;
 }
@@ -4060,6 +4092,87 @@ export function useGetMe<
 
   return query;
 }
+
+/**
+ * @summary Prioritize loading the IG employee profile and document history
+ */
+export const requestCandidateEnrichment = (
+  candidateId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateEnrichmentDto>({
+    url: `/api/v1/candidates/${candidateId}/enrichment`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getRequestCandidateEnrichmentMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestCandidateEnrichment>>,
+    TError,
+    { candidateId: string },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestCandidateEnrichment>>,
+  TError,
+  { candidateId: string },
+  TContext
+> => {
+  const mutationKey = ["requestCandidateEnrichment"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestCandidateEnrichment>>,
+    { candidateId: string }
+  > = (props) => {
+    const { candidateId } = props ?? {};
+
+    return requestCandidateEnrichment(candidateId);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestCandidateEnrichmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestCandidateEnrichment>>
+>;
+
+export type RequestCandidateEnrichmentMutationError = ApiErrorDto;
+
+/**
+ * @summary Prioritize loading the IG employee profile and document history
+ */
+export const useRequestCandidateEnrichment = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestCandidateEnrichment>>,
+    TError,
+    { candidateId: string },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestCandidateEnrichment>>,
+  TError,
+  { candidateId: string },
+  TContext
+> => {
+  const mutationOptions = getRequestCandidateEnrichmentMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
 
 /**
  * @summary Candidate document context from LK identity and ERP

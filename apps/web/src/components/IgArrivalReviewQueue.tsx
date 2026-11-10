@@ -37,11 +37,11 @@ const requirementLabels: Record<string, string> = {
   UNKNOWN: "Уточнить комплект",
 };
 const inputClass =
-  "h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]";
+  "h-9 min-w-0 max-w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 text-sm text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]";
 const headerClass =
   "sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-left text-sm font-semibold";
 const cellClass = "border-b border-[var(--border)] px-3 py-2 align-top text-sm";
-const frozenClass = "sticky left-0 z-10 bg-[var(--background)]";
+const frozenClass = "sticky left-0 z-10 bg-[var(--card)]";
 
 type CommonParams = NonNullable<
   Parameters<typeof useListIgArrivalRegistryGroups>[0]
@@ -95,6 +95,20 @@ function archivePeriod() {
   const day = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   return { igDateFrom: day(start), igDateTo: day(now), igPeriod: "custom" };
+}
+function currentPeriod() {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Irkutsk",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")!.value;
+  const month = parts.find((part) => part.type === "month")!.value;
+  return {
+    igDateFrom: `${year}-${month}-01`,
+    igDateTo: undefined,
+    igPeriod: "custom",
+  };
 }
 function dateLabel(date: string) {
   return date === "issues"
@@ -152,26 +166,26 @@ export function IgArrivalReviewQueue({
     );
     return () => window.clearTimeout(timer);
   }, [query, search.igQ]);
-  const defaultArchive =
-    search.igArchive === "archive" &&
-    !search.igPeriod &&
-    !search.igDateFrom &&
-    !search.igDateTo;
-  const archiveDefaults = useMemo(archivePeriod, []);
+  const defaultPeriod =
+    !search.igPeriod && !search.igDateFrom && !search.igDateTo;
+  const periodDefaults = useMemo(
+    () => ({ current: currentPeriod(), archive: archivePeriod() }),
+    [],
+  );
+  const defaults =
+    search.igArchive === "archive"
+      ? periodDefaults.archive
+      : periodDefaults.current;
   useEffect(() => {
-    if (defaultArchive) changeFilters(archiveDefaults, true);
-  }, [defaultArchive]);
+    if (defaultPeriod) changeFilters(defaults, true);
+  }, [defaultPeriod]);
   const common: CommonParams = {
     archive: search.igArchive === "archive" ? "archive" : "current",
     q: search.igQ as string | undefined,
     dateFrom: (search.igDateFrom ??
-      (defaultArchive ? archiveDefaults.igDateFrom : undefined)) as
-      | string
-      | undefined,
+      (defaultPeriod ? defaults.igDateFrom : undefined)) as string | undefined,
     dateTo: (search.igDateTo ??
-      (defaultArchive ? archiveDefaults.igDateTo : undefined)) as
-      | string
-      | undefined,
+      (defaultPeriod ? defaults.igDateTo : undefined)) as string | undefined,
     locationUid: search.igLocationUid as string | undefined,
     requirementsAction:
       search.igRequirementsAction as CommonParams["requirementsAction"],
@@ -211,9 +225,7 @@ export function IgArrivalReviewQueue({
   );
   const groupParams = {
     ...common,
-    cursor: defaultArchive
-      ? undefined
-      : (search.igCursor as string | undefined),
+    cursor: defaultPeriod ? undefined : (search.igCursor as string | undefined),
   };
   const groups = useListIgArrivalRegistryGroups(groupParams, {
     query: {
@@ -232,7 +244,7 @@ export function IgArrivalReviewQueue({
     }
     return [...dates.entries()];
   }, [groups.data]);
-  const openGroups = defaultArchive ? [] : arrayValue(search.igGroups);
+  const openGroups = defaultPeriod ? [] : arrayValue(search.igGroups);
   const pages = pageValue(search.igPages);
   const groupStack = arrayValue(search.igGroupStack);
   const pageStacks = stackMap(search.igPageStacks);
@@ -269,7 +281,7 @@ export function IgArrivalReviewQueue({
     );
   return (
     <div className={`space-y-3 ${className}`}>
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-wrap items-end gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
         <label className="flex min-w-56 flex-1 flex-col gap-1 text-xs font-medium">
           Поиск по ФИО или коду 1С
           <input
@@ -305,6 +317,7 @@ export function IgArrivalReviewQueue({
         <div className="flex min-w-48 flex-col gap-1 text-xs font-medium">
           <span>Объект</span>
           <SearchSelect
+            className="[&_input]:bg-[var(--card)]"
             label="Объект"
             placeholder="Все объекты"
             value={common.locationUid}
@@ -328,7 +341,7 @@ export function IgArrivalReviewQueue({
             </span>
           )}
         </div>
-        <label className="flex flex-col gap-1 text-xs font-medium">
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium">
           Что требуется
           <select
             className={inputClass}
@@ -396,9 +409,7 @@ export function IgArrivalReviewQueue({
             onClick={() =>
               changeFilters({
                 igArchive: undefined,
-                igDateFrom: undefined,
-                igDateTo: undefined,
-                igPeriod: "all",
+                ...currentPeriod(),
               })
             }
           >
@@ -417,9 +428,15 @@ export function IgArrivalReviewQueue({
         <p className="text-xs text-[var(--muted-foreground)]">
           {groups.data?.sync.lastCompletedAt
             ? `Последнее обновление данных: ${new Date(groups.data.sync.lastCompletedAt).toLocaleString("ru-RU")}`
-            : "Данные ещё не обновлялись"}
+            : "Полное обновление ещё не завершено"}
         </p>
       </div>
+      {groups.data?.sync.status === "DEGRADED" && (
+        <p role="status" className="text-sm text-[var(--muted-foreground)]">
+          Данные реестра обновлены не полностью. Часть сведений может быть
+          неактуальна; обновите реестр позднее.
+        </p>
+      )}
       {groups.isError && groups.data && (
         <div role="alert" className="text-sm">
           Не удалось обновить реестр; показаны сохранённые данные.{" "}
@@ -457,7 +474,7 @@ export function IgArrivalReviewQueue({
           description="Измените фильтры или выберите другой период."
         />
       ) : (
-        <div className="max-h-[70vh] overflow-auto rounded-md border border-[var(--border)]">
+        <div className="max-h-[70vh] overflow-auto rounded-md border border-[var(--border)] bg-[var(--card)]">
           <table className="w-full min-w-[680px] border-collapse text-left">
             <thead>
               <tr>
@@ -499,7 +516,7 @@ export function IgArrivalReviewQueue({
                           <th
                             colSpan={4}
                             scope="rowgroup"
-                            className="border-b border-[var(--border)] bg-[var(--background)] p-0 text-left"
+                            className="border-b border-[var(--border)] bg-[var(--card)] p-0 text-left"
                           >
                             <button
                               className="flex w-full flex-wrap items-center gap-2 py-2 pl-8 pr-3 text-sm font-medium hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
@@ -663,6 +680,20 @@ function ParticipationRows({
         </td>
       </tr>
     );
+  const openCandidate = (
+    person: NonNullable<typeof people.data>["items"][number],
+  ) => {
+    if (!person.candidateId || person.action === "NONE") return;
+    onSelectCandidate(person.candidateId, {
+      memberUid: person.arrivalMemberUid ?? undefined,
+      date: person.arrivalDate ?? undefined,
+      ...(formatLocalArrivalTime(person.arrivalDateTime)
+        ? { arrivalDateTime: person.arrivalDateTime! }
+        : {}),
+      location: person.locationName ?? undefined,
+      status: person.participationStatus,
+    });
+  };
   return (
     <>
       {people.isError && people.data && (
@@ -688,20 +719,30 @@ function ParticipationRows({
             scope="row"
             className={`${cellClass} ${frozenClass} pl-14 text-left font-medium`}
           >
-            {person.fullName || "Без имени"}
+            {person.candidateId && person.action !== "NONE" ? (
+              <button
+                type="button"
+                className="rounded-sm text-left underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+                onClick={() => openCandidate(person)}
+              >
+                {person.fullName || "Без имени"}
+              </button>
+            ) : (
+              person.fullName || "Без имени"
+            )}
             {formatLocalArrivalTime(person.arrivalDateTime) && (
               <span className="block font-normal text-[var(--muted-foreground)]">
                 Прибытие: {formatLocalArrivalTime(person.arrivalDateTime)}
               </span>
             )}
-            {person.participationStatus !== "CURRENT" && (
+            {["CANCELLED", "HISTORICAL"].includes(
+              person.participationStatus,
+            ) && (
               <span className="mt-1 block">
                 <Badge>
                   {person.participationStatus === "CANCELLED"
                     ? "Отменён"
-                    : person.participationStatus === "HISTORICAL"
-                      ? "Исторический"
-                      : "Требует уточнения"}
+                    : "Исторический"}
                 </Badge>
                 {common.archive === "archive" && (
                   <span className="ml-2 font-normal text-[var(--muted-foreground)]">
@@ -730,7 +771,7 @@ function ParticipationRows({
           </td>
           <td className={cellClass}>
             {!person.candidateId
-              ? "Нет связанного профиля. Обратитесь к ответственному за привязку кандидатов."
+              ? "Связь с профилем не подтверждена. Обратитесь к ответственному за привязку кандидатов."
               : person.deliveryNeedsAttention &&
                   ["COMPLETE", "UNKNOWN"].includes(
                     person.requirements.nextAction,
@@ -775,19 +816,6 @@ function ParticipationRows({
                 По участку указан статус отмены заезда. Проверьте участие.
               </span>
             )}
-            {(person.personState === "CONFLICT" ||
-              person.issueCodes.some((code) =>
-                [
-                  "DUPLICATE_ARRIVAL_MEMBER_UID",
-                  "ARRIVAL_IDENTITY_UNVERIFIED",
-                  "ARRIVAL_IDENTITY_CONFLICT",
-                  "ARRIVAL_MEMBER_OWNER_CONFLICT",
-                ].includes(code),
-              )) && (
-              <span className="block text-[var(--muted-foreground)]">
-                Данные заезда требуют уточнения
-              </span>
-            )}
           </td>
           <td className={cellClass}>
             {person.candidateId && person.action !== "NONE" && (
@@ -795,17 +823,7 @@ function ParticipationRows({
                 size="sm"
                 variant="outline"
                 aria-label={`${person.action === "REVIEW" ? "Проверить" : "Открыть карточку"}: ${person.fullName || "Без имени"}`}
-                onClick={() =>
-                  onSelectCandidate(person.candidateId!, {
-                    memberUid: person.arrivalMemberUid ?? undefined,
-                    date: person.arrivalDate ?? undefined,
-                    ...(formatLocalArrivalTime(person.arrivalDateTime)
-                      ? { arrivalDateTime: person.arrivalDateTime! }
-                      : {}),
-                    location: person.locationName ?? undefined,
-                    status: person.participationStatus,
-                  })
-                }
+                onClick={() => openCandidate(person)}
               >
                 {person.action === "REVIEW" ? "Проверить" : "Открыть карточку"}
               </Button>

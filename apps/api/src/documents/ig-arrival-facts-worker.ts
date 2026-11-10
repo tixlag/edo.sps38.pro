@@ -251,6 +251,8 @@ export class IgArrivalFactsWorker implements OnModuleInit, OnModuleDestroy {
                     cursor: null,
                     factsScanIncomplete: false,
                     factsScanGeneration: null,
+                    lastScanCompletedAt: new Date(),
+                    lastScanHadErrors: incomplete,
                   },
             });
             if (result.count !== 1)
