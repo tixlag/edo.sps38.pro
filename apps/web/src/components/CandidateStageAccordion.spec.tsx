@@ -4,7 +4,6 @@ import { createRoot, type Root } from "react-dom/client";
 import type {
   CandidateDocumentSummaryDto,
   MissingDocumentTypeDto,
-  PreviousDocumentAvailabilityDto,
   ReviewStageProgressDto,
 } from "@edo/api-client";
 import { CandidateStageAccordion } from "./CandidateStageAccordion";
