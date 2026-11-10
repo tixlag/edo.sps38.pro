@@ -201,6 +201,47 @@ describe("candidate review queue", () => {
       }),
     ).rejects.toThrow();
   });
+  it("excludes arrival and rejection candidates by default for RU review queue and retains null status", async () => {
+    const { reads, prisma } = setup();
+    prisma.candidate.findMany.mockResolvedValue([]);
+    await reads.candidateReviewQueue(principal, {
+      status: "ALL",
+      reviewGroup: "RU",
+    });
+    expect(prisma.candidate.findMany).toHaveBeenCalled();
+    const where = prisma.candidate.findMany.mock.calls[0][0].where;
+    expect(where.AND).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          OR: [
+            { statusId: null },
+            {
+              NOT: {
+                OR: [
+                  { statusId: { in: ["Заезд", "Отказ"] } },
+                  { statusName: { in: ["Заезд/выход", "Отказ"] } },
+                ],
+              },
+            },
+          ],
+        }),
+      ]),
+    );
+  });
+  it("filters specific statusId when requested for RU candidates", async () => {
+    const { reads, prisma } = setup();
+    prisma.candidate.findMany.mockResolvedValue([]);
+    await reads.candidateReviewQueue(principal, {
+      status: "ALL",
+      reviewGroup: "RU",
+      statusId: "Заезд",
+    });
+    expect(prisma.candidate.findMany).toHaveBeenCalled();
+    const where = prisma.candidate.findMany.mock.calls[0][0].where;
+    expect(where.AND).toEqual(
+      expect.arrayContaining([{ statusId: "Заезд" }]),
+    );
+  });
   it("requires a matching uploaded document when filtering all candidates by document type", async () => {
     const { reads, prisma } = setup();
     prisma.candidate.findMany.mockResolvedValue([]);

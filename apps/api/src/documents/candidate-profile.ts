@@ -15,11 +15,13 @@ export interface ReviewProfileFilters {
   positionCode?: string;
   projectCode?: string;
   candidateId?: string;
+  statusId?: string;
   managerCode1c?: string;
   managerId?: string;
   managerName?: string;
   managerUnassigned?: boolean;
   mentorCode1c?: string;
+  reviewGroup?: "RU" | "IG";
 }
 
 type SnapshotRow = {
@@ -307,6 +309,24 @@ export function buildCandidateProfileWhere(
   if (managerCode1c) and.push({ managerCode1c });
   const mentorCode1c = text(filters.mentorCode1c);
   if (mentorCode1c) and.push({ mentorCode1c });
+  const statusId = text(filters.statusId);
+  if (statusId) {
+    and.push({ statusId });
+  } else if (filters.reviewGroup === "RU") {
+    and.push({
+      OR: [
+        { statusId: null },
+        {
+          NOT: {
+            OR: [
+              { statusId: { in: ["Заезд", "Отказ"] } },
+              { statusName: { in: ["Заезд/выход", "Отказ"] } },
+            ],
+          },
+        },
+      ],
+    });
+  }
   if (and.length === 0) return undefined;
   return and.length === 1 ? and[0] : { AND: and };
 }

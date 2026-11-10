@@ -259,7 +259,23 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
           this.access.candidateWhere(principal),
           { erpDeleted: false },
           reviewGroupWhere("RU"),
-          ...(query.statusId ? [{ statusId: query.statusId }] : []),
+          ...(query.statusId
+            ? [{ statusId: query.statusId }]
+            : [
+                {
+                  OR: [
+                    { statusId: null },
+                    {
+                      NOT: {
+                        OR: [
+                          { statusId: { in: ["Заезд", "Отказ"] } },
+                          { statusName: { in: ["Заезд/выход", "Отказ"] } },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ]),
           ...(query.managerId ? [{ managerId: query.managerId }] : []),
           ...(query.projectCode ? [{ projectCode: query.projectCode }] : []),
           ...(query.positionCode ? [{ positionCode: query.positionCode }] : []),

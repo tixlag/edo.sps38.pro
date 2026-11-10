@@ -1498,7 +1498,7 @@ export class DocumentReadService {
         this.access.candidateWhere(principal),
         reviewGroupWhere("RU"),
         { erpDeleted: false },
-        buildCandidateProfileWhere(profile) ?? {},
+        buildCandidateProfileWhere({ ...profile, reviewGroup }) ?? {},
         ...(createdAt ? [{ createdAt }] : []),
       ];
       const rows: {
@@ -1580,7 +1580,7 @@ export class DocumentReadService {
       where: {
         AND: [
           this.access.candidateWhere(principal),
-          buildCandidateProfileWhere(profile) ?? {},
+          buildCandidateProfileWhere({ ...profile, reviewGroup }) ?? {},
           ...(createdAt ? [{ createdAt }] : []),
           ...(cursor ? [{ id: { gt: cursor } }] : []),
           ...(reviewGroup === "IG" &&
@@ -1643,7 +1643,7 @@ export class DocumentReadService {
       reviewGroup = "RU",
       ...profile
     } = query;
-    const candidate = buildCandidateProfileWhere(profile);
+    const candidate = buildCandidateProfileWhere({ ...profile, reviewGroup });
     const where: Prisma.DocumentWhereInput = {
       ...this.reviewDocumentWhere(principal, {
         status,

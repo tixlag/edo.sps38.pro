@@ -1091,6 +1091,11 @@ export class ReviewDocumentsQueryDto extends CandidateQueryDto {
   @MaxLength(64)
   @Matches(/^\S+$/)
   candidateId?: string;
+  @ApiPropertyOptional({ description: "Exact candidate statusId (e.g. Заезд, Отказ, Подбор)" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  statusId?: string;
   @ApiPropertyOptional({ description: "Exact manager code_1c" })
   @IsOptional()
   @IsString()

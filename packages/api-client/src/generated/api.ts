@@ -3259,6 +3259,10 @@ export type ListCandidateReviewQueueParams = {
    */
   candidateId?: string;
   /**
+   * Exact candidate statusId (e.g. Заезд, Отказ, Подбор)
+   */
+  statusId?: string;
+  /**
    * Exact manager code_1c
    */
   managerCode1c?: string;
@@ -3331,6 +3335,10 @@ export type ListReviewDocumentsParams = {
    * Exact candidate id
    */
   candidateId?: string;
+  /**
+   * Exact candidate statusId (e.g. Заезд, Отказ, Подбор)
+   */
+  statusId?: string;
   /**
    * Exact manager code_1c
    */
