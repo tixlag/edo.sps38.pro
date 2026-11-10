@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+  useBlocker: vi.fn(),
   useNavigate:
     () =>
     (value: {
@@ -38,6 +39,17 @@ vi.mock("@edo/api-client", () => ({
   getGetCandidateWorkspaceQueryKey: () => ["workspace", "c1"],
   useGetCandidateWorkspace: () => ({}),
   useGetDocumentInfo: () => ({ isLoading: true }),
+  useRetryReviewerDocumentDelivery: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useGetPreviousDocumentDetails: (_cid: string, id: string) => ({
+    isLoading: false,
+    data: {
+      document: (state.previousDocuments as any[]).find((d) => d.id === id) ?? { id, originalAvailable: true },
+      revision: 1,
+      fields: [],
+    },
+  }),
+  useEditPreviousDocumentFields: () => ({ mutate: vi.fn(), isPending: false }),
+  getGetPreviousDocumentDetailsQueryKey: () => ["prev-doc"],
   getGetCandidateDetailsQueryKey: () => ["details", "c1"],
   useGetCandidateDetails: (_id: string, params?: { stage?: string }) => {
     state.calls.push(params);

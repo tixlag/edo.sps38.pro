@@ -250,6 +250,7 @@ export class DocumentReviewMetadataDto {
   reviewedBy!: string | null;
 }
 export class DocumentVersionDto extends DocumentReviewMetadataDto {
+  @ApiPropertyOptional({ enum: ["CANDIDATE", "REVIEWER"] }) uploadOrigin?: string;
   @ApiPropertyOptional({ enum: ["RU", "IG"], enumName: "ReviewGroup" })
   reviewGroup?: "RU" | "IG" | null;
   @ApiProperty({
@@ -384,6 +385,7 @@ export class ReturnedDocumentVersionDto extends DocumentReviewMetadataDto {
 
 /** Document properties shared by candidate details and document-oriented APIs. */
 export class CandidateDocumentSummaryDto extends DocumentReviewMetadataDto {
+  @ApiPropertyOptional({ enum: ["CANDIDATE", "REVIEWER"] }) uploadOrigin?: string;
   @ApiProperty({ enum: OcrJobStatus, enumName: "OcrJobStatus", nullable: true })
   ocrStatus!: OcrJobStatus | null;
   @ApiProperty({ type: String, nullable: true }) ocrErrorCode!: string | null;

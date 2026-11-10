@@ -1,3 +1,4 @@
+import { DocumentReviewDialog } from "../components/DocumentReviewDialog";
 import { useVisibleRuDocumentSync } from "../lib/use-visible-ru-document-sync";
 import { StageRing } from "../components/StageRing";
 import { parseIgRegistrySearch } from "../lib/ig-registry-search";
@@ -1051,6 +1052,16 @@ export function ReviewPage({
           arrivalContext={typeof parseIgRegistrySearch(rawSearch).igParticipation === "string" ? JSON.parse(parseIgRegistrySearch(rawSearch).igParticipation as string) : undefined}
           returnedHistory={filters.status === "RETURNED"}
           onClose={closeCandidate}
+        />
+      )}
+      {typeof rawSearch.documentCandidate === "string" && Boolean(rawSearch.reviewerDocument || rawSearch.previousDocument || rawSearch.uploadDocument) && (
+        <DocumentReviewDialog candidateId={rawSearch.documentCandidate}
+          documentId={typeof rawSearch.reviewerDocument === "string" ? rawSearch.reviewerDocument : undefined}
+          previousDocumentId={typeof rawSearch.previousDocument === "string" ? rawSearch.previousDocument : undefined}
+          version={parseVersionParam(rawSearch.version)} uploading={rawSearch.uploadDocument === true}
+          onClose={() => void navigate({ to: base, search: (prev: Record<string, unknown>) => { const next = { ...prev }; for (const key of ["reviewerDocument", "previousDocument", "documentCandidate", "uploadDocument", "version"]) delete next[key]; return next; } })}
+          chooseVersion={(selected) => void navigate({ to: base, search: (prev: Record<string, unknown>) => ({ ...prev, version: selected }) })}
+          onUploaded={async (id, version) => { await list.refetch(); await navigate({ to: base, search: (prev: Record<string, unknown>) => ({ ...prev, reviewerDocument: id, version, previousDocument: undefined, uploadDocument: undefined }) }); }}
         />
       )}
     </div>

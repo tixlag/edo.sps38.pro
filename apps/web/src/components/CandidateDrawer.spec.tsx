@@ -358,7 +358,7 @@ describe("stage candidate drawer", () => {
     expect(view.textContent).toContain("Этапы проверки документов");
     expect(view.textContent).toContain("Подтверждено 2 из 4");
 
-    // Document review action navigation to /review-ig/$documentId
+    // Document review action opens review dialog via search navigation
     const reviewBtn = [...view.querySelectorAll("button")].find((btn) =>
       btn.textContent?.includes("Проверить документ"),
     );
@@ -366,8 +366,14 @@ describe("stage candidate drawer", () => {
     await act(async () => reviewBtn?.click());
     expect(mock.navigate).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: "/review-ig/$documentId",
-        params: { documentId: "doc-pass" },
+        search: expect.any(Function),
+      }),
+    );
+    const searchUpdater = mock.navigate.mock.calls.at(-1)?.[0]?.search;
+    expect(searchUpdater?.({})).toEqual(
+      expect.objectContaining({
+        documentCandidate: "c1",
+        reviewerDocument: "doc-pass",
       }),
     );
   });

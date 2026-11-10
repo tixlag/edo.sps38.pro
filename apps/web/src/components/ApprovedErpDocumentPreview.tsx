@@ -28,12 +28,12 @@ export function ApprovedErpDocumentPreview({
   return (
     <section
       className="flex h-full min-h-0 flex-col gap-3"
-      aria-label="Утверждённый документ из ERP"
+      aria-label="Оригинал прежнего документа"
     >
       <header className="flex flex-wrap items-center gap-2 text-sm">
         <h2 className="mr-auto font-semibold">{document.title}</h2>
-        <Badge tone="success">Документ принят</Badge>
-        <span className="text-xs text-[var(--muted-foreground)]">Из ERP</span>
+        <Badge tone="success">{document.state === "REUSED" ? "Зачтён ранее" : "Документ принят"}</Badge>
+        <span className="text-xs text-[var(--muted-foreground)]">{document.source === "EDO" ? "Из ЭДО" : "Из ERP"}</span>
       </header>
       {!original && !error && <p role="status">Загрузка оригинала из ERP…</p>}
       {error && (

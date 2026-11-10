@@ -38,6 +38,7 @@ export interface CandidateStageAccordionProps {
   showProgress?: boolean;
   progress?: ReviewStageProgressDto;
   onToggle: () => void;
+  onOpenPrevious?: (id: string) => void;
   onReviewDocument?: (docId: string, version?: number) => void;
   className?: string;
 }
@@ -55,6 +56,7 @@ export function CandidateStageAccordion({
   progress,
   onToggle,
   onReviewDocument,
+  onOpenPrevious,
   className,
 }: CandidateStageAccordionProps) {
   // Calculate progress: confirmed/reused vs total required
@@ -320,6 +322,7 @@ export function CandidateStageAccordion({
                   previousDocument={card.previousDocument}
                   returnedVersion={card.returnedVersion}
                   isMissing={card.isMissing}
+                  onOpenPrevious={onOpenPrevious}
                   onReviewCurrent={onReviewDocument}
                 />
               ))}
@@ -350,6 +353,7 @@ export function CandidateStageAccordion({
                   previousDocument={card.previousDocument}
                   returnedVersion={card.returnedVersion}
                   isMissing={card.isMissing}
+                  onOpenPrevious={onOpenPrevious}
                   onReviewCurrent={onReviewDocument}
                 />
               ))}

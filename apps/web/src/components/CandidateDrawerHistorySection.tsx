@@ -13,6 +13,7 @@ import { formatDateRu } from "../lib/date-format";
 
 export interface CandidateDrawerHistorySectionProps {
   candidateId: string;
+  onOpenPrevious?: (id: string) => void;
   data?: CandidatePreviousDocumentsDto;
   isLoading?: boolean;
   isError?: boolean;
@@ -60,6 +61,7 @@ function formatRequisites(fields?: Record<string, unknown>): string[] {
 
 export function CandidateDrawerHistorySection({
   candidateId,
+  onOpenPrevious,
   data,
   isLoading,
   isError,
@@ -112,6 +114,7 @@ export function CandidateDrawerHistorySection({
       : undefined;
 
   const handleOpenOriginal = async (docId: string, docTitle: string) => {
+    if (onOpenPrevious) { onOpenPrevious(docId); return; }
     setOpeningId(docId);
     const tab = window.open("about:blank", "_blank");
     if (tab) tab.opener = null;

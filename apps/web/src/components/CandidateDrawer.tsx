@@ -157,16 +157,7 @@ export function CandidateDrawer({
   };
 
   const handleReviewDocument = (docId: string, version?: number) => {
-    const isIg = profile?.reviewGroup === "IG";
-    const to = isIg ? "/review-ig/$documentId" : "/review/$documentId";
-    void navigate({
-      to,
-      params: { documentId: docId },
-      search: {
-        ...search,
-        version,
-      },
-    });
+    void navigate({ search: ((prev: Record<string, unknown>) => ({ ...prev, documentCandidate: candidateId, reviewerDocument: docId, previousDocument: undefined, uploadDocument: undefined, version })) as never });
   };
 
   return (
@@ -261,6 +252,7 @@ export function CandidateDrawer({
                 </span>
               )}
             </div>
+            <Button size="sm" variant="outline" onClick={() => void navigate({ search: ((prev: Record<string, unknown>) => ({ ...prev, documentCandidate: candidateId, reviewerDocument: undefined, previousDocument: undefined, uploadDocument: true, version: undefined })) as never })}>Загрузить</Button>
             <button
               ref={closeRef}
               type="button"
@@ -473,6 +465,7 @@ export function CandidateDrawer({
                     candidateId={candidateId}
                     isOpen={isStageOpen(stg.stage, index)}
                     onToggle={() => toggleStage(stg.stage, index)}
+                    onOpenPrevious={(id) => void navigate({ search: ((prev: Record<string, unknown>) => ({ ...prev, documentCandidate: candidateId, reviewerDocument: undefined, previousDocument: id, uploadDocument: undefined, version: undefined })) as never })}
                     onReviewDocument={handleReviewDocument}
                   />
                 ))}
@@ -482,6 +475,7 @@ export function CandidateDrawer({
             {/* Collapsible History Section at the bottom */}
             {!returnedHistory && (
               <CandidateDrawerHistorySection
+                onOpenPrevious={(id) => void navigate({ search: ((prev: Record<string, unknown>) => ({ ...prev, documentCandidate: candidateId, reviewerDocument: undefined, previousDocument: id, uploadDocument: undefined, version: undefined })) as never })}
                 candidateId={candidateId}
                 className="mt-6"
               />

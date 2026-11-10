@@ -767,6 +767,15 @@ export interface CandidateProfileDto {
   stageProgress?: ReviewStageProgressDto[] | null;
 }
 
+export type DocumentDtoUploadOrigin =
+  (typeof DocumentDtoUploadOrigin)[keyof typeof DocumentDtoUploadOrigin];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentDtoUploadOrigin = {
+  CANDIDATE: "CANDIDATE",
+  REVIEWER: "REVIEWER",
+} as const;
+
 /**
  * @nullable
  */
@@ -807,6 +816,7 @@ export interface DocumentDto {
    * @nullable
    */
   reviewedBy: string | null;
+  uploadOrigin?: DocumentDtoUploadOrigin;
   /** @nullable */
   ocrStatus: DocumentDtoOcrStatus;
   /** @nullable */
@@ -1143,6 +1153,15 @@ export interface DocumentDeliveryDto {
   attempts: DocumentDeliveryAttemptDto[];
 }
 
+export type DocumentVersionDtoUploadOrigin =
+  (typeof DocumentVersionDtoUploadOrigin)[keyof typeof DocumentVersionDtoUploadOrigin];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentVersionDtoUploadOrigin = {
+  CANDIDATE: "CANDIDATE",
+  REVIEWER: "REVIEWER",
+} as const;
+
 /**
  * @nullable
  */
@@ -1187,6 +1206,7 @@ export interface DocumentVersionDto {
    * @nullable
    */
   reviewedBy: string | null;
+  uploadOrigin?: DocumentVersionDtoUploadOrigin;
   reviewGroup?: ReviewGroup;
   /** Current supported submitted version has no OCR attempt and retained originals */
   canStartOcr: boolean;
@@ -1254,6 +1274,15 @@ export interface CandidateListDto {
   nextCursor: string | null;
 }
 
+export type CandidateDocumentSummaryDtoUploadOrigin =
+  (typeof CandidateDocumentSummaryDtoUploadOrigin)[keyof typeof CandidateDocumentSummaryDtoUploadOrigin];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateDocumentSummaryDtoUploadOrigin = {
+  CANDIDATE: "CANDIDATE",
+  REVIEWER: "REVIEWER",
+} as const;
+
 /**
  * @nullable
  */
@@ -1275,6 +1304,7 @@ export interface CandidateDocumentSummaryDto {
    * @nullable
    */
   reviewedBy: string | null;
+  uploadOrigin?: CandidateDocumentSummaryDtoUploadOrigin;
   /** @nullable */
   ocrStatus: CandidateDocumentSummaryDtoOcrStatus;
   /** @nullable */
@@ -1893,6 +1923,13 @@ export interface AdaptationGrantResultItemDto {
 export interface AdaptationGrantsResultDto {
   /** Результаты обработки элементов пакета */
   items: AdaptationGrantResultItemDto[];
+}
+
+export interface PreviousDocumentDetailsDto {
+  document: PreviousDocumentAvailabilityDto;
+  revision: number;
+  fields: DocumentFieldDto[];
+  hasLocalEdits: boolean;
 }
 
 export interface ExpirationSummaryResponseDto {
@@ -2980,6 +3017,20 @@ export type GetCandidateDetailsParams = {
    * Stage number or "none" for documents without a stage
    */
   stage?: string;
+};
+
+export type UploadReviewerCandidateDocumentBody = {
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  idempotencyKey: string;
+  documentTypeCode: string;
+  /**
+   * @minItems 1
+   * @maxItems 10
+   */
+  "files[]": Blob[];
 };
 
 export type GetCandidateDocumentCatalogParams = {
@@ -6595,6 +6646,105 @@ export function useListCandidateDocuments<
 }
 
 /**
+ * @summary Upload a document as the verified reviewer for OCR and review
+ */
+export const uploadReviewerCandidateDocument = (
+  candidateId: string,
+  uploadReviewerCandidateDocumentBody: UploadReviewerCandidateDocumentBody,
+  signal?: AbortSignal,
+) => {
+  const formData = new FormData();
+  formData.append(
+    "idempotencyKey",
+    uploadReviewerCandidateDocumentBody.idempotencyKey,
+  );
+  formData.append(
+    "documentTypeCode",
+    uploadReviewerCandidateDocumentBody.documentTypeCode,
+  );
+  uploadReviewerCandidateDocumentBody["files[]"].forEach((value) =>
+    formData.append("files[]", value),
+  );
+
+  return customInstance<UploadAcceptedDto>({
+    url: `/api/v1/candidates/${candidateId}/documents`,
+    method: "POST",
+    headers: { "Content-Type": "multipart/form-data" },
+    data: formData,
+    signal,
+  });
+};
+
+export const getUploadReviewerCandidateDocumentMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadReviewerCandidateDocument>>,
+    TError,
+    { candidateId: string; data: UploadReviewerCandidateDocumentBody },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadReviewerCandidateDocument>>,
+  TError,
+  { candidateId: string; data: UploadReviewerCandidateDocumentBody },
+  TContext
+> => {
+  const mutationKey = ["uploadReviewerCandidateDocument"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadReviewerCandidateDocument>>,
+    { candidateId: string; data: UploadReviewerCandidateDocumentBody }
+  > = (props) => {
+    const { candidateId, data } = props ?? {};
+
+    return uploadReviewerCandidateDocument(candidateId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadReviewerCandidateDocumentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadReviewerCandidateDocument>>
+>;
+export type UploadReviewerCandidateDocumentMutationBody =
+  UploadReviewerCandidateDocumentBody;
+export type UploadReviewerCandidateDocumentMutationError = ApiErrorDto;
+
+/**
+ * @summary Upload a document as the verified reviewer for OCR and review
+ */
+export const useUploadReviewerCandidateDocument = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadReviewerCandidateDocument>>,
+    TError,
+    { candidateId: string; data: UploadReviewerCandidateDocumentBody },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadReviewerCandidateDocument>>,
+  TError,
+  { candidateId: string; data: UploadReviewerCandidateDocumentBody },
+  TContext
+> => {
+  const mutationOptions =
+    getUploadReviewerCandidateDocumentMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
  * @summary List employee and explicitly linked candidate documents
  */
 export const listEmployeeDocuments = (
@@ -9102,6 +9252,363 @@ export const useApplyErpAdaptationGrants = <
   TContext
 > => {
   const mutationOptions = getApplyErpAdaptationGrantsMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Applicable types for reviewer uploads
+ */
+export const listReviewerCandidateDocumentTypes = (
+  candidateId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CatalogDocumentTypesDto>({
+    url: `/api/v1/candidates/${candidateId}/document-types`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListReviewerCandidateDocumentTypesQueryKey = (
+  candidateId: string,
+) => {
+  return [`/api/v1/candidates/${candidateId}/document-types`] as const;
+};
+
+export const getListReviewerCandidateDocumentTypesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listReviewerCandidateDocumentTypes>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listReviewerCandidateDocumentTypes>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListReviewerCandidateDocumentTypesQueryKey(candidateId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listReviewerCandidateDocumentTypes>>
+  > = ({ signal }) => listReviewerCandidateDocumentTypes(candidateId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listReviewerCandidateDocumentTypes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListReviewerCandidateDocumentTypesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listReviewerCandidateDocumentTypes>>
+>;
+export type ListReviewerCandidateDocumentTypesQueryError = ApiErrorDto;
+
+/**
+ * @summary Applicable types for reviewer uploads
+ */
+
+export function useListReviewerCandidateDocumentTypes<
+  TData = Awaited<ReturnType<typeof listReviewerCandidateDocumentTypes>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listReviewerCandidateDocumentTypes>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListReviewerCandidateDocumentTypesQueryOptions(
+    candidateId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Original ERP requisites and local reviewer corrections
+ */
+export const getPreviousDocumentDetails = (
+  candidateId: string,
+  documentId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<PreviousDocumentDetailsDto>({
+    url: `/api/v1/candidates/${candidateId}/previous-documents/${documentId}`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetPreviousDocumentDetailsQueryKey = (
+  candidateId: string,
+  documentId: string,
+) => {
+  return [
+    `/api/v1/candidates/${candidateId}/previous-documents/${documentId}`,
+  ] as const;
+};
+
+export const getGetPreviousDocumentDetailsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPreviousDocumentDetails>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  documentId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPreviousDocumentDetails>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetPreviousDocumentDetailsQueryKey(candidateId, documentId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPreviousDocumentDetails>>
+  > = ({ signal }) =>
+    getPreviousDocumentDetails(candidateId, documentId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(candidateId && documentId),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPreviousDocumentDetails>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPreviousDocumentDetailsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPreviousDocumentDetails>>
+>;
+export type GetPreviousDocumentDetailsQueryError = ApiErrorDto;
+
+/**
+ * @summary Original ERP requisites and local reviewer corrections
+ */
+
+export function useGetPreviousDocumentDetails<
+  TData = Awaited<ReturnType<typeof getPreviousDocumentDetails>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  documentId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPreviousDocumentDetails>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPreviousDocumentDetailsQueryOptions(
+    candidateId,
+    documentId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Save local-only corrections without modifying ERP
+ */
+export const editPreviousDocumentFields = (
+  candidateId: string,
+  documentId: string,
+  editDocumentFieldsDto: EditDocumentFieldsDto,
+) => {
+  return customInstance<PreviousDocumentDetailsDto>({
+    url: `/api/v1/candidates/${candidateId}/previous-documents/${documentId}/fields`,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    data: editDocumentFieldsDto,
+  });
+};
+
+export const getEditPreviousDocumentFieldsMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof editPreviousDocumentFields>>,
+    TError,
+    { candidateId: string; documentId: string; data: EditDocumentFieldsDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof editPreviousDocumentFields>>,
+  TError,
+  { candidateId: string; documentId: string; data: EditDocumentFieldsDto },
+  TContext
+> => {
+  const mutationKey = ["editPreviousDocumentFields"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof editPreviousDocumentFields>>,
+    { candidateId: string; documentId: string; data: EditDocumentFieldsDto }
+  > = (props) => {
+    const { candidateId, documentId, data } = props ?? {};
+
+    return editPreviousDocumentFields(candidateId, documentId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type EditPreviousDocumentFieldsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof editPreviousDocumentFields>>
+>;
+export type EditPreviousDocumentFieldsMutationBody = EditDocumentFieldsDto;
+export type EditPreviousDocumentFieldsMutationError = ApiErrorDto;
+
+/**
+ * @summary Save local-only corrections without modifying ERP
+ */
+export const useEditPreviousDocumentFields = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof editPreviousDocumentFields>>,
+    TError,
+    { candidateId: string; documentId: string; data: EditDocumentFieldsDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof editPreviousDocumentFields>>,
+  TError,
+  { candidateId: string; documentId: string; data: EditDocumentFieldsDto },
+  TContext
+> => {
+  const mutationOptions = getEditPreviousDocumentFieldsMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Retry an approved reviewer upload using its existing ERP delivery key
+ */
+export const retryReviewerDocumentDelivery = (
+  candidateId: string,
+  documentId: string,
+  version: number,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DocumentVersionDto>({
+    url: `/api/v1/candidates/${candidateId}/documents/${documentId}/versions/${version}/delivery`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getRetryReviewerDocumentDeliveryMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryReviewerDocumentDelivery>>,
+    TError,
+    { candidateId: string; documentId: string; version: number },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof retryReviewerDocumentDelivery>>,
+  TError,
+  { candidateId: string; documentId: string; version: number },
+  TContext
+> => {
+  const mutationKey = ["retryReviewerDocumentDelivery"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof retryReviewerDocumentDelivery>>,
+    { candidateId: string; documentId: string; version: number }
+  > = (props) => {
+    const { candidateId, documentId, version } = props ?? {};
+
+    return retryReviewerDocumentDelivery(candidateId, documentId, version);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RetryReviewerDocumentDeliveryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof retryReviewerDocumentDelivery>>
+>;
+
+export type RetryReviewerDocumentDeliveryMutationError = ApiErrorDto;
+
+/**
+ * @summary Retry an approved reviewer upload using its existing ERP delivery key
+ */
+export const useRetryReviewerDocumentDelivery = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryReviewerDocumentDelivery>>,
+    TError,
+    { candidateId: string; documentId: string; version: number },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof retryReviewerDocumentDelivery>>,
+  TError,
+  { candidateId: string; documentId: string; version: number },
+  TContext
+> => {
+  const mutationOptions =
+    getRetryReviewerDocumentDeliveryMutationOptions(options);
 
   return useMutation(mutationOptions);
 };

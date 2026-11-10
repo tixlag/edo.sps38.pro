@@ -1,3 +1,5 @@
+import type { AuthPrincipal } from "../auth/auth-principal";
+import { candidateGroupAccessWhere, candidateReviewGroup, requireReviewGroup } from "./review-group";
 import {
   BadRequestException,
   ConflictException,
@@ -45,12 +47,13 @@ export class ManualDocumentService {
     upload: StagedUpload,
     key: string | undefined,
     correlationId: string,
+    reviewer?: { candidateId: string; principal: AuthPrincipal },
   ) {
     const metadata = upload.metadata;
     if (!metadata) throw new BadRequestException("metadata is required");
     if (!key || !/^[\x21-\x7e]{1,128}$/.test(key))
       throw new BadRequestException("Idempotency-Key is required");
-    const identityKey = metadata.chat_uuid
+    const identityKey = reviewer ? `reviewer:${reviewer.candidateId}` : metadata.chat_uuid
       ? `chat:${metadata.chat_uuid}`
       : `employee:${metadata.code_1c}`;
     const fingerprint = createHash("sha256")
@@ -142,6 +145,7 @@ export class ManualDocumentService {
       upload,
       locationId,
       correlation,
+      reviewer,
     );
     if (reserved.reused) return this.reuse(reserved.submission, fingerprint);
     const signal = AbortSignal.timeout(120000);
@@ -214,7 +218,7 @@ export class ManualDocumentService {
             data: { igCompletionVerified: false },
           });
         await this.audit.logInTransaction(tx, {
-          actorId: "lk-service",
+          actorId: reviewer?.principal.uuid ?? "lk-service",
           action: "DOCUMENT_UPLOADED",
           entityType: "Document",
           entityId: reserved.submission.version.documentId,
@@ -234,7 +238,7 @@ export class ManualDocumentService {
         });
         return queuedJobId;
       });
-      if (!jobId && acceptedStatus === "IN_REVIEW")
+      if (!reviewer && !jobId && acceptedStatus === "IN_REVIEW")
         await this.notifications?.notifyDocumentReadyForReview({
           documentId: reserved.submission.version.documentId,
           version: reserved.submission.version.version,
@@ -264,6 +268,7 @@ export class ManualDocumentService {
     upload: StagedUpload,
     locationId: number | undefined,
     correlationId: string,
+    reviewer?: { candidateId: string; principal: AuthPrincipal },
   ) {
     const metadata = upload.metadata!;
     for (let attempt = 0; ; attempt++) {
@@ -297,8 +302,9 @@ export class ManualDocumentService {
               }
             }
 
-            const owner =
-              !metadata.chat_uuid &&
+            const owner = reviewer
+              ? await tx.candidate.findFirstOrThrow({ where: { id: reviewer.candidateId, ...candidateGroupAccessWhere(reviewer.principal, true) } })
+              : !metadata.chat_uuid &&
               metadata.code_1c &&
               metadata.citizenship.toLowerCase() !== "ru"
                 ? await igUploadOwner(
@@ -319,6 +325,7 @@ export class ManualDocumentService {
             const current = await tx.candidate.findUniqueOrThrow({
               where: { id: owner.id },
             });
+            if (reviewer) requireReviewGroup(reviewer.principal, candidateReviewGroup(current));
             if (erpUid && !current.erpUid) {
               await tx.candidate.update({
                 where: { id: owner.id },
@@ -388,7 +395,7 @@ export class ManualDocumentService {
                 data: { code1c: metadata.code_1c },
               });
               await this.audit.logInTransaction(tx, {
-                actorId: "lk-service",
+                actorId: reviewer?.principal.uuid ?? "lk-service",
                 action: "CANDIDATE_LINKED",
                 entityType: "Candidate",
                 entityId: owner.id,
@@ -430,7 +437,7 @@ export class ManualDocumentService {
                 currentVersion: 0,
               },
             });
-            await assertDocumentUploadAllowed(tx, doc);
+            await assertDocumentUploadAllowed(tx, doc, !!reviewer);
             const last = await tx.documentVersion.aggregate({
               where: { documentId: doc.id },
               _max: { version: true },
@@ -481,6 +488,8 @@ export class ManualDocumentService {
             const submission = await tx.documentSubmission.create({
               data: {
                 identityKey,
+                origin: reviewer ? "REVIEWER" : "CANDIDATE",
+                uploadedBy: reviewer?.principal.uuid,
                 idempotencyKey: key,
                 fingerprint,
                 versionId: version.id,
@@ -494,7 +503,7 @@ export class ManualDocumentService {
               },
             });
             await this.audit.logInTransaction(tx, {
-              actorId: "lk-service",
+              actorId: reviewer?.principal.uuid ?? "lk-service",
               action: "DOCUMENT_UPLOAD_STARTED",
               entityType: "Document",
               entityId: doc.id,
@@ -589,7 +598,7 @@ export class ManualDocumentService {
           data: { cleanupPending: true },
         });
         await this.audit.logInTransaction(tx, {
-          actorId: "lk-service",
+          actorId: receipt.uploadedBy ?? "lk-service",
           action: "DOCUMENT_UPLOAD_FAILED",
           entityType: "Document",
           entityId: version.documentId,

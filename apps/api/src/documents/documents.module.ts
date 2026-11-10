@@ -1,3 +1,5 @@
+import { ReviewerDocumentsController } from "./reviewer-documents.controller";
+import { ReviewerDocumentsService } from "./reviewer-documents.service";
 import { CandidateEnrichmentController } from "./candidate-enrichment.controller";
 import { IgEnrichmentQueueService } from "./ig-enrichment-queue.service";
 import { ErpWorkspaceClient } from "./erp-workspace.client";
@@ -84,6 +86,7 @@ import { LkModule } from "../lk/lk.module";
     CandidateDocumentEventsController,
     CandidateDocumentUploadController,
     ErpAdaptationGrantsController,
+    ReviewerDocumentsController,
   ],
   exports: [
     DocumentReadService,
@@ -96,6 +99,7 @@ import { LkModule } from "../lk/lk.module";
     ErpCandidateClient,
   ],
   providers: [
+    ReviewerDocumentsService,
     IgEnrichmentQueueService,
     ErpWorkspaceClient,
     CandidateDocumentsService,

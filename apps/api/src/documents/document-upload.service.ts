@@ -46,6 +46,7 @@ export interface StagedFile {
 }
 export interface StagedUpload {
   directory: string;
+  idempotencyKey?: string;
   documentTypeCode: string;
   locationId?: number;
   metadata?: DocumentMetadata;
@@ -57,6 +58,7 @@ export class DocumentUploadService {
   async parse(
     req: FastifyRequest,
     context?: UploadContext,
+    reviewer = false,
   ): Promise<StagedUpload> {
     if (!req.isMultipart())
       throw new UnsupportedMediaTypeException("Expected multipart/form-data");
@@ -70,8 +72,8 @@ export class DocumentUploadService {
       for await (const part of req.parts({
         limits: {
           files: 10,
-          fields: 3,
-          parts: 13,
+          fields: reviewer ? 4 : 3,
+          parts: reviewer ? 14 : 13,
           fileSize: MAX_FILE_BYTES,
           fieldSize: 65536,
         },
@@ -80,7 +82,7 @@ export class DocumentUploadService {
           if (
             (context
               ? part.fieldname !== "metadata"
-              : !["documentTypeCode", "locationId", "metadata"].includes(
+              : !["documentTypeCode", "locationId", "metadata", ...(reviewer ? ["idempotencyKey"] : [])].includes(
                   part.fieldname,
                 )) ||
             fields.has(part.fieldname) ||
@@ -206,6 +208,7 @@ export class DocumentUploadService {
         throw new PayloadTooLargeException("At most 100 pages per document");
       return {
         directory,
+        ...(reviewer ? { idempotencyKey: fields.get("idempotencyKey") } : {}),
         documentTypeCode,
         metadata,
         ...(loc !== undefined ? { locationId: Number(loc) } : {}),

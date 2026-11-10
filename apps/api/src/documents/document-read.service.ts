@@ -87,13 +87,14 @@ const documentSummaryInclude = {
       reviewedBy: true,
       job: { select: { status: true, errorCode: true } },
       delivery: { select: { status: true } },
+      submission: { select: { origin: true } },
     },
   },
 } satisfies Prisma.DocumentInclude;
 
 const versionInclude = {
   document: { include: { documentType: true, candidate: true } },
-  submission: { select: { id: true, status: true } },
+  submission: { select: { id: true, status: true, origin: true } },
   files: { orderBy: { ordinal: "asc" as const } },
   fields: {
     orderBy: [{ ordinal: "asc" as const }, { name: "asc" as const }],
@@ -258,6 +259,7 @@ export class DocumentReadService {
     return {
       ...(returned.length ? { returnedVersions: returned } : {}),
       id: d.id,
+      uploadOrigin: current?.submission?.origin,
       documentTypeCode: d.documentType?.code ?? null,
       status: d.status,
       currentVersion: d.currentVersion,
@@ -801,6 +803,7 @@ export class DocumentReadService {
             paddleConfidence,
           }),
         ),
+      uploadOrigin: row.submission?.origin,
       ocrSource: row.ocrSource,
       files: row.files.map((f) => ({
         id: f.id,

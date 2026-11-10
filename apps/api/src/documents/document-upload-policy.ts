@@ -5,8 +5,9 @@ import type { Prisma, DocumentStatus } from "@prisma/client";
 export async function assertDocumentUploadAllowed(
   tx: Prisma.TransactionClient,
   document: { id: string; status: DocumentStatus },
+  reviewerReplacement = false,
 ): Promise<void> {
-  if (["IN_REVIEW", "OCR_PENDING"].includes(document.status))
+  if (!reviewerReplacement && ["IN_REVIEW", "OCR_PENDING"].includes(document.status))
     throw new ConflictException("DOCUMENT_IN_REVIEW");
   if (
     await tx.documentSubmission.findFirst({

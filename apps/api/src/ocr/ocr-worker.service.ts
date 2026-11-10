@@ -308,8 +308,9 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
         });
         return;
       }
+      const reviewerUpload = initial.version.submission?.origin === "REVIEWER";
       const candidateReturn =
-        result.outcome === "REJECTED" &&
+        !reviewerUpload && result.outcome === "REJECTED" &&
         (result.rejectionKind === "NON_DOCUMENT" ||
           result.rejectionKind === "DOCUMENT_TYPE_MISMATCH");
       const previous = candidateReturn
@@ -502,7 +503,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           ...(passToReview ? { automaticReturnLimitReached: true } : {}),
         },
       });
-      if (status === "IN_REVIEW")
+      if (status === "IN_REVIEW" && !reviewerUpload)
         readyForReview = {
           documentId: initial.version.documentId,
           version: initial.version.version,

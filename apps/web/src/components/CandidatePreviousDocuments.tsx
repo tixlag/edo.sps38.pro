@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  getCandidatePreviousDocumentOriginal,
   getGetCandidateDetailsQueryKey,
   getListCandidateReviewQueueQueryKey,
   getListReviewDocumentsQueryKey,
@@ -64,32 +63,19 @@ function PreviousDocument({
 }) {
   const [error, setError] = useState("");
   const [opening, setOpening] = useState(false);
+  let navigate: ReturnType<typeof useNavigate> | undefined;
+  try {
+    navigate = useNavigate();
+  } catch {
+    navigate = undefined;
+  }
   const open = async () => {
-    setOpening(true);
-    setError("");
-    // Open during the user gesture so authenticated binary download is not popup-blocked.
-    const tab = window.open("about:blank", "_blank");
-    if (tab) tab.opener = null;
+    if (!navigate) return;
+    setOpening(true); setError("");
     try {
-      const blob = await getCandidatePreviousDocumentOriginal(
-        candidateId,
-        document.id,
-      );
-      const url = URL.createObjectURL(blob);
-      if (tab) tab.location.href = url;
-      else {
-        const anchor = window.document.createElement("a");
-        anchor.href = url;
-        anchor.download = document.title;
-        anchor.click();
-      }
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (cause) {
-      tab?.close();
-      setError(candidateError(cause));
-    } finally {
-      setOpening(false);
-    }
+      await navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: { previousDocument: document.id } });
+    } catch (cause) { setError(candidateError(cause)); }
+    finally { setOpening(false); }
   };
   const fields = Object.entries(document.fields).filter(
     ([key, value]) =>
@@ -181,7 +167,12 @@ export function CandidatePreviousDocuments({
     // The history GET can import and automatically confirm former originals.
     void refreshDocumentViews(cache, candidateId);
   }, [cache, candidateId, documents.data, documents.dataUpdatedAt]);
-  const navigate = useNavigate();
+  let navigate: ReturnType<typeof useNavigate> | undefined;
+  try {
+    navigate = useNavigate();
+  } catch {
+    navigate = undefined;
+  }
   const itemsCount = documents.data
     ? documents.data.items.length + (documents.data.edoDocuments?.length ?? 0)
     : undefined;
@@ -263,7 +254,7 @@ export function CandidatePreviousDocuments({
                       type="button"
                       className="text-sm underline"
                       onClick={() =>
-                        void navigate({
+                        void navigate?.({
                           to: "/review-ig/$documentId",
                           params: { documentId: document.id },
                           search: { version: document.currentVersion },
