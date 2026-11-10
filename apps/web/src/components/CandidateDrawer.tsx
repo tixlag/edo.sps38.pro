@@ -6,6 +6,7 @@ import {
   getGetCandidateDetailsQueryKey,
   useRequestCandidateEnrichment,
   getListReviewCandidatesQueryKey,
+  getListCandidatePreviousDocumentsQueryKey,
   getListCandidateReviewQueueQueryKey,
   getListIgArrivalRegistryGroupsQueryKey,
   getListIgArrivalRegistryParticipationsQueryKey,
@@ -96,6 +97,7 @@ export function CandidateDrawer({
       { candidateId },
       {
         onSuccess: () => {
+          previousState.current = "PENDING";
           void docs.refetch();
         },
       },
@@ -103,9 +105,8 @@ export function CandidateDrawer({
   };
   useEffect(() => {
     if (
-      docs.data?.candidate.reviewGroup === "IG" &&
       enrichment &&
-      enrichment.status !== "READY" &&
+      (docs.data?.candidate.reviewGroup === "RU" || enrichment.status !== "READY") &&
       requested.current !== candidateId
     )
       requestLoading();
@@ -115,6 +116,7 @@ export function CandidateDrawer({
       previousState.current !== "READY"
     ) {
       for (const key of [
+        getListCandidatePreviousDocumentsQueryKey(candidateId),
         getListReviewCandidatesQueryKey(),
         getListCandidateReviewQueueQueryKey(),
         getListIgArrivalRegistryGroupsQueryKey(),
@@ -124,7 +126,7 @@ export function CandidateDrawer({
       }
     }
     previousState.current = enrichment?.status;
-  }, [candidateId, enrichment?.status]);
+  }, [candidateId, enrichment?.status, docs.dataUpdatedAt]);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);

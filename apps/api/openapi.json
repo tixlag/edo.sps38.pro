@@ -478,7 +478,7 @@
             "access-jwt": []
           }
         ],
-        "summary": "Prioritize loading the IG employee profile and document history",
+        "summary": "Prioritize loading candidate or employee documents",
         "tags": [
           "documents"
         ]

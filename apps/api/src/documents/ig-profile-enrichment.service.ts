@@ -6,6 +6,7 @@ import { ErpCandidateClient } from "./erp-candidate.client";
 import { ErpWorkspaceClient } from "./erp-workspace.client";
 import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
 import type { Prisma } from "@prisma/client";
+import { candidateReviewGroup } from "./review-group";
 import { snapshotUpdateInput } from "./candidate-profile";
 
 @Injectable()
@@ -29,6 +30,21 @@ export class IgProfileEnrichmentService {
     const candidate = await this.prisma.candidate.findUniqueOrThrow({
       where: { id: candidateId },
     });
+
+    // RU documents belong to the candidate UUID, before any person/employee link exists.
+    if (candidateReviewGroup(candidate) === "RU") {
+      if (!candidate.erpUid)
+        return { profileSynced: false, documentsSynced: false };
+      await this.previousDocsSync.syncPreviousDocuments(
+        candidateId,
+        "system:profile-enrichment",
+        "",
+        candidate,
+        undefined,
+        options,
+      );
+      return { profileSynced: true, documentsSynced: true };
+    }
 
     if (
       candidate.reviewGroup !== "IG" ||
