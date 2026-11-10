@@ -25,6 +25,7 @@ import { changedProfileFields, snapshotUpdateInput } from "./candidate-profile";
 import type { StagedUpload } from "./document-upload.service";
 import { igUploadOwner } from "./ig-upload-owner";
 import { resolveCandidateIdentity } from "./candidate-identity";
+import { DocumentNotificationService } from "./document-notification.service";
 import { ErpCandidateClient } from "./erp-candidate.client";
 import type { ReviewGroup } from "./review-group";
 
@@ -37,6 +38,7 @@ export class ManualDocumentService {
     private readonly catalog: DocumentCatalogService,
     @Optional() private readonly config?: ConfigService,
     @Optional() private readonly candidates?: ErpCandidateClient,
+    @Optional() private readonly notifications?: DocumentNotificationService,
   ) {}
 
   async upload(
@@ -232,6 +234,12 @@ export class ManualDocumentService {
         });
         return queuedJobId;
       });
+      if (!jobId && acceptedStatus === "IN_REVIEW")
+        await this.notifications?.notifyDocumentReadyForReview({
+          documentId: reserved.submission.version.documentId,
+          version: reserved.submission.version.version,
+          candidateId: reserved.submission.version.document.candidateId,
+        });
       return { ...this.accepted(reserved.submission, acceptedStatus), jobId };
     } catch (error) {
       await this.fail(reserved.submission.id, token);

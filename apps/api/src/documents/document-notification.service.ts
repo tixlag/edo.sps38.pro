@@ -75,7 +75,7 @@ export class DocumentNotificationService {
       await this.lkNotifications.sendNotification({
         recipientCodes1c: [managerCode1c],
         title: "Документ готов к проверке",
-        content: `OCR обработала документ «${docTitle}» кандидата **${candidateName}**. Проверьте правильность распознанных данных.`,
+        content: `Документ «${docTitle}» кандидата **${candidateName}** ожидает проверки. Проверьте его правильность.`,
         type: "toast",
         targetType: "candidate_document_upload",
         targetUrl,

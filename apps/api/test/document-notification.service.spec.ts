@@ -62,7 +62,7 @@ describe("DocumentNotificationService", () => {
     expect(lk.sendNotification).toHaveBeenCalledWith({
       recipientCodes1c: ["HR-100"],
       title: "Документ готов к проверке",
-      content: "OCR обработала документ «Паспорт РФ» кандидата **Иванов Иван Иванович**. Проверьте правильность распознанных данных.",
+      content: "Документ «Паспорт РФ» кандидата **Иванов Иван Иванович** ожидает проверки. Проверьте его правильность.",
       type: "toast",
       targetType: "candidate_document_upload",
       targetUrl: "/review/candidates/cand-ru-1?document=doc-1",
@@ -105,7 +105,7 @@ describe("DocumentNotificationService", () => {
     expect(lk.sendNotification).toHaveBeenCalledWith({
       recipientCodes1c: ["MGR-200"],
       title: "Документ готов к проверке",
-      content: "OCR обработала документ «Патент на работу» кандидата **Каримов Алишер**. Проверьте правильность распознанных данных.",
+      content: "Документ «Патент на работу» кандидата **Каримов Алишер** ожидает проверки. Проверьте его правильность.",
       type: "toast",
       targetType: "candidate_document_upload",
       targetUrl: "/review-ig?candidate=cand-ig-2",
