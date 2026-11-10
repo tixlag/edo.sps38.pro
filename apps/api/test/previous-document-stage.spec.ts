@@ -151,4 +151,12 @@ describe("former documents in the current stage", () => {
     expect(result.candidate.approvedDocuments).toBe(1);
     expect(result.candidate.stageProgress?.[0].required.reused).toBe(1);
   });
+  it("uses the approved RU ERP original over an adaptation replacement and counts it once", async () => {
+    const { reads } = setup("RU", false, "IN_REVIEW");
+    const result = await reads.candidateDetails("cycle", principal, "1");
+    expect(result.previousDocuments?.[0]).toMatchObject({ state: "REUSED", source: "ERP" });
+    expect(result.candidate.approvedDocuments).toBe(1);
+    expect(result.candidate.stageProgress?.[0].required).toMatchObject({ reused: 1, inReview: 0, missing: 0 });
+  });
+
 });

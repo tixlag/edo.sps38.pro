@@ -1,3 +1,4 @@
+vi.mock("../lib/use-visible-ru-document-sync", () => ({ useVisibleRuDocumentSync: () => ({ pendingIds: new Set(), error: false, retry: vi.fn() }) }));
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";

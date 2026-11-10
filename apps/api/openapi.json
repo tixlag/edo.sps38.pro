@@ -488,6 +488,103 @@
         ]
       }
     },
+    "/api/v1/candidates/enrichment-batch": {
+      "post": {
+        "operationId": "requestCandidateEnrichmentBatch",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateEnrichmentBatchRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateEnrichmentBatchDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Refresh document snapshots for the visible RU candidate page",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/v1/candidates/{candidateId}/enrichment": {
       "post": {
         "operationId": "requestCandidateEnrichment",
@@ -17340,6 +17437,36 @@
           "message",
           "correlationId",
           "path"
+        ]
+      },
+      "CandidateEnrichmentBatchRequestDto": {
+        "type": "object",
+        "properties": {
+          "candidateIds": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "candidateIds"
+        ]
+      },
+      "CandidateEnrichmentBatchDto": {
+        "type": "object",
+        "properties": {
+          "pendingCandidateIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "pendingCandidateIds"
         ]
       },
       "CandidateEnrichmentDto": {

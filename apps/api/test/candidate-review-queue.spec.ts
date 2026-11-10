@@ -50,6 +50,7 @@ const document = (id: string) => ({
 });
 function setup() {
   const prisma = {
+    candidatePreviousDocument: { findMany: vi.fn(async () => []) },
     candidate: { findMany: vi.fn(), findFirst: vi.fn() },
     document: {
       findMany: vi.fn(),

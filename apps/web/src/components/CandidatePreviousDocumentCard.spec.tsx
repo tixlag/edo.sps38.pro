@@ -59,7 +59,7 @@ describe("CandidatePreviousDocumentCard", () => {
     expect(container?.textContent).toContain("ИНН");
     expect(container?.textContent).toContain("Не загружен");
     // Compact mode shouldn't have previous version blocks or review buttons
-    expect(container?.textContent).not.toContain("Предыдущая версия");
+    expect(container?.textContent).not.toContain("Документ из ERP");
     expect(container?.textContent).not.toContain("Проверить документ");
   });
 
@@ -120,7 +120,7 @@ describe("CandidatePreviousDocumentCard", () => {
 
     expect(container?.textContent).toContain("Паспорт гражданина РФ");
     expect(container?.textContent).toContain("Проверить актуальность");
-    expect(container?.textContent).toContain("Предыдущая версия");
+    expect(container?.textContent).toContain("Документ из ERP");
     expect(container?.textContent).toContain("Из кадрового архива ERP");
     expect(container?.textContent).toContain("Срок действия: 20.10.2035");
     expect(container?.textContent).toContain("Серия/номер: 4510 123456");
@@ -375,4 +375,19 @@ describe("CandidatePreviousDocumentCard", () => {
 
     expect(container?.textContent).toContain("Ожидает проверки");
   });
+  it("shows only the approved ERP original for RU when adaptation has another upload", async () => {
+    const onReviewCurrent = vi.fn();
+    await renderCard({ candidateId: "candidate", reviewGroup: "RU", title: "Паспорт", status: "IN_REVIEW",
+      currentDocument: { id: "adaptation-doc", status: "IN_REVIEW", currentVersion: 1 } as never,
+      previousDocument: { id: "erp-original", title: "Паспорт", source: "ERP", state: "REUSED", originalAvailable: true, fields: {} } as never,
+      onReviewCurrent,
+    });
+    expect(container?.textContent).toContain("Документ принят");
+    expect(container?.textContent).toContain("Документ из ERP");
+    expect(container?.textContent).not.toContain("Проверить документ");
+    expect(container?.textContent).not.toContain("Текущая версия");
+    expect(mockApi.getCandidatePreviousDocumentOriginal).toHaveBeenCalledWith("candidate", "erp-original", expect.any(AbortSignal));
+    expect(onReviewCurrent).not.toHaveBeenCalled();
+  });
+
 });

@@ -390,7 +390,7 @@ describe("priority document loading", () => {
       { candidateId: "c1" },
       expect.anything(),
     );
-    expect(view.textContent).toContain("Загружаем профиль и документы");
+    expect(view.textContent).toContain("Синхронизация профиля и документов");
     const options = mock.query.mock.calls.at(-1)![2];
     expect(options.query.refetchInterval({ state: { data: mock.data } })).toBe(
       5000,

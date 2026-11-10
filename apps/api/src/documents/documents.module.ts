@@ -86,6 +86,7 @@ import { LkModule } from "../lk/lk.module";
     ErpAdaptationGrantsController,
   ],
   exports: [
+    DocumentReadService,
     CandidateContextService,
     DocumentCatalogService,
     OwnDocumentHistoryService,

@@ -404,6 +404,18 @@ export interface ApiErrorDto {
   path: string | null;
 }
 
+export interface CandidateEnrichmentBatchRequestDto {
+  /**
+   * @minItems 1
+   * @maxItems 100
+   */
+  candidateIds: string[];
+}
+
+export interface CandidateEnrichmentBatchDto {
+  pendingCandidateIds: string[];
+}
+
 export type CandidateEnrichmentDtoStatus =
   (typeof CandidateEnrichmentDtoStatus)[keyof typeof CandidateEnrichmentDtoStatus];
 
@@ -4262,6 +4274,91 @@ export function useGetMe<
 
   return query;
 }
+
+/**
+ * @summary Refresh document snapshots for the visible RU candidate page
+ */
+export const requestCandidateEnrichmentBatch = (
+  candidateEnrichmentBatchRequestDto: CandidateEnrichmentBatchRequestDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateEnrichmentBatchDto>({
+    url: `/api/v1/candidates/enrichment-batch`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: candidateEnrichmentBatchRequestDto,
+    signal,
+  });
+};
+
+export const getRequestCandidateEnrichmentBatchMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestCandidateEnrichmentBatch>>,
+    TError,
+    { data: CandidateEnrichmentBatchRequestDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestCandidateEnrichmentBatch>>,
+  TError,
+  { data: CandidateEnrichmentBatchRequestDto },
+  TContext
+> => {
+  const mutationKey = ["requestCandidateEnrichmentBatch"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestCandidateEnrichmentBatch>>,
+    { data: CandidateEnrichmentBatchRequestDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestCandidateEnrichmentBatch(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestCandidateEnrichmentBatchMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestCandidateEnrichmentBatch>>
+>;
+export type RequestCandidateEnrichmentBatchMutationBody =
+  CandidateEnrichmentBatchRequestDto;
+export type RequestCandidateEnrichmentBatchMutationError = ApiErrorDto;
+
+/**
+ * @summary Refresh document snapshots for the visible RU candidate page
+ */
+export const useRequestCandidateEnrichmentBatch = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestCandidateEnrichmentBatch>>,
+    TError,
+    { data: CandidateEnrichmentBatchRequestDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestCandidateEnrichmentBatch>>,
+  TError,
+  { data: CandidateEnrichmentBatchRequestDto },
+  TContext
+> => {
+  const mutationOptions =
+    getRequestCandidateEnrichmentBatchMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
 
 /**
  * @summary Prioritize loading candidate or employee documents

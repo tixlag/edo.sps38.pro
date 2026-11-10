@@ -1687,7 +1687,7 @@ export class DocumentReadService {
    * tabs. Exactly 2 queries per page (scoped groupBy, catalog snapshot) —
    * never N+1 per document.
    */
-  private async enrichReviewCandidates(
+  async enrichReviewCandidates(
     principal: AuthPrincipal,
     profiles: CandidateProfileDto[],
   ): Promise<void> {
@@ -1722,7 +1722,7 @@ export class DocumentReadService {
       }),
     ]);
     const igIds = profiles
-      .filter((profile) => profile.code1c || profile.isReemployment)
+      .filter((profile) => profile.reviewGroup === "RU" || profile.code1c || profile.isReemployment)
       .map((profile) => profile.id);
     const historical = igIds.length
       ? await this.prisma.candidatePreviousDocument.findMany({
@@ -1734,12 +1734,18 @@ export class DocumentReadService {
           },
         })
       : [];
+    const authoritativeErpTypes = new Map<string, Set<string>>();
+    for (const profile of profiles.filter((p) => p.reviewGroup === "RU")) {
+      const uids = usablePreviousUids(historical.filter((doc) => doc.candidateId === profile.id && !doc.sourceId?.startsWith("edo:")), false);
+      authoritativeErpTypes.set(profile.id, new Set(catalog.filter((type) => type.erpUid && uids.includes(type.erpUid.toLowerCase())).map((type) => type.id)));
+    }
+    const effectiveGrouped = grouped.filter((row) => !authoritativeErpTypes.get(row.candidateId!)?.has(row.documentTypeId!));
     const approved = new Map<string, number>();
     const profileById = new Map(
       profiles.map((profile) => [profile.id, profile]),
     );
     const typeById = new Map(catalog.map((type) => [type.id, type]));
-    for (const row of grouped) {
+    for (const row of effectiveGrouped) {
       const profile = row.candidateId
         ? profileById.get(row.candidateId)
         : undefined;
@@ -1777,7 +1783,7 @@ export class DocumentReadService {
         (type) =>
           type.erpUid &&
           previousUids.includes(type.erpUid.toLowerCase()) &&
-          !grouped.some(
+          !effectiveGrouped.some(
             (row) =>
               row.candidateId === profile.id &&
               row.documentTypeId === type.id &&
@@ -1795,7 +1801,7 @@ export class DocumentReadService {
         hasProfile && catalog.some((type) => type.catalogSyncedAt !== null)
           ? reviewStageProgress(
               catalog.filter((type) => type.catalogSyncedAt !== null),
-              grouped.filter((row) => row.candidateId === profile.id),
+              effectiveGrouped.filter((row) => row.candidateId === profile.id),
               {
                 positionCode,
                 projectCode: profile.projectCode,

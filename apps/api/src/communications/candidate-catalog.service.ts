@@ -1,8 +1,10 @@
+import { DocumentReadService } from "../documents/document-read.service";
 import { reviewGroupWhere } from "../documents/review-group";
 import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Optional,
   Logger,
   OnModuleDestroy,
   OnModuleInit,
@@ -35,6 +37,7 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
     private readonly audit: AuditService,
     private readonly access: DocumentAccessService,
     private readonly config: ConfigService,
+    @Optional() private readonly documentReads?: DocumentReadService,
   ) {}
   onModuleInit() {
     if (
@@ -283,20 +286,15 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
         ],
       },
       orderBy: [{ fullName: "asc" }, { id: "asc" }],
-      include: { documents: { select: { status: true } } },
       take: limit + 1,
     });
     const page = items.slice(0, limit),
       last = page.at(-1);
+    const profiles = page.map((row) => toCandidateProfile(row)!);
+    if (!this.documentReads) throw new Error("CANDIDATE_DOCUMENT_READER_REQUIRED");
+    await this.documentReads.enrichReviewCandidates(principal, profiles);
     return {
-      items: page.map(
-        (row) =>
-          toCandidateProfile(row, {
-            approvedDocuments: row.documents.filter(
-              (d) => d.status === "APPROVED",
-            ).length,
-          })!,
-      ),
+      items: profiles,
       nextCursor:
         items.length > limit && last
           ? Buffer.from(

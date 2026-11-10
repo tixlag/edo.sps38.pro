@@ -3,7 +3,9 @@ import type {
   MissingDocumentTypeDto,
   PreviousDocumentAvailabilityDto,
   ReturnedDocumentVersionDto,
+  ReviewStageProgressDto,
 } from "@edo/api-client";
+import { StageRing } from "./StageRing";
 import { cn } from "@edo/ui";
 import { ChevronDown, Layers } from "lucide-react";
 import { CandidatePreviousDocumentCard } from "./CandidatePreviousDocumentCard";
@@ -34,6 +36,7 @@ export interface CandidateStageAccordionProps {
   candidateId: string;
   isOpen: boolean;
   showProgress?: boolean;
+  progress?: ReviewStageProgressDto;
   onToggle: () => void;
   onReviewDocument?: (docId: string, version?: number) => void;
   className?: string;
@@ -49,6 +52,7 @@ export function CandidateStageAccordion({
   candidateId,
   isOpen,
   showProgress = true,
+  progress,
   onToggle,
   onReviewDocument,
   className,
@@ -64,7 +68,9 @@ export function CandidateStageAccordion({
     ),
   ).length;
 
-  const confirmedCount = approvedRequired + reusedRequired;
+  const confirmedCount = progress
+    ? progress.required.approved + (progress.required.reused ?? 0) + (progress.required.signed ?? 0)
+    : approvedRequired + reusedRequired;
 
   const missingRequiredNotReused = required.missingDocuments.filter(
     (m) =>
@@ -73,7 +79,10 @@ export function CandidateStageAccordion({
       ),
   ).length;
 
-  const totalRequired = Math.max(
+  const totalRequired = progress
+    ? ["approved", "reused", "signed", "inReview", "uploaded", "ocrPending", "ocrFailed", "returned", "expired", "draft", "missing"].reduce(
+        (sum, key) => sum + (progress.required[key as keyof typeof progress.required] ?? (key === "inReview" ? progress.required.pending : 0) ?? 0), 0)
+    : Math.max(
     confirmedCount,
     required.documents.length + missingRequiredNotReused + reusedRequired,
   );
@@ -228,6 +237,10 @@ export function CandidateStageAccordion({
         className,
       )}
     >
+      <div className="flex items-center gap-2 p-2">
+      {showProgress && progress && (
+        <StageRing progress={progress} selected={isOpen} onOpen={onToggle} />
+      )}
       {/* Header Button */}
       <button
         type="button"
@@ -242,7 +255,7 @@ export function CandidateStageAccordion({
           )}
         >
           <div className="flex min-w-0 items-center gap-2.5">
-            {stage !== null ? (
+            {(!progress || !showProgress) && (stage !== null ? (
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-xs font-bold text-[var(--primary)]">
                 {stage}
               </span>
@@ -250,7 +263,7 @@ export function CandidateStageAccordion({
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-xs font-bold text-[var(--primary)]">
                 <Layers size={14} aria-hidden />
               </span>
-            )}
+            ))}
             <h3 className="truncate text-sm font-semibold text-[var(--foreground)]">
               {title}
             </h3>
@@ -273,7 +286,7 @@ export function CandidateStageAccordion({
         </div>
 
         {/* Progress Bar */}
-        {showProgress && (
+        {showProgress && !progress && (
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--muted)]">
             <div
               className="h-full bg-[var(--primary)] transition-all duration-300"
@@ -282,6 +295,7 @@ export function CandidateStageAccordion({
           </div>
         )}
       </button>
+      </div>
 
       {/* Accordion Content */}
       {isOpen && (

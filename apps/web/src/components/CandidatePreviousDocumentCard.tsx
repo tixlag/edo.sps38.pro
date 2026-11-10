@@ -69,7 +69,7 @@ function formatRequisites(fields?: Record<string, unknown>): string[] {
 
 export function CandidatePreviousDocumentCard({
   candidateId,
-  reviewGroup: _reviewGroup,
+  reviewGroup,
   title,
   status,
   currentDocument,
@@ -81,6 +81,15 @@ export function CandidatePreviousDocumentCard({
   className,
 }: CandidatePreviousDocumentCardProps) {
   const [openingOriginal, setOpeningOriginal] = useState(false);
+  // A confirmed RU ERP original is authoritative over a parallel adaptation upload.
+  if (reviewGroup !== "IG" && previousDocument?.source === "ERP" &&
+      previousDocument.state === "REUSED" && previousDocument.originalAvailable) {
+    currentDocument = undefined;
+    returnedVersion = undefined;
+    status = "APPROVED";
+    mode = "expanded";
+  }
+
 
   const effectiveStatus =
     status ??
@@ -266,7 +275,7 @@ export function CandidatePreviousDocumentCard({
 
             <div className="min-w-0 flex-1 space-y-1.5 text-xs">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                Предыдущая версия
+                {previousDocument.source === "EDO" ? "Из прошлого оформления в ЭДО" : "Документ из ERP"}
               </div>
 
               {sourceText && (

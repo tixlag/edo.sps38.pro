@@ -306,9 +306,29 @@ describe.skipIf(!db)("durable employee enrichment", () => {
       });
       await queue.runLane("priority");
       expect(await queue.status(c.id)).toMatchObject({ status: "READY", documentsReady: true });
+      expect(await queue.request(c.id, ru)).toMatchObject({ status: "READY", documentsReady: true });
+      await prisma.candidate.update({ where: { id: c.id }, data: { previousDocumentsSyncedAt: new Date(Date.now() - 6 * 60_000) } });
       expect(await queue.request(c.id, ru)).toMatchObject({ status: "PENDING", documentsReady: true });
       expect(await prisma.igEnrichmentJob.count({ where: { candidateId: c.id } })).toBe(1);
     } finally { await prisma.candidate.delete({ where: { id: c.id } }); }
+  });
+
+  it("batches only stale accessible RU snapshots and preserves retry cooldown", async () => {
+    const ru = { accessRules: { "20002": [] } } as never;
+    const stale = await prisma.candidate.create({ data: { identityKey: `batch-${randomUUID()}`, erpUid: randomUUID(), reviewGroup: "RU", citizenship: "ru" } });
+    const fresh = await prisma.candidate.create({ data: { identityKey: `batch-${randomUUID()}`, erpUid: randomUUID(), reviewGroup: "RU", citizenship: "ru", previousDocumentsSyncedAt: new Date() } });
+    try {
+      expect(await queue.requestBatch([stale.id, stale.id, fresh.id, id, "missing"], ru)).toEqual({ pendingCandidateIds: [stale.id] });
+      expect(await prisma.igEnrichmentJob.findUnique({ where: { candidateId: fresh.id } })).toBeNull();
+      const retryAt = new Date(Date.now() + 60_000);
+      await prisma.igEnrichmentJob.update({ where: { candidateId: stale.id }, data: { status: "RETRY", nextAttemptAt: retryAt, attempts: 2 } });
+      await queue.requestBatch([stale.id], ru);
+      expect(await prisma.igEnrichmentJob.findUnique({ where: { candidateId: stale.id } })).toMatchObject({ status: "RETRY", attempts: 2, nextAttemptAt: retryAt });
+      await expect(queue.requestBatch([stale.id], { accessRules: { "20011": [] } })).rejects.toThrow();
+    } finally {
+      await prisma.igEnrichmentJob.deleteMany({ where: { candidateId: { in: [stale.id, fresh.id] } } });
+      await prisma.candidate.deleteMany({ where: { id: { in: [stale.id, fresh.id] } } });
+    }
   });
 
 });

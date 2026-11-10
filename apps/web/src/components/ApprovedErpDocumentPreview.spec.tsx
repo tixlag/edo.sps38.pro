@@ -1,0 +1,24 @@
+import { afterEach, expect, it, vi } from "vitest";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { ApprovedErpDocumentPreview } from "./ApprovedErpDocumentPreview";
+const original = vi.hoisted(() => vi.fn());
+vi.mock("@edo/api-client", () => ({ useGetCandidatePreviousDocumentOriginal: original, getGetCandidatePreviousDocumentOriginalQueryKey: (...args: unknown[]) => args }));
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+let root: Root, node: HTMLDivElement;
+afterEach(async () => { await act(async () => root?.unmount()); node?.remove(); vi.clearAllMocks(); });
+it("loads the approved ERP original and releases its URL when leaving the document", async () => {
+  original.mockReturnValue({ data: new Blob(["approved passport"], { type: "image/jpeg" }) });
+  const create = vi.fn(() => "blob:approved-erp");
+  const revoke = vi.fn();
+  URL.createObjectURL = create; URL.revokeObjectURL = revoke;
+  node = document.createElement("div"); document.body.append(node); root = createRoot(node);
+  await act(async () => root.render(<ApprovedErpDocumentPreview candidateId="candidate" document={{ id: "erp-record", title: "Паспорт" } as never} />));
+  expect(original).toHaveBeenCalledWith("candidate", "erp-record", expect.objectContaining({ query: { queryKey: ["candidate", "erp-record"] } }));
+  expect(node.querySelector("img")?.getAttribute("src")).toBe("blob:approved-erp");
+  expect(node.textContent).toContain("Документ принят");
+  expect(node.textContent).not.toContain("Проверить документ");
+  await act(async () => root.unmount());
+  expect(revoke).toHaveBeenCalledWith("blob:approved-erp");
+  root = undefined as never;
+});

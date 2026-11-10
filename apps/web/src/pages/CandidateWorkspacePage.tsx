@@ -1,3 +1,5 @@
+import { ApprovedErpDocumentPreview } from "../components/ApprovedErpDocumentPreview";
+import { useCandidateDocumentSync } from "../lib/use-candidate-document-sync";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Link,
@@ -191,7 +193,7 @@ function CandidateWorkspace() {
   const stage = /^(none|[1-9]\d{0,14})$/.test(String(search.stage ?? ""))
     ? String(search.stage)
     : undefined;
-  const details = useGetCandidateDetails(candidateId);
+  const details = useCandidateDocumentSync(candidateId);
   const stageParams = stage ? { stage } : undefined;
   const stageDetails = useGetCandidateDetails(candidateId, stageParams, {
     query: {
@@ -277,6 +279,11 @@ function CandidateWorkspace() {
       ? search.document
       : undefined;
   const version = parseVersionParam(search.version);
+  const selectedType = details.data?.documents.find((doc) => doc.id === documentId)?.documentTypeCode;
+  const approvedErpDocument = profile?.reviewGroup !== "IG"
+    ? details.data?.previousDocuments?.find((doc) => doc.documentTypeCode === selectedType && doc.source === "ERP" && doc.state === "REUSED" && doc.originalAvailable)
+    : undefined;
+
   const queueSearch = { ...parseReviewSearchParams(search, "ALL") };
   delete queueSearch.candidate;
   const openDocument = (
@@ -346,8 +353,11 @@ function CandidateWorkspace() {
       return stages.reduce(
         (sum, s) =>
           sum +
-          s.required.documents.length +
-          s.additional.documents.length,
+          new Set([
+            ...s.required.documents.map((doc) => doc.documentTypeCode ?? doc.id),
+            ...s.additional.documents.map((doc) => doc.documentTypeCode ?? doc.id),
+            ...s.previousDocuments.map((doc) => doc.documentTypeCode),
+          ]).size,
         0,
       );
     }
@@ -396,7 +406,7 @@ function CandidateWorkspace() {
             onClick={() => setMobilePanel("documents")}
           >
             <FileText size={15} />
-            Документы{details.data ? ` (${totalDocCount})` : ""}
+            Документы{details.data && !details.synchronizing ? ` (${totalDocCount})` : ""}
           </Button>
         </div>
       </div>
@@ -696,7 +706,9 @@ function CandidateWorkspace() {
                 </div>
                 {documentId && (
                   <div className="min-h-0 flex-1">
-                    <CandidateDocumentReview
+                    {details.synchronizing ? <p role="status" className="p-4 text-sm">Синхронизация документов…</p> : approvedErpDocument ? (
+                      <ApprovedErpDocumentPreview key={approvedErpDocument.id} candidateId={candidateId} document={approvedErpDocument} />
+                    ) : <CandidateDocumentReview
                       key={`${candidateId}:${documentId}`}
                       candidateId={candidateId}
                       documentId={documentId}
@@ -711,7 +723,7 @@ function CandidateWorkspace() {
                           }),
                         })
                       }
-                    />
+                    />}
                   </div>
                 )}
               </>
@@ -727,7 +739,7 @@ function CandidateWorkspace() {
         >
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] p-3">
             <h2 className="text-sm font-semibold">
-              Документы{details.data ? ` (${totalDocCount})` : ""}
+              Документы{details.data && !details.synchronizing ? ` (${totalDocCount})` : ""}
             </h2>
             <Button
               size="sm"
@@ -739,7 +751,7 @@ function CandidateWorkspace() {
               <X size={18} />
             </Button>
           </div>
-          {profile && (
+          {profile && !details.synchronizing && (
             <p className="shrink-0 border-b border-[var(--border)] p-3 text-xs text-[var(--muted-foreground)]">
               {formatDocumentProgress(
                 profile.approvedDocuments,
@@ -758,12 +770,17 @@ function CandidateWorkspace() {
                   Загрузка документов этапа…
                 </p>
               )}
-            {details.isLoading && (
+            {details.synchronizing && (
               <p
                 role="status"
                 className="p-2 text-sm text-[var(--muted-foreground)]"
               >
-                Загрузка документов…
+                {details.data?.enrichment?.status === "RETRY"
+                  ? "Не удалось синхронизировать документы. Повторим автоматически."
+                  : "Синхронизация профиля и документов…"}
+                {details.syncError && (
+                  <Button size="sm" variant="outline" onClick={details.requestSync}>Повторить синхронизацию</Button>
+                )}
               </p>
             )}
             {details.isError && (
@@ -774,11 +791,12 @@ function CandidateWorkspace() {
                 Не удалось загрузить документы.
               </div>
             )}
-            {details.data && stages.length > 0 && (
+            {details.data && !details.synchronizing && stages.length > 0 && (
               <div className="space-y-3">
                 {stages.map((stg, index) => (
                   <CandidateStageAccordion
                     key={`stage-${stg.stage ?? "none"}-${index}`}
+                    progress={profile?.stageProgress?.find((item) => item.stage === stg.stage)}
                     stage={stg.stage}
                     title={stg.title}
                     required={stg.required}
@@ -793,7 +811,7 @@ function CandidateWorkspace() {
                 ))}
               </div>
             )}
-            {details.data && !details.isLoading && stages.length === 0 && (
+            {details.data && !details.synchronizing && stages.length === 0 && (
               <p className="p-2 text-xs text-[var(--muted-foreground)]">
                 Документы отсутствуют.
               </p>
