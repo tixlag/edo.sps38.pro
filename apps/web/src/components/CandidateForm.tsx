@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import {
+  useGetMe,
   useListCandidateManagers,
   useListCatalogManagers,
   getListCatalogManagersQueryKey,
@@ -14,6 +15,7 @@ import {
 import { Button } from "@edo/ui";
 import { SearchSelect } from "./SearchSelect";
 import { CandidatePersonPicker } from "./CandidatePersonPicker";
+import { findCurrentUserAsManager } from "../lib/manager-default";
 
 export const CANDIDATE_CONTROL =
   "w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--primary)] disabled:opacity-60";
@@ -138,6 +140,24 @@ export function CandidateForm({
           .includes(managerQuery.trim().toLocaleLowerCase("ru")),
       )
     : (managers.data?.items ?? []);
+  const me = useGetMe();
+  const myManager = useMemo(
+    () => findCurrentUserAsManager(managerOptions, me.data),
+    [managerOptions, me.data],
+  );
+  const managerManuallyChanged = useRef(false);
+  useEffect(() => {
+    if (
+      !profile &&
+      !managerManuallyChanged.current &&
+      !fields.managerId &&
+      myManager?.id
+    ) {
+      setFields((prev) =>
+        prev.managerId ? prev : { ...prev, managerId: myManager.id },
+      );
+    }
+  }, [profile, fields.managerId, myManager]);
   const positions = useListCandidatePositions({
     q: positionQuery || undefined,
   });
@@ -306,7 +326,10 @@ export function CandidateForm({
               label: item.name,
             }))}
             onSearchChange={setManagerQuery}
-            onChange={(value) => set("managerId", value ?? "")}
+            onChange={(value) => {
+              managerManuallyChanged.current = true;
+              set("managerId", value ?? "");
+            }}
             isLoading={
               useFallback ? knownManagers.isLoading : managers.isLoading
             }

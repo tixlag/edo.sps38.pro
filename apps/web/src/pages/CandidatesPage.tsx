@@ -1,5 +1,5 @@
 import { useVisibleRuDocumentSync } from "../lib/use-visible-ru-document-sync";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   useGetMe,
@@ -14,6 +14,7 @@ import { Button, EmptyState, PageHeader } from "@edo/ui";
 import { CANDIDATE_CONTROL } from "../components/CandidateForm";
 import { CreateCandidate } from "../components/CreateCandidate";
 import { SearchSelect } from "../components/SearchSelect";
+import { findCurrentUserAsManager } from "../lib/manager-default";
 import { hasAccessRule } from "../lib/audit-types";
 import { formatDocumentProgress } from "../lib/review-groups";
 
@@ -66,10 +67,21 @@ function CandidateCatalog() {
   );
   const value = (key: string) =>
     typeof search[key] === "string" ? (search[key] as string) : undefined;
+  const me = useGetMe();
+  const managers = useListCandidateManagers({ q: managerQuery || undefined });
+  const myManager = useMemo(
+    () => findCurrentUserAsManager(managers.data?.items, me.data),
+    [managers.data, me.data],
+  );
+  const rawManagerId = value("managerId");
+  const isAllManagers = rawManagerId === "all";
+  const effectiveManagerId = isAllManagers
+    ? undefined
+    : (rawManagerId ?? myManager?.id);
   const params = {
     q: value("q"),
     statusId: value("statusId"),
-    managerId: value("managerId"),
+    managerId: effectiveManagerId,
     projectCode: value("projectCode"),
     positionCode: value("positionCode"),
     mentorCode1c: value("mentorCode1c"),
@@ -79,7 +91,6 @@ function CandidateCatalog() {
   const candidates = useListCommunicationCandidates(params);
   const documentSync = useVisibleRuDocumentSync(candidates.data?.items.map((c) => c.id) ?? [], !!candidates.data, () => candidates.refetch());
   const statuses = useListCandidateStatuses();
-  const managers = useListCandidateManagers({ q: managerQuery || undefined });
   const projects = useListCandidateProjects({ q: projectQuery || undefined });
   const positions = useListPositions({
     q: positionQuery || undefined,
@@ -143,13 +154,20 @@ function CandidateCatalog() {
         />
         <SearchSelect
           label="Менеджер кандидата"
-          value={value("managerId")}
+          placeholder="Все менеджеры"
+          value={isAllManagers ? undefined : effectiveManagerId}
+          selectedLabel={
+            isAllManagers
+              ? undefined
+              : managers.data?.items.find((item) => item.id === effectiveManagerId)
+                  ?.name
+          }
           options={(managers.data?.items ?? []).map((item) => ({
             value: item.id,
             label: item.name,
           }))}
           onSearchChange={setManagerQuery}
-          onChange={(managerId) => commit({ managerId })}
+          onChange={(managerId) => commit({ managerId: managerId ?? "all" })}
           isLoading={managers.isLoading}
           isError={managers.isError}
           onRetry={() => void managers.refetch()}
