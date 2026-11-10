@@ -299,6 +299,7 @@ export class DocumentReadService {
     const candidate = toCandidateProfile(owner)!;
     await this.enrichReviewCandidates(principal, [candidate]);
     const previous =
+      owner.erpUid ||
       owner.code1c ||
       owner.personUid ||
       owner.isReemployment ||
@@ -542,7 +543,7 @@ export class DocumentReadService {
       ),
       ...(stage !== undefined ? { stageDocuments } : { documentGroups }),
       stages: allStages,
-      ...(isIg && this.enrichment ? { enrichment: await this.enrichment.status(id) } : {}),
+      ...((isIg || owner.erpUid) && this.enrichment ? { enrichment: await this.enrichment.status(id) } : {}),
     };
   }
 

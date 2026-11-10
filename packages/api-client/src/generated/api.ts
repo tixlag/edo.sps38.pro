@@ -4264,7 +4264,7 @@ export function useGetMe<
 }
 
 /**
- * @summary Prioritize loading the IG employee profile and document history
+ * @summary Prioritize loading candidate or employee documents
  */
 export const requestCandidateEnrichment = (
   candidateId: string,
@@ -4321,7 +4321,7 @@ export type RequestCandidateEnrichmentMutationResult = NonNullable<
 export type RequestCandidateEnrichmentMutationError = ApiErrorDto;
 
 /**
- * @summary Prioritize loading the IG employee profile and document history
+ * @summary Prioritize loading candidate or employee documents
  */
 export const useRequestCandidateEnrichment = <
   TError = ApiErrorDto,

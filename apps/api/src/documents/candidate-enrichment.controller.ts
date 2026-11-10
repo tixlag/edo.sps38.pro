@@ -26,10 +26,13 @@ export class CandidateEnrichmentController {
   constructor(private readonly queue: IgEnrichmentQueueService) {}
   @Post(":candidateId/enrichment")
   @HttpCode(202)
-  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_IG)
+  @RequireAccessRule(
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
   @ApiOperation({
     operationId: "requestCandidateEnrichment",
-    summary: "Prioritize loading the IG employee profile and document history",
+    summary: "Prioritize loading candidate or employee documents",
   })
   @ApiResponse({ status: 202, type: CandidateEnrichmentDto })
   request(

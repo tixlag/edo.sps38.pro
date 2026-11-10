@@ -19,6 +19,7 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 vi.mock("@edo/api-client", () => ({
   getGetCandidateDetailsQueryKey: (id: string) => ["candidate", id],
+  getListCandidatePreviousDocumentsQueryKey: (id: string) => ["previous", id],
   getListReviewCandidatesQueryKey: () => ["review"],
   getListCandidateReviewQueueQueryKey: () => ["queue"],
   getListIgArrivalRegistryGroupsQueryKey: () => ["groups"],
@@ -409,4 +410,10 @@ describe("priority document loading", () => {
     await render(false, undefined);
     expect(mock.request).not.toHaveBeenCalled();
   });
+  it("refreshes RU documents on opening even when an old snapshot exists and no person is linked", async () => {
+    mock.data = { candidate: { id: "c1", reviewGroup: "RU", erpUid: "erp-ru", personUid: null, code1c: null }, documents: [], enrichment: { status: "READY", profileReady: true, documentsReady: true } };
+    await render(false, undefined);
+    expect(mock.request).toHaveBeenCalledWith({ candidateId: "c1" }, expect.anything());
+  });
+
 });

@@ -11,12 +11,12 @@ import { Prisma, type Candidate } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { DocumentAccessService } from "./document-access.service";
-import { requireReviewGroup } from "./review-group";
+import { candidateReviewGroup, requireReviewGroup } from "./review-group";
 import { IgProfileEnrichmentService } from "./ig-profile-enrichment.service";
 import { CandidateEnrichmentDto } from "./dto/candidate-enrichment.dto";
 
 const LEASE_MS = 120_000;
-const eligible: Prisma.CandidateWhereInput = {
+const igEligible: Prisma.CandidateWhereInput = {
   reviewGroup: "IG",
   code1c: { not: null },
   personUid: { not: null },
@@ -24,7 +24,17 @@ const eligible: Prisma.CandidateWhereInput = {
   erpUid: null,
   OR: [{ citizenship: null }, { citizenship: { not: "ru" } }],
 };
+const eligible: Prisma.CandidateWhereInput = {
+  OR: [
+    igEligible,
+    {
+      erpUid: { not: null },
+      OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }],
+    },
+  ],
+};
 function profileReady(c: Candidate) {
+  if (candidateReviewGroup(c) === "RU") return !!c.erpUid;
   return !!(
     c.profileSyncedAt &&
     c.positionCode &&
@@ -47,10 +57,16 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
   ) {}
   onModuleInit() {
-    if (this.config.get<string>("EDO_ARRIVAL_SYNC_ENABLED") !== "true") return;
+    const backgroundEnabled =
+      this.config.get<string>("EDO_ARRIVAL_SYNC_ENABLED") === "true";
     const tick = () => {
       for (const lane of ["priority", "background"] as const) {
-        if (this.running.has(lane) || this.stopping) continue;
+        if (
+          (lane === "background" && !backgroundEnabled) ||
+          this.running.has(lane) ||
+          this.stopping
+        )
+          continue;
         const work = this.runLane(lane)
           .catch(() =>
             this.logger.warn("Employee enrichment failed; retry scheduled"),
@@ -97,18 +113,22 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
     id: string,
     principal: AuthPrincipal,
   ): Promise<CandidateEnrichmentDto> {
-    requireReviewGroup(principal, "IG");
     const c = await this.access.candidate(id, principal);
+    const group = candidateReviewGroup(c);
+    requireReviewGroup(principal, group);
     if (
-      c.reviewGroup !== "IG" ||
-      !c.code1c ||
-      !c.personUid ||
-      c.chatUuid ||
-      c.erpUid ||
-      c.citizenship?.toLowerCase() === "ru"
+      group === "RU"
+        ? !c.erpUid
+        : c.reviewGroup !== "IG" ||
+          !c.code1c ||
+          !c.personUid ||
+          c.chatUuid ||
+          c.erpUid ||
+          c.citizenship?.toLowerCase() === "ru"
     )
       throw new ConflictException("ERP_PERSON_IDENTITY_REQUIRED");
-    if (profileReady(c) && c.previousDocumentsSyncedAt) return this.status(id);
+    if (group === "IG" && profileReady(c) && c.previousDocumentsSyncedAt)
+      return this.status(id);
     // Upsert only promotes priority; reopening never resets attempts or cooldown.
     await this.prisma.$transaction(async (tx) => {
       await tx.igEnrichmentJob.upsert({
@@ -159,7 +179,7 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
         const c = await tx.candidate.findFirst({
           where: {
             AND: [
-              eligible,
+              igEligible,
               {
                 OR: [
                   { profileSyncedAt: null },

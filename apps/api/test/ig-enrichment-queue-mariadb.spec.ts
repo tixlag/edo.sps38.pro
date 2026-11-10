@@ -293,4 +293,22 @@ describe.skipIf(!db)("durable employee enrichment", () => {
       await prisma.candidate.delete({ where: { id: c.id } });
     }
   });
+  it("loads RU documents without a person link, keeps direction rights, and refreshes a ready snapshot", async () => {
+    const c = await prisma.candidate.create({ data: { identityKey: `ru-docs-${randomUUID()}`, erpUid: randomUUID(), reviewGroup: "RU", citizenship: "ru", personUid: null, code1c: null } });
+    const ru = { accessRules: { "20002": [] } } as never;
+    try {
+      await expect(queue.request(c.id, principal)).rejects.toThrow();
+      expect(await queue.request(c.id, ru)).toMatchObject({ status: "PENDING", profileReady: true, documentsReady: false });
+      enrich.mockImplementationOnce(async (candidateId, options) => {
+        await options.assertLease();
+        await prisma.candidate.update({ where: { id: candidateId }, data: { previousDocumentsSyncedAt: new Date() } });
+        return { profileSynced: true, documentsSynced: true };
+      });
+      await queue.runLane("priority");
+      expect(await queue.status(c.id)).toMatchObject({ status: "READY", documentsReady: true });
+      expect(await queue.request(c.id, ru)).toMatchObject({ status: "PENDING", documentsReady: true });
+      expect(await prisma.igEnrichmentJob.count({ where: { candidateId: c.id } })).toBe(1);
+    } finally { await prisma.candidate.delete({ where: { id: c.id } }); }
+  });
+
 });

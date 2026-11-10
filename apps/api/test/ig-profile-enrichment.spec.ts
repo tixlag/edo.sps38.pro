@@ -361,4 +361,15 @@ describe("IgProfileEnrichmentService", () => {
     expect(await service.enrichCandidate(row.id)).toEqual({ profileSynced: false, documentsSynced: true });
   });
 
+  it("refreshes RU candidate documents without a physical person or employee code", async () => {
+    const row = { id: "ru-new", erpUid: "22222222-2222-4222-8222-222222222222", personUid: null, code1c: null, citizenship: "ru", reviewGroup: "RU", chatUuid: null, previousDocumentsSyncedAt: new Date() };
+    const sync = vi.fn().mockResolvedValue({ items: [{ id: "candidate|20261110|passport" }] });
+    const service = new IgProfileEnrichmentService(
+      { candidate: { findUniqueOrThrow: vi.fn().mockResolvedValue(row) } } as never,
+      {} as never, {} as never, {} as never, {} as never, { syncPreviousDocuments: sync } as never,
+    );
+    expect(await service.enrichCandidate(row.id)).toEqual({ profileSynced: true, documentsSynced: true });
+    expect(sync).toHaveBeenCalledWith(row.id, "system:profile-enrichment", "", row, undefined, undefined);
+  });
+
 });
