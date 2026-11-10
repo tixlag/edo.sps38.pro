@@ -1,3 +1,4 @@
+import { CandidateEnrichmentDto } from "./candidate-enrichment.dto";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { DocumentStatus, OcrJobStatus } from "@prisma/client";
 import {
@@ -516,6 +517,8 @@ export class CandidateStageItemDto {
   previousDocuments!: PreviousDocumentAvailabilityDto[];
 }
 export class CandidateDetailsDto {
+  @ApiPropertyOptional({ type: CandidateEnrichmentDto })
+  enrichment?: CandidateEnrichmentDto;
   @ApiProperty({ type: CandidateProfileDto }) candidate!: CandidateProfileDto;
   @ApiProperty({ type: [CandidateDocumentSummaryDto] })
   documents!: CandidateDocumentSummaryDto[];

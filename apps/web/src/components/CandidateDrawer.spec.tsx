@@ -5,6 +5,8 @@ import { CandidateDrawer } from "./CandidateDrawer";
 
 const mock = vi.hoisted(() => ({
   query: vi.fn(),
+  request: vi.fn(),
+  invalidate: vi.fn(),
   navigate: vi.fn(),
   data: null as unknown,
 }));
@@ -12,7 +14,20 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mock.navigate,
   useSearch: () => ({ candidate: "c1", candidateStage: "1" }),
 }));
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: mock.invalidate }),
+}));
 vi.mock("@edo/api-client", () => ({
+  getGetCandidateDetailsQueryKey: (id: string) => ["candidate", id],
+  getListReviewCandidatesQueryKey: () => ["review"],
+  getListCandidateReviewQueueQueryKey: () => ["queue"],
+  getListIgArrivalRegistryGroupsQueryKey: () => ["groups"],
+  getListIgArrivalRegistryParticipationsQueryKey: () => ["people"],
+  useRequestCandidateEnrichment: () => ({
+    mutate: mock.request,
+    isPending: false,
+    isError: false,
+  }),
   useGetCandidateDetails: (...args: unknown[]) => {
     mock.query(...args);
     return { data: mock.data };
@@ -191,7 +206,11 @@ describe("stage candidate drawer", () => {
       },
     };
     const view = await render();
-    expect(mock.query).toHaveBeenCalledWith("c1", { stage: "1" });
+    expect(mock.query).toHaveBeenCalledWith(
+      "c1",
+      { stage: "1" },
+      expect.anything(),
+    );
     expect(view.textContent).toContain("Этап 1");
     expect(view.textContent).toContain("Паспорт");
     expect(view.textContent).toContain("Справка");
@@ -255,7 +274,7 @@ describe("stage candidate drawer", () => {
       },
     };
     const view = await render(false, "");
-    expect(mock.query).toHaveBeenCalledWith("c1", undefined);
+    expect(mock.query).toHaveBeenCalledWith("c1", undefined, expect.anything());
     const sections = view.querySelectorAll("section");
     expect(sections[0].textContent).toContain("Обязательные");
     expect(sections[0].textContent).toContain("Паспорт");
@@ -350,5 +369,44 @@ describe("stage candidate drawer", () => {
         params: { documentId: "doc-pass" },
       }),
     );
+  });
+});
+
+describe("priority document loading", () => {
+  it("requests the opened employee ahead of the background queue and polls while pending", async () => {
+    mock.data = {
+      candidate: { id: "c1", reviewGroup: "IG", fullName: "Алиев" },
+      documents: [],
+      enrichment: {
+        status: "PENDING",
+        profileReady: false,
+        documentsReady: false,
+        retryAt: null,
+      },
+    };
+    const view = await render(false, undefined);
+    expect(mock.request).toHaveBeenCalledWith(
+      { candidateId: "c1" },
+      expect.anything(),
+    );
+    expect(view.textContent).toContain("Загружаем профиль и документы");
+    const options = mock.query.mock.calls.at(-1)![2];
+    expect(options.query.refetchInterval({ state: { data: mock.data } })).toBe(
+      5000,
+    );
+    expect(
+      options.query.refetchInterval({
+        state: { data: { enrichment: { status: "READY" } } },
+      }),
+    ).toBe(false);
+  });
+  it("does not enqueue complete employees or RU profiles", async () => {
+    mock.data = {
+      candidate: { id: "c1", reviewGroup: "IG" },
+      documents: [],
+      enrichment: { status: "READY", profileReady: true, documentsReady: true },
+    };
+    await render(false, undefined);
+    expect(mock.request).not.toHaveBeenCalled();
   });
 });

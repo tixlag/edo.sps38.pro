@@ -1024,7 +1024,7 @@ export function ReviewPage({
         </div>
       )}
       {reviewGroup === "IG" && (
-        <div className="my-4 flex items-center gap-2 border-b border-[var(--border)] pb-3">
+        <div className="my-4 flex flex-wrap items-center gap-2 border-b border-[var(--border)] pb-3">
           <Button
             size="sm"
             variant={igView === "arrivals" ? "default" : "outline"}

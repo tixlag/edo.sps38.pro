@@ -1,3 +1,4 @@
+import { IgEnrichmentQueueService } from "./ig-enrichment-queue.service";
 import {
   candidateReviewGroup,
   IG_PASSPORT_LATIN_FIELDS,
@@ -180,6 +181,7 @@ export class DocumentReadService {
     private readonly storage: StorageService,
     @Optional() private readonly config?: ConfigService,
     @Optional() private readonly catalog?: DocumentCatalogService,
+    @Optional() private readonly enrichment?: IgEnrichmentQueueService,
   ) {}
 
   candidateDto(c: {
@@ -309,7 +311,7 @@ export class DocumentReadService {
     const previousUids = new Set(
       usablePreviousUids(
         previous.filter(
-          (doc) => doc.status === "CONFIRMED" && doc.originalAvailable,
+          (doc) => doc.status === "CONFIRMED" && doc.originalAvailable && (!isIg || doc.originalVerified),
         ),
         isIg,
       ),
@@ -540,6 +542,7 @@ export class DocumentReadService {
       ),
       ...(stage !== undefined ? { stageDocuments } : { documentGroups }),
       stages: allStages,
+      ...(isIg && this.enrichment ? { enrichment: await this.enrichment.status(id) } : {}),
     };
   }
 
@@ -1309,6 +1312,7 @@ export class DocumentReadService {
         candidateId: state.currentCandidateId,
         status: "CONFIRMED",
         originalAvailable: true,
+        OR: [{ originalVerified: true }, { candidate: reviewGroupWhere("RU") }],
       },
     });
     const current = new Set(
@@ -1708,6 +1712,7 @@ export class DocumentReadService {
             candidateId: { in: igIds },
             status: "CONFIRMED",
             originalAvailable: true,
+        OR: [{ originalVerified: true }, { candidate: reviewGroupWhere("RU") }],
           },
         })
       : [];

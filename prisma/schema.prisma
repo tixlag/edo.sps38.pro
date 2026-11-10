@@ -384,6 +384,7 @@ model LkSyncState {
 }
 
 model Candidate {
+  enrichmentJob IgEnrichmentJob?
   igArrivalPerson IgArrivalPerson?
   igCompletedAt DateTime? @db.DateTime(3)
   igCompletionVerified Boolean @default(false)
@@ -1100,6 +1101,8 @@ enum CandidateRecheckStatus {
 }
 
 model CandidatePreviousDocument {
+  sourceFingerprint String? @db.Char(64)
+  verificationCheckedAt DateTime? @db.DateTime(3)
   originalVerified Boolean @default(false)
   id String @id @default(cuid()) @db.VarChar(64)
   candidateId String @db.VarChar(64)
@@ -1225,6 +1228,8 @@ model IgArrivalIssue {
 }
 
 model IgArrivalSyncState {
+  lastScanCompletedAt DateTime? @db.DateTime(3)
+  lastScanHadErrors Boolean @default(false)
   id String @id @db.VarChar(32)
   factsFinishedGeneration BigInt?
   factsScanGeneration BigInt?
@@ -1236,4 +1241,26 @@ model IgArrivalSyncState {
   generation BigInt @default(0)
   updatedAt DateTime @updatedAt @db.DateTime(3)
   @@map("ig_arrival_sync_state")
+}
+
+// Durable, coalesced per-person enrichment; no broker or ERP mutation is involved.
+model IgEnrichmentJob {
+  candidateId String @id @db.VarChar(64)
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  status String @default("PENDING") @db.VarChar(16)
+  priority Boolean @default(false)
+  requestedAt DateTime @default(now()) @db.DateTime(3)
+  nextAttemptAt DateTime @default(now()) @db.DateTime(3)
+  attempts Int @default(0)
+  leaseToken String? @db.Char(36)
+  leaseExpiresAt DateTime? @db.DateTime(3)
+  @@index([priority, status, nextAttemptAt])
+  @@map("ig_enrichment_jobs")
+}
+// Exactly one background and one interactive lane across all API replicas.
+model IgEnrichmentLane {
+  id String @id @db.VarChar(16)
+  leaseToken String? @db.Char(36)
+  leaseExpiresAt DateTime? @db.DateTime(3)
+  @@map("ig_enrichment_lanes")
 }

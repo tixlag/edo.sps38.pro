@@ -144,7 +144,7 @@ describe("IgProfileEnrichmentService DI & Integration (FIX-01)", () => {
     expect(previousDocsSyncMock.syncPreviousDocuments).not.toHaveBeenCalled();
   });
 
-  it("does not falsely mark sync as completed when ERP candidate endpoint is unavailable", async () => {
+  it("keeps the profile incomplete while loading existing document history when the candidate endpoint is unavailable", async () => {
     const candidate = {
       id: "cand-di-3",
       reviewGroup: "IG",
@@ -195,8 +195,8 @@ describe("IgProfileEnrichmentService DI & Integration (FIX-01)", () => {
 
     const service = moduleRef.get<IgProfileEnrichmentService>(IgProfileEnrichmentService);
 
-    await expect(service.enrichCandidate("cand-di-3")).rejects.toThrow("ERP connection timed out");
+    await expect(service.enrichCandidate("cand-di-3")).resolves.toEqual({ profileSynced: false, documentsSynced: true });
     expect(prismaMock.candidate.update).not.toHaveBeenCalled();
-    expect(previousDocsSyncMock.syncPreviousDocuments).not.toHaveBeenCalled();
+    expect(previousDocsSyncMock.syncPreviousDocuments).toHaveBeenCalledWith("cand-di-3", "system:profile-enrichment");
   });
 });

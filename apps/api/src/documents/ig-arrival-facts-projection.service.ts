@@ -625,6 +625,8 @@ export class IgArrivalFactsProjectionService {
           factsScanGeneration: null,
           factsScanIncomplete: false,
           completedAt: new Date(),
+          lastScanCompletedAt: new Date(),
+          lastScanHadErrors: false,
           cursor: null,
         },
       });

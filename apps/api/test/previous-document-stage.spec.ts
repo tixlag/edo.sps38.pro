@@ -38,6 +38,7 @@ function setup(group: "RU" | "IG", expired = false, currentStatus?: string) {
     status: "CONFIRMED",
     fields: {},
     originalAvailable: true,
+    originalVerified: group === "IG",
     expiresAt: new Date(expired ? "2000-01-01" : "2100-01-01"),
     reviewedAt: new Date(),
   };

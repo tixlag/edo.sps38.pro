@@ -89,6 +89,8 @@ export class IgArrivalRegistryParticipationsQueryDto extends IgArrivalRegistryQu
   groupKey!: string;
 }
 export class IgArrivalRegistrySyncDto {
+  @ApiProperty({ enum: ["NOT_STARTED", "IN_PROGRESS", "DEGRADED", "COMPLETE"] })
+  status!: "NOT_STARTED" | "IN_PROGRESS" | "DEGRADED" | "COMPLETE";
   @ApiProperty({ type: String, nullable: true, format: "date-time" })
   lastCompletedAt!: string | null;
 }

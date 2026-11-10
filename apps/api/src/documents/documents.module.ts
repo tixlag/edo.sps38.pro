@@ -1,3 +1,5 @@
+import { CandidateEnrichmentController } from "./candidate-enrichment.controller";
+import { IgEnrichmentQueueService } from "./ig-enrichment-queue.service";
 import { ErpWorkspaceClient } from "./erp-workspace.client";
 import { Module } from "@nestjs/common";
 import { RedisModule } from "../redis/redis.module";
@@ -72,6 +74,7 @@ import { DocumentNotificationService } from "./document-notification.service";
     LkModule,
   ],
   controllers: [
+    CandidateEnrichmentController,
     BrowserCandidateDocumentsController,
     MyCandidateDocumentsController,
     OwnDocumentHistoryController,
@@ -94,6 +97,7 @@ import { DocumentNotificationService } from "./document-notification.service";
     ErpCandidateClient,
   ],
   providers: [
+    IgEnrichmentQueueService,
     ErpWorkspaceClient,
     CandidateDocumentsService,
     CandidateContextService,
