@@ -15,7 +15,8 @@ export function useLiveDocumentVersion(documentId: string, version: number) {
         ["UPLOADING", "QUEUED", "RUNNING"].includes(
           query.state.data?.job?.status ?? "",
         ) ||
-        ["UPLOADED", "OCR_PENDING"].includes(query.state.data?.status ?? "")
+        ["UPLOADED", "OCR_PENDING"].includes(query.state.data?.status ?? "") ||
+        ["PENDING", "SENDING"].includes(query.state.data?.delivery?.status ?? "")
           ? 3000
           : false,
     },

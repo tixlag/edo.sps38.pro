@@ -358,6 +358,106 @@
         ]
       }
     },
+    "/api/v1/notifications/my": {
+      "get": {
+        "operationId": "getMyNotifications",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "all",
+              "type": "string",
+              "enum": [
+                "all",
+                "unread",
+                "read"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Список уведомлений с количеством непрочитанных",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Получить список уведомлений текущего пользователя из ЛК",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/read": {
+      "post": {
+        "operationId": "markNotificationsRead",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkNotificationsReadDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Количество отмеченных уведомлений",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkNotificationsReadResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Отметить уведомления текущего пользователя как прочитанные",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
     "/api/v1/me": {
       "get": {
         "operationId": "getMe",
@@ -385,6 +485,103 @@
         "summary": "Current LK profile, permissions and location scope",
         "tags": [
           "me"
+        ]
+      }
+    },
+    "/api/v1/candidates/enrichment-batch": {
+      "post": {
+        "operationId": "requestCandidateEnrichmentBatch",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateEnrichmentBatchRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateEnrichmentBatchDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Refresh document snapshots for the visible RU candidate page",
+        "tags": [
+          "documents"
         ]
       }
     },
@@ -478,7 +675,7 @@
             "access-jwt": []
           }
         ],
-        "summary": "Prioritize loading the IG employee profile and document history",
+        "summary": "Prioritize loading candidate or employee documents",
         "tags": [
           "documents"
         ]
@@ -765,7 +962,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentListDto"
+                  "$ref": "#/components/schemas/OwnDocumentListDto"
                 }
               }
             }
@@ -3814,6 +4011,153 @@
           }
         ],
         "summary": "List candidate documents",
+        "tags": [
+          "documents"
+        ]
+      },
+      "post": {
+        "operationId": "uploadReviewerCandidateDocument",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "May also be supplied as the idempotencyKey multipart field",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "documentTypeCode",
+                  "files[]",
+                  "idempotencyKey"
+                ],
+                "properties": {
+                  "idempotencyKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "documentTypeCode": {
+                    "type": "string"
+                  },
+                  "files[]": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadAcceptedDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Upload a document as the verified reviewer for OCR and review",
         "tags": [
           "documents"
         ]
@@ -8352,6 +8696,472 @@
         ]
       }
     },
+    "/api/v1/candidates/{candidateId}/document-types": {
+      "get": {
+        "operationId": "listReviewerCandidateDocumentTypes",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDocumentTypesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Applicable types for reviewer uploads",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/candidates/{candidateId}/previous-documents/{documentId}": {
+      "get": {
+        "operationId": "getPreviousDocumentDetails",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviousDocumentDetailsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Original ERP requisites and local reviewer corrections",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/candidates/{candidateId}/previous-documents/{documentId}/fields": {
+      "patch": {
+        "operationId": "editPreviousDocumentFields",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditDocumentFieldsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviousDocumentDetailsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Save local-only corrections without modifying ERP",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/candidates/{candidateId}/documents/{documentId}/versions/{version}/delivery": {
+      "post": {
+        "operationId": "retryReviewerDocumentDelivery",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentVersionDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Retry an approved reviewer upload using its existing ERP delivery key",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/v1/expirations/summary": {
       "get": {
         "operationId": "getExpirationsSummary",
@@ -8464,106 +9274,6 @@
         "summary": "Получить список документов с истекающим сроком действия",
         "tags": [
           "expirations"
-        ]
-      }
-    },
-    "/api/v1/notifications/my": {
-      "get": {
-        "operationId": "getMyNotifications",
-        "parameters": [
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 100,
-              "default": 20,
-              "type": "number"
-            }
-          },
-          {
-            "name": "offset",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 0,
-              "default": 0,
-              "type": "number"
-            }
-          },
-          {
-            "name": "status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": "all",
-              "type": "string",
-              "enum": [
-                "all",
-                "unread",
-                "read"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Список уведомлений с количеством непрочитанных",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotificationsListResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "access-jwt": []
-          }
-        ],
-        "summary": "Получить список уведомлений текущего пользователя из ЛК",
-        "tags": [
-          "notifications"
-        ]
-      }
-    },
-    "/api/v1/notifications/read": {
-      "post": {
-        "operationId": "markNotificationsRead",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MarkNotificationsReadDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Количество отмеченных уведомлений",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MarkNotificationsReadResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "access-jwt": []
-          }
-        ],
-        "summary": "Отметить уведомления текущего пользователя как прочитанные",
-        "tags": [
-          "notifications"
         ]
       }
     },
@@ -17087,6 +17797,137 @@
           "total"
         ]
       },
+      "NotificationTargetDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Тип цели"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL перехода"
+          },
+          "meta": {
+            "type": "object",
+            "description": "Метаданные цели"
+          }
+        }
+      },
+      "NotificationItemDto": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "description": "UUID уведомления"
+          },
+          "title": {
+            "type": "string",
+            "description": "Заголовок"
+          },
+          "content": {
+            "type": "string",
+            "description": "Текст (поддерживает Markdown)"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "toast",
+              "modal"
+            ],
+            "description": "Тип отображения"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "Дата создания (ISO 8601)"
+          },
+          "readAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Дата прочтения (ISO 8601 или null)"
+          },
+          "authorName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Имя автора"
+          },
+          "authorAvatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL аватара автора"
+          },
+          "target": {
+            "nullable": true,
+            "description": "Целевое действие",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationTargetDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "uuid",
+          "title",
+          "content",
+          "type",
+          "createdAt",
+          "readAt"
+        ]
+      },
+      "NotificationsListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Список уведомлений",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationItemDto"
+            }
+          },
+          "unreadCount": {
+            "type": "number",
+            "description": "Количество непрочитанных уведомлений"
+          },
+          "total": {
+            "type": "number",
+            "description": "Общее количество уведомлений"
+          }
+        },
+        "required": [
+          "items",
+          "unreadCount",
+          "total"
+        ]
+      },
+      "MarkNotificationsReadDto": {
+        "type": "object",
+        "properties": {
+          "notificationUuids": {
+            "description": "Список UUID уведомлений для отметки прочитанными",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "all": {
+            "type": "boolean",
+            "description": "Отметить все уведомления пользователя прочитанными"
+          }
+        }
+      },
+      "MarkNotificationsReadResponseDto": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "number",
+            "description": "Количество обновлённых записей"
+          }
+        },
+        "required": [
+          "updated"
+        ]
+      },
       "LocationScopeDto": {
         "type": "object",
         "properties": {
@@ -17209,6 +18050,36 @@
           "message",
           "correlationId",
           "path"
+        ]
+      },
+      "CandidateEnrichmentBatchRequestDto": {
+        "type": "object",
+        "properties": {
+          "candidateIds": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "candidateIds"
+        ]
+      },
+      "CandidateEnrichmentBatchDto": {
+        "type": "object",
+        "properties": {
+          "pendingCandidateIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "pendingCandidateIds"
         ]
       },
       "CandidateEnrichmentDto": {
@@ -17967,6 +18838,13 @@
             "nullable": true,
             "description": "Verified JWT UUID of the reviewer"
           },
+          "uploadOrigin": {
+            "type": "string",
+            "enum": [
+              "CANDIDATE",
+              "REVIEWER"
+            ]
+          },
           "ocrStatus": {
             "nullable": true,
             "allOf": [
@@ -18076,7 +18954,7 @@
           "candidate"
         ]
       },
-      "DocumentListDto": {
+      "OwnDocumentListDto": {
         "type": "object",
         "properties": {
           "items": {
@@ -18084,10 +18962,18 @@
             "items": {
               "$ref": "#/components/schemas/DocumentDto"
             }
+          },
+          "reusedDocumentUids": {
+            "description": "Confirmed reusable previous document types",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
-          "items"
+          "items",
+          "reusedDocumentUids"
         ]
       },
       "CandidateDocumentDraftFieldDto": {
@@ -18208,28 +19094,6 @@
         "required": [
           "context",
           "catalog"
-        ]
-      },
-      "OwnDocumentListDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DocumentDto"
-            }
-          },
-          "reusedDocumentUids": {
-            "description": "Confirmed reusable previous document types",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "items",
-          "reusedDocumentUids"
         ]
       },
       "OwnHistoricalFileDto": {
@@ -18716,6 +19580,13 @@
             "nullable": true,
             "description": "Verified JWT UUID of the reviewer"
           },
+          "uploadOrigin": {
+            "type": "string",
+            "enum": [
+              "CANDIDATE",
+              "REVIEWER"
+            ]
+          },
           "reviewGroup": {
             "allOf": [
               {
@@ -18965,6 +19836,13 @@
             "type": "string",
             "nullable": true,
             "description": "Verified JWT UUID of the reviewer"
+          },
+          "uploadOrigin": {
+            "type": "string",
+            "enum": [
+              "CANDIDATE",
+              "REVIEWER"
+            ]
           },
           "ocrStatus": {
             "nullable": true,
@@ -19275,6 +20153,20 @@
         "required": [
           "candidate",
           "documents"
+        ]
+      },
+      "DocumentListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "EmployeeDocumentListDto": {
@@ -19672,6 +20564,14 @@
             "type": "string",
             "nullable": true
           },
+          "citizenship": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionName": {
+            "type": "string",
+            "nullable": true
+          },
           "arrivalDate": {
             "type": "string",
             "nullable": true,
@@ -19776,6 +20676,8 @@
           "action",
           "candidateId",
           "fullName",
+          "citizenship",
+          "positionName",
           "arrivalDate",
           "arrivalDateTime",
           "locationUid",
@@ -20291,6 +21193,32 @@
           "items"
         ]
       },
+      "PreviousDocumentDetailsDto": {
+        "type": "object",
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/PreviousDocumentAvailabilityDto"
+          },
+          "revision": {
+            "type": "number"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentFieldDto"
+            }
+          },
+          "hasLocalEdits": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "document",
+          "revision",
+          "fields",
+          "hasLocalEdits"
+        ]
+      },
       "ExpirationSummaryResponseDto": {
         "type": "object",
         "properties": {
@@ -20442,137 +21370,6 @@
         "required": [
           "items",
           "total"
-        ]
-      },
-      "NotificationTargetDto": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "Тип цели"
-          },
-          "url": {
-            "type": "string",
-            "description": "URL перехода"
-          },
-          "meta": {
-            "type": "object",
-            "description": "Метаданные цели"
-          }
-        }
-      },
-      "NotificationItemDto": {
-        "type": "object",
-        "properties": {
-          "uuid": {
-            "type": "string",
-            "description": "UUID уведомления"
-          },
-          "title": {
-            "type": "string",
-            "description": "Заголовок"
-          },
-          "content": {
-            "type": "string",
-            "description": "Текст (поддерживает Markdown)"
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "toast",
-              "modal"
-            ],
-            "description": "Тип отображения"
-          },
-          "createdAt": {
-            "type": "string",
-            "description": "Дата создания (ISO 8601)"
-          },
-          "readAt": {
-            "type": "string",
-            "nullable": true,
-            "description": "Дата прочтения (ISO 8601 или null)"
-          },
-          "authorName": {
-            "type": "string",
-            "nullable": true,
-            "description": "Имя автора"
-          },
-          "authorAvatarUrl": {
-            "type": "string",
-            "nullable": true,
-            "description": "URL аватара автора"
-          },
-          "target": {
-            "nullable": true,
-            "description": "Целевое действие",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/NotificationTargetDto"
-              }
-            ]
-          }
-        },
-        "required": [
-          "uuid",
-          "title",
-          "content",
-          "type",
-          "createdAt",
-          "readAt"
-        ]
-      },
-      "NotificationsListResponseDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "description": "Список уведомлений",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/NotificationItemDto"
-            }
-          },
-          "unreadCount": {
-            "type": "number",
-            "description": "Количество непрочитанных уведомлений"
-          },
-          "total": {
-            "type": "number",
-            "description": "Общее количество уведомлений"
-          }
-        },
-        "required": [
-          "items",
-          "unreadCount",
-          "total"
-        ]
-      },
-      "MarkNotificationsReadDto": {
-        "type": "object",
-        "properties": {
-          "notificationUuids": {
-            "description": "Список UUID уведомлений для отметки прочитанными",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "all": {
-            "type": "boolean",
-            "description": "Отметить все уведомления пользователя прочитанными"
-          }
-        }
-      },
-      "MarkNotificationsReadResponseDto": {
-        "type": "object",
-        "properties": {
-          "updated": {
-            "type": "number",
-            "description": "Количество обновлённых записей"
-          }
-        },
-        "required": [
-          "updated"
         ]
       },
       "AnnotationPreferenceDto": {

@@ -1,16 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
-  useGetCandidateDetails,
-  getGetCandidateDetailsQueryKey,
-  useRequestCandidateEnrichment,
-  getListReviewCandidatesQueryKey,
-  getListCandidateReviewQueueQueryKey,
-  getListIgArrivalRegistryGroupsQueryKey,
-  getListIgArrivalRegistryParticipationsQueryKey,
   type CandidateProfileDto,
 } from "@edo/api-client";
+import { useCandidateDocumentSync } from "../lib/use-candidate-document-sync";
 import { Badge, Button } from "@edo/ui";
 import {
   BriefcaseBusiness,
@@ -69,62 +62,8 @@ export function CandidateDrawer({
 }: CandidateDrawerProps) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as Record<string, unknown>;
-  const client = useQueryClient();
-  const refresh = useRequestCandidateEnrichment();
-  const requested = useRef<string>();
-  const previousState = useRef<string>();
-  const docs = useGetCandidateDetails(
-    candidateId,
-    stageProp ? { stage: stageProp } : undefined,
-    {
-      query: {
-        queryKey: getGetCandidateDetailsQueryKey(
-          candidateId,
-          stageProp ? { stage: stageProp } : undefined,
-        ),
-        refetchInterval: (query) => {
-          const state = query.state.data?.enrichment?.status;
-          return state && state !== "READY" ? 5000 : false;
-        },
-      },
-    },
-  );
+  const docs = useCandidateDocumentSync(candidateId, stageProp);
   const enrichment = docs.data?.enrichment;
-  const requestLoading = () => {
-    requested.current = candidateId;
-    refresh.mutate(
-      { candidateId },
-      {
-        onSuccess: () => {
-          void docs.refetch();
-        },
-      },
-    );
-  };
-  useEffect(() => {
-    if (
-      docs.data?.candidate.reviewGroup === "IG" &&
-      enrichment &&
-      enrichment.status !== "READY" &&
-      requested.current !== candidateId
-    )
-      requestLoading();
-    if (
-      enrichment?.status === "READY" &&
-      previousState.current &&
-      previousState.current !== "READY"
-    ) {
-      for (const key of [
-        getListReviewCandidatesQueryKey(),
-        getListCandidateReviewQueueQueryKey(),
-        getListIgArrivalRegistryGroupsQueryKey(),
-        getListIgArrivalRegistryParticipationsQueryKey({ groupKey: "" }),
-      ]) {
-        void client.invalidateQueries({ queryKey: key.slice(0, 1) });
-      }
-    }
-    previousState.current = enrichment?.status;
-  }, [candidateId, enrichment?.status]);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -144,9 +83,8 @@ export function CandidateDrawer({
   }, []);
 
   const arrivalTime = formatLocalArrivalTime(arrivalContext?.arrivalDateTime);
-  const arrivalDate = arrivalTime
-    ? arrivalContext?.arrivalDateTime?.slice(0, 10)
-    : arrivalContext?.date;
+  const arrivalDate =
+    arrivalContext?.arrivalDateTime?.slice(0, 10) ?? arrivalContext?.date;
   const profile = docs.data?.candidate ?? queueProfile;
   const fullName = profile?.fullName?.trim() || null;
   const heading = fullName ?? "Профиль кандидата";
@@ -219,16 +157,7 @@ export function CandidateDrawer({
   };
 
   const handleReviewDocument = (docId: string, version?: number) => {
-    const isIg = profile?.reviewGroup === "IG";
-    const to = isIg ? "/review-ig/$documentId" : "/review/$documentId";
-    void navigate({
-      to,
-      params: { documentId: docId },
-      search: {
-        ...search,
-        version,
-      },
-    });
+    void navigate({ search: ((prev: Record<string, unknown>) => ({ ...prev, documentCandidate: candidateId, reviewerDocument: docId, previousDocument: undefined, uploadDocument: undefined, version })) as never });
   };
 
   return (
@@ -245,18 +174,18 @@ export function CandidateDrawer({
       }}
     >
       <div className="candidate-drawer-panel absolute right-0 top-0 flex h-full w-full max-w-[760px] min-[640px]:w-[720px] lg:w-[760px] flex-col bg-[var(--card)] shadow-2xl">
-        {enrichment && enrichment.status !== "READY" && (
+        {docs.synchronizing && (
           <div
             role="status"
             className="border-b border-[var(--border)] px-4 py-3 text-sm"
           >
-            {enrichment.status === "RETRY"
+            {enrichment?.status === "RETRY"
               ? "Не удалось загрузить все данные. Повторим загрузку автоматически."
-              : "Загружаем профиль и документы…"}
-            {refresh.isError && (
+              : "Синхронизация профиля и документов…"}
+            {docs.syncError && (
               <span className="ml-2">
                 Не удалось запросить загрузку.{" "}
-                <Button variant="ghost" size="sm" onClick={requestLoading}>
+                <Button variant="ghost" size="sm" onClick={docs.requestSync}>
                   Повторить
                 </Button>
               </span>
@@ -297,14 +226,16 @@ export function CandidateDrawer({
           <div className="flex shrink-0 items-center gap-3">
             <div className="flex flex-col items-end gap-1">
               <span className="text-xs font-medium text-[var(--muted-foreground)]">
-                {arrivalContext
+                {docs.synchronizing
+                  ? "Синхронизация документов…"
+                  : arrivalContext
                   ? "Обязательные документы — по этапам ниже"
                   : formatDocumentProgress(
                       profile?.approvedDocuments ?? 0,
                       profile?.requiredDocuments,
                     )}
               </span>
-              {!arrivalContext && progressPercent !== null && (
+              {!docs.synchronizing && !arrivalContext && progressPercent !== null && (
                 <span
                   role="progressbar"
                   aria-label="Прогресс подтверждения документов"
@@ -321,6 +252,7 @@ export function CandidateDrawer({
                 </span>
               )}
             </div>
+            <Button size="sm" variant="outline" onClick={() => void navigate({ search: ((prev: Record<string, unknown>) => ({ ...prev, documentCandidate: candidateId, reviewerDocument: undefined, previousDocument: undefined, uploadDocument: true, version: undefined })) as never })}>Загрузить</Button>
             <button
               ref={closeRef}
               type="button"
@@ -508,7 +440,7 @@ export function CandidateDrawer({
               </div>
             )}
 
-            {!docs.isLoading && !docs.isError && stages.length === 0 && (
+            {!docs.synchronizing && !docs.isError && stages.length === 0 && (
               <p className="text-xs text-[var(--muted-foreground)]">
                 {returnedHistory
                   ? "Возвращённых версий нет."
@@ -517,12 +449,13 @@ export function CandidateDrawer({
             )}
 
             {/* Stage Accordions */}
-            {!docs.isLoading && stages.length > 0 && (
+            {!docs.synchronizing && stages.length > 0 && (
               <div className="space-y-3">
                 {stages.map((stg, index) => (
                   <CandidateStageAccordion
                     showProgress={!arrivalContext}
                     key={`stage-${stg.stage ?? "none"}-${index}`}
+                    progress={profile?.stageProgress?.find((item) => item.stage === stg.stage)}
                     stage={stg.stage}
                     title={stg.title}
                     required={stg.required}
@@ -532,6 +465,7 @@ export function CandidateDrawer({
                     candidateId={candidateId}
                     isOpen={isStageOpen(stg.stage, index)}
                     onToggle={() => toggleStage(stg.stage, index)}
+                    onOpenPrevious={(id) => void navigate({ search: ((prev: Record<string, unknown>) => ({ ...prev, documentCandidate: candidateId, reviewerDocument: undefined, previousDocument: id, uploadDocument: undefined, version: undefined })) as never })}
                     onReviewDocument={handleReviewDocument}
                   />
                 ))}
@@ -541,6 +475,7 @@ export function CandidateDrawer({
             {/* Collapsible History Section at the bottom */}
             {!returnedHistory && (
               <CandidateDrawerHistorySection
+                onOpenPrevious={(id) => void navigate({ search: ((prev: Record<string, unknown>) => ({ ...prev, documentCandidate: candidateId, reviewerDocument: undefined, previousDocument: id, uploadDocument: undefined, version: undefined })) as never })}
                 candidateId={candidateId}
                 className="mt-6"
               />

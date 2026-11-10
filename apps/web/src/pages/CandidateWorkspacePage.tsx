@@ -1,3 +1,5 @@
+import { DocumentReviewDialog } from "../components/DocumentReviewDialog";
+import { useCandidateDocumentSync } from "../lib/use-candidate-document-sync";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Link,
@@ -11,7 +13,6 @@ import {
   useGetMe,
   getGetCandidateWorkspaceQueryKey,
   useGetCandidateWorkspace,
-  useGetDocumentInfo,
   type CandidateDocumentSummaryDto,
 } from "@edo/api-client";
 import { Badge, Button, EmptyState, StatusBadge } from "@edo/ui";
@@ -21,7 +22,6 @@ import {
   Building2,
   Calendar,
   FileText,
-  MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
   User,
@@ -33,7 +33,6 @@ import { CandidateManagement } from "../components/CandidateManagement";
 import { CandidateStageAccordion } from "../components/CandidateStageAccordion";
 import { hasAccessRule } from "../lib/audit-types";
 import { CandidateChat } from "../components/CandidateChat";
-import { DocumentReviewWorkspace } from "../components/DocumentReviewWorkspace";
 import { LkLink } from "../components/LkLink";
 import { assembleCandidateStages } from "../lib/candidate-stages";
 import {
@@ -42,8 +41,7 @@ import {
   formatDocumentProgress,
   parseReviewSearchParams,
 } from "../lib/review-groups";
-import { useLiveDocumentVersion } from "../lib/use-live-document-version";
-import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
+import { parseVersionParam } from "../lib/audit-types";
 
 function getStatusDotClass(status?: string | null): string {
   if (!status) return "bg-[var(--muted-foreground)]";
@@ -72,98 +70,6 @@ function getCandidateInitials(name?: string | null): string {
   return (parts[0]?.[0] || "К").toUpperCase();
 }
 
-function CandidateDocumentReview({
-  candidateId,
-  documentId,
-  version: requestedVersion,
-  chooseVersion,
-}: {
-  candidateId: string;
-  documentId: string;
-  version?: number;
-  chooseVersion: (version: number) => void;
-}) {
-  const info = useGetDocumentInfo(documentId);
-  const number = requestedVersion ?? info.data?.currentVersion ?? 0;
-  const correctOwner = info.data?.candidateId === candidateId;
-  const version = useLiveDocumentVersion(documentId, correctOwner ? number : 0);
-  const historic = isHistoricVersion(number, info.data?.currentVersion);
-  if (info.isLoading || (correctOwner && version.isLoading))
-    return (
-      <p role="status" className="p-4">
-        Загрузка документа…
-      </p>
-    );
-  if (info.isError || !correctOwner || version.isError)
-    return (
-      <div role="alert" className="p-4 text-sm">
-        Документ недоступен или не принадлежит этому кандидату.{" "}
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            void info.refetch();
-            void version.refetch();
-          }}
-        >
-          Повторить
-        </Button>
-      </div>
-    );
-  if (!version.data) return null;
-  const numbers = [
-    ...new Set([
-      info.data!.currentVersion,
-      ...info.data!.pendingDeliveryVersions,
-      ...(info.data!.returnedVersions?.map((v) => v.version) ?? []),
-      number,
-    ]),
-  ].sort((a, b) => b - a);
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-2 overflow-auto lg:overflow-hidden">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 text-sm">
-        <h2 className="mr-auto font-semibold">{info.data?.title}</h2>
-        <StatusBadge status={version.data.status} document />
-        <label className="text-xs">
-          Версия{" "}
-          <select
-            aria-label="Версия документа"
-            value={number}
-            onChange={(event) => chooseVersion(Number(event.target.value))}
-            className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1"
-          >
-            {numbers.map((v) => (
-              <option key={v} value={v}>
-                {v}
-                {v === info.data?.currentVersion ? " — текущая" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {historic && (
-        <p role="status" className="rounded-md bg-[var(--muted)] p-2 text-xs">
-          Историческая версия {number}. Изменение запрещено.{" "}
-          <button
-            onClick={() => chooseVersion(info.data!.currentVersion)}
-            className="underline"
-          >
-            Открыть актуальную версию
-          </button>
-        </p>
-      )}
-      <div className="min-h-0 flex-1">
-        <DocumentReviewWorkspace
-          key={`${documentId}:${number}`}
-          candidateId={candidateId}
-          data={version.data}
-          readOnly={historic}
-          fitContainer
-        />
-      </div>
-    </div>
-  );
-}
 
 export function CandidateWorkspacePage() {
   const me = useGetMe();
@@ -191,7 +97,7 @@ function CandidateWorkspace() {
   const stage = /^(none|[1-9]\d{0,14})$/.test(String(search.stage ?? ""))
     ? String(search.stage)
     : undefined;
-  const details = useGetCandidateDetails(candidateId);
+  const details = useCandidateDocumentSync(candidateId);
   const stageParams = stage ? { stage } : undefined;
   const stageDetails = useGetCandidateDetails(candidateId, stageParams, {
     query: {
@@ -277,6 +183,14 @@ function CandidateWorkspace() {
       ? search.document
       : undefined;
   const version = parseVersionParam(search.version);
+  const previousDocumentId = typeof search.previousDocument === "string" ? search.previousDocument : undefined;
+  const uploading = search.uploadDocument === true;
+
+  const selectedType = details.data?.documents.find((doc) => doc.id === documentId)?.documentTypeCode;
+  const approvedErpDocument = profile?.reviewGroup !== "IG" && search.reviewUpload !== true
+    ? details.data?.previousDocuments?.find((doc) => doc.documentTypeCode === selectedType && doc.source === "ERP" && doc.state === "REUSED" && doc.originalAvailable)
+    : undefined;
+
   const queueSearch = { ...parseReviewSearchParams(search, "ALL") };
   delete queueSearch.candidate;
   const openDocument = (
@@ -296,6 +210,9 @@ function CandidateWorkspace() {
         ...prev,
         document: docId,
         version: ver,
+        previousDocument: undefined,
+        uploadDocument: undefined,
+        reviewUpload: undefined,
       }),
     });
   };
@@ -346,8 +263,11 @@ function CandidateWorkspace() {
       return stages.reduce(
         (sum, s) =>
           sum +
-          s.required.documents.length +
-          s.additional.documents.length,
+          new Set([
+            ...s.required.documents.map((doc) => doc.documentTypeCode ?? doc.id),
+            ...s.additional.documents.map((doc) => doc.documentTypeCode ?? doc.id),
+            ...s.previousDocuments.map((doc) => doc.documentTypeCode),
+          ]).size,
         0,
       );
     }
@@ -396,7 +316,7 @@ function CandidateWorkspace() {
             onClick={() => setMobilePanel("documents")}
           >
             <FileText size={15} />
-            Документы{details.data ? ` (${totalDocCount})` : ""}
+            Документы{details.data && !details.synchronizing ? ` (${totalDocCount})` : ""}
           </Button>
         </div>
       </div>
@@ -666,54 +586,12 @@ function CandidateWorkspace() {
           ) : (
             details.data && (
               <>
-                {documentId && (
-                  <div className="flex shrink-0 items-center">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        void navigate({
-                          to: "/review/candidates/$candidateId",
-                          params: { candidateId },
-                          search: (prev: Record<string, unknown>) => {
-                            const next = { ...prev };
-                            delete next.document;
-                            delete next.version;
-                            return next;
-                          },
-                        })
-                      }
-                    >
-                      <MessageSquare size={15} />
-                      Чат кандидата
-                    </Button>
-                  </div>
-                )}
                 {/* Keep the chat mounted while checking documents: connection, scroll
               position and an unsent draft survive switching the center view. */}
-                <div className={`min-h-0 flex-1 ${documentId ? "hidden" : ""}`}>
+                <div className="min-h-0 flex-1">
                   <CandidateChat key={candidateId} candidateId={candidateId} />
                 </div>
-                {documentId && (
-                  <div className="min-h-0 flex-1">
-                    <CandidateDocumentReview
-                      key={`${candidateId}:${documentId}`}
-                      candidateId={candidateId}
-                      documentId={documentId}
-                      version={version}
-                      chooseVersion={(selected) =>
-                        void navigate({
-                          to: "/review/candidates/$candidateId",
-                          params: { candidateId },
-                          search: (prev: Record<string, unknown>) => ({
-                            ...prev,
-                            version: selected,
-                          }),
-                        })
-                      }
-                    />
-                  </div>
-                )}
+
               </>
             )
           )}
@@ -727,8 +605,9 @@ function CandidateWorkspace() {
         >
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] p-3">
             <h2 className="text-sm font-semibold">
-              Документы{details.data ? ` (${totalDocCount})` : ""}
+              Документы{details.data && !details.synchronizing ? ` (${totalDocCount})` : ""}
             </h2>
+            <Button size="sm" variant="outline" onClick={() => void navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (prev: Record<string, unknown>) => ({ ...prev, document: undefined, previousDocument: undefined, version: undefined, uploadDocument: true }) })}>Загрузить</Button>
             <Button
               size="sm"
               variant="ghost"
@@ -739,7 +618,7 @@ function CandidateWorkspace() {
               <X size={18} />
             </Button>
           </div>
-          {profile && (
+          {profile && !details.synchronizing && (
             <p className="shrink-0 border-b border-[var(--border)] p-3 text-xs text-[var(--muted-foreground)]">
               {formatDocumentProgress(
                 profile.approvedDocuments,
@@ -758,12 +637,17 @@ function CandidateWorkspace() {
                   Загрузка документов этапа…
                 </p>
               )}
-            {details.isLoading && (
+            {details.synchronizing && (
               <p
                 role="status"
                 className="p-2 text-sm text-[var(--muted-foreground)]"
               >
-                Загрузка документов…
+                {details.data?.enrichment?.status === "RETRY"
+                  ? "Не удалось синхронизировать документы. Повторим автоматически."
+                  : "Синхронизация профиля и документов…"}
+                {details.syncError && (
+                  <Button size="sm" variant="outline" onClick={details.requestSync}>Повторить синхронизацию</Button>
+                )}
               </p>
             )}
             {details.isError && (
@@ -774,11 +658,12 @@ function CandidateWorkspace() {
                 Не удалось загрузить документы.
               </div>
             )}
-            {details.data && stages.length > 0 && (
+            {details.data && !details.synchronizing && stages.length > 0 && (
               <div className="space-y-3">
                 {stages.map((stg, index) => (
                   <CandidateStageAccordion
                     key={`stage-${stg.stage ?? "none"}-${index}`}
+                    progress={profile?.stageProgress?.find((item) => item.stage === stg.stage)}
                     stage={stg.stage}
                     title={stg.title}
                     required={stg.required}
@@ -788,12 +673,13 @@ function CandidateWorkspace() {
                     candidateId={candidateId}
                     isOpen={isStageOpen(stg.stage, index)}
                     onToggle={() => toggleStage(stg.stage, index)}
+                    onOpenPrevious={(id) => void navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (prev: Record<string, unknown>) => ({ ...prev, document: undefined, version: undefined, previousDocument: id }) })}
                     onReviewDocument={openDocument}
                   />
                 ))}
               </div>
             )}
-            {details.data && !details.isLoading && stages.length === 0 && (
+            {details.data && !details.synchronizing && stages.length === 0 && (
               <p className="p-2 text-xs text-[var(--muted-foreground)]">
                 Документы отсутствуют.
               </p>
@@ -801,6 +687,14 @@ function CandidateWorkspace() {
           </div>
         </aside>
       </div>
+      {(documentId || previousDocumentId || uploading) && (
+        <DocumentReviewDialog candidateId={candidateId} documentId={documentId}
+          previousDocumentId={previousDocumentId ?? approvedErpDocument?.id} version={version} uploading={uploading}
+          onClose={() => void navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (prev: Record<string, unknown>) => { const next = { ...prev }; for (const key of ["document", "version", "previousDocument", "uploadDocument", "reviewUpload"]) delete next[key]; return next; } })}
+          chooseVersion={(selected) => void navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (prev: Record<string, unknown>) => ({ ...prev, version: selected }) })}
+          onUploaded={async (id, number) => { await details.refetch(); await navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (prev: Record<string, unknown>) => ({ ...prev, document: id, version: number, previousDocument: undefined, uploadDocument: undefined, reviewUpload: true }) }); }}
+        />
+      )}
     </div>
   );
 }

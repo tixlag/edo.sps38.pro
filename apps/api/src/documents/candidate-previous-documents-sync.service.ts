@@ -1,3 +1,4 @@
+import { applyPreviousDocumentEdits } from "./previous-document-edits";
 import {
   ConflictException,
   Injectable,
@@ -294,7 +295,7 @@ export class CandidatePreviousDocumentsSyncService {
         }
         if (p) requireReviewGroup(p, candidateReviewGroup(current));
         const oldDocuments = await tx.candidatePreviousDocument.findMany({
-          where: { candidateId: id },
+          where: { candidateId: id }, include: { fieldEdits: true },
         });
         const oldBySource = new Map(
           oldDocuments.map((doc) => [doc.sourceId, doc]),
@@ -338,18 +339,18 @@ export class CandidatePreviousDocumentsSyncService {
             : doc.isInvalid !== undefined
               ? doc.isInvalid
               : oldFields.isInvalid;
-          const isDocInvalid =
+          let isDocInvalid =
             isInvalid === true ||
             (doc.fields &&
               typeof doc.fields === "object" &&
               !Array.isArray(doc.fields) &&
               doc.fields.isInvalid === true);
-          const knownValid = !isDocInvalid;
+          let knownValid = !isDocInvalid;
           const recordDate =
             doc.recordDate !== undefined
               ? doc.recordDate
               : oldFields.recordDate;
-          const fields = {
+          const erpFields = {
             ...doc.fields,
             ...(recordDate !== undefined ? { recordDate } : {}),
             ...(isInvalid !== undefined &&
@@ -358,9 +359,11 @@ export class CandidatePreviousDocumentsSyncService {
               ? { isInvalid }
               : {}),
           } as Prisma.InputJsonObject;
-          const expiresAt = doc.expiresAt
-            ? new Date(`${doc.expiresAt}T00:00:00Z`)
-            : null;
+          const fields = applyPreviousDocumentEdits(erpFields, old?.fieldEdits ?? []) as Prisma.InputJsonObject;
+          const expiryEdit = old?.fieldEdits?.find((edit) => edit.name === "expiryDate");
+          const sourceExpiresAt = doc.expiresAt ? new Date(`${doc.expiresAt}T00:00:00Z`) : null;
+          const effectiveExpiry = expiryEdit ? expiryEdit.value : doc.expiresAt;
+          const expiresAt = effectiveExpiry ? new Date(`${effectiveExpiry}T00:00:00Z`) : null;
           const automaticallyConfirmed =
             !!doc.documentUid &&
             doc.verifiedOwner &&
@@ -490,7 +493,7 @@ export class CandidatePreviousDocumentsSyncService {
             (!doc.originalAvailable ||
               !doc.verifiedOriginal ||
               isDocInvalid ||
-              (expiresAt !== null && isPreviousDocumentExpired(expiresAt)) ||
+              (sourceExpiresAt !== null && isPreviousDocumentExpired(sourceExpiresAt)) ||
               (isIg &&
                 (!doc.documentUid || needsNewIgDocument(doc.documentUid))));
           const awaitingVerification =
@@ -501,7 +504,7 @@ export class CandidatePreviousDocumentsSyncService {
             !isDocInvalid;
           const knownReplacement =
             isDocInvalid ||
-            (expiresAt !== null && isPreviousDocumentExpired(expiresAt)) ||
+            (sourceExpiresAt !== null && isPreviousDocumentExpired(sourceExpiresAt)) ||
             (isIg && (!doc.documentUid || needsNewIgDocument(doc.documentUid)));
           const unchangedConfirmation =
             old?.sourceFingerprint === doc.sourceFingerprint ||
@@ -562,6 +565,7 @@ export class CandidatePreviousDocumentsSyncService {
               documentUid: doc.documentUid,
               title: doc.title,
               fields,
+              erpFields,
               expiresAt,
               originalAvailable: doc.originalAvailable,
               originalVerified: doc.verifiedOriginal && knownValid,
@@ -581,6 +585,7 @@ export class CandidatePreviousDocumentsSyncService {
               title: doc.title,
               documentUid: doc.documentUid ?? old?.documentUid ?? null,
               fields,
+              erpFields,
               expiresAt,
               originalAvailable: doc.originalAvailable,
               originalVerified: doc.verifiedOriginal && knownValid,
@@ -771,10 +776,8 @@ export class CandidatePreviousDocumentsSyncService {
       ) {
         for (const doc of allDocuments) {
           await assertActive();
-          const expiresAt = doc.expiresAt
-            ? new Date(`${doc.expiresAt}T00:00:00Z`)
-            : null;
-          const isDocInvalid =
+          const expiresAt = doc.expiresAt ? new Date(`${doc.expiresAt}T00:00:00Z`) : null;
+          let isDocInvalid =
             doc.isInvalid === true ||
             (doc.fields &&
               typeof doc.fields === "object" &&

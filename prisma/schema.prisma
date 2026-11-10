@@ -728,6 +728,8 @@ model DocumentTypeStageCountry {
 }
 
 model DocumentSubmission {
+  origin String @default("CANDIDATE") @db.VarChar(16)
+  uploadedBy String? @db.VarChar(64)
   id String @id @default(cuid()) @db.VarChar(64)
   identityKey String @db.VarChar(80)
   idempotencyKey String @db.VarChar(128)
@@ -1101,6 +1103,9 @@ enum CandidateRecheckStatus {
 }
 
 model CandidatePreviousDocument {
+  erpFields Json?
+  localRevision Int @default(0)
+  fieldEdits CandidatePreviousDocumentFieldEdit[]
   sourceFingerprint String? @db.Char(64)
   verificationCheckedAt DateTime? @db.DateTime(3)
   originalVerified Boolean @default(false)
@@ -1263,4 +1268,16 @@ model IgEnrichmentLane {
   leaseToken String? @db.Char(36)
   leaseExpiresAt DateTime? @db.DateTime(3)
   @@map("ig_enrichment_lanes")
+}
+
+model CandidatePreviousDocumentFieldEdit {
+  previousDocumentId String @db.VarChar(64)
+  name String @db.VarChar(128)
+  value String? @db.Text
+  kind String @db.VarChar(16)
+  editedBy String @db.VarChar(64)
+  editedAt DateTime @default(now()) @db.DateTime(3)
+  previousDocument CandidatePreviousDocument @relation(fields: [previousDocumentId], references: [id], onDelete: Cascade)
+  @@id([previousDocumentId, name])
+  @@map("candidate_previous_document_field_edits")
 }

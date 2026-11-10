@@ -19,6 +19,7 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 vi.mock("@edo/api-client", () => ({
   getGetCandidateDetailsQueryKey: (id: string) => ["candidate", id],
+  getListCandidatePreviousDocumentsQueryKey: (id: string) => ["previous", id],
   getListReviewCandidatesQueryKey: () => ["review"],
   getListCandidateReviewQueueQueryKey: () => ["queue"],
   getListIgArrivalRegistryGroupsQueryKey: () => ["groups"],
@@ -357,7 +358,7 @@ describe("stage candidate drawer", () => {
     expect(view.textContent).toContain("Этапы проверки документов");
     expect(view.textContent).toContain("Подтверждено 2 из 4");
 
-    // Document review action navigation to /review-ig/$documentId
+    // Document review action opens review dialog via search navigation
     const reviewBtn = [...view.querySelectorAll("button")].find((btn) =>
       btn.textContent?.includes("Проверить документ"),
     );
@@ -365,8 +366,14 @@ describe("stage candidate drawer", () => {
     await act(async () => reviewBtn?.click());
     expect(mock.navigate).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: "/review-ig/$documentId",
-        params: { documentId: "doc-pass" },
+        search: expect.any(Function),
+      }),
+    );
+    const searchUpdater = mock.navigate.mock.calls.at(-1)?.[0]?.search;
+    expect(searchUpdater?.({})).toEqual(
+      expect.objectContaining({
+        documentCandidate: "c1",
+        reviewerDocument: "doc-pass",
       }),
     );
   });
@@ -389,7 +396,7 @@ describe("priority document loading", () => {
       { candidateId: "c1" },
       expect.anything(),
     );
-    expect(view.textContent).toContain("Загружаем профиль и документы");
+    expect(view.textContent).toContain("Синхронизация профиля и документов");
     const options = mock.query.mock.calls.at(-1)![2];
     expect(options.query.refetchInterval({ state: { data: mock.data } })).toBe(
       5000,
@@ -409,4 +416,10 @@ describe("priority document loading", () => {
     await render(false, undefined);
     expect(mock.request).not.toHaveBeenCalled();
   });
+  it("refreshes RU documents on opening even when an old snapshot exists and no person is linked", async () => {
+    mock.data = { candidate: { id: "c1", reviewGroup: "RU", erpUid: "erp-ru", personUid: null, code1c: null }, documents: [], enrichment: { status: "READY", profileReady: true, documentsReady: true } };
+    await render(false, undefined);
+    expect(mock.request).toHaveBeenCalledWith({ candidateId: "c1" }, expect.anything());
+  });
+
 });

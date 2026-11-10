@@ -719,16 +719,28 @@ function ParticipationRows({
             scope="row"
             className={`${cellClass} ${frozenClass} pl-14 text-left font-medium`}
           >
-            {person.candidateId && person.action !== "NONE" ? (
-              <button
-                type="button"
-                className="rounded-sm text-left underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
-                onClick={() => openCandidate(person)}
-              >
-                {person.fullName || "Без имени"}
-              </button>
-            ) : (
-              person.fullName || "Без имени"
+            <div className="flex flex-wrap items-center gap-1.5">
+              {person.candidateId && person.action !== "NONE" ? (
+                <button
+                  type="button"
+                  className="rounded-sm text-left underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+                  onClick={() => openCandidate(person)}
+                >
+                  {person.fullName || "Без имени"}
+                </button>
+              ) : (
+                <span>{person.fullName || "Без имени"}</span>
+              )}
+              {person.citizenship && (
+                <Badge title="Гражданство">
+                  {person.citizenship.toUpperCase()}
+                </Badge>
+              )}
+            </div>
+            {person.positionName && (
+              <span className="block text-xs font-normal text-[var(--muted-foreground)]">
+                {person.positionName}
+              </span>
             )}
             {formatLocalArrivalTime(person.arrivalDateTime) && (
               <span className="block font-normal text-[var(--muted-foreground)]">

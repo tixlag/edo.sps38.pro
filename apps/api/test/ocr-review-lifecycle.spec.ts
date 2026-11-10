@@ -86,6 +86,7 @@ function workerFixture() {
   };
   const recognize = vi.fn(async () => result);
   const audit = { logInTransaction: vi.fn() };
+  const notifications = { notifyDocumentReadyForReview: vi.fn() };
   const worker = new OcrWorkerService(
     {
       ocrJob: { updateMany, findUniqueOrThrow: vi.fn(async () => job) },
@@ -96,8 +97,9 @@ function workerFixture() {
     {} as never,
     audit as never,
     { get: () => undefined } as never,
+    notifications as never,
   );
-  return { worker, tx, job, version, recognize, audit };
+  return { worker, tx, job, version, recognize, audit, notifications };
 }
 afterEach(() => vi.useRealTimers());
 
@@ -736,5 +738,16 @@ describe("review decision metadata", () => {
       reviewedBy: "verified-reviewer",
       reviewedByName: "Тестовый Проверяющий",
     });
+  });
+});
+
+
+describe("OCR review notification", () => {
+  it("notifies after processing and ignores repeated delivery", async () => {
+    const { worker, notifications } = workerFixture();
+    await worker.process("job");
+    await worker.process("job");
+    expect(notifications.notifyDocumentReadyForReview).toHaveBeenCalledTimes(1);
+    expect(notifications.notifyDocumentReadyForReview).toHaveBeenCalledWith({ documentId: "doc", version: 1, candidateId: "owner" });
   });
 });

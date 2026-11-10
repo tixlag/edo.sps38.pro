@@ -92,6 +92,13 @@ function setup(group: "RU" | "IG", expired = false, currentStatus?: string) {
 }
 
 describe("former documents in the current stage", () => {
+  it("shows imported RU originals in stages before a person or employee code exists", async () => {
+    const { reads, access } = setup("RU");
+    access.candidate.mockResolvedValue({ id: "cycle", erpUid: "erp-candidate", code1c: null, personUid: null, chatUuid: "chat", citizenship: "ru", positionCode: "position", isReemployment: false, previousDocumentsSyncedAt: null } as never);
+    const result = await reads.candidateDetails("cycle", principal, "1");
+    expect(result.previousDocuments).toEqual([expect.objectContaining({ id: "former", state: "REUSED" })]);
+    expect(result.stageDocuments?.required.missingDocuments).toEqual([]);
+  });
   it.each(["RU", "IG"] as const)(
     "shows a reusable source and includes it in progress for %s",
     async (group) => {
@@ -144,4 +151,12 @@ describe("former documents in the current stage", () => {
     expect(result.candidate.approvedDocuments).toBe(1);
     expect(result.candidate.stageProgress?.[0].required.reused).toBe(1);
   });
+  it("uses the approved RU ERP original over an adaptation replacement and counts it once", async () => {
+    const { reads } = setup("RU", false, "IN_REVIEW");
+    const result = await reads.candidateDetails("cycle", principal, "1");
+    expect(result.previousDocuments?.[0]).toMatchObject({ state: "REUSED", source: "ERP" });
+    expect(result.candidate.approvedDocuments).toBe(1);
+    expect(result.candidate.stageProgress?.[0].required).toMatchObject({ reused: 1, inReview: 0, missing: 0 });
+  });
+
 });

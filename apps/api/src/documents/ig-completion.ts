@@ -4,6 +4,7 @@ import { MIGRATION_UID } from "../ocr/ocr-profile";
 import { requiredApplicable } from "./document-contract";
 import {
   EMPLOYMENT_PATENT_UID,
+  isEaeuCitizenship,
   isPreviousDocumentExpired,
   needsNewIgDocument,
 } from "./reemployment-document-policy";
@@ -188,9 +189,10 @@ export async function tryCompleteIgEmployment(
   const requiredUids = new Set(
     required.map((type) => type.erpUid?.toLowerCase()),
   );
+  const patentExpected = !isEaeuCitizenship(candidate.citizenship);
   if (
     !requiredUids.has(MIGRATION_UID) ||
-    !requiredUids.has(EMPLOYMENT_PATENT_UID)
+    (patentExpected && !requiredUids.has(EMPLOYMENT_PATENT_UID))
   ) {
     if (!candidate.igRequirementsConflict) {
       await tx.candidate.update({

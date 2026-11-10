@@ -128,6 +128,7 @@ function catalogSetup() {
   const access = {
     candidateWhere: vi.fn(() => ({ locationId: { in: [98] } })),
   };
+  const documentReads = { enrichReviewCandidates: vi.fn() };
   const service = new CandidateCatalogService(
     prisma as never,
     redis as never,
@@ -135,8 +136,9 @@ function catalogSetup() {
     audit as never,
     access as never,
     new ConfigService(),
+    documentReads as never,
   );
-  return { service, prisma, redis, erp, audit, access };
+  return { service, prisma, redis, erp, audit, access, documentReads };
 }
 const catalogRow = {
   erpUid,
@@ -267,4 +269,17 @@ describe("ERP candidate catalog projection", () => {
       }),
     );
   });
+  it("uses the same ERP-aware document counters as the review queue for a visible catalog page", async () => {
+    const s = catalogSetup();
+    s.prisma.candidate.findMany.mockResolvedValueOnce([{ ...catalogRow, id: "candidate", citizenship: "ru" }] as never[]);
+    s.documentReads.enrichReviewCandidates.mockImplementation(async (_principal, profiles) => {
+      profiles[0].approvedDocuments = 1;
+      profiles[0].requiredDocuments = 1;
+    });
+    const page = await s.service.list(principal, {});
+    expect(page.items[0]).toMatchObject({ approvedDocuments: 1, requiredDocuments: 1 });
+    expect(s.documentReads.enrichReviewCandidates).toHaveBeenCalledTimes(1);
+    expect(s.documentReads.enrichReviewCandidates.mock.calls[0][0]).toBe(principal);
+  });
+
 });

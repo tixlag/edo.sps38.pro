@@ -1,3 +1,5 @@
+import { ReviewerDocumentsController } from "./reviewer-documents.controller";
+import { ReviewerDocumentsService } from "./reviewer-documents.service";
 import { CandidateEnrichmentController } from "./candidate-enrichment.controller";
 import { IgEnrichmentQueueService } from "./ig-enrichment-queue.service";
 import { ErpWorkspaceClient } from "./erp-workspace.client";
@@ -61,7 +63,6 @@ import { OwnDocumentHistoryController } from "./own-document-history.controller"
 import { ErpAdaptationGrantsController } from "./erp-adaptation-grants.controller";
 import { ExpirationModule } from "../expiration/expiration.module";
 import { LkModule } from "../lk/lk.module";
-import { DocumentNotificationService } from "./document-notification.service";
 
 @Module({
   imports: [
@@ -85,18 +86,20 @@ import { DocumentNotificationService } from "./document-notification.service";
     CandidateDocumentEventsController,
     CandidateDocumentUploadController,
     ErpAdaptationGrantsController,
+    ReviewerDocumentsController,
   ],
   exports: [
+    DocumentReadService,
     CandidateContextService,
     DocumentCatalogService,
     OwnDocumentHistoryService,
     IgEmploymentService,
     IgProfileEnrichmentService,
     CandidatePreviousDocumentsSyncService,
-    DocumentNotificationService,
     ErpCandidateClient,
   ],
   providers: [
+    ReviewerDocumentsService,
     IgEnrichmentQueueService,
     ErpWorkspaceClient,
     CandidateDocumentsService,
@@ -129,7 +132,6 @@ import { DocumentNotificationService } from "./document-notification.service";
     DocumentStreamGuard,
     DocumentUploadGrantService,
     DocumentUploadGrantGuard,
-    DocumentNotificationService,
   ],
 })
 export class DocumentsModule {}

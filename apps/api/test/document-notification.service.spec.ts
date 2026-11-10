@@ -27,7 +27,7 @@ describe("DocumentNotificationService", () => {
     return { service, prisma, lk };
   };
 
-  it("sends upload notification to manager for RU candidate with correct targetUrl", async () => {
+  it("sends OCR review-ready notification to RU manager with correct targetUrl", async () => {
     const { service, lk } = createService({
       prisma: {
         candidate: {
@@ -52,7 +52,7 @@ describe("DocumentNotificationService", () => {
       },
     });
 
-    await service.notifyDocumentUploaded({
+    await service.notifyDocumentReadyForReview({
       documentId: "doc-1",
       version: 1,
       candidateId: "cand-ru-1",
@@ -61,16 +61,16 @@ describe("DocumentNotificationService", () => {
     expect(lk.sendNotification).toHaveBeenCalledTimes(1);
     expect(lk.sendNotification).toHaveBeenCalledWith({
       recipientCodes1c: ["HR-100"],
-      title: "Сотрудник загрузил документ",
-      content: "Сотрудник **Иванов Иван Иванович** загрузил документ «Паспорт РФ».",
+      title: "Документ готов к проверке",
+      content: "Документ «Паспорт РФ» кандидата **Иванов Иван Иванович** ожидает проверки. Проверьте его правильность.",
       type: "toast",
       targetType: "candidate_document_upload",
       targetUrl: "/review/candidates/cand-ru-1?document=doc-1",
-      idempotencyKey: "document-upload:doc-1:1",
+      idempotencyKey: "document-review-ready:doc-1:1",
     });
   });
 
-  it("sends upload notification to manager for IG candidate with /review-ig URL", async () => {
+  it("sends OCR review-ready notification to IG manager with /review-ig URL", async () => {
     const { service, lk } = createService({
       prisma: {
         candidate: {
@@ -95,7 +95,7 @@ describe("DocumentNotificationService", () => {
       },
     });
 
-    await service.notifyDocumentUploaded({
+    await service.notifyDocumentReadyForReview({
       documentId: "doc-2",
       version: 2,
       candidateId: "cand-ig-2",
@@ -104,12 +104,12 @@ describe("DocumentNotificationService", () => {
     expect(lk.sendNotification).toHaveBeenCalledTimes(1);
     expect(lk.sendNotification).toHaveBeenCalledWith({
       recipientCodes1c: ["MGR-200"],
-      title: "Сотрудник загрузил документ",
-      content: "Сотрудник **Каримов Алишер** загрузил документ «Патент на работу».",
+      title: "Документ готов к проверке",
+      content: "Документ «Патент на работу» кандидата **Каримов Алишер** ожидает проверки. Проверьте его правильность.",
       type: "toast",
       targetType: "candidate_document_upload",
       targetUrl: "/review-ig?candidate=cand-ig-2",
-      idempotencyKey: "document-upload:doc-2:2",
+      idempotencyKey: "document-review-ready:doc-2:2",
     });
   });
 
@@ -137,7 +137,7 @@ describe("DocumentNotificationService", () => {
       },
     });
 
-    await service.notifyDocumentUploaded({
+    await service.notifyDocumentReadyForReview({
       documentId: "doc-3",
       version: 1,
     });
@@ -165,7 +165,7 @@ describe("DocumentNotificationService", () => {
       },
     });
 
-    await service.notifyDocumentUploaded({
+    await service.notifyDocumentReadyForReview({
       documentId: "doc-4",
       version: 1,
       candidateId: "cand-no-mgr",
@@ -198,7 +198,7 @@ describe("DocumentNotificationService", () => {
     });
 
     await expect(
-      service.notifyDocumentUploaded({
+      service.notifyDocumentReadyForReview({
         documentId: "doc-err",
         version: 1,
         candidateId: "cand-err",

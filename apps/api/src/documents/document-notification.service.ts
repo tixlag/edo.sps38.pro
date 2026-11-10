@@ -3,7 +3,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { LkNotificationService } from "../lk/lk-notification.service";
 import { candidateReviewGroup } from "./review-group";
 
-export interface NotifyDocumentUploadedParams {
+export interface NotifyDocumentReadyForReviewParams {
   documentId: string;
   version: number;
   candidateId?: string | null;
@@ -19,8 +19,8 @@ export class DocumentNotificationService {
     @Optional() private readonly lkNotifications?: LkNotificationService,
   ) {}
 
-  async notifyDocumentUploaded(
-    params: NotifyDocumentUploadedParams,
+  async notifyDocumentReadyForReview(
+    params: NotifyDocumentReadyForReviewParams,
   ): Promise<void> {
     if (!this.lkNotifications) return;
     try {
@@ -74,12 +74,12 @@ export class DocumentNotificationService {
 
       await this.lkNotifications.sendNotification({
         recipientCodes1c: [managerCode1c],
-        title: "Сотрудник загрузил документ",
-        content: `Сотрудник **${candidateName}** загрузил документ «${docTitle}».`,
+        title: "Документ готов к проверке",
+        content: `Документ «${docTitle}» кандидата **${candidateName}** ожидает проверки. Проверьте его правильность.`,
         type: "toast",
         targetType: "candidate_document_upload",
         targetUrl,
-        idempotencyKey: `document-upload:${params.documentId}:${params.version}`,
+        idempotencyKey: `document-review-ready:${params.documentId}:${params.version}`,
       });
     } catch (error) {
       this.logger.warn(

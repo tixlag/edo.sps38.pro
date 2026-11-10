@@ -87,13 +87,14 @@ const documentSummaryInclude = {
       reviewedBy: true,
       job: { select: { status: true, errorCode: true } },
       delivery: { select: { status: true } },
+      submission: { select: { origin: true } },
     },
   },
 } satisfies Prisma.DocumentInclude;
 
 const versionInclude = {
   document: { include: { documentType: true, candidate: true } },
-  submission: { select: { id: true, status: true } },
+  submission: { select: { id: true, status: true, origin: true } },
   files: { orderBy: { ordinal: "asc" as const } },
   fields: {
     orderBy: [{ ordinal: "asc" as const }, { name: "asc" as const }],
@@ -258,6 +259,7 @@ export class DocumentReadService {
     return {
       ...(returned.length ? { returnedVersions: returned } : {}),
       id: d.id,
+      uploadOrigin: current?.submission?.origin,
       documentTypeCode: d.documentType?.code ?? null,
       status: d.status,
       currentVersion: d.currentVersion,
@@ -299,6 +301,7 @@ export class DocumentReadService {
     const candidate = toCandidateProfile(owner)!;
     await this.enrichReviewCandidates(principal, [candidate]);
     const previous =
+      owner.erpUid ||
       owner.code1c ||
       owner.personUid ||
       owner.isReemployment ||
@@ -542,7 +545,7 @@ export class DocumentReadService {
       ),
       ...(stage !== undefined ? { stageDocuments } : { documentGroups }),
       stages: allStages,
-      ...(isIg && this.enrichment ? { enrichment: await this.enrichment.status(id) } : {}),
+      ...((isIg || owner.erpUid) && this.enrichment ? { enrichment: await this.enrichment.status(id) } : {}),
     };
   }
 
@@ -800,6 +803,7 @@ export class DocumentReadService {
             paddleConfidence,
           }),
         ),
+      uploadOrigin: row.submission?.origin,
       ocrSource: row.ocrSource,
       files: row.files.map((f) => ({
         id: f.id,
@@ -1305,14 +1309,31 @@ export class DocumentReadService {
       ),
       currentVersion: { gt: 0 },
     });
-    if (!state?.currentCandidateId)
+    const chatCandidate =
+      !state?.currentCandidateId && scope.chat_uuid
+        ? await this.prisma.candidate.findFirst({
+            where: { chatUuid: scope.chat_uuid, erpDeleted: false },
+            select: {
+              id: true,
+              reviewGroup: true,
+              citizenship: true,
+              chatUuid: true,
+            },
+          })
+        : null;
+    const previousCandidateId =
+      state?.currentCandidateId ?? chatCandidate?.id;
+    if (!previousCandidateId)
       return { ...result, reusedDocumentUids: [] };
+    const isIg = state?.currentCandidateId
+      ? true
+      : candidateReviewGroup(chatCandidate!) === "IG";
     const previous = await this.prisma.candidatePreviousDocument.findMany({
       where: {
-        candidateId: state.currentCandidateId,
+        candidateId: previousCandidateId,
         status: "CONFIRMED",
         originalAvailable: true,
-        OR: [{ originalVerified: true }, { candidate: reviewGroupWhere("RU") }],
+        ...(isIg ? { originalVerified: true } : {}),
       },
     });
     const current = new Set(
@@ -1320,7 +1341,7 @@ export class DocumentReadService {
     );
     return {
       ...result,
-      reusedDocumentUids: usablePreviousUids(previous).filter(
+      reusedDocumentUids: usablePreviousUids(previous, isIg).filter(
         (uid) => !current.has(uid),
       ),
     };
@@ -1669,7 +1690,7 @@ export class DocumentReadService {
    * tabs. Exactly 2 queries per page (scoped groupBy, catalog snapshot) —
    * never N+1 per document.
    */
-  private async enrichReviewCandidates(
+  async enrichReviewCandidates(
     principal: AuthPrincipal,
     profiles: CandidateProfileDto[],
   ): Promise<void> {
@@ -1704,7 +1725,7 @@ export class DocumentReadService {
       }),
     ]);
     const igIds = profiles
-      .filter((profile) => profile.code1c || profile.isReemployment)
+      .filter((profile) => profile.reviewGroup === "RU" || profile.code1c || profile.isReemployment)
       .map((profile) => profile.id);
     const historical = igIds.length
       ? await this.prisma.candidatePreviousDocument.findMany({
@@ -1716,12 +1737,18 @@ export class DocumentReadService {
           },
         })
       : [];
+    const authoritativeErpTypes = new Map<string, Set<string>>();
+    for (const profile of profiles.filter((p) => p.reviewGroup === "RU")) {
+      const uids = usablePreviousUids(historical.filter((doc) => doc.candidateId === profile.id && !doc.sourceId?.startsWith("edo:")), false);
+      authoritativeErpTypes.set(profile.id, new Set(catalog.filter((type) => type.erpUid && uids.includes(type.erpUid.toLowerCase())).map((type) => type.id)));
+    }
+    const effectiveGrouped = grouped.filter((row) => !authoritativeErpTypes.get(row.candidateId!)?.has(row.documentTypeId!));
     const approved = new Map<string, number>();
     const profileById = new Map(
       profiles.map((profile) => [profile.id, profile]),
     );
     const typeById = new Map(catalog.map((type) => [type.id, type]));
-    for (const row of grouped) {
+    for (const row of effectiveGrouped) {
       const profile = row.candidateId
         ? profileById.get(row.candidateId)
         : undefined;
@@ -1759,7 +1786,7 @@ export class DocumentReadService {
         (type) =>
           type.erpUid &&
           previousUids.includes(type.erpUid.toLowerCase()) &&
-          !grouped.some(
+          !effectiveGrouped.some(
             (row) =>
               row.candidateId === profile.id &&
               row.documentTypeId === type.id &&
@@ -1777,7 +1804,7 @@ export class DocumentReadService {
         hasProfile && catalog.some((type) => type.catalogSyncedAt !== null)
           ? reviewStageProgress(
               catalog.filter((type) => type.catalogSyncedAt !== null),
-              grouped.filter((row) => row.candidateId === profile.id),
+              effectiveGrouped.filter((row) => row.candidateId === profile.id),
               {
                 positionCode,
                 projectCode: profile.projectCode,

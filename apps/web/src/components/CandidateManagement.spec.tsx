@@ -84,6 +84,7 @@ vi.mock("@edo/api-client", () => {
         { id: "manager-secret", name: "Анна Менеджер" },
         { id: "other", name: "Борис" },
       ]),
+    useRequestCandidateEnrichmentBatch: () => ({ mutate: vi.fn(), isPending: false }),
     getListCatalogManagersQueryKey: () => ["catalog-managers"],
     useListPositions: () => result([]),
     useListCatalogMentors: () => result([]),

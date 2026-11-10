@@ -52,6 +52,7 @@ function activeFor(pathname: string): string {
 
 /** Layout shell: real URL routing via TanStack Router (back/forward + deep links work). */
 export function AppShell() {
+  const location = useLocation();
   const profile = useGetMe();
   React.useEffect(() => {
     clearChatDrafts();
@@ -59,11 +60,10 @@ export function AppShell() {
       if (!token) clearChatDrafts();
     });
   }, [profile.data?.uuid]);
-  useDocumentEvents(canAccessPath(profile.data?.permissions, "/"));
+  const pathname = location.pathname;
+  useDocumentEvents(canAccessPath(profile.data?.permissions, pathname));
   const [collapsed, setCollapsed] = React.useState(true);
   const navigate = useNavigate();
-  const location = useLocation();
-  const pathname = location.pathname;
 
   const go = (to: string) => {
     void navigate({ to });

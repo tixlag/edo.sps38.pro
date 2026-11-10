@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { isPatentExempt } from "./reemployment-document-policy";
 import { ConfigService } from "@nestjs/config";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
@@ -310,7 +311,8 @@ export class DocumentCatalogService {
             .filter(
               (cat): cat is "required" | "additional" => cat !== null,
             );
-          const category: "required" | "additional" = categories.includes("required")
+          const category: "required" | "additional" =
+            categories.includes("required") && !isPatentExempt(t.erpUid, citizenship)
             ? "required"
             : "additional";
 

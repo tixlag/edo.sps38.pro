@@ -1,3 +1,5 @@
+vi.mock("../components/ApprovedErpDocumentPreview", () => ({ ApprovedErpDocumentPreview: ({ document }: { document: { id: string } }) => <div data-erp-original={document.id}>Оригинал ERP</div> }));
+vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
 import { expect, it, vi } from "vitest";
 import { act, useEffect, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -6,10 +8,15 @@ const state = vi.hoisted(() => ({
   search: {} as Record<string, unknown>,
   calls: [] as unknown[],
   chatMounts: 0,
+  documents: [] as unknown[],
+  previousDocuments: [] as unknown[],
+  enrichment: undefined as { status: string; profileReady: boolean; documentsReady: boolean } | undefined,
+  request: vi.fn(),
   candidate: undefined as Record<string, unknown> | undefined,
 }));
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+  useBlocker: vi.fn(),
   useNavigate:
     () =>
     (value: {
@@ -21,10 +28,28 @@ vi.mock("@tanstack/react-router", () => ({
   useSearch: () => state.search,
 }));
 vi.mock("@edo/api-client", () => ({
+  getListCandidatePreviousDocumentsQueryKey: () => ["previous"],
+  getListCandidateReviewQueueQueryKey: () => ["queue"],
+  getListReviewCandidatesQueryKey: () => ["candidates"],
+  getListIgArrivalRegistryGroupsQueryKey: () => ["groups"],
+  getListIgArrivalRegistryParticipationsQueryKey: () => ["people"],
+  useRequestCandidateEnrichment: () => ({ mutate: state.request, isError: false }),
+  getCandidatePreviousDocumentOriginal: vi.fn().mockResolvedValue(new Blob(["erp-original"], { type: "image/jpeg" })),
   useGetMe: () => ({ data: { permissions: { "20002": [] } } }),
   getGetCandidateWorkspaceQueryKey: () => ["workspace", "c1"],
   useGetCandidateWorkspace: () => ({}),
   useGetDocumentInfo: () => ({ isLoading: true }),
+  useRetryReviewerDocumentDelivery: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useGetPreviousDocumentDetails: (_cid: string, id: string) => ({
+    isLoading: false,
+    data: {
+      document: (state.previousDocuments as any[]).find((d) => d.id === id) ?? { id, originalAvailable: true },
+      revision: 1,
+      fields: [],
+    },
+  }),
+  useEditPreviousDocumentFields: () => ({ mutate: vi.fn(), isPending: false }),
+  getGetPreviousDocumentDetailsQueryKey: () => ["prev-doc"],
   getGetCandidateDetailsQueryKey: () => ["details", "c1"],
   useGetCandidateDetails: (_id: string, params?: { stage?: string }) => {
     state.calls.push(params);
@@ -36,7 +61,9 @@ vi.mock("@edo/api-client", () => ({
       attention: 0,
     };
     return {
+      refetch: vi.fn().mockResolvedValue({}),
       data: {
+        enrichment: state.enrichment,
         candidate: {
           fullName: "Кандидат",
           stageProgress: [{ stage: 1, required: counts, additional: counts }],
@@ -44,7 +71,8 @@ vi.mock("@edo/api-client", () => ({
           requiredDocuments: 1,
           ...state.candidate,
         },
-        documents: [],
+        documents: state.documents,
+        previousDocuments: state.previousDocuments,
         ...(params?.stage
           ? {
               stageDocuments: {
@@ -90,6 +118,8 @@ vi.mock("../lib/use-live-document-version", () => ({
   useLiveDocumentVersion: () => ({}),
 }));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+URL.createObjectURL = vi.fn(() => "blob:erp-original");
+URL.revokeObjectURL = vi.fn();
 it("keeps the chat and candidate data visible while selecting a document stage", async () => {
   const node = document.createElement("div");
   document.body.append(node);
@@ -209,4 +239,47 @@ it("renders informative collapsed state with candidate initials and status dot w
   await act(async () => root.unmount());
   node.remove();
   state.candidate = undefined;
+});
+
+it("shows synchronization instead of temporary empty documents and counters until ERP is ready", async () => {
+  state.search = { stage: "1" };
+  state.candidate = { reviewGroup: "RU", requiredDocuments: 0, approvedDocuments: 0 };
+  state.enrichment = { status: "PENDING", profileReady: false, documentsReady: false };
+  state.request.mockClear();
+  const node = document.createElement("div"); document.body.append(node);
+  const root = createRoot(node);
+  await act(async () => root.render(<CandidateWorkspacePage />));
+  const panel = node.querySelector('[aria-label="Документы кандидата"]')!;
+  expect(panel.textContent).toContain("Синхронизация профиля и документов");
+  expect(panel.textContent).not.toMatch(/Документы отсутствуют|Не загружен|0 из 0|0\/0|Документы \(0\)/);
+  expect(state.request).toHaveBeenCalledTimes(1);
+  const callback = state.request.mock.calls[0][1];
+  await act(async () => callback.onSuccess());
+  state.enrichment = { status: "RUNNING", profileReady: true, documentsReady: false };
+  await act(async () => root.render(<CandidateWorkspacePage />));
+  expect(panel.textContent).toContain("Синхронизация профиля и документов");
+  expect(panel.textContent).not.toContain("Не загружен");
+  state.enrichment = { status: "READY", profileReady: true, documentsReady: true };
+  state.candidate = { reviewGroup: "RU", requiredDocuments: 1, approvedDocuments: 0 };
+  await act(async () => root.render(<CandidateWorkspacePage />));
+  expect(panel.textContent).not.toContain("Синхронизация профиля и документов");
+  expect(panel.textContent).toContain("СНИЛС");
+  expect(panel.querySelector("svg circle")).not.toBeNull();
+  await act(async () => root.unmount()); node.remove();
+  state.enrichment = undefined;
+});
+
+it("opens the approved ERP original for an adaptation document deep link", async () => {
+  state.search = { document: "adaptation", version: 1 };
+  state.candidate = { reviewGroup: "RU" };
+  state.enrichment = undefined;
+  state.documents = [{ id: "adaptation", documentTypeCode: "PASSPORT", status: "IN_REVIEW", title: "Паспорт", currentVersion: 1 }];
+  state.previousDocuments = [{ id: "approved-erp", documentTypeCode: "PASSPORT", source: "ERP", state: "REUSED", originalAvailable: true }];
+  const node = document.createElement("div"); document.body.append(node);
+  const root = createRoot(node);
+  await act(async () => root.render(<CandidateWorkspacePage />));
+  expect(node.querySelector('[data-erp-original="approved-erp"]')).not.toBeNull();
+  expect(node.textContent).not.toContain("Загрузка документа…");
+  await act(async () => root.unmount()); node.remove();
+  state.documents = []; state.previousDocuments = [];
 });

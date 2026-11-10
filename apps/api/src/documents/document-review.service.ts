@@ -394,7 +394,7 @@ export class DocumentReviewService {
                 (version.ocrRaw as Record<string, unknown>)?.deliveredHistorically === true);
             if (!isDeliveredPrevious) {
               const deliveryStatus =
-                uid && (ig ? validPerson : !!chatUid)
+                uid && (ig ? validPerson : !!(candidate?.erpUid || chatUid))
                   ? "PENDING"
                   : "WAITING_CONTRACT";
               await tx.erpDocumentDelivery.create({
@@ -419,7 +419,7 @@ export class DocumentReviewService {
                             code1c: identity!.code1C,
                           }
                         : {}
-                      : { chatUid }),
+                      : candidate?.erpUid ? { candidateUid: candidate.erpUid } : { chatUid }),
                     documentFields,
                   },
                 },

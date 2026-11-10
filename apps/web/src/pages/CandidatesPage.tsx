@@ -1,3 +1,4 @@
+import { useVisibleRuDocumentSync } from "../lib/use-visible-ru-document-sync";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
@@ -76,6 +77,7 @@ function CandidateCatalog() {
     limit: 50,
   };
   const candidates = useListCommunicationCandidates(params);
+  const documentSync = useVisibleRuDocumentSync(candidates.data?.items.map((c) => c.id) ?? [], !!candidates.data, () => candidates.refetch());
   const statuses = useListCandidateStatuses();
   const managers = useListCandidateManagers({ q: managerQuery || undefined });
   const projects = useListCandidateProjects({ q: projectQuery || undefined });
@@ -253,7 +255,7 @@ function CandidateCatalog() {
                     {candidate.projectName || "Не указан"}
                   </td>
                   <td className="p-3">
-                    {formatDocumentProgress(
+                    {documentSync.pendingIds.has(candidate.id) ? <span role="status">Синхронизация документов…</span> : formatDocumentProgress(
                       candidate.approvedDocuments,
                       candidate.requiredDocuments,
                     )}
@@ -264,6 +266,7 @@ function CandidateCatalog() {
           </table>
         </div>
       )}
+      {documentSync.error && <p role="alert" className="text-sm text-[var(--muted-foreground)]">Не удалось запросить синхронизацию документов. <Button size="sm" variant="outline" onClick={documentSync.retry}>Повторить</Button></p>}
       <div className="flex gap-2">
         <Button
           size="sm"

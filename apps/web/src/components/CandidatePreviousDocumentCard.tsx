@@ -25,6 +25,7 @@ export interface CandidatePreviousDocumentCardProps {
   previousDocument?: PreviousDocumentAvailabilityDto;
   returnedVersion?: ReturnedDocumentVersionDto;
   isMissing?: boolean;
+  onOpenPrevious?: (id: string) => void;
   onReviewCurrent?: (docId: string, version?: number) => void;
   mode?: "compact" | "expanded";
   className?: string;
@@ -69,7 +70,7 @@ function formatRequisites(fields?: Record<string, unknown>): string[] {
 
 export function CandidatePreviousDocumentCard({
   candidateId,
-  reviewGroup: _reviewGroup,
+  reviewGroup,
   title,
   status,
   currentDocument,
@@ -77,10 +78,21 @@ export function CandidatePreviousDocumentCard({
   returnedVersion,
   isMissing = false,
   onReviewCurrent,
+  onOpenPrevious,
   mode,
   className,
 }: CandidatePreviousDocumentCardProps) {
   const [openingOriginal, setOpeningOriginal] = useState(false);
+  // A confirmed RU ERP original is authoritative over a parallel adaptation upload.
+  if (reviewGroup !== "IG" && previousDocument?.source === "ERP" &&
+      previousDocument.state === "REUSED" && previousDocument.originalAvailable &&
+      !(currentDocument?.uploadOrigin === "REVIEWER" && currentDocument.deliveryStatus !== "SENT")) {
+    currentDocument = undefined;
+    returnedVersion = undefined;
+    status = "APPROVED";
+    mode = "expanded";
+  }
+
 
   const effectiveStatus =
     status ??
@@ -113,6 +125,7 @@ export function CandidatePreviousDocumentCard({
 
   const handleOpenOriginal = async () => {
     if (!previousDocument) return;
+    if (onOpenPrevious) { onOpenPrevious(previousDocument.id); return; }
     setOpeningOriginal(true);
     const tab = window.open("about:blank", "_blank");
     if (tab) tab.opener = null;
@@ -195,7 +208,9 @@ export function CandidatePreviousDocumentCard({
             {title}
           </span>
         </div>
-        <div className="shrink-0">{renderBadge()}</div>
+        <div className="flex shrink-0 items-center gap-2">{renderBadge()}
+          {previousDocument && <Button size="sm" variant="outline" onClick={() => void handleOpenOriginal()}>Открыть документ</Button>}
+        </div>
       </div>
     );
   }
@@ -258,6 +273,7 @@ export function CandidatePreviousDocumentCard({
         <div className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
             <CandidateDocumentThumbnail
+              onClick={onOpenPrevious ? () => onOpenPrevious(previousDocument.id) : undefined}
               candidateId={candidateId}
               documentId={previousDocument.id}
               originalAvailable={previousDocument.originalAvailable}
@@ -266,7 +282,7 @@ export function CandidatePreviousDocumentCard({
 
             <div className="min-w-0 flex-1 space-y-1.5 text-xs">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                Предыдущая версия
+                {previousDocument.source === "EDO" ? "Из прошлого оформления в ЭДО" : "Документ из ERP"}
               </div>
 
               {sourceText && (
@@ -329,19 +345,21 @@ export function CandidatePreviousDocumentCard({
           <div className="text-xs text-[var(--muted-foreground)]">
             Текущая версия: {currentDocument.currentVersion}
           </div>
-          <Button
-            size="sm"
-            aria-label={`${title}, версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
-            onClick={() =>
-              onReviewCurrent?.(
-                currentDocument.id,
-                currentDocument.currentVersion ?? returnedVersion?.version,
-              )
-            }
-            className="text-xs font-medium"
-          >
-            Проверить документ
-          </Button>
+          {effectiveStatus !== "RETURNED" && (
+            <Button
+              size="sm"
+              aria-label={`${title}, версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
+              onClick={() =>
+                onReviewCurrent?.(
+                  currentDocument.id,
+                  currentDocument.currentVersion ?? returnedVersion?.version,
+                )
+              }
+              className="text-xs font-medium"
+            >
+              {currentDocument.uploadOrigin === "REVIEWER" ? "Продолжить загрузку" : "Проверить документ"}
+            </Button>
+          )}
         </div>
       )}
     </div>

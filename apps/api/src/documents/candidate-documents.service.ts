@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import {
   CandidateDocumentError,
   withinDocumentDeadline,
@@ -11,6 +11,9 @@ import { DocumentCatalogService } from "./document-catalog.service";
 import { DocumentReadService } from "./document-read.service";
 import { DocumentEventsService } from "./document-events.service";
 import { DocumentUploadGrantService } from "./document-upload-grant.service";
+import { PrismaService } from "../prisma/prisma.service";
+import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
+import { candidateReviewGroup } from "./review-group";
 import type {
   CandidateDocumentContextDto,
   CandidateDocumentUploadRequestDto,
@@ -20,6 +23,12 @@ type OwnIdentity = { code1c: string; chat: EdoCandidateChat | null };
 
 @Injectable()
 export class CandidateDocumentsService {
+  private readonly logger = new Logger(CandidateDocumentsService.name);
+  private readonly previousSyncs = new Map<
+    string,
+    { identityKey: string; syncedAt: number; pending?: Promise<void> }
+  >();
+
   constructor(
     private readonly contexts: CandidateContextService,
     private readonly identity: LkCandidateIdentityService,
@@ -27,7 +36,82 @@ export class CandidateDocumentsService {
     private readonly reads: DocumentReadService,
     private readonly events: DocumentEventsService,
     private readonly grants: DocumentUploadGrantService,
+    @Optional() private readonly prisma?: PrismaService,
+    @Optional()
+    private readonly previousDocsSync?: CandidatePreviousDocumentsSyncService,
   ) {}
+
+  private async syncRuPreviousDocuments(
+    chatUuid: string,
+    code1c?: string | null,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (!this.prisma || !this.previousDocsSync) return;
+    const candidate = await this.prisma.candidate.findFirst({
+      where: { chatUuid, erpDeleted: false },
+    });
+    if (
+      !candidate?.erpUid ||
+      candidateReviewGroup(candidate) !== "RU"
+    )
+      return;
+
+    // The drawer/enrichment worker may already have refreshed the same snapshot.
+    if (
+      candidate.previousDocumentsSyncedAt &&
+      Date.now() - candidate.previousDocumentsSyncedAt.getTime() < 5 * 60_000
+    )
+      return;
+    const candidateCode1c = candidate.code1c ?? code1c ?? null;
+    const identityKey = `${candidate.erpUid}:${candidateCode1c ?? ""}:${candidate.personUid ?? ""}`;
+    const previous = this.previousSyncs.get(candidate.id);
+    if (previous?.identityKey === identityKey) {
+      if (previous.pending) {
+        try {
+          await previous.pending;
+        } catch (error) {
+          this.logger.warn(
+            `Candidate previous-document refresh deferred for ${candidate.id}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return;
+        }
+        return;
+      }
+      if (Date.now() - previous.syncedAt < 5 * 60_000) return;
+    }
+
+    const pending = this.previousDocsSync
+      .syncPreviousDocuments(
+        candidate.id,
+        "system:candidate-chat",
+        "",
+        candidate,
+        undefined,
+        {
+          signal: signal
+            ? AbortSignal.any([signal, AbortSignal.timeout(16_000)])
+            : AbortSignal.timeout(18_000),
+        },
+      )
+      .then(() => undefined);
+    const entry = { identityKey, syncedAt: 0, pending };
+    this.previousSyncs.set(candidate.id, entry);
+    try {
+      await pending;
+      if (this.previousSyncs.get(candidate.id) === entry) {
+        this.previousSyncs.set(candidate.id, {
+          identityKey,
+          syncedAt: Date.now(),
+        });
+      }
+    } catch (error) {
+      if (this.previousSyncs.get(candidate.id) === entry)
+        this.previousSyncs.delete(candidate.id);
+      this.logger.warn(
+        `Candidate previous-document refresh deferred for ${candidate.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
   context(uuid: string) {
     return this.contexts.context(uuid);
   }
@@ -125,8 +209,15 @@ export class CandidateDocumentsService {
     );
   }
   async statuses(uuid: string) {
-    const chat = await this.identity.byUuid(uuid);
-    return this.reads.internalDocuments({ chat_uuid: chat.chatUuid });
+    const signal = AbortSignal.timeout(22_000);
+    return withinDocumentDeadline(
+      (async () => {
+        const chat = await this.identity.byUuid(uuid, signal);
+        await this.syncRuPreviousDocuments(chat.chatUuid, chat.code1c, signal);
+        return this.reads.internalDocuments({ chat_uuid: chat.chatUuid });
+      })(),
+      signal,
+    );
   }
   async draft(uuid: string, documentUid: string) {
     const chat = await this.identity.byUuid(uuid);

@@ -117,3 +117,13 @@ This is a pnpm + Turborepo monorepo (`apps/web`, `apps/api`, `packages/*`). Read
 - GitLab CI entry point is `edo.yml@webdevs/ci-templates`, which includes `ocr/.gitlab-ci.yml` from the pipeline commit. Protected main pushes changing `ocr/**/*` validate and deploy through runner tag `deploy-ocr-pc`. Do not replace this entry point or trigger GitHub Actions/e2e.
 - Runtime is managed under `/home/neuro/.local/share/edo-ocr/current`, separate from developer checkouts. Never edit releases/current or copy private runtime data into Git. Read `ocr/docs/ci-cd.md` before changing deployment, runner, dependency caches or rollback.
 - See `docs/integrations/document-ocr-sources.md` for the boundary, setup and remaining EDO adapter work.
+
+## Напоминание о пакетной загрузке документов РУ
+
+- Пока ERP не поддерживает пакетное получение документов кандидатов, ЭДО обновляет документы видимой страницы через свою очередь и отдельные запросы ERP, с проверкой свежести снимков.
+- Каждый агент в конце работы обязан напоминать: необходимо добавить в ERP endpoint, принимающий список UUID кандидатов и возвращающий их документы одним запросом, затем перевести пакетное обновление ЭДО на этот endpoint. ERP без отдельного запроса пользователя не менять.
+
+## Напоминание об исправлениях документов ERP
+
+- Исправления полей прежних/зачтённых документов пока сохраняются только в ЭДО, отдельно от исходного ERP-снимка. Не выдавать их за сохранённые в ERP и не затирать синхронизацией.
+- Каждый агент в конце любой работы обязан напоминать: кроме пакетного получения документов, нужно добавить контракт ERP для сохранения исправленных полей существующего документа и подключить его в ЭДО. ERP без отдельного запроса пользователя не менять.

@@ -4,6 +4,25 @@ import { MIGRATION_UID } from "../ocr/ocr-profile";
 export const EMPLOYMENT_PATENT_UID = "e87d5a10-d248-11eb-80c7-002590854e7f";
 const freshIgDocuments = new Set([MIGRATION_UID, EMPLOYMENT_PATENT_UID]);
 
+export const EAEU_CITIZENSHIP_CODES = ["by", "kz", "am", "kg"] as const;
+export function isEaeuCitizenship(
+  citizenship: string | null | undefined,
+): boolean {
+  if (!citizenship) return false;
+  const normalized = citizenship.trim().toLowerCase();
+  return (EAEU_CITIZENSHIP_CODES as readonly string[]).includes(normalized);
+}
+
+export function isPatentExempt(
+  documentUid: string | null | undefined,
+  citizenship: string | null | undefined,
+): boolean {
+  return (
+    documentUid?.toLowerCase() === EMPLOYMENT_PATENT_UID &&
+    isEaeuCitizenship(citizenship)
+  );
+}
+
 export function needsNewIgDocument(documentUid: string | null): boolean {
   return (
     documentUid !== null && freshIgDocuments.has(documentUid.toLowerCase())

@@ -1,3 +1,4 @@
+import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
 import {
   ConflictException,
   Injectable,
@@ -45,6 +46,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
     private readonly pdf: DocumentPdfService,
     private readonly uploads: DocumentUploadService,
     @Optional() private readonly erp?: ErpWorkspaceClient,
+    @Optional() private readonly previousDocs?: CandidatePreviousDocumentsSyncService,
   ) {}
   onModuleInit(): void {
     if (this.config.get<string>("DOCUMENT_WORKER_ENABLED") === "false") return;
@@ -168,7 +170,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
     const attempt = await this.prisma.$transaction(async (tx) => {
       const row = await tx.erpDocumentDelivery.findUniqueOrThrow({
         where: { id },
-        include: { version: { include: { fields: true } } },
+        include: { version: { include: { fields: true, submission: true } } },
       });
       if (principal) {
         const doc = await tx.document.findUniqueOrThrow({
@@ -370,6 +372,13 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
         },
       });
     });
+    if (status === "SENT" && this.previousDocs && attempt.row.version.submission?.origin === "REVIEWER") {
+      const owner = await this.prisma.document.findUnique({ where: { id: attempt.row.version.documentId }, select: { candidateId: true } });
+      if (owner?.candidateId) {
+        try { await this.previousDocs.syncPreviousDocuments(owner.candidateId, actorId, correlationId); }
+        catch { this.logger.warn("Delivered document history refresh deferred"); }
+      }
+    }
   }
   async tick(): Promise<void> {
     const expired = await this.prisma.erpDocumentDelivery.findMany({

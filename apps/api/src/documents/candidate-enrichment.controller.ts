@@ -1,4 +1,4 @@
-import { Controller, HttpCode, Param, Post } from "@nestjs/common";
+import { Body, Controller, HttpCode, Param, Post } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -11,7 +11,7 @@ import { RequireAccessRule } from "../auth/require-access-rule.decorator";
 import { EdoAccessRule } from "../auth/edo-access-rule";
 import { ApiErrorDto } from "./dto/document.dto";
 import { IgEnrichmentQueueService } from "./ig-enrichment-queue.service";
-import { CandidateEnrichmentDto } from "./dto/candidate-enrichment.dto";
+import { CandidateEnrichmentBatchRequestDto, CandidateEnrichmentBatchDto, CandidateEnrichmentDto } from "./dto/candidate-enrichment.dto";
 
 @ApiTags("documents")
 @ApiBearerAuth("access-jwt")
@@ -24,12 +24,24 @@ import { CandidateEnrichmentDto } from "./dto/candidate-enrichment.dto";
 @Controller("v1/candidates")
 export class CandidateEnrichmentController {
   constructor(private readonly queue: IgEnrichmentQueueService) {}
+  @Post("enrichment-batch")
+  @HttpCode(202)
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_RU)
+  @ApiOperation({ operationId: "requestCandidateEnrichmentBatch", summary: "Refresh document snapshots for the visible RU candidate page" })
+  @ApiResponse({ status: 202, type: CandidateEnrichmentBatchDto })
+  requestBatch(@Body() body: CandidateEnrichmentBatchRequestDto, @CurrentPrincipal() principal: AuthPrincipal): Promise<CandidateEnrichmentBatchDto> {
+    return this.queue.requestBatch(body.candidateIds, principal);
+  }
+
   @Post(":candidateId/enrichment")
   @HttpCode(202)
-  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_IG)
+  @RequireAccessRule(
+    EdoAccessRule.DOCUMENT_REVIEW_RU,
+    EdoAccessRule.DOCUMENT_REVIEW_IG,
+  )
   @ApiOperation({
     operationId: "requestCandidateEnrichment",
-    summary: "Prioritize loading the IG employee profile and document history",
+    summary: "Prioritize loading candidate or employee documents",
   })
   @ApiResponse({ status: 202, type: CandidateEnrichmentDto })
   request(

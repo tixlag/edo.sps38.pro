@@ -1,6 +1,6 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import {
-  getCandidatePreviousDocumentOriginal,
   type PreviousDocumentAvailabilityDto,
 } from "@edo/api-client";
 import { Badge, Button } from "@edo/ui";
@@ -49,31 +49,19 @@ export function PreviousDocumentAvailability({
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState("");
   const view = presentation[document.state];
+  let navigate: ReturnType<typeof useNavigate> | undefined;
+  try {
+    navigate = useNavigate();
+  } catch {
+    navigate = undefined;
+  }
   const open = async () => {
-    setOpening(true);
-    setError("");
-    const tab = window.open("about:blank", "_blank");
-    if (tab) tab.opener = null;
+    if (!navigate) return;
+    setOpening(true); setError("");
     try {
-      const blob = await getCandidatePreviousDocumentOriginal(
-        candidateId,
-        document.id,
-      );
-      const url = URL.createObjectURL(blob);
-      if (tab) tab.location.href = url;
-      else {
-        const anchor = window.document.createElement("a");
-        anchor.href = url;
-        anchor.download = document.title;
-        anchor.click();
-      }
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (cause) {
-      tab?.close();
-      setError(candidateError(cause));
-    } finally {
-      setOpening(false);
-    }
+      await navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: { previousDocument: document.id } });
+    } catch (cause) { setError(candidateError(cause)); }
+    finally { setOpening(false); }
   };
   const Icon = document.state === "REUSED" ? CheckCircle2 : HistoryIcon;
   return (

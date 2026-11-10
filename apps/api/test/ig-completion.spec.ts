@@ -187,6 +187,61 @@ describe("IG completion", () => {
       }),
     );
   });
+
+  it.each(["by", "kz", "am", "kg"])("does not require an allForeign patent for %s", async (citizenship) => {
+    const candidate = {
+      id: "current",
+      igCompletedAt: null,
+      igCompletionVerified: false,
+      igRequirementsConflict: true,
+      positionCode: "1",
+      citizenship,
+      sexKnown: false,
+      projectCode: null,
+    };
+    const tx = {
+      igEmploymentState: {
+        findFirst: vi.fn().mockResolvedValue({ currentCandidate: candidate }),
+      },
+      documentType: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            ...types[1], // patent remains in the ERP catalog
+            requiredForAll: false, allRu: false, allForeign: true, positions: [],
+          },
+          {
+            ...types[0], // migration card
+            requiredForAll: false,
+            allRu: false,
+            allForeign: true,
+            positions: [],
+          },
+        ]),
+      },
+      document: { findMany: vi.fn().mockResolvedValue([approved("migration")]) },
+      candidatePreviousDocument: { findMany: vi.fn().mockResolvedValue([]) },
+      candidate: { update: vi.fn() },
+    };
+    const audit = { logInTransaction: vi.fn() };
+    await tryCompleteIgEmployment(
+      tx as never,
+      audit as never,
+      "current",
+      "reviewer",
+      "request",
+    );
+    expect(tx.candidate.update).toHaveBeenCalledWith({
+      where: { id: "current" },
+      data: { igRequirementsConflict: false },
+    });
+    expect(tx.candidate.update).toHaveBeenCalledWith({
+      where: { id: "current" },
+      data: {
+        igCompletedAt: expect.any(Date),
+        igCompletionVerified: true,
+      },
+    });
+  });
   it("records completion and its audit atomically after valid receipts", async () => {
     const candidate = {
       id: "current",

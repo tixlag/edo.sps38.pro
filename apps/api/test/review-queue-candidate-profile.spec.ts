@@ -445,6 +445,7 @@ describe("reviewDocuments with profile filters", () => {
           findMany,
           groupBy: extra.groupBy ?? vi.fn(async () => []),
         },
+        candidatePreviousDocument: { findMany: vi.fn(async () => []) },
         documentType: { findMany: extra.catalog ?? vi.fn(async () => []) },
       } as never,
       access,
@@ -598,6 +599,7 @@ describe("reviewDocuments candidate progress", () => {
       {
         document: { findMany, groupBy },
         documentType: { findMany: catalog },
+        candidatePreviousDocument: { findMany: vi.fn(async () => []) },
       } as never,
       access,
       null as never,

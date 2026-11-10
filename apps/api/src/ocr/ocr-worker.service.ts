@@ -3,6 +3,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
@@ -11,6 +12,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { StorageService } from "../storage/storage.service";
 import { DocumentUploadService } from "../documents/document-upload.service";
+import { DocumentNotificationService } from "../documents/document-notification.service";
 import {
   OcrService,
   validateOcrResult,
@@ -41,6 +43,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
+    @Optional() private readonly notifications?: DocumentNotificationService,
   ) {}
 
   private get requestTimeout(): number {
@@ -271,6 +274,9 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     result: OcrResult,
     raw: Prisma.InputJsonValue,
   ): Promise<void> {
+    let readyForReview:
+      | { documentId: string; version: number; candidateId: string }
+      | undefined;
     await this.prisma.$transaction(async (tx) => {
       const initial = await tx.ocrJob.findUnique({
         where: { id: jobId },
@@ -302,8 +308,9 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
         });
         return;
       }
+      const reviewerUpload = initial.version.submission?.origin === "REVIEWER";
       const candidateReturn =
-        result.outcome === "REJECTED" &&
+        !reviewerUpload && result.outcome === "REJECTED" &&
         (result.rejectionKind === "NON_DOCUMENT" ||
           result.rejectionKind === "DOCUMENT_TYPE_MISMATCH");
       const previous = candidateReturn
@@ -496,6 +503,12 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           ...(passToReview ? { automaticReturnLimitReached: true } : {}),
         },
       });
+      if (status === "IN_REVIEW" && !reviewerUpload)
+        readyForReview = {
+          documentId: initial.version.documentId,
+          version: initial.version.version,
+          candidateId: initial.candidateId,
+        };
       if (returned)
         await this.audit.logInTransaction(tx, {
           actorId: "ocr-document-check",
@@ -512,6 +525,8 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           },
         });
     });
+    if (readyForReview)
+      await this.notifications?.notifyDocumentReadyForReview(readyForReview);
   }
 
   async failAttempt(

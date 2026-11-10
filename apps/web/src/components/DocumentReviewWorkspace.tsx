@@ -1149,7 +1149,7 @@ export function DocumentReviewWorkspace({
                       }
                     >
                       <Check size={14} />
-                      {approve.isPending ? "Подтверждение…" : "Подтвердить"}
+                      {approve.isPending ? "Подтверждение…" : data.uploadOrigin === "REVIEWER" ? "Подтвердить и отправить в ERP" : "Подтвердить"}
                     </Button>
                   )}
                 </div>
