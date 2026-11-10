@@ -16,6 +16,8 @@ import {
 } from "@tanstack/react-router";
 import {
   useGetReviewDocumentFacets,
+  useListCandidateStatuses,
+  getListCandidateStatusesQueryKey,
   useListDocumentTypes,
   useListPositions,
   useListReviewCandidates,
@@ -63,6 +65,8 @@ import { CreateCandidate } from "../components/CreateCandidate";
 import { IgArrivalReviewQueue } from "../components/IgArrivalReviewQueue";
 import { DateFilter } from "../components/DateFilter";
 import { LkLink } from "../components/LkLink";
+import { findCurrentUserAsManager } from "../lib/manager-default";
+import { buildGroupedCandidateStatusOptions } from "../lib/candidate-status-groups";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
 import { formatDateTimeRu } from "../lib/date-format";
 import {
@@ -204,6 +208,9 @@ function CandidateRow({
               {candidateInitials(candidate?.fullName)}
             </span>
             <span className="min-w-0 break-words">{heading}</span>
+            {candidate?.statusName && (
+              <StatusBadge status={candidate.statusName} />
+            )}
             {candidate?.citizenship && (
               <Badge title="Гражданство">
                 {candidate.citizenship.toUpperCase()}
@@ -411,6 +418,7 @@ export function ReviewPage({
   const resetFilters = () => {
     setFilters({
       currentStatus: undefined,
+      statusId: undefined,
       managerName: undefined,
       managerUnassigned: undefined,
       candidateId: undefined,
@@ -507,14 +515,34 @@ export function ReviewPage({
       enabled: canReview && reviewGroup === "RU",
     },
   });
+  const statuses = useListCandidateStatuses({
+    query: {
+      queryKey: getListCandidateStatusesQueryKey(),
+      enabled: canReview && reviewGroup === "RU",
+    },
+  });
   const docTypesParams = useMemo(() => ({ catalogOnly: true as const }), []);
   const docTypes = useListDocumentTypes(docTypesParams);
+
+  const myManager = useMemo(
+    () =>
+      findCurrentUserAsManager(
+        catalogManagers.data?.items,
+        profile.data,
+      ),
+    [catalogManagers.data, profile.data],
+  );
+  const isAllManagers = rawSearch.managerId === "all";
+  const effectiveManagerId = isAllManagers
+    ? undefined
+    : filters.managerId ?? (reviewGroup === "RU" ? myManager?.id : undefined);
 
   const queryParams = useMemo(
     () => ({
       reviewGroup,
       status: filters.status,
       currentStatus: filters.currentStatus,
+      statusId: filters.statusId,
       managerName: filters.managerName,
       managerUnassigned: filters.managerUnassigned,
       limit: PAGE_LIMIT,
@@ -523,7 +551,7 @@ export function ReviewPage({
       documentTypeCode: filters.documentTypeCode,
       citizenship: filters.citizenship,
       managerCode1c: filters.managerCode1c,
-      managerId: filters.managerId,
+      managerId: effectiveManagerId,
       mentorCode1c: filters.mentorCode1c,
       hasMentor: filters.hasMentor,
       birthDateFrom: filters.birthDateFrom,
@@ -533,7 +561,7 @@ export function ReviewPage({
       positionCode: filters.positionCode,
       projectCode: filters.projectCode,
     }),
-    [filters, reviewGroup],
+    [filters, reviewGroup, effectiveManagerId],
   );
   const list = useListCandidateReviewQueue(queryParams, {
     query: {
@@ -621,6 +649,20 @@ export function ReviewPage({
   const managerLabel = facets.data?.managers.find(
     (person) => person.code1c === filters.managerCode1c,
   )?.name;
+  const statusOptions: SearchSelectOption[] = useMemo(
+    () => buildGroupedCandidateStatusOptions(statuses.data?.items ?? []),
+    [statuses.data],
+  );
+  const statusLabel =
+    statuses.data?.items.find((item) => item.id === filters.statusId)?.name ??
+    filters.statusId;
+  const managerSelectedLabel =
+    isAllManagers
+      ? undefined
+      : effectiveManagerId
+        ? catalogManagers.data?.items.find((p) => p.id === effectiveManagerId)
+            ?.name
+        : managerLabel;
   const mentorLabel = facets.data?.mentors.find(
     (person) => person.code1c === filters.mentorCode1c,
   )?.name;
@@ -644,7 +686,9 @@ export function ReviewPage({
   );
   const drawerCandidateId = filters.candidate ?? null;
 
-  const filtersActive = hasActiveReviewFilters(filters);
+  const filtersActive =
+    hasActiveReviewFilters(filters) ||
+    (reviewGroup === "RU" && isAllManagers && !!myManager);
 
   if (!canReview)
     return (
@@ -782,25 +826,35 @@ export function ReviewPage({
                   onChange={commit("citizenship")}
                   className="min-w-[140px]"
                 />
+                {reviewGroup === "RU" && (
+                  <StaticSearchSelect
+                    label="Статус кандидата"
+                    placeholder="Все статусы"
+                    value={filters.statusId}
+                    selectedLabel={statusLabel}
+                    allOptions={statusOptions}
+                    onChange={commit("statusId")}
+                    className="min-w-[160px]"
+                    isLoading={statuses.isLoading}
+                    isError={statuses.isError}
+                    onRetry={() => void statuses.refetch()}
+                  />
+                )}
                 <StaticSearchSelect
                   label="Менеджер"
                   placeholder="Все менеджеры"
                   value={
-                    reviewGroup === "RU"
-                      ? filters.managerId
-                        ? `id:${filters.managerId}`
+                    isAllManagers
+                      ? undefined
+                      : reviewGroup === "RU"
+                        ? effectiveManagerId
+                          ? `id:${effectiveManagerId}`
+                          : filters.managerCode1c
+                            ? `code:${filters.managerCode1c}`
+                            : undefined
                         : filters.managerCode1c
-                          ? `code:${filters.managerCode1c}`
-                          : undefined
-                      : filters.managerCode1c
                   }
-                  selectedLabel={
-                    filters.managerId
-                      ? catalogManagers.data?.items.find(
-                          (person) => person.id === filters.managerId,
-                        )?.name
-                      : managerLabel
-                  }
+                  selectedLabel={managerSelectedLabel}
                   allOptions={managerOptions}
                   isLoading={
                     facets.isLoading ||
@@ -814,18 +868,22 @@ export function ReviewPage({
                     void facets.refetch();
                     if (reviewGroup === "RU") void catalogManagers.refetch();
                   }}
-                  onChange={(value) =>
-                    reviewGroup === "RU"
-                      ? setFilters({
-                          managerId: value?.startsWith("id:")
-                            ? value.slice(3)
-                            : undefined,
-                          managerCode1c: value?.startsWith("code:")
-                            ? value.slice(5)
-                            : undefined,
-                        })
-                      : commit("managerCode1c")(value)
-                  }
+                  onChange={(value) => {
+                    if (!value) {
+                      setFilters({ managerId: "all", managerCode1c: undefined });
+                    } else if (reviewGroup === "RU") {
+                      setFilters({
+                        managerId: value.startsWith("id:")
+                          ? value.slice(3)
+                          : undefined,
+                        managerCode1c: value.startsWith("code:")
+                          ? value.slice(5)
+                          : undefined,
+                      });
+                    } else {
+                      commit("managerCode1c")(value);
+                    }
+                  }}
                   className="min-w-[160px]"
                 />
                 <StaticSearchSelect

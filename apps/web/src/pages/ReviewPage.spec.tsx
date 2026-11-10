@@ -20,6 +20,9 @@ const state = vi.hoisted(() => ({
   arrivalQueue: vi.fn(),
   params: { documentId: "document-1" },
   documentList: [] as unknown[],
+  meFullName: null as string | null,
+  catalogManagers: [] as Array<{ id: string; name: string }>,
+  statuses: [] as Array<{ id: string; name: string }>,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -34,9 +37,22 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@edo/api-client", () => {
   const list = { data: { items: [] }, isLoading: false, isError: false };
   return {
-    useGetMe: () => ({ data: { permissions: state.permissions } }),
-    useListCatalogManagers: () => list,
+    useGetMe: () => ({
+      data: { permissions: state.permissions, fullName: state.meFullName },
+      isLoading: false,
+    }),
+    useListCatalogManagers: () => ({
+      data: { items: state.catalogManagers },
+      isLoading: false,
+      isError: false,
+    }),
+    useListCandidateStatuses: () => ({
+      data: { items: state.statuses },
+      isLoading: false,
+      isError: false,
+    }),
     getListCatalogManagersQueryKey: () => ["catalog-managers"],
+    getListCandidateStatusesQueryKey: () => ["candidate-statuses"],
     useGetDocumentInfo: () => ({ data: state.documentInfo }),
     useGetCandidateDetails: () => ({ data: { documents: state.documentList } }),
     useListCandidateReviewQueue: (...args: unknown[]) => {
@@ -142,6 +158,9 @@ afterEach(async () => {
   state.queueItems = [];
   state.documentList = [];
   state.params = { documentId: "document-1" };
+  state.meFullName = null;
+  state.catalogManagers = [];
+  state.statuses = [];
 });
 
 describe("RU and IG review pages", () => {
@@ -160,6 +179,56 @@ describe("RU and IG review pages", () => {
         .click(),
     );
     expect(view.textContent).not.toContain("Форма создания кандидата");
+  });
+  it("displays candidate status badge in CandidateRow when statusName is present", async () => {
+    state.permissions = { "20002": [] };
+    state.queueItems = [
+      {
+        candidate: {
+          id: "cand-1",
+          fullName: "Сергеев Сергей",
+          statusName: "Подбор",
+        },
+        documents: [],
+      },
+    ];
+    const view = await render("RU");
+    expect(view.textContent).toContain("Подбор");
+  });
+  it("defaults manager filter to current user when matching catalog managers", async () => {
+    state.permissions = { "20002": [] };
+    state.meFullName = "Иванов Иван";
+    state.catalogManagers = [{ id: "mgr-1", name: "Иванов Иван" }];
+    await render("RU");
+    expect(state.queue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        managerId: "mgr-1",
+      }),
+      expect.anything(),
+    );
+  });
+  it("allows selecting a candidate status filter in RU review with grouped options", async () => {
+    state.permissions = { "20002": [] };
+    state.statuses = [
+      { id: "Подбор", name: "Подбор" },
+      { id: "ЗаездПодтвержден", name: "Заезд подтвержден" },
+      { id: "Отказ", name: "Отказ" },
+    ];
+    const view = await render("RU");
+    const input = view.querySelector(
+      'input[aria-label="Статус кандидата"]',
+    ) as HTMLInputElement;
+    expect(input).not.toBeNull();
+    await act(async () => {
+      input.focus();
+    });
+    const listbox = view.querySelector('ul[aria-label="Статус кандидата"]');
+    expect(listbox).not.toBeNull();
+    const groupHeaders = listbox?.querySelectorAll('[role="presentation"]');
+    expect(groupHeaders?.length).toBe(3);
+    expect(groupHeaders?.[0].textContent).toBe("Подбор и скрининг");
+    expect(groupHeaders?.[1].textContent).toBe("Заезд и оформление");
+    expect(groupHeaders?.[2].textContent).toBe("Остальные статусы");
   });
   it("opens all candidates by default in RU while keeping IG on the review queue", async () => {
     state.permissions = { "20002": [] };

@@ -4,7 +4,12 @@ import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { CandidatesPage } from "./CandidatesPage";
 
-const state = vi.hoisted(() => ({ navigate: vi.fn(), list: vi.fn() }));
+const state = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  list: vi.fn(),
+  me: { permissions: { "20002": [] }, fullName: "Менеджер Иванов" } as unknown,
+  managers: [{ id: "mgr-1", name: "Менеджер Иванов" }] as unknown[],
+}));
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
   useNavigate: () => state.navigate,
@@ -16,10 +21,10 @@ vi.mock("@tanstack/react-query", () => ({
 vi.mock("@edo/api-client", () => {
   const empty = { data: { items: [] }, refetch: vi.fn() };
   return {
-    useGetMe: () => ({ data: { permissions: { "20002": [] } } }),
+    useGetMe: () => ({ data: state.me }),
     useCreateCandidate: vi.fn(),
     getListCommunicationCandidatesQueryKey: vi.fn(),
-    useListCandidateManagers: () => empty,
+    useListCandidateManagers: () => ({ data: { items: state.managers }, refetch: vi.fn() }),
     useListCandidateProjects: () => empty,
     useListCandidateStatuses: () => empty,
     useListPositions: () => ({
@@ -65,6 +70,18 @@ it("selects a position and mentor and resets pagination", async () => {
       ...expected,
     });
   }
+  await act(async () => root.unmount());
+  container.remove();
+});
+
+it("defaults manager filter to current user when matching candidate managers", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => root.render(<CandidatesPage />));
+  expect(state.list).toHaveBeenCalledWith(
+    expect.objectContaining({ managerId: "mgr-1" }),
+  );
   await act(async () => root.unmount());
   container.remove();
 });

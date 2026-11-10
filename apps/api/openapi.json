@@ -6963,6 +6963,15 @@
             }
           },
           {
+            "name": "statusId",
+            "required": false,
+            "in": "query",
+            "description": "Exact candidate statusId (e.g. Заезд, Отказ, Подбор)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "managerCode1c",
             "required": false,
             "in": "query",
@@ -7285,6 +7294,15 @@
             "required": false,
             "in": "query",
             "description": "Exact candidate id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "statusId",
+            "required": false,
+            "in": "query",
+            "description": "Exact candidate statusId (e.g. Заезд, Отказ, Подбор)",
             "schema": {
               "type": "string"
             }

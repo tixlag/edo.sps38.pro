@@ -153,10 +153,14 @@ export function StageRing({
   progress,
   onOpen,
   selected,
+  variant = "card",
+  className = "",
 }: {
   progress: ReviewStageProgressDto;
-  onOpen: () => void;
+  onOpen?: () => void;
   selected?: boolean;
+  variant?: "card" | "inline";
+  className?: string;
 }) {
   const label =
     progress.stage === null ? "Дополнительные" : `Этап ${progress.stage}`;
@@ -257,6 +261,83 @@ export function StageRing({
       return element;
     });
   };
+  if (variant === "inline") {
+    return (
+      <div
+        ref={anchor}
+        tabIndex={0}
+        onClick={(event) => {
+          event.stopPropagation();
+          setDismissed(true);
+          onOpen?.();
+        }}
+        onFocus={() => {
+          setDismissed(false);
+          setFocused(true);
+        }}
+        onBlur={() => setFocused(false)}
+        onPointerEnter={(event) => {
+          if (event.pointerType === "mouse") enter();
+        }}
+        onPointerLeave={(event) => {
+          if (event.pointerType === "mouse") leave();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setDismissed(true);
+            onOpen?.();
+          }
+        }}
+        role="button"
+        className={`group pointer-events-auto relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] ${selected ? "ring-2 ring-[var(--primary)]/30" : ""} ${className}`}
+        aria-label={`Статистика документов: ${label}`}
+        aria-pressed={selected}
+        aria-describedby={open ? tooltipId : undefined}
+      >
+        <span className="relative flex h-8 w-8 items-center justify-center">
+          <svg
+            viewBox="0 0 64 64"
+            className="absolute inset-0 h-full w-full -rotate-90"
+            aria-hidden="true"
+          >
+            <circle
+              cx="32"
+              cy="32"
+              r="28"
+              fill="none"
+              stroke="var(--border)"
+              strokeWidth="4.5"
+            />
+            <circle
+              cx="32"
+              cy="32"
+              r="21"
+              fill="none"
+              stroke="var(--border)"
+              strokeWidth="4.5"
+            />
+            {arc(progress.additional, 28)}
+            {arc(progress.required, 21)}
+          </svg>
+          <span style={{ color }} aria-hidden="true" className="relative z-10 flex items-center justify-center">
+            {inReview ? <AlertTriangle size={13} /> : <FileText size={13} />}
+          </span>
+        </span>
+        {open && anchor.current && (
+          <StageTooltip
+            id={tooltipId}
+            label={label}
+            progress={progress}
+            anchor={anchor.current}
+            onEnter={enter}
+            onLeave={leave}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       ref={anchor}
@@ -264,7 +345,7 @@ export function StageRing({
       onClick={(event) => {
         event.stopPropagation();
         setDismissed(true);
-        onOpen();
+        onOpen?.();
       }}
       onFocus={() => {
         setDismissed(false);
@@ -281,11 +362,11 @@ export function StageRing({
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           setDismissed(true);
-          onOpen();
+          onOpen?.();
         }
       }}
       role="button"
-      className={`group pointer-events-auto relative flex w-16 shrink-0 flex-col items-center gap-0.5 rounded text-center text-xs min-[1400px]:w-[68px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] ${selected ? "bg-[var(--primary-soft)]" : ""}`}
+      className={`group pointer-events-auto relative flex w-16 shrink-0 flex-col items-center gap-0.5 rounded text-center text-xs min-[1400px]:w-[68px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] ${selected ? "bg-[var(--primary-soft)]" : ""} ${className}`}
       aria-label={`Открыть документы: ${label}`}
       aria-pressed={selected}
       aria-describedby={open ? tooltipId : undefined}

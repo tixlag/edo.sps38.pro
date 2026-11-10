@@ -94,6 +94,8 @@ export function CandidateStageAccordion({
       ? Math.min(100, Math.round((confirmedCount / totalRequired) * 100))
       : 100;
 
+  const remainingRequired = Math.max(0, totalRequired - confirmedCount);
+
   // Build list of required cards
   const renderedRequiredCodes = new Set<string>();
 
@@ -235,100 +237,131 @@ export function CandidateStageAccordion({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] transition-colors",
+        "overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-xs transition-colors",
         className,
       )}
     >
-      <div className="flex items-center gap-2 p-2">
-      {showProgress && progress && (
-        <StageRing progress={progress} selected={isOpen} onOpen={onToggle} />
-      )}
-      {/* Header Button */}
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={isOpen}
-        className="flex w-full flex-col p-3.5 text-left transition-colors hover:bg-[var(--muted-soft)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] sm:p-4"
-      >
-        <div
+      <div className="relative flex w-full items-center">
+        {/* Accordion header button */}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={isOpen}
+          aria-controls={`stage-content-${stage ?? "none"}`}
           className={cn(
-            "flex w-full items-center justify-between gap-3",
-            showProgress && "mb-2.5",
+            "flex w-full flex-col px-3.5 py-3 text-left transition-colors",
+            "hover:bg-[var(--muted)]/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]",
+            isOpen && "bg-[var(--muted)]/30",
           )}
         >
-          <div className="flex min-w-0 items-center gap-2.5">
-            {(!progress || !showProgress) && (stage !== null ? (
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-xs font-bold text-[var(--primary)]">
-                {stage}
-              </span>
-            ) : (
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-xs font-bold text-[var(--primary)]">
-                <Layers size={14} aria-hidden />
-              </span>
-            ))}
-            <h3 className="truncate text-sm font-semibold text-[var(--foreground)]">
-              {title}
-            </h3>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2.5">
-            {showProgress && (
-              <span className="text-xs font-medium text-[var(--muted-foreground)]">
-                {confirmedCount} из {totalRequired}
-              </span>
-            )}
-            <ChevronDown
-              className={cn(
-                "h-4 w-4 text-[var(--muted-foreground)] transition-transform duration-200",
-                isOpen && "rotate-180",
+          <div className="flex w-full items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {showProgress && progress ? (
+                <div className="h-8 w-8 shrink-0" aria-hidden="true" />
+              ) : stage !== null ? (
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-xs font-semibold text-[var(--primary)]">
+                  {stage}
+                </span>
+              ) : (
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-xs font-semibold text-[var(--primary)]">
+                  <Layers size={14} aria-hidden />
+                </span>
               )}
-              aria-hidden
-            />
-          </div>
-        </div>
+              <h3 className="truncate text-[13.5px] font-semibold text-[var(--foreground)]">
+                {title}
+              </h3>
+            </div>
 
-        {/* Progress Bar */}
-        {showProgress && !progress && (
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--muted)]">
-            <div
-              className="h-full bg-[var(--primary)] transition-all duration-300"
-              style={{ width: `${progressPercent}%` }}
+            <div className="flex shrink-0 items-center gap-2.5">
+              {showProgress && (
+                <span className="text-xs font-medium text-[var(--muted-foreground)] tabular-nums">
+                  {totalRequired > 0 ? (
+                    remainingRequired === 0 ? (
+                      <span className="font-semibold text-[var(--success)]">
+                        {confirmedCount} из {totalRequired}
+                      </span>
+                    ) : (
+                      <span>
+                        {confirmedCount} из {totalRequired}
+                        <span className="hidden sm:inline font-normal text-[var(--muted-foreground)]">
+                          {` · ещё нужно ${remainingRequired}`}
+                        </span>
+                      </span>
+                    )
+                  ) : (
+                    `${confirmedCount} из ${totalRequired}`
+                  )}
+                </span>
+              )}
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 shrink-0 text-[var(--muted-foreground)] transition-transform duration-200",
+                  isOpen && "rotate-180",
+                )}
+                aria-hidden
+              />
+            </div>
+          </div>
+
+          {/* Fallback progress line when there is no circular StageRing */}
+          {showProgress && !progress && (
+            <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-[var(--muted)]">
+              <div
+                className="h-full bg-[var(--primary)] transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          )}
+        </button>
+
+        {/* Double-ring diagram positioned on the left on the same horizontal line */}
+        {showProgress && progress && (
+          <div className="pointer-events-auto absolute left-3.5 top-1/2 -translate-y-1/2">
+            <StageRing
+              progress={progress}
+              variant="inline"
+              selected={isOpen}
+              onOpen={onToggle}
             />
           </div>
         )}
-      </button>
       </div>
 
       {/* Accordion Content */}
       {isOpen && (
-        <div className="space-y-4 px-3.5 pb-4 pt-1 sm:px-4 sm:pb-5">
+        <div
+          id={`stage-content-${stage ?? "none"}`}
+          className="space-y-4 border-t border-[var(--border)]/60 px-3.5 pb-4 pt-3 sm:px-4 sm:pb-4"
+        >
           {/* Required documents */}
           {allRequiredCards.length > 0 ? (
             <section
               aria-label="Обязательные документы"
-              className="space-y-2.5"
+              className="space-y-2"
             >
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+              <h4 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
                 Обязательные
               </h4>
-              {allRequiredCards.map((card) => (
-                <CandidatePreviousDocumentCard
-                  key={card.key}
-                  candidateId={candidateId}
-                  reviewGroup={reviewGroup}
-                  title={card.title}
-                  status={card.status}
-                  currentDocument={card.currentDocument}
-                  previousDocument={card.previousDocument}
-                  returnedVersion={card.returnedVersion}
-                  isMissing={card.isMissing}
-                  onOpenPrevious={onOpenPrevious}
-                  onReviewCurrent={onReviewDocument}
-                />
-              ))}
+              <div className="space-y-2">
+                {allRequiredCards.map((card) => (
+                  <CandidatePreviousDocumentCard
+                    key={card.key}
+                    candidateId={candidateId}
+                    reviewGroup={reviewGroup}
+                    title={card.title}
+                    status={card.status}
+                    currentDocument={card.currentDocument}
+                    previousDocument={card.previousDocument}
+                    returnedVersion={card.returnedVersion}
+                    isMissing={card.isMissing}
+                    onOpenPrevious={onOpenPrevious}
+                    onReviewCurrent={onReviewDocument}
+                  />
+                ))}
+              </div>
             </section>
           ) : (
-            <p className="py-2 text-xs text-[var(--muted-foreground)]">
+            <p className="py-1 text-xs text-[var(--muted-foreground)]">
               Обязательные документы отсутствуют.
             </p>
           )}
@@ -337,26 +370,28 @@ export function CandidateStageAccordion({
           {allAdditionalCards.length > 0 && (
             <section
               aria-label="Дополнительные документы"
-              className="space-y-2.5 pt-2"
+              className="space-y-2 pt-1"
             >
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+              <h4 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
                 Дополнительные
               </h4>
-              {allAdditionalCards.map((card) => (
-                <CandidatePreviousDocumentCard
-                  key={card.key}
-                  candidateId={candidateId}
-                  reviewGroup={reviewGroup}
-                  title={card.title}
-                  status={card.status}
-                  currentDocument={card.currentDocument}
-                  previousDocument={card.previousDocument}
-                  returnedVersion={card.returnedVersion}
-                  isMissing={card.isMissing}
-                  onOpenPrevious={onOpenPrevious}
-                  onReviewCurrent={onReviewDocument}
-                />
-              ))}
+              <div className="space-y-2">
+                {allAdditionalCards.map((card) => (
+                  <CandidatePreviousDocumentCard
+                    key={card.key}
+                    candidateId={candidateId}
+                    reviewGroup={reviewGroup}
+                    title={card.title}
+                    status={card.status}
+                    currentDocument={card.currentDocument}
+                    previousDocument={card.previousDocument}
+                    returnedVersion={card.returnedVersion}
+                    isMissing={card.isMissing}
+                    onOpenPrevious={onOpenPrevious}
+                    onReviewCurrent={onReviewDocument}
+                  />
+                ))}
+              </div>
             </section>
           )}
         </div>

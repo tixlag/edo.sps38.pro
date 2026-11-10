@@ -23,6 +23,12 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       port: 5173,
+      proxy: {
+        '/api': {
+          target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:3001',
+          changeOrigin: true,
+        },
+      },
       ...(process.env.EDO_LOCAL_HTTPS === 'true' ? {
         hmr: { protocol: 'wss', host: 'edo.localhost', clientPort: 12443 },
       } : {}),

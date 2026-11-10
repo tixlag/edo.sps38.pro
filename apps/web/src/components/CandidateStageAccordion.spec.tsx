@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type {
   CandidateDocumentSummaryDto,
   MissingDocumentTypeDto,
-  PreviousDocumentAvailabilityDto,
+  ReviewStageProgressDto,
 } from "@edo/api-client";
 import { CandidateStageAccordion } from "./CandidateStageAccordion";
 
@@ -46,7 +46,7 @@ describe("CandidateStageAccordion", () => {
     });
   }
 
-  it("renders stage badge, title, progress counter and triggers onToggle", async () => {
+  it("renders stage badge, title once with progress counter and triggers onToggle", async () => {
     const onToggle = vi.fn();
 
     const requiredDocs: CandidateDocumentSummaryDto[] = [
@@ -86,7 +86,9 @@ describe("CandidateStageAccordion", () => {
 
     expect(container?.textContent).toContain("1");
     expect(container?.textContent).toContain("Этап 1 • Проверка документов");
+    // Displays how many documents loaded and how many remaining
     expect(container?.textContent).toContain("1 из 3");
+    expect(container?.textContent).toContain("ещё нужно 2");
 
     // Content should be hidden when closed
     expect(container?.textContent).not.toContain("Паспорт");
@@ -176,42 +178,69 @@ describe("CandidateStageAccordion", () => {
     expect(onReviewDocument).toHaveBeenCalledWith("d2", 1);
   });
 
-  it("counts reused previous documents into progress counter", async () => {
-    const missingDocs: MissingDocumentTypeDto[] = [
-      { code: "PASSPORT", title: "Паспорт" },
-      { code: "SNILS", title: "СНИЛС" },
-    ];
-
-    const previousDocs: PreviousDocumentAvailabilityDto[] = [
-      {
-        id: "prev-snils",
-        documentUid: "u1",
-        documentTypeCode: "SNILS",
-        title: "СНИЛС",
-        category: "required",
-        state: "REUSED",
-        expiresAt: null,
-        recordedAt: null,
-        originalAvailable: true,
-        source: "EDO",
-        sourceDescription: "Из ЭДО",
-        fields: {},
+  it("renders inline StageRing with progress when provided, without duplicate counters in header", async () => {
+    const onToggle = vi.fn();
+    const progress: ReviewStageProgressDto = {
+      stage: 1,
+      required: {
+        approved: 1,
+        reused: 1,
+        signed: 0,
+        inReview: 0,
+        uploaded: 0,
+        ocrPending: 0,
+        ocrFailed: 0,
+        returned: 0,
+        expired: 0,
+        draft: 0,
+        missing: 1,
       },
-    ];
+      additional: {
+        approved: 0,
+        reused: 0,
+        signed: 0,
+        inReview: 0,
+        uploaded: 0,
+        ocrPending: 0,
+        ocrFailed: 0,
+        returned: 0,
+        expired: 0,
+        draft: 0,
+        missing: 0,
+      },
+    };
 
     await renderAccordion({
-      stage: null,
-      title: "Вне этапов",
-      required: { documents: [], missingDocuments: missingDocs },
+      stage: 1,
+      title: "Этап 1",
+      required: { documents: [], missingDocuments: [] },
       additional: { documents: [], missingDocuments: [] },
-      previousDocuments: previousDocs,
+      previousDocuments: [],
       candidateId: "cand-1",
       isOpen: false,
-      onToggle: vi.fn(),
+      progress,
+      onToggle,
     });
 
-    expect(container?.textContent).toContain("Вне этапов");
-    // 1 reused out of 2 total
-    expect(container?.textContent).toContain("1 из 2");
+    expect(container?.textContent).toContain("Этап 1");
+    // Displays how many documents confirmed and how many remaining
+    expect(container?.textContent).toContain("2 из 3");
+    expect(container?.textContent).toContain("ещё нужно 1");
+
+    // Title should only appear once (not duplicated under diagram)
+    const matches = container?.textContent?.match(/Этап 1/g) ?? [];
+    expect(matches.length).toBe(1);
+
+    // The inline StageRing button exists and has accessible label
+    const ringButton = container?.querySelector(
+      '[aria-label*="Статистика документов"]',
+    );
+    expect(ringButton).toBeTruthy();
+
+    // Clicking ring button also triggers onToggle
+    await act(async () => {
+      (ringButton as HTMLElement)?.click();
+    });
+    expect(onToggle).toHaveBeenCalledTimes(1);
   });
 });

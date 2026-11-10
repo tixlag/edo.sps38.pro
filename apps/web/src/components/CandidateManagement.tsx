@@ -34,6 +34,7 @@ import {
 } from "./CandidateForm";
 import { SearchSelect } from "./SearchSelect";
 import { formatBirthDateRu } from "../lib/review-groups";
+import { groupCandidateStatuses } from "../lib/candidate-status-groups";
 import { CandidatePreviousDocuments } from "./CandidatePreviousDocuments";
 import { CandidatePersonPicker } from "./CandidatePersonPicker";
 import { LkLink } from "./LkLink";
@@ -202,51 +203,6 @@ function EditCandidate({
   );
 }
 
-const STATUS_GROUPS = [
-  { key: "screening", label: "Подбор и скрининг" },
-  { key: "verification", label: "Согласование и проверки" },
-  { key: "arrival", label: "Заезд и оформление" },
-  { key: "other", label: "Остальные статусы" },
-] as const;
-
-type StatusGroupLabel = (typeof STATUS_GROUPS)[number]["label"];
-
-function classifyStatus(status: { id: string; name: string }): StatusGroupLabel {
-  const text = `${status.id} ${status.name}`.toLowerCase();
-
-  // Заезд и оформление (План на заезд, Заезд/выход, Оформление, Принят и схожие)
-  if (
-    /заезд|arrival|прием|приём|приказ|оформлен|принят|стажировк|employment|onboarding/i.test(
-      text,
-    )
-  ) {
-    return "Заезд и оформление";
-  }
-
-  // Согласование и проверки (СБ, МО, УЦ, Согласование и схожие)
-  if (
-    /медосмотр|удостоверен|согласован|рассмотрен|пропуск|проверк|безопасн|security|medical|approval/i.test(
-      text,
-    ) ||
-    /(?:^|[^\p{L}\p{N}])(?:мо|уц|сб|фсб|епт|воз|sb|mo|uc)(?:[^\p{L}\p{N}]|$)/iu.test(
-      text,
-    )
-  ) {
-    return "Согласование и проверки";
-  }
-
-  // Подбор и скрининг (Подбор, Потенциальный, В работе и схожие)
-  if (
-    /подбор|recruiting|потенциальн|potential|в\s*работе|вработе|in[_\s-]?progress|не\s*дозвон|недозвон|сбор\s*документов|сбордокументов|резерв|reserve|скрининг|screening/iu.test(
-      text,
-    )
-  ) {
-    return "Подбор и скрининг";
-  }
-
-  return "Остальные статусы";
-}
-
 function CandidateStatus({
   profile,
   onClose,
@@ -267,12 +223,7 @@ function CandidateStatus({
   const selected = statuses.data?.items.find(
     (status) => status.id === statusId,
   );
-  const groupedStatuses = STATUS_GROUPS.map((group) => ({
-    ...group,
-    items: (statuses.data?.items ?? []).filter(
-      (status) => classifyStatus(status) === group.label,
-    ),
-  })).filter((group) => group.items.length > 0);
+  const groupedStatuses = groupCandidateStatuses(statuses.data?.items ?? []);
   return (
     <form
       aria-label="Изменение статуса"
@@ -574,48 +525,45 @@ export function CandidateManagement({
     (profile.manager as { code1c?: string })?.code1c ||
     fallbackProfile?.managerCode1c;
   return (
-    <div className="space-y-6 p-1">
+    <div className="space-y-4 p-1">
       <section aria-label="Данные кандидата" className="space-y-3">
-        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-base font-semibold text-[var(--foreground)]">
-            Данные кандидата
-          </h2>
-          {!action && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Button
-                size="sm"
-                variant="default"
-                onClick={() => setAction("status")}
-                className="inline-flex items-center gap-1.5"
-              >
-                <Clock size={14} />
-                <span>Изменить статус</span>
-              </Button>
+        {!action && (
+          <div className="flex flex-col gap-2">
+            <Button
+              size="sm"
+              variant="default"
+              onClick={() => setAction("status")}
+              className="w-full justify-center gap-2 h-9 font-medium shadow-2xs"
+            >
+              <Clock size={14} />
+              <span>Изменить статус</span>
+            </Button>
+            <div className="grid grid-cols-2 gap-2">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setAction("edit")}
-                className="inline-flex items-center gap-1.5"
+                className="w-full justify-center gap-1.5 h-8 text-xs font-medium"
               >
-                <Pencil size={14} />
+                <Pencil size={13} />
                 <span>Редактировать данные</span>
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setAction("person")}
-                className="inline-flex items-center gap-1.5"
+                className="w-full justify-center gap-1.5 h-8 text-xs font-medium"
               >
-                <UserCheck size={14} />
-                <span>
+                <UserCheck size={13} />
+                <span className="truncate">
                   {profile.linkedPerson
                     ? "Подтвердить связь с физлицом"
                     : "Повторный приём"}
                 </span>
               </Button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
         {action === "edit" && (
           <EditCandidate
             profile={profile}
@@ -633,24 +581,22 @@ export function CandidateManagement({
           />
         )}
         {!action && (
-          <div
-            className={`grid gap-3 ${compact ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"}`}
-          >
+          <div className="space-y-3">
             {/* Карточка 1: Личные данные */}
-            <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3.5">
-              <div className="flex items-center gap-2 border-b border-[var(--border)] pb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                <User size={14} className="text-[var(--primary)]" />
+            <div className="space-y-2.5 rounded-xl border border-[var(--border)]/60 bg-[var(--muted)]/20 p-3.5 shadow-2xs">
+              <div className="flex items-center gap-2 border-b border-[var(--border)]/40 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                <User size={13} className="text-[var(--primary)]" />
                 <span>Личные данные</span>
               </div>
-              <dl className="space-y-2.5 text-sm">
+              <dl className="space-y-2 text-xs sm:text-[13px]">
                 <div className="min-w-0">
-                  <dt className="text-xs text-[var(--muted-foreground)]">ФИО</dt>
+                  <dt className="text-[11px] font-medium text-[var(--muted-foreground)]">ФИО</dt>
                   <dd className="break-words font-medium text-[var(--foreground)]">
                     {profile.fullName || "Не указано"}
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-xs text-[var(--muted-foreground)]">
+                  <dt className="text-[11px] font-medium text-[var(--muted-foreground)]">
                     Телефон
                   </dt>
                   <dd className="break-words font-medium text-[var(--foreground)]">
@@ -670,7 +616,7 @@ export function CandidateManagement({
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-xs text-[var(--muted-foreground)]">
+                  <dt className="text-[11px] font-medium text-[var(--muted-foreground)]">
                     Дата рождения
                   </dt>
                   <dd className="break-words font-medium text-[var(--foreground)]">
@@ -679,7 +625,7 @@ export function CandidateManagement({
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-xs text-[var(--muted-foreground)]">
+                  <dt className="text-[11px] font-medium text-[var(--muted-foreground)]">
                     Гражданство
                   </dt>
                   <dd className="pt-0.5">
@@ -698,14 +644,14 @@ export function CandidateManagement({
             </div>
 
             {/* Карточка 2: Назначение ERP */}
-            <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3.5">
-              <div className="flex items-center gap-2 border-b border-[var(--border)] pb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                <Briefcase size={14} className="text-[var(--primary)]" />
+            <div className="space-y-2.5 rounded-xl border border-[var(--border)]/60 bg-[var(--muted)]/20 p-3.5 shadow-2xs">
+              <div className="flex items-center gap-2 border-b border-[var(--border)]/40 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                <Briefcase size={13} className="text-[var(--primary)]" />
                 <span>Назначение ERP</span>
               </div>
-              <dl className="space-y-2.5 text-sm">
+              <dl className="space-y-2 text-xs sm:text-[13px]">
                 <div className="min-w-0">
-                  <dt className="text-xs text-[var(--muted-foreground)]">
+                  <dt className="text-[11px] font-medium text-[var(--muted-foreground)]">
                     Должность
                   </dt>
                   <dd className="break-words font-medium text-[var(--foreground)]">
@@ -713,7 +659,7 @@ export function CandidateManagement({
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-xs text-[var(--muted-foreground)]">
+                  <dt className="text-[11px] font-medium text-[var(--muted-foreground)]">
                     Объект
                   </dt>
                   <dd className="break-words font-medium text-[var(--foreground)]">
@@ -721,7 +667,7 @@ export function CandidateManagement({
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-xs text-[var(--muted-foreground)]">
+                  <dt className="text-[11px] font-medium text-[var(--muted-foreground)]">
                     Менеджер
                   </dt>
                   <dd className="break-words font-medium text-[var(--foreground)]">
@@ -739,9 +685,9 @@ export function CandidateManagement({
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+                  <dt className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--muted-foreground)]">
                     <span>Наставник</span>
-                    <span className="rounded bg-[var(--muted)] px-1 py-0.5 text-[10px] font-semibold text-[var(--muted-foreground)]">
+                    <span className="rounded bg-[var(--muted)] px-1 py-0.5 text-[9px] font-semibold text-[var(--muted-foreground)]">
                       ERP
                     </span>
                   </dt>
@@ -752,7 +698,7 @@ export function CandidateManagement({
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-xs text-[var(--muted-foreground)]">
+                  <dt className="text-[11px] font-medium text-[var(--muted-foreground)]">
                     Связь с физлицом
                   </dt>
                   <dd className="break-words font-medium text-[var(--foreground)]">
@@ -762,7 +708,7 @@ export function CandidateManagement({
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-xs text-[var(--muted-foreground)]">
+                  <dt className="text-[11px] font-medium text-[var(--muted-foreground)]">
                     Статус
                   </dt>
                   <dd className="pt-0.5">
@@ -780,8 +726,10 @@ export function CandidateManagement({
           </div>
         )}
       </section>
-      <section className="space-y-4 border-t border-[var(--border)] pt-5">
-        <h2 className="text-base font-semibold">История статусов</h2>
+      <section className="space-y-3 border-t border-[var(--border)]/60 pt-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+          История статусов
+        </h2>
         {!profile.history.length ? (
           <EmptyState
             title="История пока пуста"
@@ -789,31 +737,31 @@ export function CandidateManagement({
             className="py-6"
           />
         ) : (
-          <ol className="relative ml-3 space-y-6 border-l-2 border-[var(--border)] pl-6">
+          <ol className="relative ml-2.5 space-y-4 border-l-2 border-[var(--border)] pl-4">
             {profile.history.map((item, index) => (
               <li
                 key={`${item.date}:${index}`}
-                className="relative space-y-1.5 text-sm"
+                className="relative space-y-1 text-xs"
               >
                 <span
                   aria-hidden="true"
-                  className={`absolute -left-8 top-1 h-3.5 w-3.5 rounded-full border-2 border-[var(--card)] ${getStatusDotColor(item.statusId, item.statusName)} shadow-sm`}
+                  className={`absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full ring-2 ring-[var(--card)] ${getStatusDotColor(item.statusId, item.statusName)}`}
                 />
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <StatusBadge status={item.statusName || item.statusId} />
-                  <time className="text-xs text-[var(--muted-foreground)]">
+                  <time className="text-[11px] text-[var(--muted-foreground)]">
                     {formatHistoryDate(item.date)}
                   </time>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+                <div className="flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]">
                   <User
-                    size={13}
+                    size={11}
                     className="shrink-0 text-[var(--muted-foreground)]"
                   />
                   <span>{item.author || "Автор не указан"}</span>
                 </div>
                 {item.comment && (
-                  <blockquote className="rounded-lg border border-[var(--border)]/50 bg-[var(--muted)]/60 p-2.5 text-xs text-[var(--foreground)] whitespace-pre-wrap break-words">
+                  <blockquote className="rounded-md border border-[var(--border)]/60 bg-[var(--muted)]/60 p-2 text-xs text-[var(--foreground)] whitespace-pre-wrap break-words">
                     {item.comment}
                   </blockquote>
                 )}

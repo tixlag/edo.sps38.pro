@@ -43,7 +43,7 @@ vi.mock("@edo/api-client", () => ({
   useGetPreviousDocumentDetails: (_cid: string, id: string) => ({
     isLoading: false,
     data: {
-      document: (state.previousDocuments as any[]).find((d) => d.id === id) ?? { id, originalAvailable: true },
+      document: (state.previousDocuments as Array<{ id: string }>).find((d) => d.id === id) ?? { id, originalAvailable: true },
       revision: 1,
       fields: [],
     },

@@ -56,16 +56,13 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
     private readonly access: DocumentAccessService,
     private readonly config: ConfigService,
   ) {}
+  private get backgroundEnabled(): boolean {
+    return this.config.get<string>("EDO_ARRIVAL_SYNC_ENABLED") === "true";
+  }
   onModuleInit() {
-    const backgroundEnabled =
-      this.config.get<string>("EDO_ARRIVAL_SYNC_ENABLED") === "true";
     const tick = () => {
       for (const lane of ["priority", "background"] as const) {
-        if (
-          (lane === "background" && !backgroundEnabled) ||
-          this.running.has(lane) ||
-          this.stopping
-        )
+        if (this.running.has(lane) || this.stopping)
           continue;
         const work = this.runLane(lane)
           .catch(() =>
@@ -135,14 +132,13 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.$transaction(async (tx) => {
       await tx.igEnrichmentJob.upsert({
         where: { candidateId: id },
-        create: { candidateId: id, priority: true },
-        update: { priority: true },
+        create: { candidateId: id, priority: true, requestedAt: new Date(0) },
+        update: { priority: true, requestedAt: new Date(0) },
       });
       await tx.igEnrichmentJob.updateMany({
         where: { candidateId: id, status: "READY" },
         data: {
           status: "PENDING",
-          requestedAt: new Date(),
           nextAttemptAt: new Date(),
           attempts: 0,
         },
@@ -162,8 +158,10 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
     const staleIds = candidates.filter((c) => !c.previousDocumentsSyncedAt || c.previousDocumentsSyncedAt.getTime() < cutoff).map((c) => c.id);
     if (staleIds.length) {
       await this.prisma.$transaction(async (tx) => {
-        await tx.igEnrichmentJob.createMany({ data: staleIds.map((candidateId) => ({ candidateId, priority: true })), skipDuplicates: true });
-        await tx.igEnrichmentJob.updateMany({ where: { candidateId: { in: staleIds } }, data: { priority: true } });
+        await tx.igEnrichmentJob.createMany({
+          data: staleIds.map((candidateId) => ({ candidateId, priority: false })),
+          skipDuplicates: true,
+        });
         await tx.igEnrichmentJob.updateMany({
           where: { candidateId: { in: staleIds }, status: "READY" },
           data: { status: "PENDING", requestedAt: new Date(), nextAttemptAt: new Date(), attempts: 0 },
@@ -204,7 +202,7 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
         },
         orderBy: [{ requestedAt: "asc" }, { candidateId: "asc" }],
       });
-      if (!job && lane === "background") {
+      if (!job && lane === "background" && this.backgroundEnabled) {
         const c = await tx.candidate.findFirst({
           where: {
             AND: [

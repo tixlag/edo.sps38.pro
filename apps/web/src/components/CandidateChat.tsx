@@ -292,12 +292,20 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
             counts={feed.counts}
           />
         </div>
-        <span role="status" className="text-xs text-[var(--muted-foreground)]">
-          {state === "connected"
-            ? "Обновляется автоматически"
-            : state === "connecting"
-              ? "Подключение…"
-              : "Переподключение…"}
+        <span role="status" className="inline-flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+          {state === "connected" && (
+            <span className="relative flex h-2 w-2" aria-hidden="true">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--success)] opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--success)]" />
+            </span>
+          )}
+          <span>
+            {state === "connected"
+              ? "Обновляется автоматически"
+              : state === "connecting"
+                ? "Подключение…"
+                : "Переподключение…"}
+          </span>
         </span>
       </div>
       <div
@@ -399,12 +407,16 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
               return (
                 <li
                   key={item.id}
-                  className={`max-w-[90%] rounded-xl border border-[var(--border)] px-3 py-2 sm:max-w-[82%] ${message.outgoing ? "ml-auto bg-[var(--primary-soft)]" : "mr-auto bg-[var(--background)]"}`}
+                  className={`max-w-[90%] rounded-2xl border px-3.5 py-2.5 sm:max-w-[82%] shadow-2xs ${
+                    message.outgoing
+                      ? "ml-auto rounded-tr-sm border-[var(--primary)]/20 bg-[var(--primary-soft)]/60 text-[var(--foreground)]"
+                      : "mr-auto rounded-tl-sm border-[var(--border)]/70 bg-[var(--card)] text-[var(--foreground)]"
+                  }`}
                 >
                   <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]">
                     <Badge>{CHANNEL_LABEL[message.channel]}</Badge>
-                    <span>{message.author}</span>
-                    <time dateTime={message.createdAt}>
+                    <span className="font-medium text-[var(--foreground)]">{message.author}</span>
+                    <time dateTime={message.createdAt} className="text-[11px]">
                       {new Date(message.createdAt).toLocaleString("ru-RU", {
                         day: "numeric",
                         month: "short",
@@ -414,7 +426,7 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
                     </time>
                   </div>
                   {message.text && (
-                    <p className="whitespace-pre-wrap break-words text-[13px] [overflow-wrap:anywhere]">
+                    <p className="whitespace-pre-wrap break-words text-[13.5px] leading-relaxed [overflow-wrap:anywhere]">
                       {message.text}
                     </p>
                   )}
@@ -423,10 +435,10 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
                       key={attachment.id}
                       type="button"
                       onClick={() => void download(attachment.id)}
-                      className="mt-2 flex max-w-full items-center gap-2 rounded-md border border-[var(--border)] px-2 py-1.5 text-left text-xs hover:bg-[var(--muted)]"
+                      className="mt-2 flex max-w-full items-center gap-2 rounded-md border border-[var(--border)]/70 bg-[var(--background)] px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-[var(--muted)]"
                     >
-                      <Download size={14} className="shrink-0" />
-                      <span className="break-all">{attachment.filename}</span>
+                      <Download size={14} className="shrink-0 text-[var(--muted-foreground)]" />
+                      <span className="break-all font-medium">{attachment.filename}</span>
                     </button>
                   ))}
                 </li>
@@ -470,15 +482,15 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
         )}
         <div ref={bottom} />
       </div>
-      <div className="shrink-0 border-t border-[var(--border)] p-3">
+      <div className="shrink-0 border-t border-[var(--border)]/60 bg-[var(--card)] p-3 sm:p-3.5 space-y-2.5">
         {context.data?.canSend ? (
           <>
-            <div className="mb-2 flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <label className="min-w-0 flex-1 text-xs">
-                Канал и получатель
+                <span className="font-medium text-[var(--muted-foreground)]">Канал и получатель</span>
                 <select
                   aria-label="Канал и получатель"
-                  className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] p-2 text-[13px]"
+                  className="mt-1 w-full rounded-lg border border-[var(--border)]/70 bg-[var(--background)] p-2 text-[13px] transition-colors focus:bg-[var(--card)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
                   disabled={send.isPending || upload.isPending}
                   value={
                     recipient ? `${recipient.channel}:${recipient.id}` : ""
@@ -503,10 +515,10 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
               </label>
               {!!context.data.templates.length && (
                 <label className="min-w-0 flex-1 text-xs">
-                  Шаблон ответа
+                  <span className="font-medium text-[var(--muted-foreground)]">Шаблон ответа</span>
                   <select
                     aria-label="Шаблон ответа"
-                    className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] p-2 text-[13px]"
+                    className="mt-1 w-full rounded-lg border border-[var(--border)]/70 bg-[var(--background)] p-2 text-[13px] transition-colors focus:bg-[var(--card)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
                     disabled={busy}
                     value=""
                     onChange={(event) => {
@@ -555,7 +567,7 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
                   ? "Текст SMS"
                   : "Написать сообщение…"
               }
-              className="block max-h-40 min-h-20 w-full resize-y rounded-md border border-[var(--border)] bg-[var(--background)] p-2 text-[13px] caret-[var(--primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+              className="block max-h-40 min-h-[72px] w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] p-2.5 text-[13px] leading-relaxed caret-[var(--primary)] placeholder:text-[var(--muted-foreground)] focus:bg-[var(--card)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] transition-colors"
             />
             {draft.attachment && (
               <div className="mt-2 flex items-center justify-between gap-2 text-xs">

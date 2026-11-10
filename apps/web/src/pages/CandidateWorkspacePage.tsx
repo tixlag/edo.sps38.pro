@@ -24,6 +24,7 @@ import {
   FileText,
   PanelLeftClose,
   PanelLeftOpen,
+  Upload,
   User,
   UserCheck,
   Users,
@@ -38,7 +39,6 @@ import { assembleCandidateStages } from "../lib/candidate-stages";
 import {
   formatBirthDateRu,
   formatCandidateObject,
-  formatDocumentProgress,
   parseReviewSearchParams,
 } from "../lib/review-groups";
 import { parseVersionParam } from "../lib/audit-types";
@@ -603,30 +603,48 @@ function CandidateWorkspace() {
           aria-label="Документы кандидата"
           className={`${mobilePanel === "documents" ? "fixed inset-y-0 right-0 z-40 flex w-[min(92vw,400px)] shadow-xl" : "hidden w-80 xl:w-96 lg:flex"} shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]`}
         >
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] p-3">
-            <h2 className="text-sm font-semibold">
-              Документы{details.data && !details.synchronizing ? ` (${totalDocCount})` : ""}
-            </h2>
-            <Button size="sm" variant="outline" onClick={() => void navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (prev: Record<string, unknown>) => ({ ...prev, document: undefined, previousDocument: undefined, version: undefined, uploadDocument: true }) })}>Загрузить</Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="lg:hidden"
-              aria-label="Закрыть список документов"
-              onClick={() => setMobilePanel(null)}
-            >
-              <X size={18} />
-            </Button>
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)]/60 px-3.5 py-2.5">
+            <div className="flex items-center gap-2">
+              <FileText size={15} className="text-[var(--muted-foreground)]" aria-hidden="true" />
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                Документы
+              </h2>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                onClick={() =>
+                  void navigate({
+                    to: "/review/candidates/$candidateId",
+                    params: { candidateId },
+                    search: (prev: Record<string, unknown>) => ({
+                      ...prev,
+                      document: undefined,
+                      previousDocument: undefined,
+                      version: undefined,
+                      uploadDocument: true,
+                    }),
+                  })
+                }
+                title="Загрузить документ от лица сотрудника"
+              >
+                <Upload size={13} className="mr-1" aria-hidden="true" />
+                Загрузить
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 lg:hidden"
+                aria-label="Закрыть список документов"
+                onClick={() => setMobilePanel(null)}
+              >
+                <X size={16} />
+              </Button>
+            </div>
           </div>
-          {profile && !details.synchronizing && (
-            <p className="shrink-0 border-b border-[var(--border)] p-3 text-xs text-[var(--muted-foreground)]">
-              {formatDocumentProgress(
-                profile.approvedDocuments,
-                profile.requiredDocuments,
-              )}
-            </p>
-          )}
-          <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-2.5">
             {stage &&
               stageDetails.isFetching &&
               !stageDetails.data?.stageDocuments && (
