@@ -37,10 +37,17 @@ export function candidateError(error: unknown): string {
     response?: { data?: { message?: string | string[] } };
   };
   const message = response.response?.data?.message;
-  return Array.isArray(message)
-    ? message.join(". ")
-    : message ||
-        "ERP не подтвердила операцию. Повторите запрос с теми же данными.";
+  const text = Array.isArray(message) ? message.join(". ") : message;
+  if (
+    text?.includes("ERP_ACTOR_NOT_FOUND_OR_AMBIGUOUS") ||
+    text?.includes("ACTOR_NOT_FOUND_OR_AMBIGUOUS")
+  ) {
+    return "Пользователь 1С для вашей учётной записи не найден или не сопоставлен с физическим лицом в ERP. Обратитесь к администратору 1С.";
+  }
+  return (
+    text ||
+    "ERP не подтвердила операцию. Повторите запрос с теми же данными."
+  );
 }
 
 /** The same mounted operation keeps its ID and body after an uncertain response. */
@@ -60,8 +67,8 @@ export function useCandidateRequest() {
       setError(candidateError(cause));
       const status = (cause as { response?: { status?: number } }).response
         ?.status;
-      // Validation was rejected before an ERP commit; a corrected form is a new operation.
-      if (status === 400 || status === 422) {
+      // Validation or actor authorization was rejected before an ERP commit; a corrected form is a new operation.
+      if (status === 400 || status === 403 || status === 422) {
         requestId.current = crypto.randomUUID();
         setLocked(false);
       }

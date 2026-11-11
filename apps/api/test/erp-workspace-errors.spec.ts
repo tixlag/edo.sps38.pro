@@ -52,7 +52,63 @@ describe("ERP workspace conflicts", () => {
     await expect(client.request("create", z.object({}), {}, {})).rejects.toThrow("ERP_RELATION_OR_OPERATION_CONFLICT");
   });
 
+  describe("HTTP 403 forbidden responses", () => {
+    it("throws ForbiddenException for ACTOR_NOT_FOUND_OR_AMBIGUOUS", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          Response.json({ code: "ACTOR_NOT_FOUND_OR_AMBIGUOUS" }, { status: 403 }),
+        ),
+      );
+      const client = new ErpWorkspaceClient(config);
+      await expect(
+        client.request("create", z.object({}), {}, { actor: "test" }),
+      ).rejects.toThrow("ERP_ACTOR_NOT_FOUND_OR_AMBIGUOUS");
+    });
+
+    it("throws ForbiddenException for STATUS_OWNED_BY_DISPATCH_OR_HR", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          Response.json({ code: "STATUS_OWNED_BY_DISPATCH_OR_HR" }, { status: 403 }),
+        ),
+      );
+      const client = new ErpWorkspaceClient(config);
+      await expect(
+        client.request("status", z.object({}), {}, { statusId: "Прием" }),
+      ).rejects.toThrow("STATUS_OWNED_BY_DISPATCH_OR_HR");
+    });
+
+    it("masks unknown 403 responses as ERP_FORBIDDEN", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          Response.json({ code: "SECRET_REASON" }, { status: 403 }),
+        ),
+      );
+      const client = new ErpWorkspaceClient(config);
+      await expect(
+        client.request("create", z.object({}), {}, { actor: "test" }),
+      ).rejects.toThrow("ERP_FORBIDDEN");
+    });
+  });
+
   describe("HTTP 400 bad requests", () => {
+    it("throws BadRequestException with safe validation codes", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          Response.json(
+            { code: "POSITION_NOT_FOUND_OR_AMBIGUOUS" },
+            { status: 400 },
+          ),
+        ),
+      );
+      const client = new ErpWorkspaceClient(config);
+      await expect(
+        client.request("create", z.object({}), {}, { actor: "test" }),
+      ).rejects.toThrow("POSITION_NOT_FOUND_OR_AMBIGUOUS");
+    });
     it("throws BadRequestException('INVALID_CURSOR') when error is INVALID_CURSOR", async () => {
       vi.stubGlobal(
         "fetch",

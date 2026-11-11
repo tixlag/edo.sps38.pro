@@ -3,6 +3,7 @@ import { arrivalFactsPageSchema } from "./ig-arrival-facts-contract";
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -30,6 +31,29 @@ const safeConflictCodes = new Set([
   "DISPATCHER_EMAIL_NOT_CONFIGURED",
   "OPERATION_RESULT_UNKNOWN",
   "IDEMPOTENCY_CONFLICT",
+]);
+const safeForbiddenCodes = new Set([
+  "ACTOR_NOT_FOUND_OR_AMBIGUOUS",
+  "STATUS_OWNED_BY_DISPATCH_OR_HR",
+]);
+const safeBadRequestCodes = new Set([
+  "INVALID_CURSOR",
+  "POSITION_NOT_FOUND_OR_AMBIGUOUS",
+  "COUNTRY_NOT_FOUND",
+  "MANAGER_NOT_FOUND",
+  "PROJECT_NOT_FOUND_OR_AMBIGUOUS",
+  "PROJECT_UNAVAILABLE",
+  "INVALID_PHONE",
+  "FULL_NAME_TOO_LONG",
+  "INVALID_BIRTH_DATE",
+  "INVALID_FIELDS",
+  "REQUIRED_FIELD_MISSING",
+  "INVALID_FIELD",
+  "INVALID_STATUS",
+  "INVALID_COMMENT",
+  "ARRIVAL_PROJECT_AND_DATE_REQUIRED",
+  "INVALID_ARRIVAL_PROJECT_OR_DATE",
+  "ARRIVAL_PROJECT_OR_DATE_UNAVAILABLE",
 ]);
 export const erpIdentitySchema = z
   .object({
@@ -225,6 +249,32 @@ export class ErpWorkspaceClient {
             : "ERP_RELATION_OR_OPERATION_CONFLICT: требуется точечная проверка связи или результата операции в ERP",
         );
       }
+      if (response.status === 403) {
+        let code: unknown;
+        try {
+          const bytes = await this.readBounded(response, 8192);
+          code = (JSON.parse(bytes.toString("utf8")) as { code?: unknown })
+            .code;
+        } catch {
+          signal?.throwIfAborted();
+          // Unknown or oversized upstream bodies must never leak to the client.
+        }
+        if (code === "ACTOR_NOT_FOUND_OR_AMBIGUOUS") {
+          throw new ForbiddenException(
+            "ERP_ACTOR_NOT_FOUND_OR_AMBIGUOUS: пользователь 1C для автора операции не найден или не сопоставлен с физическим лицом",
+          );
+        }
+        if (code === "STATUS_OWNED_BY_DISPATCH_OR_HR") {
+          throw new ForbiddenException(
+            "STATUS_OWNED_BY_DISPATCH_OR_HR: этот статус меняется диспетчером или отделом кадров в ERP",
+          );
+        }
+        throw new ForbiddenException(
+          typeof code === "string" && safeForbiddenCodes.has(code)
+            ? code
+            : "ERP_FORBIDDEN: операция запрещена ERP",
+        );
+      }
       if (response.status === 400) {
         let err: unknown;
         try {
@@ -245,8 +295,8 @@ export class ErpWorkspaceClient {
           signal?.throwIfAborted();
           // Unknown or oversized upstream bodies must never leak to the client.
         }
-        if (err === "INVALID_CURSOR") {
-          throw new BadRequestException("INVALID_CURSOR");
+        if (typeof err === "string" && safeBadRequestCodes.has(err)) {
+          throw new BadRequestException(err);
         }
         throw new ServiceUnavailableException(
           body === undefined
