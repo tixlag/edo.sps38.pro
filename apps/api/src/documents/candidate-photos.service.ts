@@ -72,9 +72,15 @@ export class CandidatePhotosService {
 
     let inflight = this.inflightRequests.get(candidate.id);
     if (!inflight) {
-      inflight = this.loadFromErpAndCache(candidate);
-      this.inflightRequests.set(candidate.id, inflight);
-      inflight.finally(() => this.inflightRequests.delete(candidate.id));
+      const task = (async () => {
+        try {
+          return await this.loadFromErpAndCache(candidate);
+        } finally {
+          this.inflightRequests.delete(candidate.id);
+        }
+      })();
+      this.inflightRequests.set(candidate.id, task);
+      inflight = task;
     }
 
     const loaded = await inflight;

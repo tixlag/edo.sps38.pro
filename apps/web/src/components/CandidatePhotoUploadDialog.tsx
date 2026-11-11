@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent as ReactDragEvent,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, UploadCloud, X } from "lucide-react";
 import { Button } from "@edo/ui";
@@ -6,6 +12,10 @@ import {
   useUploadCandidatePhoto,
   getGetCandidateWorkspaceQueryKey,
   getGetCandidateDetailsQueryKey,
+  getGetCandidatePhotoQueryKey,
+  getListCandidatesQueryKey,
+  getListCandidateReviewQueueQueryKey,
+  getListReviewCandidatesQueryKey,
 } from "@edo/api-client";
 
 export interface CandidatePhotoUploadDialogProps {
@@ -52,9 +62,18 @@ export function CandidatePhotoUploadDialog({
         queryClient.invalidateQueries({
           queryKey: getGetCandidateDetailsQueryKey(candidateId),
         });
-        queryClient.invalidateQueries({ queryKey: ["listCandidates"] });
-        queryClient.invalidateQueries({ queryKey: ["listCandidateReviewQueue"] });
-        queryClient.invalidateQueries({ queryKey: ["listReviewCandidates"] });
+        queryClient.invalidateQueries({
+          queryKey: getGetCandidatePhotoQueryKey(candidateId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getListCandidatesQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getListCandidateReviewQueueQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getListReviewCandidatesQueryKey(),
+        });
         onSuccess?.(data.photoPath);
         setTimeout(() => {
           onClose();
@@ -129,7 +148,7 @@ export function CandidatePhotoUploadDialog({
     }
   };
 
-  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+  const handleDrop = (e: ReactDragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
     const dropped = e.dataTransfer.files?.[0];

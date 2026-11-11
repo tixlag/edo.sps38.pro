@@ -8,6 +8,7 @@ import {
   hasActiveReviewFilters,
   lkEmployeeUrl,
   parseReviewSearchParams,
+  canUploadCandidatePhoto,
 } from "./review-groups";
 
 describe("formatBirthDateRu", () => {
@@ -151,6 +152,70 @@ describe("parseReviewSearchParams", () => {
     expect(
       hasActiveReviewFilters(
         parseReviewSearchParams({ candidate: "cand-1", citizenship: "RU" }),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("canUploadCandidatePhoto", () => {
+  it("returns false if permissions or candidate is missing", () => {
+    expect(canUploadCandidatePhoto(undefined, { reviewGroup: "RU" })).toBe(false);
+    expect(canUploadCandidatePhoto({ "20002": [] }, null)).toBe(false);
+  });
+
+  it("grants access to admin (20009) regardless of candidate group", () => {
+    expect(canUploadCandidatePhoto({ "20009": [] }, { reviewGroup: "RU" })).toBe(true);
+    expect(canUploadCandidatePhoto({ "20009": [] }, { reviewGroup: "IG" })).toBe(true);
+    expect(canUploadCandidatePhoto({ "20009": [] }, { citizenship: "uz" })).toBe(true);
+  });
+
+  it("respects explicit candidate.reviewGroup when provided", () => {
+    // In ERP workspace, candidates are RU cycle even if citizenship is foreign
+    expect(
+      canUploadCandidatePhoto(
+        { "20002": [] },
+        { reviewGroup: "RU", citizenship: "uz" },
+      ),
+    ).toBe(true);
+    expect(
+      canUploadCandidatePhoto(
+        { "20011": [] },
+        { reviewGroup: "RU", citizenship: "uz" },
+      ),
+    ).toBe(false);
+
+    // IG candidate with 20011 allowed, 20002 forbidden
+    expect(
+      canUploadCandidatePhoto(
+        { "20011": [] },
+        { reviewGroup: "IG", citizenship: "ru" },
+      ),
+    ).toBe(true);
+    expect(
+      canUploadCandidatePhoto(
+        { "20002": [] },
+        { reviewGroup: "IG", citizenship: "ru" },
+      ),
+    ).toBe(false);
+  });
+
+  it("falls back to chatUuid and citizenship when reviewGroup is absent", () => {
+    expect(
+      canUploadCandidatePhoto(
+        { "20002": [] },
+        { chatUuid: "chat-1", citizenship: "uz" },
+      ),
+    ).toBe(true);
+    expect(
+      canUploadCandidatePhoto(
+        { "20002": [] },
+        { chatUuid: null, citizenship: "ru" },
+      ),
+    ).toBe(true);
+    expect(
+      canUploadCandidatePhoto(
+        { "20011": [] },
+        { chatUuid: null, citizenship: "uz" },
       ),
     ).toBe(true);
   });

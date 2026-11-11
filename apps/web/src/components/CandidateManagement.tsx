@@ -472,9 +472,11 @@ export function CandidateManagement({
   fallbackProfile?: CandidateProfileDto | null;
 }) {
   const workspace = useGetCandidateWorkspace(candidateId);
+  const me = useGetMe();
   const [action, setAction] = useState<"edit" | "status" | "person" | null>(
     null,
   );
+  const [isPhotoDialogOpen, setIsPhotoDialogOpen] = useState(false);
   if (workspace.isLoading) return <p role="status">Загрузка данных ERP…</p>;
   const response = (
     workspace.error as {
@@ -526,8 +528,6 @@ export function CandidateManagement({
       </div>
     );
   const profile = workspace.data;
-  const me = useGetMe();
-  const [isPhotoDialogOpen, setIsPhotoDialogOpen] = useState(false);
   const canUpload = canUploadCandidatePhoto(me.data?.permissions, profile);
   const managerCode1c =
     (profile.manager as { code1c?: string })?.code1c ||

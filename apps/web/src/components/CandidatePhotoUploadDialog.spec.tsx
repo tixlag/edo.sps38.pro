@@ -31,6 +31,10 @@ vi.mock("@edo/api-client", () => ({
   },
   getGetCandidateWorkspaceQueryKey: (id: string) => ["workspace", id],
   getGetCandidateDetailsQueryKey: (id: string) => ["details", id],
+  getGetCandidatePhotoQueryKey: (id: string) => ["photo", id],
+  getListCandidatesQueryKey: () => ["/api/v1/candidates"],
+  getListCandidateReviewQueueQueryKey: () => ["/api/v1/candidate-review-queue"],
+  getListReviewCandidatesQueryKey: () => ["/api/v1/review-candidates"],
 }));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
