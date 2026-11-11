@@ -404,6 +404,11 @@ export interface ApiErrorDto {
   path: string | null;
 }
 
+export interface CandidatePhotoUploadResponseDto {
+  success: boolean;
+  photoPath: string;
+}
+
 export interface CandidateEnrichmentBatchRequestDto {
   /**
    * @minItems 1
@@ -2982,6 +2987,28 @@ export const GetMyNotificationsStatus = {
   read: "read",
 } as const;
 
+export type GetCandidatePhotoParams = {
+  size?: GetCandidatePhotoSize;
+  /**
+   * Cache busting timestamp or version
+   */
+  v?: string;
+};
+
+export type GetCandidatePhotoSize =
+  (typeof GetCandidatePhotoSize)[keyof typeof GetCandidatePhotoSize];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetCandidatePhotoSize = {
+  thumb: "thumb",
+  full: "full",
+} as const;
+
+export type UploadCandidatePhotoBody = {
+  /** Candidate profile photo file (JPEG, PNG, WebP, HEIC up to 10MB) */
+  file: Blob;
+};
+
 /**
  * Provide metadata for manual review or documentTypeCode for legacy OCR; at least one is required.
  */
@@ -4333,6 +4360,193 @@ export function useGetMe<
 
   return query;
 }
+
+/**
+ * @summary Get candidate profile photo in WebP format (publicly cached)
+ */
+export const getCandidatePhoto = (
+  candidateId: string,
+  params?: GetCandidatePhotoParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<Blob>({
+    url: `/api/v1/candidates/${candidateId}/photo`,
+    method: "GET",
+    params,
+    responseType: "blob",
+    signal,
+  });
+};
+
+export const getGetCandidatePhotoQueryKey = (
+  candidateId: string,
+  params?: GetCandidatePhotoParams,
+) => {
+  return [
+    `/api/v1/candidates/${candidateId}/photo`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetCandidatePhotoQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidatePhoto>>,
+  TError = void | ApiErrorDto,
+>(
+  candidateId: string,
+  params?: GetCandidatePhotoParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidatePhoto>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCandidatePhotoQueryKey(candidateId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidatePhoto>>
+  > = ({ signal }) => getCandidatePhoto(candidateId, params, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidatePhoto>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidatePhotoQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidatePhoto>>
+>;
+export type GetCandidatePhotoQueryError = void | ApiErrorDto;
+
+/**
+ * @summary Get candidate profile photo in WebP format (publicly cached)
+ */
+
+export function useGetCandidatePhoto<
+  TData = Awaited<ReturnType<typeof getCandidatePhoto>>,
+  TError = void | ApiErrorDto,
+>(
+  candidateId: string,
+  params?: GetCandidatePhotoParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidatePhoto>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidatePhotoQueryOptions(
+    candidateId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Upload candidate profile photo (requires RU or IG review permission)
+ */
+export const uploadCandidatePhoto = (
+  candidateId: string,
+  uploadCandidatePhotoBody: UploadCandidatePhotoBody,
+  signal?: AbortSignal,
+) => {
+  const formData = new FormData();
+  formData.append("file", uploadCandidatePhotoBody.file);
+
+  return customInstance<CandidatePhotoUploadResponseDto>({
+    url: `/api/v1/candidates/${candidateId}/photo`,
+    method: "POST",
+    headers: { "Content-Type": "multipart/form-data" },
+    data: formData,
+    signal,
+  });
+};
+
+export const getUploadCandidatePhotoMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadCandidatePhoto>>,
+    TError,
+    { candidateId: string; data: UploadCandidatePhotoBody },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadCandidatePhoto>>,
+  TError,
+  { candidateId: string; data: UploadCandidatePhotoBody },
+  TContext
+> => {
+  const mutationKey = ["uploadCandidatePhoto"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadCandidatePhoto>>,
+    { candidateId: string; data: UploadCandidatePhotoBody }
+  > = (props) => {
+    const { candidateId, data } = props ?? {};
+
+    return uploadCandidatePhoto(candidateId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadCandidatePhotoMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadCandidatePhoto>>
+>;
+export type UploadCandidatePhotoMutationBody = UploadCandidatePhotoBody;
+export type UploadCandidatePhotoMutationError = ApiErrorDto;
+
+/**
+ * @summary Upload candidate profile photo (requires RU or IG review permission)
+ */
+export const useUploadCandidatePhoto = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadCandidatePhoto>>,
+    TError,
+    { candidateId: string; data: UploadCandidatePhotoBody },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadCandidatePhoto>>,
+  TError,
+  { candidateId: string; data: UploadCandidatePhotoBody },
+  TContext
+> => {
+  const mutationOptions = getUploadCandidatePhotoMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
 
 /**
  * @summary Refresh document snapshots for the visible RU candidate page

@@ -54,6 +54,10 @@ const safeBadRequestCodes = new Set([
   "ARRIVAL_PROJECT_AND_DATE_REQUIRED",
   "INVALID_ARRIVAL_PROJECT_OR_DATE",
   "ARRIVAL_PROJECT_OR_DATE_UNAVAILABLE",
+  "TARGET_REQUIRED",
+  "EMPTY_BODY",
+  "MISSING_IDENTITY",
+  "INVALID_REQUEST_ID",
 ]);
 export const erpIdentitySchema = z
   .object({
@@ -212,6 +216,7 @@ export class ErpWorkspaceClient {
       : deadline;
     requestSignal.throwIfAborted();
     let response: Response;
+    const isBuffer = Buffer.isBuffer(body) || body instanceof Uint8Array;
     try {
       response = await fetch(url, {
         method: body === undefined ? "GET" : "POST",
@@ -219,9 +224,18 @@ export class ErpWorkspaceClient {
         headers: {
           Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
           token,
-          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(body === undefined
+            ? {}
+            : isBuffer
+              ? { "Content-Type": "application/octet-stream" }
+              : { "Content-Type": "application/json" }),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body:
+          body === undefined
+            ? undefined
+            : isBuffer
+              ? (body as Buffer)
+              : JSON.stringify(body),
         signal: requestSignal,
       });
     } catch {
@@ -571,5 +585,60 @@ export class ErpWorkspaceClient {
       mimeType:
         response.headers.get("content-type") ?? "application/octet-stream",
     };
+  }
+
+  async fetchCandidatePhoto(
+    target: { candidate?: string; personUid?: string; code1c?: string },
+    signal?: AbortSignal,
+  ): Promise<{ buffer: Buffer; contentType: string } | null> {
+    const query: Record<string, string> = {};
+    if (target.candidate) query.candidate = target.candidate;
+    if (target.personUid) query.personUid = target.personUid;
+    if (target.code1c) query.code1c = target.code1c;
+    try {
+      const response = await this.response("photo", query, undefined, signal);
+      const bytes = await this.readBounded(response, 20 * 1024 * 1024);
+      return {
+        buffer: bytes,
+        contentType: response.headers.get("content-type") ?? "image/jpeg",
+      };
+    } catch (err) {
+      if (err instanceof NotFoundException) return null;
+      throw err;
+    }
+  }
+
+  async uploadCandidatePhoto(
+    target: {
+      candidate?: string;
+      personUid?: string;
+      code1c?: string;
+      actor: string;
+      requestId: string;
+      extension: string;
+    },
+    buffer: Buffer,
+    signal?: AbortSignal,
+  ): Promise<{ success: boolean; fileUid?: string; path?: string }> {
+    const query: Record<string, string> = {
+      actor: target.actor,
+      requestId: target.requestId,
+      extension: target.extension,
+    };
+    if (target.candidate) query.candidate = target.candidate;
+    if (target.personUid) query.personUid = target.personUid;
+    if (target.code1c) query.code1c = target.code1c;
+
+    const response = await this.response("photo", query, buffer, signal);
+    const bytes = await this.readBounded(response, 8192);
+    try {
+      return JSON.parse(bytes.toString("utf8")) as {
+        success: boolean;
+        fileUid?: string;
+        path?: string;
+      };
+    } catch {
+      throw new ServiceUnavailableException("INVALID_ERP_RESPONSE");
+    }
   }
 }

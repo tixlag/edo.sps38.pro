@@ -13,6 +13,7 @@ import {
 import { Button, EmptyState, PageHeader } from "@edo/ui";
 import { CANDIDATE_CONTROL } from "../components/CandidateForm";
 import { CreateCandidate } from "../components/CreateCandidate";
+import { CandidateAvatar } from "../components/CandidateAvatar";
 import { SearchSelect } from "../components/SearchSelect";
 import { findCurrentUserAsManager } from "../lib/manager-default";
 import { buildGroupedCandidateStatusOptions } from "../lib/candidate-status-groups";
@@ -253,14 +254,23 @@ function CandidateCatalog() {
                   className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]"
                 >
                   <td className="p-3">
-                    <Link
-                      to="/review/candidates/$candidateId"
-                      params={{ candidateId: candidate.id }}
-                      search={{ section: "profile" }}
-                      className="font-medium text-[var(--primary)] underline-offset-4 hover:underline"
-                    >
-                      {candidate.fullName || "Без имени в профиле"}
-                    </Link>
+                    <div className="flex items-center gap-2.5">
+                      <CandidateAvatar
+                        candidateId={candidate.id}
+                        fullName={candidate.fullName}
+                        photoPath={candidate.photoPath}
+                        size="sm"
+                        allowEnlarge
+                      />
+                      <Link
+                        to="/review/candidates/$candidateId"
+                        params={{ candidateId: candidate.id }}
+                        search={{ section: "profile" }}
+                        className="font-medium text-[var(--primary)] underline-offset-4 hover:underline"
+                      >
+                        {candidate.fullName || "Без имени в профиле"}
+                      </Link>
+                    </div>
                   </td>
                   <td className="p-3">
                     {candidate.positionName || "Не указана"}

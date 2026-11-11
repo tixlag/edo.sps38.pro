@@ -70,6 +70,7 @@ vi.mock("@edo/api-client", () => {
     isPending: false,
   });
   return {
+    useUploadCandidatePhoto: () => ({ mutate: vi.fn(), isPending: false }),
     useGetMe: () => ({ data: { permissions: state.permissions } }),
     useGetCandidateWorkspace: () =>
       state.workspaceError

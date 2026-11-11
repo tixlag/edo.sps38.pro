@@ -11,6 +11,7 @@ import {
   useListCandidateStatuses,
   useListCandidateProjects,
   useLinkCandidatePerson,
+  useGetMe,
   type CandidateWorkspaceDto,
   type CandidateProfileDto,
   type CandidateFieldsDto,
@@ -18,6 +19,7 @@ import {
 import { Badge, Button, EmptyState, StatusBadge } from "@edo/ui";
 import {
   Briefcase,
+  Camera,
   Check,
   Clock,
   Copy,
@@ -25,6 +27,9 @@ import {
   User,
   UserCheck,
 } from "lucide-react";
+import { CandidateAvatar } from "./CandidateAvatar";
+import { CandidatePhotoUploadDialog } from "./CandidatePhotoUploadDialog";
+import { canUploadCandidatePhoto } from "../lib/review-groups";
 import {
   CandidateForm,
   CANDIDATE_CONTROL,
@@ -521,6 +526,9 @@ export function CandidateManagement({
       </div>
     );
   const profile = workspace.data;
+  const me = useGetMe();
+  const [isPhotoDialogOpen, setIsPhotoDialogOpen] = useState(false);
+  const canUpload = canUploadCandidatePhoto(me.data?.permissions, profile);
   const managerCode1c =
     (profile.manager as { code1c?: string })?.code1c ||
     fallbackProfile?.managerCode1c;
@@ -584,17 +592,46 @@ export function CandidateManagement({
           <div className="space-y-3">
             {/* Карточка 1: Личные данные */}
             <div className="space-y-2.5 rounded-xl border border-[var(--border)]/60 bg-[var(--muted)]/20 p-3.5 shadow-2xs">
-              <div className="flex items-center gap-2 border-b border-[var(--border)]/40 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                <User size={13} className="text-[var(--primary)]" />
-                <span>Личные данные</span>
+              <div className="flex items-center justify-between border-b border-[var(--border)]/40 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                <div className="flex items-center gap-2">
+                  <User size={13} className="text-[var(--primary)]" />
+                  <span>Личные данные</span>
+                </div>
+                {canUpload && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsPhotoDialogOpen(true)}
+                    className="h-6 gap-1 px-1.5 text-xs text-[var(--primary)] hover:bg-[var(--primary)]/10"
+                  >
+                    <Camera size={12} />
+                    <span>Фото</span>
+                  </Button>
+                )}
+              </div>
+              <div className="flex items-center gap-3 pt-1">
+                <CandidateAvatar
+                  candidateId={candidateId}
+                  fullName={profile.fullName}
+                  photoPath={fallbackProfile?.photoPath}
+                  size="lg"
+                  editable={canUpload}
+                  onUploadClick={() => setIsPhotoDialogOpen(true)}
+                  allowEnlarge
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="break-words font-medium text-[var(--foreground)]">
+                    {profile.fullName || "Не указано"}
+                  </div>
+                  {profile.citizenship && (
+                    <Badge className="mt-1" title="Гражданство">
+                      {profile.citizenship.toUpperCase()}
+                    </Badge>
+                  )}
+                </div>
               </div>
               <dl className="space-y-2 text-xs sm:text-[13px]">
-                <div className="min-w-0">
-                  <dt className="text-[11px] font-medium text-[var(--muted-foreground)]">ФИО</dt>
-                  <dd className="break-words font-medium text-[var(--foreground)]">
-                    {profile.fullName || "Не указано"}
-                  </dd>
-                </div>
                 <div className="min-w-0">
                   <dt className="text-[11px] font-medium text-[var(--muted-foreground)]">
                     Телефон
@@ -773,6 +810,15 @@ export function CandidateManagement({
       {profile.linkedPerson && (
         <CandidatePreviousDocuments candidateId={candidateId} />
       )}
+      <CandidatePhotoUploadDialog
+        candidateId={candidateId}
+        fullName={profile.fullName}
+        isOpen={isPhotoDialogOpen}
+        onClose={() => setIsPhotoDialogOpen(false)}
+        onSuccess={() => {
+          void workspace.refetch();
+        }}
+      />
     </div>
   );
 }

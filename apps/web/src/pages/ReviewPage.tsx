@@ -65,12 +65,12 @@ import { CreateCandidate } from "../components/CreateCandidate";
 import { IgArrivalReviewQueue } from "../components/IgArrivalReviewQueue";
 import { DateFilter } from "../components/DateFilter";
 import { LkLink } from "../components/LkLink";
+import { CandidateAvatar } from "../components/CandidateAvatar";
 import { findCurrentUserAsManager } from "../lib/manager-default";
 import { buildGroupedCandidateStatusOptions } from "../lib/candidate-status-groups";
 import { isHistoricVersion, parseVersionParam } from "../lib/audit-types";
 import { formatDateTimeRu } from "../lib/date-format";
 import {
-  candidateInitials,
   formatBirthDateRu,
   formatCandidateObject,
   hasActiveReviewFilters,
@@ -201,12 +201,14 @@ function CandidateRow({
       <div className="pointer-events-none relative flex min-w-0 flex-col gap-3 min-[1400px]:flex-row min-[1400px]:items-center">
         <div className="min-w-0 w-full min-[1400px]:w-[min(42%,620px,calc(100%-783px))] min-[1400px]:shrink-0">
           <div className="mb-2 flex min-w-0 items-center gap-2 font-semibold">
-            <span
-              aria-hidden
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-sm font-semibold"
-            >
-              {candidateInitials(candidate?.fullName)}
-            </span>
+            <CandidateAvatar
+              candidateId={candidate?.id}
+              fullName={candidate?.fullName}
+              photoPath={candidate?.photoPath}
+              size="sm"
+              allowEnlarge
+              className="pointer-events-auto"
+            />
             <span className="min-w-0 break-words">{heading}</span>
             {candidate?.statusName && (
               <StatusBadge status={candidate.statusName} />

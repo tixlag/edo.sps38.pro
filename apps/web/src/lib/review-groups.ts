@@ -216,3 +216,22 @@ export function hasActiveReviewFilters(filters: ReviewQueueFilters): boolean {
     (filters.hasMentor !== undefined ? "hasMentor" : undefined),
   );
 }
+
+/** Check if current user permissions allow uploading photo for candidate */
+export function canUploadCandidatePhoto(
+  permissions: Record<string, unknown> | undefined,
+  candidate: { chatUuid?: string | null; citizenship?: string | null } | null | undefined,
+): boolean {
+  if (!permissions || !candidate) return false;
+  if (Object.prototype.hasOwnProperty.call(permissions, "20009")) return true;
+  const isRu = Boolean(
+    (candidate.chatUuid && candidate.chatUuid.trim()) ||
+    (candidate.citizenship && candidate.citizenship.trim().toLowerCase() === "ru")
+  );
+  if (isRu) {
+    return Object.prototype.hasOwnProperty.call(permissions, "20002");
+  } else {
+    return Object.prototype.hasOwnProperty.call(permissions, "20011");
+  }
+}
+

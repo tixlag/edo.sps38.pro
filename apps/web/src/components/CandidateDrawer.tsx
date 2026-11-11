@@ -15,11 +15,11 @@ import {
 } from "lucide-react";
 import { formatDateRu, formatLocalArrivalTime } from "../lib/date-format";
 import { LkLink } from "./LkLink";
+import { CandidateAvatar } from "./CandidateAvatar";
 import { CandidateStageAccordion } from "./CandidateStageAccordion";
 import { CandidateDrawerHistorySection } from "./CandidateDrawerHistorySection";
 import { assembleCandidateStages } from "../lib/candidate-stages";
 import {
-  candidateInitials,
   documentProgressPercent,
   formatBirthDateRu,
   formatCandidateObject,
@@ -195,12 +195,13 @@ export function CandidateDrawer({
         {/* Pinned Header */}
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border)] p-4 sm:p-5">
           <div className="flex min-w-0 items-center gap-3">
-            <span
-              aria-hidden
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--avatar)] text-sm font-semibold text-[var(--foreground)]"
-            >
-              {candidateInitials(fullName)}
-            </span>
+            <CandidateAvatar
+              candidateId={profile?.id}
+              fullName={fullName}
+              photoPath={profile?.photoPath}
+              size="md"
+              allowEnlarge
+            />
             <div className="min-w-0">
               <h2
                 id={headingId}

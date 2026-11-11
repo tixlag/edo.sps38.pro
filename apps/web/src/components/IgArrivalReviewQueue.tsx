@@ -12,6 +12,7 @@ import {
 } from "@edo/api-client";
 import { Badge, Button, EmptyState } from "@edo/ui";
 import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { CandidateAvatar } from "./CandidateAvatar";
 import { SearchSelect } from "./SearchSelect";
 import { formatDateRu, formatLocalArrivalTime } from "../lib/date-format";
 import { parseIgRegistrySearch } from "../lib/ig-registry-search";
@@ -720,6 +721,11 @@ function ParticipationRows({
             className={`${cellClass} ${frozenClass} pl-14 text-left font-medium`}
           >
             <div className="flex flex-wrap items-center gap-1.5">
+              <CandidateAvatar
+                candidateId={person.candidateId}
+                fullName={person.fullName}
+                size="xs"
+              />
               {person.candidateId && person.action !== "NONE" ? (
                 <button
                   type="button"
