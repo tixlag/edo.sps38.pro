@@ -512,6 +512,14 @@ describe.skipIf(!enabled)(
         headers: reviewer(),
       });
       expect(download.statusCode).toBe(200);
+      const binary = await app.inject({
+        method: "GET",
+        url: `/api/v1/documents/${a.documentId}/versions/1/files/${r.files[0].id}/file`,
+        headers: reviewer(),
+      });
+      expect(binary.statusCode).toBe(200);
+      expect(binary.headers["content-type"]).toBe(r.files[0].mimeType);
+      expect(binary.rawPayload.length).toBeGreaterThan(0);
     });
 
     it("returns a confirmed non-document with its PDF page, deletes all returned originals, and retries cleanup", async () => {
@@ -552,6 +560,12 @@ describe.skipIf(!enabled)(
         headers: reviewer(),
       });
       expect(download.statusCode).toBe(404);
+      const binary = await app.inject({
+        method: "GET",
+        url: `/api/v1/documents/${a.documentId}/versions/1/files/${r.files[0].id}/file`,
+        headers: reviewer(),
+      });
+      expect(binary.statusCode).toBe(404);
       const storage = app.get(StorageService);
       const remove = storage.delete.bind(storage);
       storage.delete = async () => {

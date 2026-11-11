@@ -467,10 +467,10 @@ export function DocumentReviewWorkspace({
     }
   };
   return (
-    <>
+    <div className={`flex min-h-0 min-w-0 flex-col ${fitContainer ? "h-full" : ""}`}>
       {canAnnotate && (
         <div
-          className="mb-3 flex flex-wrap gap-2"
+          className="mb-2 flex shrink-0 flex-wrap gap-2"
           role="group"
           aria-label="Режим работы с документом"
         >
@@ -498,7 +498,7 @@ export function DocumentReviewWorkspace({
       {annotationVisited && canAnnotate && (
         <div
           hidden={!annotationMode}
-          className={annotationMode ? "" : "!hidden"}
+          className={annotationMode ? (fitContainer ? "flex-1 min-h-0" : "") : "!hidden"}
         >
           <DocumentAnnotations
             key={`${data.documentId}-${data.version}`}
@@ -510,7 +510,7 @@ export function DocumentReviewWorkspace({
       )}
       <div
         hidden={annotationMode && canAnnotate}
-        className={`${annotationMode && canAnnotate ? "!hidden" : ""} grid min-w-0 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:items-stretch ${fitContainer ? "lg:h-full" : "lg:h-[calc(100dvh-12rem)] lg:min-h-[360px]"}`}
+        className={`${annotationMode && canAnnotate ? "!hidden" : ""} grid min-w-0 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:items-stretch ${fitContainer ? "flex-1 min-h-0" : "lg:h-[calc(100dvh-12rem)] lg:min-h-[360px]"}`}
       >
         <section
           ref={previewSection}
@@ -1190,7 +1190,7 @@ export function DocumentReviewWorkspace({
           )}
         </section>
       </div>
-    </>
+    </div>
   );
 }
 

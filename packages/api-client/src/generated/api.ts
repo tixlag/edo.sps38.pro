@@ -7139,6 +7139,111 @@ export function useGetDocumentFileDownload<
 }
 
 /**
+ * @summary Authorized binary file content stream for preview and download
+ */
+export const getDocumentFileBinary = (
+  documentId: string,
+  version: number,
+  fileId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<Blob>({
+    url: `/api/v1/documents/${documentId}/versions/${version}/files/${fileId}/file`,
+    method: "GET",
+    responseType: "blob",
+    signal,
+  });
+};
+
+export const getGetDocumentFileBinaryQueryKey = (
+  documentId: string,
+  version: number,
+  fileId: string,
+) => {
+  return [
+    `/api/v1/documents/${documentId}/versions/${version}/files/${fileId}/file`,
+  ] as const;
+};
+
+export const getGetDocumentFileBinaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDocumentFileBinary>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  version: number,
+  fileId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDocumentFileBinary>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetDocumentFileBinaryQueryKey(documentId, version, fileId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getDocumentFileBinary>>
+  > = ({ signal }) =>
+    getDocumentFileBinary(documentId, version, fileId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(documentId && version && fileId),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDocumentFileBinary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDocumentFileBinaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDocumentFileBinary>>
+>;
+export type GetDocumentFileBinaryQueryError = ApiErrorDto;
+
+/**
+ * @summary Authorized binary file content stream for preview and download
+ */
+
+export function useGetDocumentFileBinary<
+  TData = Awaited<ReturnType<typeof getDocumentFileBinary>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  version: number,
+  fileId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDocumentFileBinary>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDocumentFileBinaryQueryOptions(
+    documentId,
+    version,
+    fileId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
  * @summary Correct current document fields with optimistic concurrency
  */
 export const editDocumentFields = (

@@ -10,9 +10,9 @@ import { DocumentPreview } from "./DocumentPreview";
 const pdfFixture = vi.hoisted(() => ({ width: 600, height: 900 }));
 
 vi.mock("@edo/api-client", () => ({
-  getGetDocumentFileDownloadQueryKey: () => ["file-download"],
-  useGetDocumentFileDownload: () => ({
-    data: { url: "blob:fake-preview" },
+  getGetDocumentFileBinaryQueryKey: () => ["file-binary"],
+  useGetDocumentFileBinary: () => ({
+    data: new Blob(["fake-preview"]),
     isLoading: false,
     isError: false,
     isFetching: false,
@@ -35,6 +35,9 @@ vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
     destroy: async () => undefined,
   }),
 }));
+
+URL.createObjectURL ??= vi.fn(() => "blob:fake-preview");
+URL.revokeObjectURL ??= vi.fn();
 
 const G = globalThis as unknown as Record<string, unknown>;
 G.ResizeObserver ??= class {

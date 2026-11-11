@@ -82,14 +82,14 @@ function CandidateDocumentReview({
         </label>
       </div>
       {version.data.uploadOrigin === "REVIEWER" && (
-        <div role="status" className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--muted)] p-2 text-sm">
+        <div role="status" className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg bg-[var(--muted)] p-2 text-sm">
           {version.data.delivery?.status === "SENT" ? "Сохранён в ERP" : ["PENDING", "SENDING"].includes(version.data.delivery?.status ?? "") ? "Документ подтверждён. Отправляем в ERP…" : version.data.status === "APPROVED" ? "Не удалось сохранить в ERP. Загрузка и поля сохранены в ЭДО." : version.data.job ? "Проверьте результат OCR, сохраните исправления и подтвердите отправку в ERP." : "OCR недоступен. Заполните поля вручную и подтвердите отправку в ERP."}
           {version.data.delivery?.status === "REQUIRES_MANUAL" && <Button variant="outline" disabled={resend.isPending} onClick={() => resend.mutate({ candidateId, documentId, version: number }, { onSuccess: () => void version.refetch() })}>Повторить отправку в ERP</Button>}
           {resend.isError && <span role="alert">{candidateError(resend.error)}</span>}
         </div>
       )}
       {historic && (
-        <p role="status" className="rounded-md bg-[var(--muted)] p-2 text-xs">
+        <p role="status" className="shrink-0 rounded-md bg-[var(--muted)] p-2 text-xs">
           Историческая версия {number}. Изменение запрещено.{" "}
           <button
             onClick={() => chooseVersion(info.data!.currentVersion)}
@@ -99,7 +99,7 @@ function CandidateDocumentReview({
           </button>
         </p>
       )}
-      <div className="min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col">
         <DocumentReviewWorkspace
           key={`${documentId}:${number}`}
           candidateId={candidateId}

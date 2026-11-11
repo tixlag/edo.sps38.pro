@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
-  useGetDocumentFileDownload,
+  useGetDocumentFileBinary,
   useRetryDocumentOcr,
   useEditDocumentFields,
   useGetDocumentOcrDetails,
@@ -42,15 +42,18 @@ vi.mock("@edo/api-client", () => ({
   getListIgArrivalRegistryGroupsQueryKey: () => ["arrival-groups"],
   getListIgArrivalRegistryParticipationsQueryKey: () => ["arrival-people"],
   getGetCandidateDetailsQueryKey: (id: string) => ["candidate", id],
-  getGetDocumentFileDownloadQueryKey: () => ["file-download"],
-  useGetDocumentFileDownload: vi.fn(() => ({
-    data: { url: "blob:fake-preview" },
+  getGetDocumentFileBinaryQueryKey: () => ["file-binary"],
+  useGetDocumentFileBinary: vi.fn(() => ({
+    data: new Blob(["fake-preview"]),
     isLoading: false,
     isError: false,
     isFetching: false,
     refetch: vi.fn(),
   })),
 }));
+
+URL.createObjectURL ??= vi.fn(() => "blob:fake-preview");
+URL.revokeObjectURL ??= vi.fn();
 
 const G = globalThis as unknown as Record<string, unknown>;
 G.ResizeObserver ??= class {
@@ -320,7 +323,7 @@ describe("DocumentReviewWorkspace hover vs select", () => {
       mutate: vi.fn(),
       isPending: false,
     } as never);
-    vi.mocked(useGetDocumentFileDownload).mockClear();
+    vi.mocked(useGetDocumentFileBinary).mockClear();
     document.body.innerHTML = "";
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -1015,7 +1018,7 @@ describe("DocumentReviewWorkspace hover vs select", () => {
         "Причина возврата: Обрезан край документа",
       );
       expect(container.querySelector("textarea")).toBeNull();
-      expect(useGetDocumentFileDownload).not.toHaveBeenCalled();
+      expect(useGetDocumentFileBinary).not.toHaveBeenCalled();
     } finally {
       cleanup();
     }
