@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   Calendar,
   ExternalLink,
-  FileText,
 } from "lucide-react";
 import { CandidateDocumentThumbnail } from "./CandidateDocumentThumbnail";
 import { formatDateRu } from "../lib/date-format";
@@ -110,9 +109,7 @@ export function CandidatePreviousDocumentCard({
           ? "MISSING"
           : returnedVersion
             ? "RETURNED"
-            : currentDocument?.status ??
-              previousDocument?.state ??
-              "DRAFT"));
+            : (currentDocument?.status ?? previousDocument?.state ?? "DRAFT")));
 
   const rejectionReason =
     primary === "EDO"
@@ -152,7 +149,10 @@ export function CandidatePreviousDocumentCard({
 
   const handleOpenOriginal = async () => {
     if (!previousDocument) return;
-    if (onOpenPrevious) { onOpenPrevious(previousDocument.id); return; }
+    if (onOpenPrevious) {
+      onOpenPrevious(previousDocument.id);
+      return;
+    }
     setOpeningOriginal(true);
     const tab = window.open("about:blank", "_blank");
     if (tab) tab.opener = null;
@@ -202,10 +202,7 @@ export function CandidatePreviousDocumentCard({
     ) {
       return <Badge tone="danger">Нужна замена</Badge>;
     }
-    if (
-      previousDocument?.state === "REUSED" ||
-      effectiveStatus === "REUSED"
-    ) {
+    if (previousDocument?.state === "REUSED" || effectiveStatus === "REUSED") {
       return <Badge tone="success">Зачтён ранее</Badge>;
     }
     if (previousDocument?.state === "ORIGINAL_UNAVAILABLE") {
@@ -217,194 +214,165 @@ export function CandidatePreviousDocumentCard({
     return <StatusBadge status={effectiveStatus} document />;
   };
 
-  // 1. Compact mode (44–56 px)
-  if (isCompact) {
-    return (
-      <div
-        className={cn(
-          "flex min-h-[44px] items-center justify-between gap-3 rounded-lg border border-[var(--border)]/60 bg-[var(--card)] px-3 py-2 transition-colors hover:bg-[var(--muted)]/40 shadow-2xs",
-          className,
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-2.5">
-          <FileText
-            className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]"
-            aria-hidden
-          />
-          <span className="truncate text-[13px] font-medium text-[var(--foreground)]">
-            {title}
-          </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {renderBadge()}
-          {primary === "EDO" && currentDocument && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              onClick={openEdoDocument}
-              aria-label={`${title}, версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
-            >
-              {edoActionLabel}
-            </Button>
-          )}
-          {primary === "PREVIOUS" && previousDocument && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              onClick={() => void handleOpenOriginal()}
-            >
-              Открыть документ
-            </Button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // 2. Expanded mode
-  const sourceText = previousDocument
-    ? previousDocument.sourceDescription ||
-      (previousDocument.source === "EDO"
-        ? "Из прошлого оформления в ЭДО"
-        : "Из ERP")
-    : null;
-
+  const sourceText =
+    primary === "EDO" || previousDocument?.source === "EDO"
+      ? "Из ЭДО"
+      : "Из ERP";
   const isExpired =
     previousDocument?.state === "EXPIRED" ||
     Boolean(
       previousDocument?.expiresAt &&
-        previousDocument.expiresAt <
-          new Intl.DateTimeFormat("en-CA", {
-            timeZone: "Asia/Irkutsk",
-          }).format(new Date()),
+      previousDocument.expiresAt <
+        new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Irkutsk" }).format(
+          new Date(),
+        ),
     );
-
   const requisites = formatRequisites(previousDocument?.fields);
+  const actionClassName =
+    "h-8 max-w-full whitespace-normal px-2.5 text-xs leading-tight";
+  const edoAction = currentDocument && (
+    <Button
+      size="sm"
+      variant="outline"
+      className={actionClassName}
+      onClick={openEdoDocument}
+      aria-label={`${title}, версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
+    >
+      <ExternalLink size={13} className="shrink-0" aria-hidden />
+      {edoActionLabel}
+    </Button>
+  );
+  const previousAction = previousDocument && (
+    <Button
+      size="sm"
+      variant="outline"
+      className={actionClassName}
+      disabled={!previousDocument.originalAvailable || openingOriginal}
+      onClick={() => void handleOpenOriginal()}
+      aria-label={`Открыть оригинал: ${previousDocument.title || title}`}
+    >
+      <ExternalLink size={13} className="shrink-0" aria-hidden />
+      {openingOriginal ? "Открытие…" : "Открыть документ"}
+    </Button>
+  );
 
   return (
-    <div
+    <article
       className={cn(
-        "space-y-3 rounded-xl border border-[var(--border)]/70 bg-[var(--card)] p-3.5 transition-colors shadow-2xs",
+        "min-w-0 space-y-2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3",
         className,
       )}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 pb-1 border-b border-[var(--border)]/40">
-        <div className="flex min-w-0 items-center gap-2">
-          <FileText
-            className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]"
-            aria-hidden
+      <div className="flex items-start gap-3">
+        {primary === "EDO" && currentDocument ? (
+          <CandidateDocumentThumbnail
+            key={`edo:${currentDocument.id}:${currentDocument.currentVersion}`}
+            candidateId={candidateId}
+            documentId={currentDocument.id}
+            version={
+              currentDocument.currentVersion ?? returnedVersion?.version ?? 1
+            }
+            originalAvailable={currentDocument.status !== "RETURNED"}
+            title={title}
+            className="h-20 w-16"
+            onClick={openEdoDocument}
           />
-          <h3 className="truncate text-[13px] font-semibold text-[var(--foreground)]">
+        ) : showPrevious && previousDocument ? (
+          <CandidateDocumentThumbnail
+            key={`previous:${previousDocument.id}`}
+            candidateId={candidateId}
+            documentId={previousDocument.id}
+            originalAvailable={previousDocument.originalAvailable}
+            title={title}
+            className="h-20 w-16"
+            onClick={
+              previousDocument.originalAvailable
+                ? () => void handleOpenOriginal()
+                : undefined
+            }
+          />
+        ) : null}
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <h3 className="break-words text-[13px] font-semibold leading-5 text-[var(--foreground)]">
             {title}
           </h3>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {renderBadge()}
+            {primary !== "NONE" && (
+              <span className="text-[11px] text-[var(--muted-foreground)]">
+                {sourceText}
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {primary === "EDO" ? edoAction : previousAction}
+          </div>
         </div>
-        <div className="shrink-0">{renderBadge()}</div>
       </div>
 
-      {/* Rejection reason (if returned) */}
-      {(effectiveStatus === "RETURNED" || returnedVersion) &&
+      {!isCompact &&
+        (effectiveStatus === "RETURNED" || returnedVersion) &&
         rejectionReason && (
-          <div className="rounded-lg border border-[var(--primary)]/20 bg-[var(--primary-soft)]/60 p-2.5 text-xs">
+          <div className="rounded-lg bg-[var(--primary-soft)] p-2.5 text-xs">
             <div className="mb-1 flex items-center gap-1.5 font-semibold text-[var(--primary)]">
               <AlertCircle size={14} aria-hidden />
               <span>Причина возврата:</span>
             </div>
-            <p className="text-[var(--foreground)]">{rejectionReason}</p>
+            <p className="break-words">{rejectionReason}</p>
           </div>
         )}
 
-      {/* Previous version block */}
-      {showPrevious && previousDocument && (
-        <div className="rounded-lg bg-[var(--muted)]/40 border border-[var(--border)]/50 p-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            <CandidateDocumentThumbnail
-              onClick={onOpenPrevious ? () => onOpenPrevious(previousDocument.id) : undefined}
-              candidateId={candidateId}
-              documentId={previousDocument.id}
-              originalAvailable={previousDocument.originalAvailable}
-              title={previousDocument.title || title}
-            />
-
-            <div className="min-w-0 flex-1 space-y-1.5 text-xs">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                {previousDocument.source === "EDO" ? "Из прошлого оформления в ЭДО" : "Документ из ERP"}
-              </div>
-
-              {sourceText && (
-                <div className="font-medium text-[var(--foreground)]">
-                  {sourceText}
-                </div>
-              )}
-
-              {/* Expiry date */}
-              <div className="flex items-center gap-1.5 text-[var(--muted-foreground)]">
-                <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span>
-                  {previousDocument.expiresAt
-                    ? `Срок действия: ${formatDateRu(previousDocument.expiresAt)}`
-                    : "Срок действия: не указан"}
-                </span>
-              </div>
-
-              {/* Expiry warning */}
-              {isExpired && (
-                <div className="flex items-center gap-1.5 font-medium text-[var(--primary)]">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                  <span>Срок действия истёк. Нужно загрузить снова</span>
-                </div>
-              )}
-
-              {/* Requisites (series, number, issue date) */}
-              {requisites.length > 0 && (
-                <div className="flex flex-wrap gap-x-2 gap-y-1 pt-1 text-[11px] text-[var(--muted-foreground)]">
-                  {requisites.map((item, idx) => (
-                    <span key={idx} className="rounded bg-[var(--card)] border border-[var(--border)]/60 px-2 py-0.5 font-medium text-[var(--foreground)]">
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Button: Open document */}
-              <div className="pt-1.5">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!previousDocument.originalAvailable || openingOriginal}
-                  onClick={() => void handleOpenOriginal()}
-                  className="h-7 text-xs"
-                  aria-label={`Открыть оригинал: ${previousDocument.title || title}`}
-                >
-                  <ExternalLink size={13} className="mr-1" aria-hidden />
-                  {openingOriginal ? "Открытие…" : "Открыть документ"}
-                </Button>
-              </div>
+      {!isCompact && showPrevious && previousDocument && (
+        <div className="space-y-1.5 text-xs text-[var(--muted-foreground)]">
+          <div className="flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>
+              {previousDocument.expiresAt
+                ? `Срок действия: ${formatDateRu(previousDocument.expiresAt)}`
+                : "Срок действия: не указан"}
+            </span>
+          </div>
+          {isExpired && (
+            <div className="flex items-center gap-1.5 font-medium text-[var(--primary)]">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span>Срок действия истёк. Нужно загрузить снова</span>
             </div>
-          </div>
+          )}
+          {requisites.length > 0 && (
+            <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px]">
+              {requisites.map((item) => (
+                <span key={item} className="break-words">
+                  {item}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
-
-      {/* Current document actions */}
-      {currentDocument && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border)]/50 pt-2.5">
-          <div className="text-xs text-[var(--muted-foreground)]">
-            {primary === "EDO"
-              ? `Текущая версия: ${currentDocument.currentVersion}`
-              : `Загрузка в ЭДО: версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
-          </div>
-          <Button
-            size="sm"
-            aria-label={`${title}, версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
-            onClick={openEdoDocument}
-            className="text-xs font-medium"
-          >
-            {edoActionLabel}
-          </Button>
+      {!isCompact && primary === "EDO" && currentDocument && (
+        <p className="text-[11px] text-[var(--muted-foreground)]">
+          Текущая версия: {currentDocument.currentVersion}
+        </p>
+      )}
+      {primary === "PREVIOUS" && currentDocument && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-2">
+          <span className="text-[11px] text-[var(--muted-foreground)]">
+            Загрузка в ЭДО: версия{" "}
+            {currentDocument.currentVersion ?? returnedVersion?.version ?? 1}
+          </span>
+          {edoAction}
         </div>
       )}
-    </div>
+      {primary === "EDO" && previousDocument && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-2">
+          <span className="text-[11px] text-[var(--muted-foreground)]">
+            {previousDocument.source === "ERP"
+              ? "Оригинал из ERP"
+              : "Из прошлого оформления в ЭДО"}
+          </span>
+          {previousAction}
+        </div>
+      )}
+    </article>
   );
 }

@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -17,6 +18,10 @@ vi.mock("@edo/api-client", async (importOriginal) => {
       .mockResolvedValue(new Blob(["test"])),
   };
 });
+
+vi.mock("../../../../packages/api-client/src/mutator/custom-instance", () => ({
+  customInstance: () => Promise.resolve({ status: "APPROVED", files: [] }),
+}));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -42,7 +47,15 @@ describe("CandidateStageAccordion", () => {
     document.body.append(container);
     root = createRoot(container);
     await act(async () => {
-      root?.render(<CandidateStageAccordion {...props} />);
+      root?.render(
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <CandidateStageAccordion {...props} />
+        </QueryClientProvider>,
+      );
     });
   }
 
@@ -166,9 +179,9 @@ describe("CandidateStageAccordion", () => {
     expect(container?.textContent).toContain("Дополнительные");
     expect(container?.textContent).toContain("Водительское удостоверение");
 
-    const reviewButton = [...(container?.querySelectorAll("button") ?? [])].find(
-      (btn) => btn.textContent?.includes("Проверить документ"),
-    );
+    const reviewButton = [
+      ...(container?.querySelectorAll("button") ?? []),
+    ].find((btn) => btn.textContent?.includes("Проверить документ"));
     expect(reviewButton).toBeTruthy();
 
     await act(async () => {
@@ -242,5 +255,44 @@ describe("CandidateStageAccordion", () => {
       (ringButton as HTMLElement)?.click();
     });
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+  it("keeps INN and SNILS as separate named cards in stage 2", async () => {
+    await renderAccordion({
+      stage: 2,
+      title: "Этап 2",
+      candidateId: "candidate",
+      isOpen: true,
+      onToggle: vi.fn(),
+      required: {
+        documents: [
+          {
+            id: "inn",
+            documentUid: "inn",
+            documentTypeCode: "INN",
+            title: "ИНН",
+            status: "APPROVED",
+            currentVersion: 1,
+            deliveryStatus: "SENT",
+          },
+          {
+            id: "snils",
+            documentUid: "snils",
+            documentTypeCode: "SNILS",
+            title: "СНИЛС",
+            status: "APPROVED",
+            currentVersion: 1,
+            deliveryStatus: "SENT",
+          },
+        ] as CandidateDocumentSummaryDto[],
+        missingDocuments: [],
+      },
+      additional: { documents: [], missingDocuments: [] },
+      previousDocuments: [],
+    });
+    const titles = [...container!.querySelectorAll("h3")].filter((el) =>
+      ["ИНН", "СНИЛС"].includes(el.textContent ?? ""),
+    );
+    expect(titles.map((el) => el.textContent)).toEqual(["ИНН", "СНИЛС"]);
+    expect(titles[0].closest("article")).not.toBe(titles[1].closest("article"));
   });
 });
