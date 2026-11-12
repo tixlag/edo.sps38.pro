@@ -13,6 +13,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { CandidateDocumentThumbnail } from "./CandidateDocumentThumbnail";
+import { documentDeliveryPresentation } from "../lib/document-delivery-presentation";
 import { formatDateRu } from "../lib/date-format";
 
 export interface CandidatePreviousDocumentCardProps {
@@ -27,6 +28,8 @@ export interface CandidatePreviousDocumentCardProps {
   currentDocument?: CandidateDocumentSummaryDto;
   previousDocument?: PreviousDocumentAvailabilityDto;
   returnedVersion?: ReturnedDocumentVersionDto;
+  /** Explicit archive context; a current card must never inherit an old return. */
+  returnedHistory?: boolean;
   isMissing?: boolean;
   onOpenPrevious?: (id: string) => void;
   onReviewCurrent?: (docId: string, version?: number) => void;
@@ -78,6 +81,7 @@ export function CandidatePreviousDocumentCard({
   currentDocument,
   previousDocument,
   returnedVersion,
+  returnedHistory = false,
   isMissing = false,
   onReviewCurrent,
   onOpenPrevious,
@@ -85,66 +89,58 @@ export function CandidatePreviousDocumentCard({
   className,
 }: CandidatePreviousDocumentCardProps) {
   const [openingOriginal, setOpeningOriginal] = useState(false);
-  // One card shows exactly one document. The source is derived from the
-  // document facts only, so RU and IG candidates behave identically.
-  const hasEdo = !!currentDocument;
-  const edoDelivered = hasEdo && currentDocument?.deliveryStatus === "SENT";
-  const creditedErpOriginal =
-    previousDocument?.source === "ERP" &&
-    previousDocument.state === "REUSED" &&
-    previousDocument.originalAvailable;
-  const primary: "EDO" | "PREVIOUS" | "NONE" =
-    hasEdo && (edoDelivered || !creditedErpOriginal)
-      ? "EDO"
-      : previousDocument
-        ? "PREVIOUS"
-        : "NONE";
-  const showPrevious = primary === "PREVIOUS" && !!previousDocument;
-
+  // EDO always wins when present, regardless of delivery or preview availability.
+  const showPrevious = !currentDocument && !!previousDocument;
+  const primary = currentDocument
+    ? "EDO"
+    : previousDocument
+      ? "PREVIOUS"
+      : "NONE";
+  const displayedVersion =
+    returnedHistory && returnedVersion
+      ? returnedVersion.version
+      : currentDocument?.currentVersion;
   const effectiveStatus =
-    primary === "PREVIOUS" && creditedErpOriginal
-      ? "APPROVED"
-      : (status ??
-        (isMissing
-          ? "MISSING"
-          : returnedVersion
-            ? "RETURNED"
-            : (currentDocument?.status ?? previousDocument?.state ?? "DRAFT")));
-
+    returnedHistory && returnedVersion
+      ? "RETURNED"
+      : (currentDocument?.status ??
+        status ??
+        (isMissing ? "MISSING" : (previousDocument?.state ?? "DRAFT")));
+  const currentReturned =
+    (returnedHistory ? returnedVersion : undefined) ??
+    currentDocument?.returnedVersions?.find(
+      (v) => v.version === currentDocument.currentVersion,
+    ) ??
+    (returnedVersion?.version === currentDocument?.currentVersion
+      ? returnedVersion
+      : undefined);
   const rejectionReason =
-    primary === "EDO"
-      ? (returnedVersion?.rejectionReason ??
-        currentDocument?.returnedVersions?.[0]?.rejectionReason ??
-        null)
-      : (previousDocument?.rejectionReason ?? null);
-
-  // Decide compact vs expanded mode
+    effectiveStatus === "RETURNED"
+      ? (currentReturned?.rejectionReason ??
+        (showPrevious ? previousDocument?.rejectionReason : null))
+      : null;
+  const delivery =
+    currentDocument && !returnedHistory
+      ? documentDeliveryPresentation(
+          currentDocument.status,
+          currentDocument.deliveryStatus,
+          currentDocument.deliveredHistorically,
+        )
+      : null;
   const isCompact =
     mode === "compact" ||
-    (mode !== "expanded" &&
-      !creditedErpOriginal &&
-      ((isMissing && !previousDocument) ||
-        (effectiveStatus === "MISSING" && !previousDocument) ||
-        (effectiveStatus === "APPROVED" &&
-          (!previousDocument || previousDocument.state === "REUSED") &&
-          !returnedVersion &&
-          !currentDocument?.returnedVersions?.length) ||
-        ((effectiveStatus === "REUSED" ||
-          previousDocument?.state === "REUSED") &&
-          !currentDocument &&
-          !returnedVersion)));
-
+    (mode !== "expanded" && !showPrevious && effectiveStatus !== "RETURNED");
   const edoActionLabel =
-    currentDocument?.uploadOrigin === "REVIEWER"
+    currentDocument?.uploadOrigin === "REVIEWER" && effectiveStatus === "DRAFT"
       ? "Продолжить загрузку"
-      : currentDocument?.status === "IN_REVIEW"
+      : effectiveStatus === "IN_REVIEW"
         ? "Проверить документ"
         : "Открыть документ";
 
   const openEdoDocument = () =>
     onReviewCurrent?.(
       currentDocument!.id,
-      currentDocument!.currentVersion ?? returnedVersion?.version,
+      displayedVersion ?? returnedVersion?.version,
     );
 
   const handleOpenOriginal = async () => {
@@ -180,10 +176,8 @@ export function CandidatePreviousDocumentCard({
   };
 
   const renderBadge = () => {
-    if (effectiveStatus === "APPROVED" || effectiveStatus === "SIGNED") {
-      return <Badge tone="success">Документ принят</Badge>;
-    }
-    if (effectiveStatus === "RETURNED" || returnedVersion) {
+    if (delivery) return <Badge tone={delivery.tone}>{delivery.label}</Badge>;
+    if (effectiveStatus === "RETURNED") {
       return <Badge tone="danger">Возвращён</Badge>;
     }
     if (effectiveStatus === "IN_REVIEW") {
@@ -192,23 +186,27 @@ export function CandidatePreviousDocumentCard({
     if (effectiveStatus === "UPLOADED") {
       return <Badge tone="info">Загружен</Badge>;
     }
-    if (previousDocument?.state === "REQUIRES_REVIEW") {
+    if (showPrevious && previousDocument?.state === "REQUIRES_REVIEW") {
       return <Badge tone="warning">Проверить актуальность</Badge>;
     }
     if (
-      previousDocument?.state === "EXPIRED" ||
-      previousDocument?.state === "REPLACE_REQUIRED" ||
+      (showPrevious &&
+        (previousDocument?.state === "EXPIRED" ||
+          previousDocument?.state === "REPLACE_REQUIRED")) ||
       effectiveStatus === "EXPIRED"
     ) {
       return <Badge tone="danger">Нужна замена</Badge>;
     }
-    if (previousDocument?.state === "REUSED" || effectiveStatus === "REUSED") {
+    if (
+      showPrevious &&
+      (previousDocument?.state === "REUSED" || effectiveStatus === "REUSED")
+    ) {
       return <Badge tone="success">Зачтён ранее</Badge>;
     }
-    if (previousDocument?.state === "ORIGINAL_UNAVAILABLE") {
+    if (showPrevious && previousDocument?.state === "ORIGINAL_UNAVAILABLE") {
       return <Badge tone="warning">Оригинал недоступен</Badge>;
     }
-    if (isMissing || effectiveStatus === "MISSING") {
+    if ((!currentDocument && isMissing) || effectiveStatus === "MISSING") {
       return <Badge tone="default">Не загружен</Badge>;
     }
     return <StatusBadge status={effectiveStatus} document />;
@@ -236,7 +234,7 @@ export function CandidatePreviousDocumentCard({
       variant="outline"
       className={actionClassName}
       onClick={openEdoDocument}
-      aria-label={`${title}, версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
+      aria-label={`${title}, версия ${displayedVersion ?? returnedVersion?.version ?? 1}`}
     >
       <ExternalLink size={13} className="shrink-0" aria-hidden />
       {edoActionLabel}
@@ -266,13 +264,11 @@ export function CandidatePreviousDocumentCard({
       <div className="flex items-start gap-3">
         {primary === "EDO" && currentDocument ? (
           <CandidateDocumentThumbnail
-            key={`edo:${currentDocument.id}:${currentDocument.currentVersion}`}
+            key={`edo:${currentDocument.id}:${displayedVersion}`}
             candidateId={candidateId}
             documentId={currentDocument.id}
-            version={
-              currentDocument.currentVersion ?? returnedVersion?.version ?? 1
-            }
-            originalAvailable={currentDocument.status !== "RETURNED"}
+            version={displayedVersion ?? returnedVersion?.version ?? 1}
+            originalAvailable={effectiveStatus !== "RETURNED"}
             title={title}
             className="h-20 w-16"
             onClick={openEdoDocument}
@@ -301,6 +297,7 @@ export function CandidatePreviousDocumentCard({
             {primary !== "NONE" && (
               <span className="text-[11px] text-[var(--muted-foreground)]">
                 {sourceText}
+                {currentDocument ? ` · версия ${displayedVersion}` : ""}
               </span>
             )}
           </div>
@@ -310,17 +307,28 @@ export function CandidatePreviousDocumentCard({
         </div>
       </div>
 
-      {!isCompact &&
-        (effectiveStatus === "RETURNED" || returnedVersion) &&
-        rejectionReason && (
-          <div className="rounded-lg bg-[var(--primary-soft)] p-2.5 text-xs">
-            <div className="mb-1 flex items-center gap-1.5 font-semibold text-[var(--primary)]">
-              <AlertCircle size={14} aria-hidden />
-              <span>Причина возврата:</span>
-            </div>
-            <p className="break-words">{rejectionReason}</p>
+      {delivery?.problem && (
+        <p
+          role="status"
+          className="break-words rounded-md bg-[var(--muted)] px-2 py-1.5 text-xs leading-5"
+        >
+          {currentDocument?.deliveryErrorReason && (
+            <span className="block font-medium">
+              {currentDocument.deliveryErrorReason}
+            </span>
+          )}
+          Документ сохранён в ЭДО.
+        </p>
+      )}
+      {effectiveStatus === "RETURNED" && rejectionReason && (
+        <div className="rounded-lg bg-[var(--primary-soft)] p-2.5 text-xs">
+          <div className="mb-1 flex items-center gap-1.5 font-semibold text-[var(--primary)]">
+            <AlertCircle size={14} aria-hidden />
+            <span>Причина возврата:</span>
           </div>
-        )}
+          <p className="break-words">{rejectionReason}</p>
+        </div>
+      )}
 
       {!isCompact && showPrevious && previousDocument && (
         <div className="space-y-1.5 text-xs text-[var(--muted-foreground)]">
@@ -347,30 +355,6 @@ export function CandidatePreviousDocumentCard({
               ))}
             </div>
           )}
-        </div>
-      )}
-      {!isCompact && primary === "EDO" && currentDocument && (
-        <p className="text-[11px] text-[var(--muted-foreground)]">
-          Текущая версия: {currentDocument.currentVersion}
-        </p>
-      )}
-      {primary === "PREVIOUS" && currentDocument && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-2">
-          <span className="text-[11px] text-[var(--muted-foreground)]">
-            Загрузка в ЭДО: версия{" "}
-            {currentDocument.currentVersion ?? returnedVersion?.version ?? 1}
-          </span>
-          {edoAction}
-        </div>
-      )}
-      {primary === "EDO" && previousDocument && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-2">
-          <span className="text-[11px] text-[var(--muted-foreground)]">
-            {previousDocument.source === "ERP"
-              ? "Оригинал из ERP"
-              : "Из прошлого оформления в ЭДО"}
-          </span>
-          {previousAction}
         </div>
       )}
     </article>

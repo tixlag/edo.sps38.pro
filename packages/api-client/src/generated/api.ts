@@ -705,6 +705,11 @@ export interface ReviewStageCountsDto {
 }
 
 export interface ReviewStageProgressDto {
+  /**
+   * Current approved/signed documents with unconfirmed or blocked ERP delivery, including additional documents; independent of review counters
+   * @minimum 0
+   */
+  deliveryProblemCount?: number;
   /** @nullable */
   stage: number | null;
   required: ReviewStageCountsDto;
@@ -844,6 +849,13 @@ export interface DocumentDto {
   documentUid: string | null;
   /** @nullable */
   deliveryStatus: string | null;
+  /**
+   * Safe explanation of the current version ERP delivery failure, without technical codes or response bodies
+   * @nullable
+   */
+  deliveryErrorReason?: string | null;
+  /** Current version was previously delivered to ERP through a confirmed PREVIOUS_LINK */
+  deliveredHistorically?: boolean;
   /** @nullable */
   reviewGroup: DocumentDtoReviewGroup;
   /** @nullable */
@@ -1231,6 +1243,8 @@ export interface DocumentVersionDto {
   revision: number;
   /** @nullable */
   ocrSource: DocumentVersionDtoOcrSource;
+  /** Version was previously delivered to ERP through a confirmed PREVIOUS_LINK */
+  deliveredHistorically?: boolean;
   files: DocumentFileDto[];
   fields: DocumentFieldDto[];
   ocrFields: DocumentOcrFieldDto[];
@@ -1337,6 +1351,13 @@ export interface CandidateDocumentSummaryDto {
   documentUid: string | null;
   /** @nullable */
   deliveryStatus: string | null;
+  /**
+   * Safe explanation of the current version ERP delivery failure, without technical codes or response bodies
+   * @nullable
+   */
+  deliveryErrorReason?: string | null;
+  /** Current version was previously delivered to ERP through a confirmed PREVIOUS_LINK */
+  deliveredHistorically?: boolean;
 }
 
 export type PreviousDocumentAvailabilityState =

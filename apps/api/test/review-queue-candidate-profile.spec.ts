@@ -493,8 +493,8 @@ describe("reviewDocuments with profile filters", () => {
     expect(page.nextCursor).toBeNull();
   });
   it("keeps the 20007 location scope under profile filters", async () => {
-    const findMany = vi.fn(async (args: { select?: unknown }) =>
-      args.select ? [{ id: "d1" }] : [row],
+    const findMany = vi.fn(async (args: { select?: { id?: boolean } }) =>
+      args.select?.id ? [{ id: "d1" }] : [row],
     );
     const scoped = {
       ...fullAccess,
@@ -590,8 +590,8 @@ describe("reviewDocuments candidate progress", () => {
       catalog?: unknown[];
     } = {},
   ) => {
-    const findMany = vi.fn(async (args: { select?: unknown }) =>
-      args.select ? docs.map((d) => ({ id: d.id })) : (docs as unknown[]),
+    const findMany = vi.fn(async (args: { select?: { id?: boolean } }) =>
+      args.select?.id ? docs.map((d) => ({ id: d.id })) : (docs as unknown[]),
     );
     const groupBy = vi.fn(async () => opts.grouped ?? []);
     const catalog = vi.fn(async () => opts.catalog ?? []);

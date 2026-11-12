@@ -101,11 +101,17 @@ function CandidateWorkspace() {
   const stage = /^(none|[1-9]\d{0,14})$/.test(String(search.stage ?? ""))
     ? String(search.stage)
     : undefined;
+  // The URL stage is a deep-link selector. Keep its detail query fixed for
+  // this mounted workspace; ordinary accordion toggles only update the URL.
+  const initialStageSelection = useRef({ candidateId, stage });
+  if (initialStageSelection.current.candidateId !== candidateId)
+    initialStageSelection.current = { candidateId, stage };
+  const initialStage = initialStageSelection.current.stage;
   const details = useCandidateDocumentSync(candidateId);
-  const stageParams = stage ? { stage } : undefined;
+  const stageParams = initialStage ? { stage: initialStage } : undefined;
   const stageDetails = useGetCandidateDetails(candidateId, stageParams, {
     query: {
-      enabled: !!stage,
+      enabled: !!initialStage,
       queryKey: getGetCandidateDetailsQueryKey(candidateId, stageParams),
     },
   });
@@ -218,9 +224,9 @@ function CandidateWorkspace() {
 
   const stages = useMemo(() => {
     const effectiveData =
-      (stage ? stageDetails.data : details.data) ?? details.data;
-    return assembleCandidateStages(effectiveData, { stage });
-  }, [details.data, stageDetails.data, stage]);
+      (initialStage ? stageDetails.data : details.data) ?? details.data;
+    return assembleCandidateStages(effectiveData, { stage: initialStage });
+  }, [details.data, stageDetails.data, initialStage]);
 
   const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({});
 
@@ -240,10 +246,10 @@ function CandidateWorkspace() {
     return false;
   };
 
-  const toggleStage = (stgNumber: number | null, _index: number) => {
+  const toggleStage = (stgNumber: number | null, index: number) => {
     const key = stgNumber === null ? "none" : String(stgNumber);
-    const currentlyActive = stage === key;
-    const willOpen = !currentlyActive;
+    const currentlyOpen = isStageOpen(stgNumber, index);
+    const willOpen = !currentlyOpen;
     setExpandedStages((prev) => ({ ...prev, [key]: willOpen }));
     void navigate({
       to: "/review/candidates/$candidateId",
@@ -672,6 +678,10 @@ function CandidateWorkspace() {
                   Загрузка документов этапа…
                 </p>
               )}
+            {details.updating && <p role="status" className="px-2 py-1 text-xs text-[var(--muted-foreground)]">
+              {details.syncError || details.data?.enrichment?.status === "RETRY" ? "Не удалось обновить данные. Показан последний полный снимок." : "Обновляем данные…"}
+              {details.syncError && <Button size="sm" variant="outline" onClick={details.requestSync}>Повторить</Button>}
+            </p>}
             {details.synchronizing && (
               <p
                 role="status"

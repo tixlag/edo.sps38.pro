@@ -174,6 +174,10 @@ export function CandidateDrawer({
       }}
     >
       <div className="candidate-drawer-panel absolute right-0 top-0 flex h-full w-full max-w-[760px] min-[640px]:w-[720px] lg:w-[760px] flex-col bg-[var(--card)] shadow-2xl">
+        {docs.updating && <p role="status" className="border-b border-[var(--border)] px-4 py-2 text-xs text-[var(--muted-foreground)]">
+          {docs.syncError || enrichment?.status === "RETRY" ? "Не удалось обновить данные. Показан последний полный снимок." : "Обновляем данные…"}
+          {docs.syncError && <Button variant="outline" size="sm" onClick={docs.requestSync}>Повторить</Button>}
+        </p>}
         {docs.synchronizing && (
           <div
             role="status"
@@ -455,6 +459,7 @@ export function CandidateDrawer({
                 {stages.map((stg, index) => (
                   <CandidateStageAccordion
                     showProgress={!arrivalContext}
+                    returnedHistory={returnedHistory}
                     key={`stage-${stg.stage ?? "none"}-${index}`}
                     progress={profile?.stageProgress?.find((item) => item.stage === stg.stage)}
                     stage={stg.stage}

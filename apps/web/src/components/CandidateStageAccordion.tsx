@@ -5,9 +5,10 @@ import type {
   ReturnedDocumentVersionDto,
   ReviewStageProgressDto,
 } from "@edo/api-client";
+import { useLayoutEffect, useRef, useState } from "react";
 import { StageRing } from "./StageRing";
 import { cn } from "@edo/ui";
-import { ChevronDown, Layers } from "lucide-react";
+import { AlertTriangle, ChevronDown, Layers } from "lucide-react";
 import { CandidatePreviousDocumentCard } from "./CandidatePreviousDocumentCard";
 
 interface AccordionCardItem {
@@ -36,6 +37,7 @@ export interface CandidateStageAccordionProps {
   candidateId: string;
   isOpen: boolean;
   showProgress?: boolean;
+  returnedHistory?: boolean;
   progress?: ReviewStageProgressDto;
   onToggle: () => void;
   onOpenPrevious?: (id: string) => void;
@@ -53,12 +55,30 @@ export function CandidateStageAccordion({
   candidateId,
   isOpen,
   showProgress = true,
+  returnedHistory = false,
   progress,
   onToggle,
   onReviewDocument,
   onOpenPrevious,
   className,
 }: CandidateStageAccordionProps) {
+  const [hasOpened, setHasOpened] = useState(isOpen);
+  const [panelOpen, setPanelOpen] = useState(isOpen);
+  const openFrame = useRef<number | undefined>(undefined);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    cancelAnimationFrame(openFrame.current ?? 0);
+    if (!isOpen) {
+      setPanelOpen(false);
+      return;
+    }
+    setHasOpened(true);
+    openFrame.current = requestAnimationFrame(() => setPanelOpen(true));
+    return () => cancelAnimationFrame(openFrame.current ?? 0);
+  }, [isOpen]);
+  useLayoutEffect(() => {
+    if (panelRef.current) panelRef.current.inert = !isOpen;
+  }, [isOpen, hasOpened]);
   // Calculate progress: confirmed/reused vs total required
   const approvedRequired = required.documents.filter(
     (d) => d.status === "APPROVED" || d.status === "SIGNED",
@@ -71,7 +91,9 @@ export function CandidateStageAccordion({
   ).length;
 
   const confirmedCount = progress
-    ? progress.required.approved + (progress.required.reused ?? 0) + (progress.required.signed ?? 0)
+    ? progress.required.approved +
+      (progress.required.reused ?? 0) +
+      (progress.required.signed ?? 0)
     : approvedRequired + reusedRequired;
 
   const missingRequiredNotReused = required.missingDocuments.filter(
@@ -82,12 +104,30 @@ export function CandidateStageAccordion({
   ).length;
 
   const totalRequired = progress
-    ? ["approved", "reused", "signed", "inReview", "uploaded", "ocrPending", "ocrFailed", "returned", "expired", "draft", "missing"].reduce(
-        (sum, key) => sum + (progress.required[key as keyof typeof progress.required] ?? (key === "inReview" ? progress.required.pending : 0) ?? 0), 0)
+    ? [
+        "approved",
+        "reused",
+        "signed",
+        "inReview",
+        "uploaded",
+        "ocrPending",
+        "ocrFailed",
+        "returned",
+        "expired",
+        "draft",
+        "missing",
+      ].reduce(
+        (sum, key) =>
+          sum +
+          (progress.required[key as keyof typeof progress.required] ??
+            (key === "inReview" ? progress.required.pending : 0) ??
+            0),
+        0,
+      )
     : Math.max(
-    confirmedCount,
-    required.documents.length + missingRequiredNotReused + reusedRequired,
-  );
+        confirmedCount,
+        required.documents.length + missingRequiredNotReused + reusedRequired,
+      );
 
   const progressPercent =
     totalRequired > 0
@@ -95,6 +135,8 @@ export function CandidateStageAccordion({
       : 100;
 
   const remainingRequired = Math.max(0, totalRequired - confirmedCount);
+
+  const deliveryProblemCount = progress?.deliveryProblemCount ?? 0;
 
   // Build list of required cards
   const renderedRequiredCodes = new Set<string>();
@@ -254,7 +296,7 @@ export function CandidateStageAccordion({
             isOpen && "bg-[var(--muted)]/30",
           )}
         >
-          <div className="flex w-full items-center justify-between gap-3">
+          <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
             <div className="flex min-w-0 items-center gap-3">
               {showProgress && progress ? (
                 <div className="h-8 w-8 shrink-0" aria-hidden="true" />
@@ -278,18 +320,18 @@ export function CandidateStageAccordion({
                   {totalRequired > 0 ? (
                     remainingRequired === 0 ? (
                       <span className="font-semibold text-[var(--success)]">
-                        {confirmedCount} из {totalRequired}
+                        Проверено: {confirmedCount} из {totalRequired}
                       </span>
                     ) : (
                       <span>
-                        {confirmedCount} из {totalRequired}
+                        Проверено: {confirmedCount} из {totalRequired}
                         <span className="hidden sm:inline font-normal text-[var(--muted-foreground)]">
                           {` · ещё нужно ${remainingRequired}`}
                         </span>
                       </span>
                     )
                   ) : (
-                    `${confirmedCount} из ${totalRequired}`
+                    `Проверено: ${confirmedCount} из ${totalRequired}`
                   )}
                 </span>
               )}
@@ -302,6 +344,13 @@ export function CandidateStageAccordion({
               />
             </div>
           </div>
+
+          {deliveryProblemCount > 0 && (
+            <span className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-[var(--danger)]">
+              <AlertTriangle size={14} className="shrink-0" aria-hidden />
+              Проблемы отправки: {deliveryProblemCount}
+            </span>
+          )}
 
           {/* Fallback progress line when there is no circular StageRing */}
           {showProgress && !progress && (
@@ -316,7 +365,7 @@ export function CandidateStageAccordion({
 
         {/* Double-ring diagram positioned on the left on the same horizontal line */}
         {showProgress && progress && (
-          <div className="pointer-events-auto absolute left-3.5 top-1/2 -translate-y-1/2">
+          <div className="pointer-events-auto absolute left-3.5 top-3">
             <StageRing
               progress={progress}
               variant="inline"
@@ -327,18 +376,19 @@ export function CandidateStageAccordion({
         )}
       </div>
 
-      {/* Accordion Content */}
-      {isOpen && (
-        <div
-          id={`stage-content-${stage ?? "none"}`}
-          className="space-y-4 border-t border-[var(--border)]/60 px-3.5 pb-4 pt-3 sm:px-4 sm:pb-4"
-        >
+      {/* Keep opened contents mounted so they can animate closed. */}
+      <div
+        ref={panelRef}
+        id={`stage-content-${stage ?? "none"}`}
+        aria-hidden={!isOpen}
+        className="grid transition-[grid-template-rows] duration-[250ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+        style={{ gridTemplateRows: panelOpen ? "1fr" : "0fr" }}
+      >
+        <div className="min-h-0 overflow-hidden">
+        {hasOpened && <div className="space-y-4 border-t border-[var(--border)]/60 px-3.5 pb-4 pt-3 sm:px-4 sm:pb-4">
           {/* Required documents */}
           {allRequiredCards.length > 0 ? (
-            <section
-              aria-label="Обязательные документы"
-              className="space-y-2"
-            >
+            <section aria-label="Обязательные документы" className="space-y-2">
               <h4 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
                 Обязательные
               </h4>
@@ -353,6 +403,7 @@ export function CandidateStageAccordion({
                     currentDocument={card.currentDocument}
                     previousDocument={card.previousDocument}
                     returnedVersion={card.returnedVersion}
+                    returnedHistory={returnedHistory}
                     isMissing={card.isMissing}
                     onOpenPrevious={onOpenPrevious}
                     onReviewCurrent={onReviewDocument}
@@ -386,6 +437,7 @@ export function CandidateStageAccordion({
                     currentDocument={card.currentDocument}
                     previousDocument={card.previousDocument}
                     returnedVersion={card.returnedVersion}
+                    returnedHistory={returnedHistory}
                     isMissing={card.isMissing}
                     onOpenPrevious={onOpenPrevious}
                     onReviewCurrent={onReviewDocument}
@@ -394,8 +446,9 @@ export function CandidateStageAccordion({
               </div>
             </section>
           )}
+        </div>}
         </div>
-      )}
+      </div>
     </div>
   );
 }

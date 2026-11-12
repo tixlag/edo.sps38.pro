@@ -54,7 +54,7 @@ function setup() {
     candidatePreviousDocument: { findMany: vi.fn(async () => []) },
     candidate: { findMany: vi.fn(), findFirst: vi.fn() },
     document: {
-      findMany: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
       groupBy: vi.fn().mockResolvedValue([
         {
           candidateId: "c1",
@@ -306,6 +306,8 @@ describe("candidate review queue", () => {
       currentVersion: 2,
       revision: 4,
       deliveryStatus: null,
+      deliveryErrorReason: null,
+      deliveredHistorically: false,
       pendingDeliveryVersions: [1],
       submittedAt: null,
       reviewedAt: null,
@@ -767,9 +769,10 @@ describe("candidate details", () => {
       result.stageDocuments?.required.documents[0].returnedVersions?.[0]
         .rejectionReason,
     ).toBe("Фото");
-    expect(result.stageDocuments?.required.missingDocuments).toEqual([
-      { code: "A", title: "Документ" },
+    expect(result.stageDocuments?.required.documents).toEqual([
+      expect.objectContaining({ id: "d1", status: "DRAFT" }),
     ]);
+    expect(result.stageDocuments?.required.missingDocuments).toEqual([]);
   });
   it("returns the profile even when there are no documents", async () => {
     const { reads, prisma } = setup();
@@ -807,6 +810,6 @@ describe("candidate details", () => {
     await expect(
       reads.candidateDetails("denied", scoped),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(prisma.document.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.document.findMany).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,3 +1,6 @@
+vi.mock("../components/CandidateDocumentThumbnail", () => ({
+  CandidateDocumentThumbnail: () => null,
+}));
 vi.mock("../components/ApprovedErpDocumentPreview", () => ({
   ApprovedErpDocumentPreview: ({ document }: { document: { id: string } }) => (
     <div data-erp-original={document.id}>Оригинал ERP</div>
@@ -110,6 +113,56 @@ vi.mock("@edo/api-client", () => ({
         },
         documents: state.documents,
         previousDocuments: state.previousDocuments,
+        stages: [
+          {
+            stage: 1,
+            title: "Этап 1",
+            required: {
+              documents: [
+                {
+                  id: "doc2",
+                  title: "СНИЛС",
+                  status: "IN_REVIEW",
+                  currentVersion: 2,
+                  pendingDeliveryVersions: [],
+                  returnedVersions: [],
+                },
+              ],
+              missingDocuments: [{ code: "passport", title: "Паспорт" }],
+            },
+            additional: { documents: [], missingDocuments: [] },
+            previousDocuments: [],
+          },
+          {
+            stage: 2,
+            title: "Этап 2",
+            required: {
+              documents: [
+                {
+                  id: "doc2",
+                  title: "СНИЛС",
+                  status: "IN_REVIEW",
+                  currentVersion: 2,
+                  pendingDeliveryVersions: [],
+                  returnedVersions: [],
+                },
+              ],
+              missingDocuments: [{ code: "passport", title: "Паспорт" }],
+            },
+            additional: { documents: [], missingDocuments: [] },
+            previousDocuments: [],
+          },
+          {
+            stage: 4,
+            title: "Этап 4",
+            required: {
+              documents: [],
+              missingDocuments: [{ code: "stage4", title: "Документ этапа 4" }],
+            },
+            additional: { documents: [], missingDocuments: [] },
+            previousDocuments: [],
+          },
+        ],
         ...(params?.stage
           ? {
               stageDocuments: {
@@ -158,6 +211,8 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 URL.createObjectURL = vi.fn(() => "blob:erp-original");
 URL.revokeObjectURL = vi.fn();
 it("keeps the chat and candidate data visible while selecting a document stage", async () => {
+  state.search = {};
+  state.calls = [];
   const node = document.createElement("div");
   document.body.append(node);
   const root = createRoot(node);
@@ -172,14 +227,14 @@ it("keeps the chat and candidate data visible while selecting a document stage",
   state.search.document = "doc1";
   await act(async () => root.render(<CandidateWorkspacePage />));
   const stageAccordion = [...node.querySelectorAll("button")].find((btn) =>
-    btn.textContent?.includes("Этап 1"),
+    btn.textContent?.includes("Этап 2"),
   ) as HTMLElement;
   expect(stageAccordion).not.toBeNull();
   await act(async () => stageAccordion.click());
   await act(async () => root.render(<CandidateWorkspacePage />));
-  expect(state.search.stage).toBe("1");
+  expect(state.search.stage).toBe("2");
   expect(state.search.document).toBeUndefined();
-  expect(state.calls).toContainEqual({ stage: "1" });
+  expect(state.calls).not.toContainEqual({ stage: "2" });
   expect(node.textContent).toContain("Паспорт");
   expect(node.textContent).toContain("Не загружен");
   expect(node.textContent).toContain("Ожидает проверки");
@@ -192,6 +247,42 @@ it("keeps the chat and candidate data visible while selecting a document stage",
   expect(state.search.version).toBe(2);
   expect(node.textContent).toContain("Содержимое переписки");
   expect(state.chatMounts).toBe(1);
+  await act(async () => root.unmount());
+  node.remove();
+});
+
+it("closes the first of two open stages without closing the second", async () => {
+  state.search = {};
+  state.calls = [];
+  const node = document.createElement("div");
+  document.body.append(node);
+  const root = createRoot(node);
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: () => ({ matches: false }),
+  });
+  const render = async () =>
+    act(async () => root.render(<CandidateWorkspacePage />));
+  const header = (stage: number) =>
+    node.querySelector<HTMLButtonElement>(
+      `button[aria-controls="stage-content-${stage}"]`,
+    )!;
+
+  await render();
+  await act(async () => header(2).click());
+  await render();
+  await act(async () => header(4).click());
+  await render();
+  expect(header(2).getAttribute("aria-expanded")).toBe("true");
+  expect(header(4).getAttribute("aria-expanded")).toBe("true");
+  expect(state.search.stage).toBe("4");
+
+  await act(async () => header(2).click());
+  await render();
+  expect(header(2).getAttribute("aria-expanded")).toBe("false");
+  expect(header(4).getAttribute("aria-expanded")).toBe("true");
+  expect(state.search.stage).toBeUndefined();
+
   await act(async () => root.unmount());
   node.remove();
 });
@@ -280,6 +371,7 @@ it("renders informative collapsed state with candidate initials and status dot w
 
 it("shows synchronization instead of temporary empty documents and counters until ERP is ready", async () => {
   state.search = { stage: "1" };
+  state.calls = [];
   state.candidate = {
     reviewGroup: "RU",
     requiredDocuments: 0,
@@ -295,6 +387,7 @@ it("shows synchronization instead of temporary empty documents and counters unti
   document.body.append(node);
   const root = createRoot(node);
   await act(async () => root.render(<CandidateWorkspacePage />));
+  expect(state.calls).toContainEqual({ stage: "1" });
   const panel = node.querySelector('[aria-label="Документы кандидата"]')!;
   expect(panel.textContent).toContain("Синхронизация профиля и документов");
   expect(panel.textContent).not.toMatch(
@@ -399,4 +492,33 @@ it("opens the ERP original when the reviewer asks for it", async () => {
   node.remove();
   state.documents = [];
   state.previousDocuments = [];
+});
+
+it("keeps a complete snapshot and the chat mounted during a background sync", async () => {
+  state.search = { stage: "1" };
+  state.candidate = { reviewGroup: "RU" };
+  state.enrichment = {
+    status: "READY",
+    profileReady: true,
+    documentsReady: true,
+  };
+  const node = document.createElement("div");
+  document.body.append(node);
+  const root = createRoot(node);
+  await act(async () => root.render(<CandidateWorkspacePage />));
+  const mounts = state.chatMounts;
+  state.enrichment = {
+    status: "RUNNING",
+    profileReady: true,
+    documentsReady: true,
+  };
+  await act(async () => root.render(<CandidateWorkspacePage />));
+  const panel = node.querySelector('[aria-label="Документы кандидата"]')!;
+  expect(panel.textContent).toContain("Обновляем данные");
+  expect(panel.textContent).toContain("СНИЛС");
+  expect(state.chatMounts).toBe(mounts);
+  await act(async () => root.unmount());
+  node.remove();
+  state.enrichment = undefined;
+  state.candidate = undefined;
 });

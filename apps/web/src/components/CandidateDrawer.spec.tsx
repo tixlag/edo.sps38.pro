@@ -1,3 +1,4 @@
+vi.mock("./CandidateDocumentThumbnail", () => ({ CandidateDocumentThumbnail: () => null }));
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";

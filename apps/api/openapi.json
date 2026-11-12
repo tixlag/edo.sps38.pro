@@ -19958,6 +19958,11 @@
       "ReviewStageProgressDto": {
         "type": "object",
         "properties": {
+          "deliveryProblemCount": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Current approved/signed documents with unconfirmed or blocked ERP delivery, including additional documents; independent of review counters"
+          },
           "stage": {
             "type": "number",
             "nullable": true
@@ -20223,6 +20228,16 @@
           "deliveryStatus": {
             "type": "string",
             "nullable": true
+          },
+          "deliveryErrorReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Safe explanation of the current version ERP delivery failure, without technical codes or response bodies"
+          },
+          "deliveredHistorically": {
+            "type": "boolean",
+            "description": "Current version was previously delivered to ERP through a confirmed PREVIOUS_LINK",
+            "default": false
           },
           "reviewGroup": {
             "type": "string",
@@ -20954,6 +20969,11 @@
               "EXTERNAL"
             ]
           },
+          "deliveredHistorically": {
+            "type": "boolean",
+            "description": "Version was previously delivered to ERP through a confirmed PREVIOUS_LINK",
+            "default": false
+          },
           "files": {
             "type": "array",
             "items": {
@@ -21228,6 +21248,16 @@
           "deliveryStatus": {
             "type": "string",
             "nullable": true
+          },
+          "deliveryErrorReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Safe explanation of the current version ERP delivery failure, without technical codes or response bodies"
+          },
+          "deliveredHistorically": {
+            "type": "boolean",
+            "description": "Current version was previously delivered to ERP through a confirmed PREVIOUS_LINK",
+            "default": false
           }
         },
         "required": [

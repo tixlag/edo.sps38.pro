@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "@edo/ui";
 import type {
   ReviewStageCountsDto,
   ReviewStageProgressDto,
@@ -25,6 +26,7 @@ function StageTooltip({
   label,
   progress,
   anchor,
+  active,
   onEnter,
   onLeave,
 }: {
@@ -32,11 +34,13 @@ function StageTooltip({
   label: string;
   progress: ReviewStageProgressDto;
   anchor: HTMLElement;
+  active: boolean;
   onEnter: () => void;
   onLeave: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: 0, top: 0, ready: false });
+  const [revealed, setRevealed] = useState(false);
   useLayoutEffect(() => {
     const update = () => {
       const node = panel.current;
@@ -69,6 +73,19 @@ function StageTooltip({
       window.removeEventListener("scroll", update, true);
     };
   }, [anchor]);
+  useEffect(() => {
+    if (!position.ready) return;
+    const frame = window.requestAnimationFrame(() => setRevealed(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [position.ready]);
+  const visible = active && revealed;
+  const visibleRows = STAGE_STATES.map(([key, text, color]) => {
+    const reqVal = progress.required[key as keyof ReviewStageCountsDto] ??
+      (key === "inReview" ? progress.required.pending : 0) ?? 0;
+    const addVal = progress.additional[key as keyof ReviewStageCountsDto] ??
+      (key === "inReview" ? progress.additional.pending : 0) ?? 0;
+    return [key, text, color, reqVal, addVal] as const;
+  }).filter(([, , , required, additional]) => required > 0 || additional > 0);
   return createPortal(
     <div
       ref={panel}
@@ -83,9 +100,16 @@ function StageTooltip({
         top: position.top,
         visibility: position.ready ? "visible" : "hidden",
       }}
-      className="z-[100] max-h-[calc(100dvh-16px)] w-[min(30rem,calc(100vw-16px))] overflow-y-auto overflow-x-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-left text-sm text-[var(--foreground)] shadow-lg"
+      data-state={active ? "open" : "closed"}
+      className={cn(
+        "z-[100] max-h-[calc(100dvh-16px)] w-[min(30rem,calc(100vw-16px))] overflow-y-auto overflow-x-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-left text-sm text-[var(--foreground)] shadow-lg transition-[opacity,transform] ease-out motion-reduce:transition-none origin-center",
+        visible
+          ? "pointer-events-auto translate-y-0 scale-100 opacity-100 duration-200"
+          : "pointer-events-none -translate-y-1 scale-[.98] opacity-0 duration-100",
+      )}
     >
       <p className="mb-3 font-semibold">{label}</p>
+      {visibleRows.length ? (
       <table className="w-full table-fixed border-collapse text-left text-xs sm:text-sm">
         <colgroup>
           <col className="w-2/5" />
@@ -112,15 +136,7 @@ function StageTooltip({
           </tr>
         </thead>
         <tbody>
-          {STAGE_STATES.map(([key, text, color]) => {
-            const reqVal =
-              progress.required[key as keyof ReviewStageCountsDto] ??
-              (key === "inReview" ? progress.required.pending : 0) ??
-              0;
-            const addVal =
-              progress.additional[key as keyof ReviewStageCountsDto] ??
-              (key === "inReview" ? progress.additional.pending : 0) ??
-              0;
+          {visibleRows.map(([key, text, color, reqVal, addVal]) => {
             return (
               <tr key={key}>
                 <th scope="row" className="py-1.5 pr-2 font-normal">
@@ -144,6 +160,10 @@ function StageTooltip({
           })}
         </tbody>
       </table>
+      ) : (
+        <p className="py-1 text-xs text-[var(--muted-foreground)]">Документов пока нет.</p>
+      )}
+      {!!progress.deliveryProblemCount && <p className="mt-2 text-xs font-medium text-[var(--danger)]">Проблемы отправки в ERP: {progress.deliveryProblemCount}. Проверка документов учитывается отдельно.</p>}
     </div>,
     document.body,
   );
@@ -171,6 +191,15 @@ export function StageRing({
   const [focused, setFocused] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const open = (hovered || focused) && !dismissed;
+  const [tooltipMounted, setTooltipMounted] = useState(open);
+  useEffect(() => {
+    if (open) {
+      setTooltipMounted(true);
+      return;
+    }
+    const timeout = window.setTimeout(() => setTooltipMounted(false), 120);
+    return () => window.clearTimeout(timeout);
+  }, [open]);
   const enter = () => {
     window.clearTimeout(timer.current);
     setDismissed(false);
@@ -207,6 +236,7 @@ export function StageRing({
     (progress.required.inReview ?? progress.required.pending ?? 0) +
     (progress.additional.inReview ?? progress.additional.pending ?? 0);
   const attention =
+    (progress.deliveryProblemCount ?? 0) +
     (progress.required.returned ?? 0) +
     (progress.additional.returned ?? 0) +
     (progress.required.ocrFailed ?? 0) +
@@ -225,7 +255,7 @@ export function StageRing({
   const totalCount = total(progress.required) + total(progress.additional);
   const completedCount =
     completed(progress.required) + completed(progress.additional);
-  const color = inReview
+  const color = (progress.deliveryProblemCount ?? 0) > 0 ? "var(--danger)" : inReview
     ? "var(--warning)"
     : attention
       ? "var(--danger)"
@@ -324,12 +354,13 @@ export function StageRing({
             {inReview ? <AlertTriangle size={13} /> : <FileText size={13} />}
           </span>
         </span>
-        {open && anchor.current && (
+        {tooltipMounted && anchor.current && (
           <StageTooltip
             id={tooltipId}
             label={label}
             progress={progress}
             anchor={anchor.current}
+            active={open}
             onEnter={enter}
             onLeave={leave}
           />
@@ -406,12 +437,13 @@ export function StageRing({
       <span className="text-[var(--muted-foreground)]">
         {completedCount}/{totalCount}
       </span>
-      {open && anchor.current && (
+      {tooltipMounted && anchor.current && (
         <StageTooltip
           id={tooltipId}
           label={label}
           progress={progress}
           anchor={anchor.current}
+          active={open}
           onEnter={enter}
           onLeave={leave}
         />

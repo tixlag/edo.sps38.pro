@@ -67,16 +67,45 @@ export function useCandidateDocumentSync(candidateId: string, stage?: string) {
     }
     previous.current = enrichment?.status;
   }, [candidateId, enrichment?.status, details.dataUpdatedAt]);
+  const lastComplete = useRef<{
+    candidateId: string;
+    stage?: string;
+    data: typeof details.data;
+  }>();
+  const denied =
+    details.isError &&
+    [401, 403, 404].includes(
+      (details.error as { response?: { status?: number } } | null)?.response
+        ?.status ?? 0,
+    );
+  if (
+    lastComplete.current?.candidateId !== candidateId ||
+    lastComplete.current?.stage !== stage ||
+    denied
+  )
+    lastComplete.current = undefined;
+  if (
+    !denied &&
+    details.data &&
+    (!enrichment || (enrichment.profileReady && enrichment.documentsReady))
+  ) {
+    lastComplete.current = { candidateId, stage, data: details.data };
+  }
+  const completeData = denied ? undefined : lastComplete.current?.data;
+  const busy =
+    details.isLoading ||
+    needsRequest ||
+    awaitingRefresh ||
+    refresh.isError ||
+    details.isError ||
+    (!!enrichment && enrichment.status !== "READY");
   return {
     ...details,
-    synchronizing:
-      !details.isError &&
-      (details.isLoading ||
-        needsRequest ||
-        awaitingRefresh ||
-        refresh.isError ||
-        (!!enrichment && enrichment.status !== "READY")),
-    syncError: refresh.isError,
+    data: denied ? undefined : (completeData ?? details.data),
+    isError: details.isError && !completeData,
+    synchronizing: !details.isError && busy && !completeData,
+    updating: busy && !!completeData,
+    syncError: refresh.isError || details.isError,
     requestSync,
   };
 }

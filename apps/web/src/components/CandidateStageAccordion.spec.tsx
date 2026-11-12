@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type {
   CandidateDocumentSummaryDto,
@@ -58,6 +58,62 @@ describe("CandidateStageAccordion", () => {
       );
     });
   }
+
+  describe.each(["RU", "IG"] as const)("%s drafts", (reviewGroup) => {
+    it.each([null, "REUSED", "EXPIRED"] as const)(
+      "renders one draft card without a missing duplicate (ERP state %s)",
+      async (state) => {
+        await renderAccordion({
+          stage: 1,
+          title: "Этап 1",
+          reviewGroup,
+          candidateId: "candidate",
+          isOpen: true,
+          onToggle: vi.fn(),
+          required: {
+            documents: [
+              {
+                id: "draft",
+                documentTypeCode: "PASSPORT",
+                title: "Паспорт",
+                status: "DRAFT",
+                currentVersion: 1,
+                deliveryStatus: null,
+              } as CandidateDocumentSummaryDto,
+            ],
+            missingDocuments: [],
+          },
+          additional: { documents: [], missingDocuments: [] },
+          previousDocuments: state
+            ? [
+                {
+                  id: "erp",
+                  documentUid: "passport-uid",
+                  documentTypeCode: "PASSPORT",
+                  title: "Паспорт",
+                  state,
+                  source: "ERP",
+                  sourceDescription: "Из ERP",
+                  fields: {},
+                  category: "required",
+                  originalAvailable: true,
+                  expiresAt: null,
+                  recordedAt: null,
+                },
+              ]
+            : [],
+        });
+
+        expect(container!.querySelectorAll("article")).toHaveLength(1);
+        expect(container!.querySelector("article h3")?.textContent).toBe(
+          "Паспорт",
+        );
+        expect(container!.textContent).toContain("Черновик");
+        expect(container!.textContent).not.toContain("Не загружен");
+        expect(container!.textContent).toContain("Проверено: 0 из 1");
+      },
+    );
+  });
 
   it("renders stage badge, title once with progress counter and triggers onToggle", async () => {
     const onToggle = vi.fn();
@@ -191,6 +247,47 @@ describe("CandidateStageAccordion", () => {
     expect(onReviewDocument).toHaveBeenCalledWith("d2", 1);
   });
 
+  it("keeps multiple stages independently open and makes closed content inert", async () => {
+    function Pair() {
+      const [open, setOpen] = useState<Record<number, boolean>>({});
+      const stage = (number: number) => (
+        <CandidateStageAccordion
+          stage={number}
+          title={`Этап ${number}`}
+          required={{ documents: [], missingDocuments: [{ code: `DOC${number}`, title: `Документ ${number}` }] }}
+          additional={{ documents: [], missingDocuments: [] }}
+          previousDocuments={[]}
+          candidateId="candidate"
+          isOpen={!!open[number]}
+          onToggle={() => setOpen((previous) => ({ ...previous, [number]: !previous[number] }))}
+        />
+      );
+      return <>{stage(2)}{stage(7)}</>;
+    }
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root?.render(<Pair />));
+    const panels = [...container.querySelectorAll<HTMLElement>('div[id^="stage-content-"]')];
+    expect(panels).toHaveLength(2);
+    expect(panels[0].inert).toBe(true);
+    expect(panels[0].getAttribute("aria-hidden")).toBe("true");
+    expect(panels[0].className).toContain("duration-[250ms]");
+    expect(panels[0].className).toContain("motion-reduce:transition-none");
+
+    const headers = [...container.querySelectorAll<HTMLButtonElement>("button[aria-controls]")];
+    await act(async () => headers[0].click());
+    expect(headers[0].getAttribute("aria-expanded")).toBe("true");
+    expect(panels[0].inert).toBe(false);
+    await act(async () => headers[1].click());
+    expect(headers[1].getAttribute("aria-expanded")).toBe("true");
+    await act(async () => headers[0].click());
+    expect(headers[0].getAttribute("aria-expanded")).toBe("false");
+    expect(headers[1].getAttribute("aria-expanded")).toBe("true");
+    expect(panels[0].inert).toBe(true);
+    expect(panels[1].inert).toBe(false);
+  });
+
   it("renders inline StageRing with progress when provided, without duplicate counters in header", async () => {
     const onToggle = vi.fn();
     const progress: ReviewStageProgressDto = {
@@ -294,5 +391,25 @@ describe("CandidateStageAccordion", () => {
     );
     expect(titles.map((el) => el.textContent)).toEqual(["ИНН", "СНИЛС"]);
     expect(titles[0].closest("article")).not.toBe(titles[1].closest("article"));
+  });
+  it("shows delivery problems on a collapsed stage while keeping approved required counters", async () => {
+    await renderAccordion({
+      stage: 7,
+      title: "Этап 7",
+      candidateId: "candidate",
+      isOpen: false,
+      onToggle: vi.fn(),
+      required: { documents: [], missingDocuments: [] },
+      additional: { documents: [], missingDocuments: [] },
+      previousDocuments: [],
+      progress: {
+        stage: 7,
+        required: { approved: 1 },
+        additional: { approved: 1 },
+        deliveryProblemCount: 1,
+      } as ReviewStageProgressDto,
+    });
+    expect(container?.textContent).toContain("Проверено: 1 из 1");
+    expect(container?.textContent).toContain("Проблемы отправки: 1");
   });
 });
