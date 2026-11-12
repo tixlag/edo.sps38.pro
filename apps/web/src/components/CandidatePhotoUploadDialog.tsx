@@ -84,10 +84,18 @@ export function CandidatePhotoUploadDialog({
           response?: { data?: { message?: string } };
           message?: string;
         } | null;
-        const msg =
+        let msg =
           errorObj?.response?.data?.message ||
           errorObj?.message ||
           "Не удалось загрузить фотографию. Проверьте формат и размер файла.";
+        if (
+          typeof msg === "string" &&
+          (msg.includes("PHOTO_UPLOAD_FAILED") ||
+            msg.includes("ERP_PHOTO_UPLOAD_FAILED") ||
+            msg.includes("ERP_OPERATION_RESULT_UNKNOWN"))
+        ) {
+          msg = "Не удалось сохранить фотографию в 1С. Попробуйте ещё раз";
+        }
         setErrorMessage(typeof msg === "string" ? msg : JSON.stringify(msg));
       },
     },

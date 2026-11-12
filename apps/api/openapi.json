@@ -14406,6 +14406,748 @@
         ]
       }
     },
+    "/api/v1/candidates/references/countries": {
+      "get": {
+        "operationId": "listCandidateCountries",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateReferencesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "ERP countries",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
+    "/api/v1/candidates/references/organizations": {
+      "get": {
+        "operationId": "listCandidateOrganizations",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateReferencesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "ERP organizations",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
+    "/api/v1/candidates/references/sources": {
+      "get": {
+        "operationId": "listCandidateSources",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateReferencesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "ERP sources",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
+    "/api/v1/candidates/references/responsibles": {
+      "get": {
+        "operationId": "listCandidateResponsibles",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateReferencesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "ERP responsibles",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
+    "/api/v1/candidates/references/contact-types": {
+      "get": {
+        "operationId": "listCandidateContactTypes",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateReferencesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "ERP contact-types",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
+    "/api/v1/candidates/references/contact-kinds": {
+      "get": {
+        "operationId": "listCandidateContactKinds",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateReferencesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "ERP contact-kinds",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
+    "/api/v1/candidates/references/universities": {
+      "get": {
+        "operationId": "listCandidateUniversities",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateReferencesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "ERP universities",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
     "/api/v1/candidates/references/managers": {
       "get": {
         "operationId": "listCandidateManagers",
@@ -14932,8 +15674,35 @@
         "operationId": "findCandidatePersonMatches",
         "parameters": [
           {
+            "name": "scope",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "creation"
+              ]
+            }
+          },
+          {
+            "name": "fullName",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "phone",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "lastName",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -14941,7 +15710,7 @@
           },
           {
             "name": "firstName",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -14965,7 +15734,7 @@
           },
           {
             "name": "birthDate",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "format": "date",
@@ -14979,7 +15748,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CandidateReferencesDto"
+                  "$ref": "#/components/schemas/CandidatePersonMatchesDto"
                 }
               }
             }
@@ -15061,6 +15830,219 @@
           }
         ],
         "summary": "Find possible ERP physical person matches for explicit confirmation",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
+    "/api/v1/candidates/open": {
+      "post": {
+        "operationId": "openExistingCandidate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenExistingCandidateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateWorkspaceDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Open exact existing ERP candidate without changing status",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
+    "/api/v1/candidates/operations/{requestId}": {
+      "get": {
+        "operationId": "getCandidateOperation",
+        "parameters": [
+          {
+            "name": "requestId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateOperationDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Read durable ERP mutation outcome for the verified actor",
         "tags": [
           "candidate-workspace"
         ]
@@ -18645,6 +19627,7 @@
           },
           "citizenship": {
             "type": "string",
+            "nullable": true,
             "maxLength": 2
           },
           "position": {
@@ -23139,6 +24122,11 @@
       "CandidateReferenceDto": {
         "type": "object",
         "properties": {
+          "personUid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Stable physical person identity for comparing choices; mutations require signed id"
+          },
           "id": {
             "type": "string"
           },
@@ -23162,6 +24150,28 @@
           },
           "matchedLatin": {
             "type": "boolean"
+          },
+          "matchedPhone": {
+            "type": "boolean"
+          },
+          "matchedBirthDate": {
+            "type": "boolean"
+          },
+          "candidateUids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "person"
+            ]
+          },
+          "typeId": {
+            "type": "string"
           },
           "editable": {
             "type": "boolean"
@@ -23192,60 +24202,74 @@
           "items"
         ]
       },
-      "CandidateFieldsDto": {
+      "CandidateMatchDto": {
         "type": "object",
         "properties": {
-          "fullName": {
+          "id": {
             "type": "string"
           },
-          "phone": {
+          "name": {
             "type": "string"
           },
           "birthDate": {
             "type": "string",
+            "nullable": true,
             "format": "date"
           },
-          "citizenship": {
-            "type": "string"
+          "matchedName": {
+            "type": "boolean"
           },
-          "positionCode": {
-            "type": "string"
+          "matchedPhone": {
+            "type": "boolean"
           },
-          "projectCode": {
-            "type": "string",
-            "nullable": true
+          "matchedBirthDate": {
+            "type": "boolean"
           },
-          "managerId": {
+          "selection": {
             "type": "string"
           }
         },
         "required": [
-          "fullName",
-          "phone",
+          "id",
+          "name",
           "birthDate",
-          "citizenship",
-          "positionCode",
-          "managerId"
+          "matchedName",
+          "matchedPhone",
+          "matchedBirthDate",
+          "selection"
         ]
       },
-      "CreateCandidateDto": {
+      "CandidatePersonMatchesDto": {
         "type": "object",
         "properties": {
-          "requestId": {
-            "type": "string",
-            "format": "uuid"
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateReferenceDto"
+            }
           },
-          "fields": {
-            "$ref": "#/components/schemas/CandidateFieldsDto"
-          },
-          "personSelection": {
-            "type": "string",
-            "description": "Opaque choice returned by searchCandidatePersons"
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateMatchDto"
+            }
           }
         },
         "required": [
-          "requestId",
-          "fields"
+          "items",
+          "candidates"
+        ]
+      },
+      "OpenExistingCandidateDto": {
+        "type": "object",
+        "properties": {
+          "erpUid": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "erpUid"
         ]
       },
       "CandidateNamedCodeDto": {
@@ -23290,6 +24314,101 @@
         },
         "required": [
           "name"
+        ]
+      },
+      "CandidatePersonDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "birthDate": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          },
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "birthDate"
+        ]
+      },
+      "CandidateResponsibleDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "person"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ]
+      },
+      "CandidateSourceCommentDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "person"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "CandidateContactDto": {
+        "type": "object",
+        "properties": {
+          "rowNumber": {
+            "type": "number"
+          },
+          "typeId": {
+            "type": "string"
+          },
+          "kindId": {
+            "type": "string",
+            "nullable": true
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "typeId",
+          "presentation"
         ]
       },
       "CandidateStatusHistoryDto": {
@@ -23339,10 +24458,12 @@
           },
           "birthDate": {
             "type": "string",
+            "nullable": true,
             "format": "date"
           },
           "citizenship": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "position": {
             "nullable": true,
@@ -23384,6 +24505,118 @@
               }
             ]
           },
+          "person": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidatePersonDto"
+              }
+            ]
+          },
+          "sex": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female"
+            ],
+            "nullable": true
+          },
+          "settlement": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedIncome": {
+            "type": "number",
+            "nullable": true
+          },
+          "organization": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateNamedIdDto"
+              }
+            ]
+          },
+          "source": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateNamedIdDto"
+              }
+            ]
+          },
+          "university": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateNamedIdDto"
+              }
+            ]
+          },
+          "responsible": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateResponsibleDto"
+              }
+            ]
+          },
+          "additionalResponsible": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateResponsibleDto"
+              }
+            ]
+          },
+          "sourceComment": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateSourceCommentDto"
+              }
+            ]
+          },
+          "comment": {
+            "type": "string"
+          },
+          "gph": {
+            "type": "boolean"
+          },
+          "selfEmployed": {
+            "type": "boolean"
+          },
+          "unofficial": {
+            "type": "boolean"
+          },
+          "apprentice": {
+            "type": "boolean"
+          },
+          "internship": {
+            "type": "boolean"
+          },
+          "targetedContract": {
+            "type": "boolean"
+          },
+          "contractTraining": {
+            "type": "boolean"
+          },
+          "internshipStartDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "internshipEndDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateContactDto"
+            }
+          },
           "linkedPerson": {
             "type": "boolean"
           },
@@ -23409,12 +24642,56 @@
           "manager",
           "mentor",
           "status",
+          "person",
+          "sex",
+          "settlement",
+          "expectedIncome",
+          "organization",
+          "source",
+          "university",
+          "responsible",
+          "additionalResponsible",
+          "sourceComment",
+          "comment",
+          "gph",
+          "selfEmployed",
+          "unofficial",
+          "apprentice",
+          "internship",
+          "targetedContract",
+          "contractTraining",
+          "internshipStartDate",
+          "internshipEndDate",
+          "contacts",
           "linkedPerson",
           "hasChat",
           "history"
         ]
       },
-      "CandidatePatchFieldsDto": {
+      "CandidateOperationDto": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "NOT_FOUND",
+              "UNKNOWN",
+              "SUCCEEDED",
+              "REJECTED"
+            ]
+          },
+          "candidate": {
+            "$ref": "#/components/schemas/CandidateWorkspaceDto"
+          },
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "CandidateFieldsDto": {
         "type": "object",
         "properties": {
           "fullName": {
@@ -23428,17 +24705,267 @@
             "format": "date"
           },
           "citizenship": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "positionCode": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "projectCode": {
             "type": "string",
             "nullable": true
           },
           "managerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "sex": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female"
+            ],
+            "nullable": true
+          },
+          "settlement": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedIncome": {
+            "type": "number",
+            "nullable": true
+          },
+          "organizationId": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceId": {
+            "type": "string",
+            "nullable": true
+          },
+          "universityId": {
+            "type": "string",
+            "nullable": true
+          },
+          "responsible": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateResponsibleDto"
+              }
+            ]
+          },
+          "additionalResponsible": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateResponsibleDto"
+              }
+            ]
+          },
+          "sourceComment": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateSourceCommentDto"
+              }
+            ]
+          },
+          "comment": {
             "type": "string"
+          },
+          "gph": {
+            "type": "boolean"
+          },
+          "selfEmployed": {
+            "type": "boolean"
+          },
+          "unofficial": {
+            "type": "boolean"
+          },
+          "apprentice": {
+            "type": "boolean"
+          },
+          "internship": {
+            "type": "boolean"
+          },
+          "targetedContract": {
+            "type": "boolean"
+          },
+          "contractTraining": {
+            "type": "boolean"
+          },
+          "internshipStartDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "internshipEndDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateContactDto"
+            }
+          }
+        },
+        "required": [
+          "fullName",
+          "phone",
+          "birthDate"
+        ]
+      },
+      "CreateCandidateDto": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fields": {
+            "$ref": "#/components/schemas/CandidateFieldsDto"
+          },
+          "personSelection": {
+            "type": "string",
+            "description": "Opaque choice returned by searchCandidatePersons"
+          },
+          "ignoredSelections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "requestId",
+          "fields"
+        ]
+      },
+      "CandidatePatchFieldsDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "citizenship": {
+            "type": "string",
+            "nullable": true
+          },
+          "positionCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "projectCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "managerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "sex": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female"
+            ],
+            "nullable": true
+          },
+          "settlement": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedIncome": {
+            "type": "number",
+            "nullable": true
+          },
+          "organizationId": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceId": {
+            "type": "string",
+            "nullable": true
+          },
+          "universityId": {
+            "type": "string",
+            "nullable": true
+          },
+          "responsible": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateResponsibleDto"
+              }
+            ]
+          },
+          "additionalResponsible": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateResponsibleDto"
+              }
+            ]
+          },
+          "sourceComment": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateSourceCommentDto"
+              }
+            ]
+          },
+          "comment": {
+            "type": "string"
+          },
+          "gph": {
+            "type": "boolean"
+          },
+          "selfEmployed": {
+            "type": "boolean"
+          },
+          "unofficial": {
+            "type": "boolean"
+          },
+          "apprentice": {
+            "type": "boolean"
+          },
+          "internship": {
+            "type": "boolean"
+          },
+          "targetedContract": {
+            "type": "boolean"
+          },
+          "contractTraining": {
+            "type": "boolean"
+          },
+          "internshipStartDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "internshipEndDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateContactDto"
+            }
+          },
+          "birthDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
           }
         }
       },

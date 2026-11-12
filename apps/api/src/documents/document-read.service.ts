@@ -332,7 +332,10 @@ export class DocumentReadService {
     const previousUids = new Set(
       usablePreviousUids(
         previous.filter(
-          (doc) => doc.status === "CONFIRMED" && doc.originalAvailable && (!isIg || doc.originalVerified),
+          (doc) =>
+            doc.status === "CONFIRMED" &&
+            doc.originalAvailable &&
+            (!isIg || doc.originalVerified),
         ),
         isIg,
       ),
@@ -342,11 +345,7 @@ export class DocumentReadService {
     let stageDocuments: CandidateDetailsDto["stageDocuments"];
     if (stage !== undefined) {
       stageDocuments = null;
-      if (
-        candidate.positionCode ||
-        candidate.projectCode ||
-        candidate.citizenship
-      ) {
+      if (candidate.citizenship) {
         const types = await this.prisma.documentType.findMany({
           where: { catalogSyncedAt: { not: null } },
           include: {
@@ -362,7 +361,7 @@ export class DocumentReadService {
           const profile = {
             positionCode: candidate.positionCode ?? "",
             projectCode: candidate.projectCode,
-            citizenship: candidate.citizenship ?? "ru",
+            citizenship: candidate.citizenship,
             sex: candidate.sexKnown ? candidate.sex : null,
           };
           stageDocuments = {
@@ -393,11 +392,7 @@ export class DocumentReadService {
     let documentGroups: CandidateDetailsDto["documentGroups"];
     if (stage === undefined) {
       documentGroups = null;
-      if (
-        candidate.positionCode ||
-        candidate.projectCode ||
-        candidate.citizenship
-      ) {
+      if (candidate.citizenship) {
         const types = await this.prisma.documentType.findMany({
           where: { catalogSyncedAt: { not: null } },
           include: {
@@ -412,7 +407,7 @@ export class DocumentReadService {
           const profile = {
             positionCode: candidate.positionCode ?? "",
             projectCode: candidate.projectCode,
-            citizenship: candidate.citizenship ?? "ru",
+            citizenship: candidate.citizenship,
             sex: candidate.sexKnown ? candidate.sex : null,
           };
           documentGroups = {
@@ -465,11 +460,7 @@ export class DocumentReadService {
       }
     }
     let allStages: CandidateStageItemDto[] | undefined;
-    if (
-      candidate.positionCode ||
-      candidate.projectCode ||
-      candidate.citizenship
-    ) {
+    if (candidate.citizenship) {
       const types = await this.prisma.documentType.findMany({
         where: { catalogSyncedAt: { not: null } },
         include: {
@@ -484,7 +475,7 @@ export class DocumentReadService {
         const profile = {
           positionCode: candidate.positionCode ?? "",
           projectCode: candidate.projectCode,
-          citizenship: candidate.citizenship ?? "ru",
+          citizenship: candidate.citizenship,
           sex: candidate.sexKnown ? candidate.sex : null,
         };
         const stageNumbers = new Set<number | null>();
@@ -555,7 +546,9 @@ export class DocumentReadService {
       ),
       ...(stage !== undefined ? { stageDocuments } : { documentGroups }),
       stages: allStages,
-      ...((isIg || owner.erpUid) && this.enrichment ? { enrichment: await this.enrichment.status(id) } : {}),
+      ...((isIg || owner.erpUid) && this.enrichment
+        ? { enrichment: await this.enrichment.status(id) }
+        : {}),
     };
   }
 
@@ -570,11 +563,7 @@ export class DocumentReadService {
     uploadedCodes: (string | null | undefined)[],
     previousUids: Set<string> = new Set(),
   ): Promise<MissingDocumentTypeDto[] | null> {
-    if (
-      !profile ||
-      !(profile.positionCode || profile.projectCode || profile.citizenship)
-    )
-      return null;
+    if (!profile || !profile.citizenship) return null;
     const types = await this.prisma.documentType.findMany({
       where: { catalogSyncedAt: { not: null } },
       include: {
@@ -591,7 +580,7 @@ export class DocumentReadService {
           requiredApplicable(
             type,
             profile.positionCode ?? "",
-            profile.citizenship ?? "ru",
+            profile.citizenship ?? "",
             profile.sexKnown &&
               (profile.sex === "female" || profile.sex === "male")
               ? profile.sex
@@ -919,7 +908,9 @@ export class DocumentReadService {
             // The technical code and the attempts stay a diagnostic (admins
             // only); every reviewer gets a plain explanation of the failure.
             errorCode: canDebug ? row.delivery.errorCode : null,
-            errorReason: principal ? erpDeliveryReason(row.delivery.errorCode) : null,
+            errorReason: principal
+              ? erpDeliveryReason(row.delivery.errorCode)
+              : null,
             attempts: (canDebug ? row.delivery.attempts : []).map((a) => ({
               id: a.id,
               actorId: a.actorId,
@@ -1395,10 +1386,8 @@ export class DocumentReadService {
             },
           })
         : null;
-    const previousCandidateId =
-      state?.currentCandidateId ?? chatCandidate?.id;
-    if (!previousCandidateId)
-      return { ...result, reusedDocumentUids: [] };
+    const previousCandidateId = state?.currentCandidateId ?? chatCandidate?.id;
+    if (!previousCandidateId) return { ...result, reusedDocumentUids: [] };
     const isIg = state?.currentCandidateId
       ? true
       : candidateReviewGroup(chatCandidate!) === "IG";
@@ -1823,7 +1812,12 @@ export class DocumentReadService {
       deliveryProblems.set(doc.candidateId, types);
     }
     const igIds = profiles
-      .filter((profile) => profile.reviewGroup === "RU" || profile.code1c || profile.isReemployment)
+      .filter(
+        (profile) =>
+          profile.reviewGroup === "RU" ||
+          profile.code1c ||
+          profile.isReemployment,
+      )
       .map((profile) => profile.id);
     const historical = igIds.length
       ? await this.prisma.candidatePreviousDocument.findMany({
@@ -1831,16 +1825,37 @@ export class DocumentReadService {
             candidateId: { in: igIds },
             status: "CONFIRMED",
             originalAvailable: true,
-        OR: [{ originalVerified: true }, { candidate: reviewGroupWhere("RU") }],
+            OR: [
+              { originalVerified: true },
+              { candidate: reviewGroupWhere("RU") },
+            ],
           },
         })
       : [];
     const authoritativeErpTypes = new Map<string, Set<string>>();
     for (const profile of profiles.filter((p) => p.reviewGroup === "RU")) {
-      const uids = usablePreviousUids(historical.filter((doc) => doc.candidateId === profile.id && !doc.sourceId?.startsWith("edo:")), false);
-      authoritativeErpTypes.set(profile.id, new Set(catalog.filter((type) => type.erpUid && uids.includes(type.erpUid.toLowerCase())).map((type) => type.id)));
+      const uids = usablePreviousUids(
+        historical.filter(
+          (doc) =>
+            doc.candidateId === profile.id && !doc.sourceId?.startsWith("edo:"),
+        ),
+        false,
+      );
+      authoritativeErpTypes.set(
+        profile.id,
+        new Set(
+          catalog
+            .filter(
+              (type) => type.erpUid && uids.includes(type.erpUid.toLowerCase()),
+            )
+            .map((type) => type.id),
+        ),
+      );
     }
-    const effectiveGrouped = grouped.filter((row) => !authoritativeErpTypes.get(row.candidateId!)?.has(row.documentTypeId!));
+    const effectiveGrouped = grouped.filter(
+      (row) =>
+        !authoritativeErpTypes.get(row.candidateId!)?.has(row.documentTypeId!),
+    );
     const approved = new Map<string, number>();
     const profileById = new Map(
       profiles.map((profile) => [profile.id, profile]),
@@ -1857,12 +1872,13 @@ export class DocumentReadService {
         profile?.sexKnown && excludedForSex(type?.code, profile.sex);
       const required =
         !profile?.positionCode ||
+        !profile?.citizenship ||
         (!!type &&
           type.catalogSyncedAt !== null &&
           requiredApplicable(
             type,
             profile.positionCode ?? "",
-            profile.citizenship ?? "ru",
+            profile.citizenship ?? "",
             profile.sexKnown &&
               (profile.sex === "female" || profile.sex === "male")
               ? profile.sex
@@ -1891,13 +1907,9 @@ export class DocumentReadService {
               row.status !== "DRAFT",
           ),
       );
-      const hasProfile = !!(
-        profile.positionCode ||
-        profile.projectCode ||
-        profile.citizenship
-      );
+      const hasProfile = !!profile.citizenship;
       const positionCode = profile.positionCode ?? "";
-      const citizenship = (profile.citizenship ?? "ru").toLowerCase();
+      const citizenship = (profile.citizenship ?? "").toLowerCase();
       profile.stageProgress =
         hasProfile && catalog.some((type) => type.catalogSyncedAt !== null)
           ? reviewStageProgress(
@@ -1916,34 +1928,37 @@ export class DocumentReadService {
           : null;
       profile.approvedDocuments =
         (approved.get(profile.id) ?? 0) +
-        reusedTypes.filter((type) =>
-          requiredApplicable(
-            type,
-            profile.positionCode ?? "",
-            profile.citizenship ?? "ru",
-            profile.sexKnown &&
-              (profile.sex === "female" || profile.sex === "male")
-              ? profile.sex
-              : null,
-            profile.projectCode,
-          ),
+        reusedTypes.filter(
+          (type) =>
+            !profile.citizenship ||
+            requiredApplicable(
+              type,
+              profile.positionCode ?? "",
+              profile.citizenship ?? "",
+              profile.sexKnown &&
+                (profile.sex === "female" || profile.sex === "male")
+                ? profile.sex
+                : null,
+              profile.projectCode,
+            ),
         ).length;
-      profile.requiredDocuments = profile.positionCode
-        ? catalog.filter(
-            (type) =>
-              type.catalogSyncedAt !== null &&
-              requiredApplicable(
-                type,
-                positionCode,
-                citizenship,
-                profile.sexKnown &&
-                  (profile.sex === "female" || profile.sex === "male")
-                  ? profile.sex
-                  : null,
-                profile.projectCode,
-              ),
-          ).length
-        : null;
+      profile.requiredDocuments =
+        profile.positionCode && profile.citizenship
+          ? catalog.filter(
+              (type) =>
+                type.catalogSyncedAt !== null &&
+                requiredApplicable(
+                  type,
+                  positionCode,
+                  citizenship,
+                  profile.sexKnown &&
+                    (profile.sex === "female" || profile.sex === "male")
+                    ? profile.sex
+                    : null,
+                  profile.projectCode,
+                ),
+            ).length
+          : null;
     }
   }
 }

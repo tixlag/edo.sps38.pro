@@ -52,6 +52,32 @@ describe("ERP workspace conflicts", () => {
     await expect(client.request("create", z.object({}), {}, {})).rejects.toThrow("ERP_RELATION_OR_OPERATION_CONFLICT");
   });
 
+  describe("HTTP 500 photo upload failure", () => {
+    it("throws user-friendly ServiceUnavailableException without leaking internal trace when 1C ERP returns PHOTO_UPLOAD_FAILED", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          Response.json(
+            { code: "PHOTO_UPLOAD_FAILED" },
+            { status: 500 },
+          ),
+        ),
+      );
+      const client = new ErpWorkspaceClient(config);
+      await expect(
+        client.uploadCandidatePhoto(
+          {
+            candidate: "uuid",
+            actor: "test",
+            requestId: "req-1",
+            extension: "webp",
+          },
+          Buffer.from("fake-image"),
+        ),
+      ).rejects.toThrow("Не удалось сохранить фотографию в 1С. Попробуйте ещё раз");
+    });
+  });
+
   describe("HTTP 403 forbidden responses", () => {
     it("throws ForbiddenException for ACTOR_NOT_FOUND_OR_AMBIGUOUS", async () => {
       vi.stubGlobal(

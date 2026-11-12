@@ -32,7 +32,7 @@ function matchesDocumentWhere(
       ...doc,
       candidateId: doc.candidate ? "cand-1" : null,
       candidate: doc.candidate
-        ? { chatUuid: "chat", citizenship: "ru", ...doc.candidate }
+        ? { reviewGroup: null, chatUuid: "chat", citizenship: "ru", ...doc.candidate }
         : null,
     },
     where,

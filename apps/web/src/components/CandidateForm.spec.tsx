@@ -1,46 +1,41 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { CandidateForm, candidateError, useCandidateRequest } from "./CandidateForm";
+import { createRoot, type Root } from "react-dom/client";
+import {
+  CandidateForm,
+  candidateChangedFields,
+  candidateFormFields,
+  candidateError,
+} from "./CandidateForm";
+import type { CandidateWorkspaceDto } from "@edo/api-client";
 
-const state = vi.hoisted(() => ({
-  me: { fullName: "Петрова Анна" },
-  managers: [{ id: "mgr-petrova", name: "Петрова Анна" }],
-  submit: vi.fn(),
-}));
-
+const state = vi.hoisted(() => ({ submit: vi.fn() }));
 vi.mock("@edo/api-client", () => {
   const empty = { data: { items: [] }, isLoading: false, isError: false };
   return {
-    useGetMe: () => ({ data: state.me, isLoading: false }),
-    useListCandidateManagers: () => ({
-      data: { items: state.managers },
-      isLoading: false,
-      isError: false,
-    }),
+    useListCandidateManagers: () => empty,
     useListCatalogManagers: () => empty,
     getListCatalogManagersQueryKey: () => ["catalog-managers"],
-    useListCandidatePositions: () => ({
-      data: { items: [{ code: "POS1", name: "Инженер" }] },
-      isLoading: false,
-      isError: false,
-    }),
+    useListCandidatePositions: () => empty,
     useListCandidateProjects: () => empty,
     useFindCandidatePersonMatches: () => empty,
     getFindCandidatePersonMatchesQueryKey: () => ["matches"],
   };
 });
-
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+let root: Root;
+let container: HTMLDivElement;
 afterEach(() => {
+  if (root) act(() => root.unmount());
+  container?.remove();
   vi.clearAllMocks();
 });
 
 describe("CandidateForm", () => {
-  it("defaults managerId to matching current user when creating a new candidate", async () => {
-    const container = document.createElement("div");
+  it("creates with only name, phone and DOB without inventing citizenship or requiring work fields", async () => {
+    container = document.createElement("div");
     document.body.append(container);
-    const root = createRoot(container);
+    root = createRoot(container);
     await act(async () =>
       root.render(
         <CandidateForm
@@ -52,63 +47,65 @@ describe("CandidateForm", () => {
         />,
       ),
     );
-
-    const managerInput = container.querySelector(
-      'input[aria-label="Менеджер"]',
-    ) as HTMLInputElement;
-    expect(managerInput).not.toBeNull();
-    expect(managerInput.value).toBe("Петрова Анна");
-
-    await act(async () => root.unmount());
-    container.remove();
-  });
-
-  describe("candidateError", () => {
-    it("translates ACTOR_NOT_FOUND_OR_AMBIGUOUS into actionable user guidance", () => {
-      const err = {
-        response: {
-          data: {
-            message:
-              "ERP_ACTOR_NOT_FOUND_OR_AMBIGUOUS: пользователь 1C для автора операции не найден",
-          },
-        },
-      };
-      expect(candidateError(err)).toBe(
-        "Пользователь 1С для вашей учётной записи не найден или не сопоставлен с физическим лицом в ERP. Обратитесь к администратору 1С.",
-      );
-    });
-
-    it("falls back to generic error when message is empty", () => {
-      expect(candidateError({})).toBe(
-        "ERP не подтвердила операцию. Повторите запрос с теми же данными.",
-      );
+    expect(container.querySelector('input[aria-label="Менеджер"]')).toBeNull();
+    expect(container.querySelector('input[aria-label="Должность"]')).toBeNull();
+    expect(
+      container.querySelector<HTMLInputElement>('input[type="date"]')?.required,
+    ).toBe(true);
+    expect(
+      container.querySelector<HTMLButtonElement>('button[type="submit"]')
+        ?.disabled,
+    ).toBe(false);
+    expect(candidateFormFields()).toEqual({
+      fullName: "",
+      phone: "",
+      birthDate: null,
     });
   });
-
-  describe("useCandidateRequest", () => {
-    it("unlocks when status is 403", () => {
-      let state!: ReturnType<typeof useCandidateRequest>;
-      function TestComponent() {
-        state = useCandidateRequest();
-        return null;
-      }
-      const container = document.createElement("div");
-      const root = createRoot(container);
-      act(() => {
-        root.render(<TestComponent />);
-      });
-      act(() => {
-        state.begin();
-      });
-      expect(state.locked).toBe(true);
-      act(() => {
-        state.fail({ response: { status: 403, data: { message: "FORBIDDEN" } } });
-      });
-      expect(state.locked).toBe(false);
-      expect(state.error).toBe("FORBIDDEN");
-      act(() => {
-        root.unmount();
-      });
+  it("preserves null birth date and unknown citizenship when computing a phone-only patch", () => {
+    const fields = candidateFormFields({
+      fullName: "Иванов Иван",
+      phone: "1",
+      birthDate: null,
+      citizenship: null,
+    } as CandidateWorkspaceDto);
+    expect(fields.birthDate).toBeNull();
+    expect(fields.citizenship).toBeNull();
+    expect(candidateChangedFields(fields, { ...fields, phone: "2" })).toEqual({
+      phone: "2",
     });
+  });
+  it("sends only changed contact rows and retains typed source and responsible references", () => {
+    const initial = {
+      contacts: [
+        { rowNumber: 1, typeId: "Phone", kindId: "work", presentation: "111" },
+        { rowNumber: 2, typeId: "Email", presentation: "a@b.ru" },
+      ],
+      responsible: { kind: "person" as const, id: "physical" },
+      sourceComment: { kind: "person" as const, id: "source-person" },
+    };
+    expect(
+      candidateChangedFields(initial, {
+        ...initial,
+        contacts: [
+          initial.contacts[0],
+          { ...initial.contacts[1], presentation: "c@b.ru" },
+          { typeId: "Email", presentation: "new@b.ru" },
+        ],
+      }),
+    ).toEqual({
+      contacts: [
+        { rowNumber: 2, typeId: "Email", presentation: "c@b.ru" },
+        { typeId: "Email", presentation: "new@b.ru" },
+      ],
+    });
+  });
+  it("translates actor lookup failures into actionable guidance", () => {
+    expect(
+      candidateError({
+        response: { data: { message: "ERP_ACTOR_NOT_FOUND_OR_AMBIGUOUS" } },
+      }),
+    ).toContain("Обратитесь к администратору 1С");
+    expect(candidateError({})).toContain("Сначала проверьте результат");
   });
 });

@@ -1,3 +1,4 @@
+import { reviewGroupWhere } from "./review-group";
 import { createHash } from "node:crypto";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
@@ -34,9 +35,8 @@ export class OwnDocumentHistoryService {
     return {
       code1c,
       id: { not: state.currentCandidateId },
-      chatUuid: null,
       AND: [
-        { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
+        reviewGroupWhere("IG"),
         {
           OR: [
             { personUid: null },

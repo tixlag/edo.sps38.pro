@@ -1,3 +1,4 @@
+import { reviewGroupWhere } from "../src/documents/review-group";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DocumentExpirationService } from "../src/expiration/document-expiration.service";
 import type { PrismaService } from "../src/prisma/prisma.service";
@@ -82,7 +83,7 @@ describe("DocumentExpirationService", () => {
     expect(prismaMock.document.count).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         OR: expect.arrayContaining([
-          { candidate: { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] } },
+          { candidate: reviewGroupWhere("RU") },
           { candidateId: null },
         ]),
       }),

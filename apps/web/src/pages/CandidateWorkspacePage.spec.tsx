@@ -1,6 +1,14 @@
-vi.mock("../components/CandidateDocumentThumbnail", () => ({ CandidateDocumentThumbnail: () => null }));
-vi.mock("../components/ApprovedErpDocumentPreview", () => ({ ApprovedErpDocumentPreview: ({ document }: { document: { id: string } }) => <div data-erp-original={document.id}>Оригинал ERP</div> }));
-vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
+vi.mock("../components/CandidateDocumentThumbnail", () => ({
+  CandidateDocumentThumbnail: () => null,
+}));
+vi.mock("../components/ApprovedErpDocumentPreview", () => ({
+  ApprovedErpDocumentPreview: ({ document }: { document: { id: string } }) => (
+    <div data-erp-original={document.id}>Оригинал ERP</div>
+  ),
+}));
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+}));
 import { expect, it, vi } from "vitest";
 import { act, useEffect, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -11,7 +19,9 @@ const state = vi.hoisted(() => ({
   chatMounts: 0,
   documents: [] as unknown[],
   previousDocuments: [] as unknown[],
-  enrichment: undefined as { status: string; profileReady: boolean; documentsReady: boolean } | undefined,
+  enrichment: undefined as
+    | { status: string; profileReady: boolean; documentsReady: boolean }
+    | undefined,
   request: vi.fn(),
   candidate: undefined as Record<string, unknown> | undefined,
 }));
@@ -29,23 +39,51 @@ vi.mock("@tanstack/react-router", () => ({
   useSearch: () => state.search,
 }));
 vi.mock("@edo/api-client", () => ({
+  useGetDocumentVersion: () => ({
+    data: { status: "APPROVED", files: [] },
+    isFetching: false,
+    isError: false,
+    isSuccess: true,
+  }),
+  getGetDocumentVersionQueryKey: (id: string, version: number) => [
+    "version",
+    id,
+    version,
+  ],
+  useGetDocumentFileBinary: () => ({ isFetching: false, isError: false }),
+  getGetDocumentFileBinaryQueryKey: (
+    id: string,
+    version: number,
+    file: string,
+  ) => ["file", id, version, file],
   useUploadCandidatePhoto: () => ({ mutate: vi.fn(), isPending: false }),
   getListCandidatePreviousDocumentsQueryKey: () => ["previous"],
   getListCandidateReviewQueueQueryKey: () => ["queue"],
   getListReviewCandidatesQueryKey: () => ["candidates"],
   getListIgArrivalRegistryGroupsQueryKey: () => ["groups"],
   getListIgArrivalRegistryParticipationsQueryKey: () => ["people"],
-  useRequestCandidateEnrichment: () => ({ mutate: state.request, isError: false }),
-  getCandidatePreviousDocumentOriginal: vi.fn().mockResolvedValue(new Blob(["erp-original"], { type: "image/jpeg" })),
+  useRequestCandidateEnrichment: () => ({
+    mutate: state.request,
+    isError: false,
+  }),
+  getCandidatePreviousDocumentOriginal: vi
+    .fn()
+    .mockResolvedValue(new Blob(["erp-original"], { type: "image/jpeg" })),
   useGetMe: () => ({ data: { permissions: { "20002": [] } } }),
   getGetCandidateWorkspaceQueryKey: () => ["workspace", "c1"],
   useGetCandidateWorkspace: () => ({}),
   useGetDocumentInfo: () => ({ isLoading: true }),
-  useRetryReviewerDocumentDelivery: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useRetryReviewerDocumentDelivery: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+  }),
   useGetPreviousDocumentDetails: (_cid: string, id: string) => ({
     isLoading: false,
     data: {
-      document: (state.previousDocuments as Array<{ id: string }>).find((d) => d.id === id) ?? { id, originalAvailable: true },
+      document: (state.previousDocuments as Array<{ id: string }>).find(
+        (d) => d.id === id,
+      ) ?? { id, originalAvailable: true },
       revision: 1,
       fields: [],
     },
@@ -80,14 +118,16 @@ vi.mock("@edo/api-client", () => ({
             stage: 1,
             title: "Этап 1",
             required: {
-              documents: [{
-                id: "doc2",
-                title: "СНИЛС",
-                status: "IN_REVIEW",
-                currentVersion: 2,
-                pendingDeliveryVersions: [],
-                returnedVersions: [],
-              }],
+              documents: [
+                {
+                  id: "doc2",
+                  title: "СНИЛС",
+                  status: "IN_REVIEW",
+                  currentVersion: 2,
+                  pendingDeliveryVersions: [],
+                  returnedVersions: [],
+                },
+              ],
               missingDocuments: [{ code: "passport", title: "Паспорт" }],
             },
             additional: { documents: [], missingDocuments: [] },
@@ -97,14 +137,16 @@ vi.mock("@edo/api-client", () => ({
             stage: 2,
             title: "Этап 2",
             required: {
-              documents: [{
-                id: "doc2",
-                title: "СНИЛС",
-                status: "IN_REVIEW",
-                currentVersion: 2,
-                pendingDeliveryVersions: [],
-                returnedVersions: [],
-              }],
+              documents: [
+                {
+                  id: "doc2",
+                  title: "СНИЛС",
+                  status: "IN_REVIEW",
+                  currentVersion: 2,
+                  pendingDeliveryVersions: [],
+                  returnedVersions: [],
+                },
+              ],
               missingDocuments: [{ code: "passport", title: "Паспорт" }],
             },
             additional: { documents: [], missingDocuments: [] },
@@ -113,7 +155,10 @@ vi.mock("@edo/api-client", () => ({
           {
             stage: 4,
             title: "Этап 4",
-            required: { documents: [], missingDocuments: [{ code: "stage4", title: "Документ этапа 4" }] },
+            required: {
+              documents: [],
+              missingDocuments: [{ code: "stage4", title: "Документ этапа 4" }],
+            },
             additional: { documents: [], missingDocuments: [] },
             previousDocuments: [],
           },
@@ -216,9 +261,12 @@ it("closes the first of two open stages without closing the second", async () =>
     configurable: true,
     value: () => ({ matches: false }),
   });
-  const render = async () => act(async () => root.render(<CandidateWorkspacePage />));
+  const render = async () =>
+    act(async () => root.render(<CandidateWorkspacePage />));
   const header = (stage: number) =>
-    node.querySelector<HTMLButtonElement>(`button[aria-controls="stage-content-${stage}"]`)!;
+    node.querySelector<HTMLButtonElement>(
+      `button[aria-controls="stage-content-${stage}"]`,
+    )!;
 
   await render();
   await act(async () => header(2).click());
@@ -324,30 +372,54 @@ it("renders informative collapsed state with candidate initials and status dot w
 it("shows synchronization instead of temporary empty documents and counters until ERP is ready", async () => {
   state.search = { stage: "1" };
   state.calls = [];
-  state.candidate = { reviewGroup: "RU", requiredDocuments: 0, approvedDocuments: 0 };
-  state.enrichment = { status: "PENDING", profileReady: false, documentsReady: false };
+  state.candidate = {
+    reviewGroup: "RU",
+    requiredDocuments: 0,
+    approvedDocuments: 0,
+  };
+  state.enrichment = {
+    status: "PENDING",
+    profileReady: false,
+    documentsReady: false,
+  };
   state.request.mockClear();
-  const node = document.createElement("div"); document.body.append(node);
+  const node = document.createElement("div");
+  document.body.append(node);
   const root = createRoot(node);
   await act(async () => root.render(<CandidateWorkspacePage />));
   expect(state.calls).toContainEqual({ stage: "1" });
   const panel = node.querySelector('[aria-label="Документы кандидата"]')!;
   expect(panel.textContent).toContain("Синхронизация профиля и документов");
-  expect(panel.textContent).not.toMatch(/Документы отсутствуют|Не загружен|0 из 0|0\/0|Документы \(0\)/);
+  expect(panel.textContent).not.toMatch(
+    /Документы отсутствуют|Не загружен|0 из 0|0\/0|Документы \(0\)/,
+  );
   expect(state.request).toHaveBeenCalledTimes(1);
   const callback = state.request.mock.calls[0][1];
   await act(async () => callback.onSuccess());
-  state.enrichment = { status: "RUNNING", profileReady: true, documentsReady: false };
+  state.enrichment = {
+    status: "RUNNING",
+    profileReady: true,
+    documentsReady: false,
+  };
   await act(async () => root.render(<CandidateWorkspacePage />));
   expect(panel.textContent).toContain("Синхронизация профиля и документов");
   expect(panel.textContent).not.toContain("Не загружен");
-  state.enrichment = { status: "READY", profileReady: true, documentsReady: true };
-  state.candidate = { reviewGroup: "RU", requiredDocuments: 1, approvedDocuments: 0 };
+  state.enrichment = {
+    status: "READY",
+    profileReady: true,
+    documentsReady: true,
+  };
+  state.candidate = {
+    reviewGroup: "RU",
+    requiredDocuments: 1,
+    approvedDocuments: 0,
+  };
   await act(async () => root.render(<CandidateWorkspacePage />));
   expect(panel.textContent).not.toContain("Синхронизация профиля и документов");
   expect(panel.textContent).toContain("СНИЛС");
   expect(panel.querySelector("svg circle")).not.toBeNull();
-  await act(async () => root.unmount()); node.remove();
+  await act(async () => root.unmount());
+  node.remove();
   state.enrichment = undefined;
 });
 
@@ -355,41 +427,98 @@ it("opens the EDO document for a document deep link even when an approved ERP or
   state.search = { document: "adaptation", version: 1 };
   state.candidate = { reviewGroup: "RU" };
   state.enrichment = undefined;
-  state.documents = [{ id: "adaptation", documentTypeCode: "PASSPORT", status: "IN_REVIEW", title: "Паспорт", currentVersion: 1 }];
-  state.previousDocuments = [{ id: "approved-erp", documentTypeCode: "PASSPORT", source: "ERP", state: "REUSED", originalAvailable: true }];
-  const node = document.createElement("div"); document.body.append(node);
+  state.documents = [
+    {
+      id: "adaptation",
+      documentTypeCode: "PASSPORT",
+      status: "IN_REVIEW",
+      title: "Паспорт",
+      currentVersion: 1,
+    },
+  ];
+  state.previousDocuments = [
+    {
+      id: "approved-erp",
+      documentTypeCode: "PASSPORT",
+      source: "ERP",
+      state: "REUSED",
+      originalAvailable: true,
+    },
+  ];
+  const node = document.createElement("div");
+  document.body.append(node);
   const root = createRoot(node);
   await act(async () => root.render(<CandidateWorkspacePage />));
   // The EDO document is opened with its own versions, the ERP original is not
   // substituted for it.
   expect(node.querySelector('[data-erp-original="approved-erp"]')).toBeNull();
   expect(node.textContent).toContain("Загрузка документа…");
-  await act(async () => root.unmount()); node.remove();
-  state.documents = []; state.previousDocuments = [];
+  await act(async () => root.unmount());
+  node.remove();
+  state.documents = [];
+  state.previousDocuments = [];
 });
 
 it("opens the ERP original when the reviewer asks for it", async () => {
   state.search = { previousDocument: "approved-erp" };
   state.candidate = { reviewGroup: "RU" };
   state.enrichment = undefined;
-  state.documents = [{ id: "adaptation", documentTypeCode: "PASSPORT", status: "IN_REVIEW", title: "Паспорт", currentVersion: 1 }];
-  state.previousDocuments = [{ id: "approved-erp", documentTypeCode: "PASSPORT", source: "ERP", state: "REUSED", originalAvailable: true }];
-  const node = document.createElement("div"); document.body.append(node);
+  state.documents = [
+    {
+      id: "adaptation",
+      documentTypeCode: "PASSPORT",
+      status: "IN_REVIEW",
+      title: "Паспорт",
+      currentVersion: 1,
+    },
+  ];
+  state.previousDocuments = [
+    {
+      id: "approved-erp",
+      documentTypeCode: "PASSPORT",
+      source: "ERP",
+      state: "REUSED",
+      originalAvailable: true,
+    },
+  ];
+  const node = document.createElement("div");
+  document.body.append(node);
   const root = createRoot(node);
   await act(async () => root.render(<CandidateWorkspacePage />));
-  expect(node.querySelector('[data-erp-original="approved-erp"]')).not.toBeNull();
-  await act(async () => root.unmount()); node.remove();
-  state.documents = []; state.previousDocuments = [];
+  expect(
+    node.querySelector('[data-erp-original="approved-erp"]'),
+  ).not.toBeNull();
+  await act(async () => root.unmount());
+  node.remove();
+  state.documents = [];
+  state.previousDocuments = [];
 });
 
 it("keeps a complete snapshot and the chat mounted during a background sync", async () => {
-  state.search={stage:"1"};state.candidate={reviewGroup:"RU"};state.enrichment={status:"READY",profileReady:true,documentsReady:true};
-  const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
-  await act(async()=>root.render(<CandidateWorkspacePage/>));
-  const mounts=state.chatMounts;
-  state.enrichment={status:"RUNNING",profileReady:true,documentsReady:true};
-  await act(async()=>root.render(<CandidateWorkspacePage/>));
-  const panel=node.querySelector('[aria-label="Документы кандидата"]')!;
-  expect(panel.textContent).toContain("Обновляем данные");expect(panel.textContent).toContain("СНИЛС");expect(state.chatMounts).toBe(mounts);
-  await act(async()=>root.unmount());node.remove();state.enrichment=undefined;state.candidate=undefined;
+  state.search = { stage: "1" };
+  state.candidate = { reviewGroup: "RU" };
+  state.enrichment = {
+    status: "READY",
+    profileReady: true,
+    documentsReady: true,
+  };
+  const node = document.createElement("div");
+  document.body.append(node);
+  const root = createRoot(node);
+  await act(async () => root.render(<CandidateWorkspacePage />));
+  const mounts = state.chatMounts;
+  state.enrichment = {
+    status: "RUNNING",
+    profileReady: true,
+    documentsReady: true,
+  };
+  await act(async () => root.render(<CandidateWorkspacePage />));
+  const panel = node.querySelector('[aria-label="Документы кандидата"]')!;
+  expect(panel.textContent).toContain("Обновляем данные");
+  expect(panel.textContent).toContain("СНИЛС");
+  expect(state.chatMounts).toBe(mounts);
+  await act(async () => root.unmount());
+  node.remove();
+  state.enrichment = undefined;
+  state.candidate = undefined;
 });

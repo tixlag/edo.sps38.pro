@@ -29,12 +29,15 @@ import {
   canReviewGroup,
   candidateReviewGroup,
   requireReviewGroup,
+  reviewGroupWhere,
 } from "../documents/review-group";
 import {
   ErpWorkspaceClient,
   erpCardSchema,
   referencesSchema,
   personMatchesSchema,
+  erpOperationSchema,
+  safeOperationRejection,
   type ErpCard,
 } from "../documents/erp-workspace.client";
 import {
@@ -113,22 +116,53 @@ export class CandidateWorkspaceService {
           id: { not: row.id },
           chatUuid: null,
         },
-        include: { _count: { select: { documents: true } } },
+        include: {
+          _count: { select: { documents: true, previousDocuments: true } },
+        },
       });
 
       let ghostMeta: Prisma.CandidateUpdateInput = {};
-      if (ghost && (ghost as any)._count?.documents === 0) {
+      if (
+        ghost &&
+        (ghost._count.documents !== 0 ||
+          ghost._count.previousDocuments !== 0 ||
+          (ghost.reviewGroup && ghost.reviewGroup !== "RU") ||
+          (ghost.personUid &&
+            row.personUid &&
+            ghost.personUid !== row.personUid) ||
+          (ghost.code1c && row.code1c && ghost.code1c !== row.code1c))
+      )
+        throw new ConflictException("CANDIDATE_IDENTITY_CONFLICT");
+      if (ghost) {
         ghostMeta = {
-          ...(ghost.statusId && !row.statusId ? { statusId: ghost.statusId } : {}),
-          ...(ghost.statusName && !row.statusName ? { statusName: ghost.statusName } : {}),
-          ...(ghost.managerId && !row.managerId ? { managerId: ghost.managerId } : {}),
-          ...(ghost.managerName && !row.managerName ? { managerName: ghost.managerName } : {}),
-          ...(ghost.projectCode && !row.projectCode ? { projectCode: ghost.projectCode } : {}),
-          ...(ghost.projectName && !row.projectName ? { projectName: ghost.projectName } : {}),
-          ...(ghost.positionCode && !row.positionCode ? { positionCode: ghost.positionCode } : {}),
-          ...(ghost.positionName && !row.positionName ? { positionName: ghost.positionName } : {}),
+          ...(ghost.statusId && !row.statusId
+            ? { statusId: ghost.statusId }
+            : {}),
+          ...(ghost.statusName && !row.statusName
+            ? { statusName: ghost.statusName }
+            : {}),
+          ...(ghost.managerId && !row.managerId
+            ? { managerId: ghost.managerId }
+            : {}),
+          ...(ghost.managerName && !row.managerName
+            ? { managerName: ghost.managerName }
+            : {}),
+          ...(ghost.projectCode && !row.projectCode
+            ? { projectCode: ghost.projectCode }
+            : {}),
+          ...(ghost.projectName && !row.projectName
+            ? { projectName: ghost.projectName }
+            : {}),
+          ...(ghost.positionCode && !row.positionCode
+            ? { positionCode: ghost.positionCode }
+            : {}),
+          ...(ghost.positionName && !row.positionName
+            ? { positionName: ghost.positionName }
+            : {}),
           ...(ghost.code1c && !row.code1c ? { code1c: ghost.code1c } : {}),
-          ...(ghost.personUid && !row.personUid ? { personUid: ghost.personUid } : {}),
+          ...(ghost.personUid && !row.personUid
+            ? { personUid: ghost.personUid }
+            : {}),
         };
         await tx.candidate.delete({ where: { id: ghost.id } });
       }
@@ -212,17 +246,24 @@ export class CandidateWorkspaceService {
       .update(`edo-person-selection:v1:${value}`)
       .digest("hex");
   }
-  private selection(personUid: string, p: AuthPrincipal) {
+  private selection(
+    personUid: string,
+    p: AuthPrincipal,
+    kind: "person" | "candidate" = "person",
+    candidateUids: string[] = [],
+  ) {
     const value = Buffer.from(
       JSON.stringify({
         personUid,
+        kind,
+        candidateUids,
         actor: p.uuid,
         exp: Date.now() + 15 * 60_000,
       }),
     ).toString("base64url");
     return `${value}.${this.signature(value)}`;
   }
-  private person(selection: string, p: AuthPrincipal) {
+  private choice(selection: string, p: AuthPrincipal) {
     try {
       const [value, signature] = selection.split(".");
       const expected = Buffer.from(this.signature(value));
@@ -234,29 +275,62 @@ export class CandidateWorkspaceService {
         throw new Error();
       const data = JSON.parse(Buffer.from(value, "base64url").toString()) as {
         personUid: string;
+        kind?: "person" | "candidate";
+        candidateUids?: string[];
         actor: string;
         exp: number;
       };
       if (
         data.actor !== p.uuid ||
+        !Number.isFinite(data.exp) ||
         data.exp < Date.now() ||
-        !/^[-a-f0-9]{36}$/i.test(data.personUid)
+        ![undefined, "person", "candidate"].includes(data.kind) ||
+        !/^[-a-f0-9]{36}$/i.test(data.personUid) ||
+        (data.candidateUids !== undefined &&
+          (!Array.isArray(data.candidateUids) ||
+            data.candidateUids.some((id) => !/^[-a-f0-9]{36}$/i.test(id))))
       )
         throw new Error();
-      return data.personUid;
+      return {
+        id: data.personUid.toLowerCase(),
+        kind: data.kind ?? "person",
+        candidateUids: data.candidateUids ?? [],
+      };
     } catch {
       throw new BadRequestException(
         "Выбор физлица устарел. Повторите поиск и подтвердите выбор.",
       );
     }
   }
+  private person(selection: string, p: AuthPrincipal) {
+    const choice = this.choice(selection, p);
+    if (choice.kind !== "person")
+      throw new BadRequestException("PERSON_SELECTION_REQUIRED");
+    return choice.id;
+  }
   async references(
-    kind: "managers" | "positions" | "projects" | "statuses" | "persons",
+    kind:
+      | "managers"
+      | "positions"
+      | "projects"
+      | "statuses"
+      | "persons"
+      | "countries"
+      | "organizations"
+      | "sources"
+      | "responsibles"
+      | "contact-types"
+      | "contact-kinds"
+      | "universities",
     p: AuthPrincipal,
     q?: string,
   ) {
     requireReviewGroup(p, "RU");
-    if (kind === "persons" && (q?.trim().length ?? 0) < 3) return { items: [] };
+    if (
+      ["persons", "responsibles"].includes(kind) &&
+      (q?.trim().length ?? 0) < 3
+    )
+      return { items: [] };
     const result = await this.erp.request(
       kind,
       referencesSchema,
@@ -265,9 +339,10 @@ export class CandidateWorkspaceService {
     return kind === "persons"
       ? {
           items: result.items.map((row) => ({
-            name: row.name,
+            ...row,
+            personUid: row.id,
             birthDate: row.birthDate ?? null,
-            id: this.selection(row.id, p),
+            id: this.selection(row.id, p, "person", row.candidateUids),
           })),
         }
       : result;
@@ -277,13 +352,31 @@ export class CandidateWorkspaceService {
       throw new ForbiddenException(
         "Missing required EDO review group access rule",
       );
+    if (query.scope === "creation") requireReviewGroup(p, "RU");
+    else if (
+      !query.lastName?.trim() ||
+      !query.firstName?.trim() ||
+      !query.birthDate
+    )
+      throw new BadRequestException("PERSON_MATCH_IDENTITY_REQUIRED");
+    if (
+      query.scope === "creation" &&
+      !query.fullName?.trim() &&
+      !query.phone?.trim()
+    )
+      throw new BadRequestException("PERSON_MATCH_IDENTITY_REQUIRED");
     const result = await this.erp.request(
       "person-matches",
       personMatchesSchema,
       {
-        lastName: query.lastName.trim(),
-        firstName: query.firstName.trim(),
-        birthDate: query.birthDate,
+        ...(query.lastName?.trim() ? { lastName: query.lastName.trim() } : {}),
+        ...(query.firstName?.trim()
+          ? { firstName: query.firstName.trim() }
+          : {}),
+        ...(query.birthDate ? { birthDate: query.birthDate } : {}),
+        ...(query.scope ? { scope: query.scope } : {}),
+        ...(query.fullName?.trim() ? { fullName: query.fullName.trim() } : {}),
+        ...(query.phone?.trim() ? { phone: query.phone.trim() } : {}),
         ...(query.middleName?.trim()
           ? { middleName: query.middleName.trim() }
           : {}),
@@ -295,7 +388,12 @@ export class CandidateWorkspaceService {
     return {
       items: result.items.map((row) => ({
         ...row,
-        id: this.selection(row.id, p),
+        personUid: row.id,
+        id: this.selection(row.id, p, "person", row.candidateUids),
+      })),
+      candidates: (result.candidates ?? []).map((row) => ({
+        ...row,
+        selection: this.selection(row.id, p, "candidate"),
       })),
     };
   }
@@ -315,8 +413,12 @@ export class CandidateWorkspaceService {
         personUid: card.personUid,
         fullName: card.fullName,
         phone: card.phone,
-        birthDate: new Date(`${card.birthDate.slice(0, 10)}T00:00:00Z`),
-        citizenship: card.citizenship.toLowerCase(),
+        birthDate: card.birthDate
+          ? new Date(`${card.birthDate.slice(0, 10)}T00:00:00Z`)
+          : null,
+        citizenship: card.citizenship?.toLowerCase() ?? null,
+        sex: card.sex,
+        sexKnown: card.sex !== null,
         positionCode: card.position?.code ?? null,
         positionName: card.position?.name ?? null,
         projectCode: card.project?.code ?? null,
@@ -363,10 +465,72 @@ export class CandidateWorkspaceService {
           : null,
         status: card.status,
         history: card.history,
+        person: card.person,
+        sex: card.sex,
+        settlement: card.settlement,
+        organization: card.organization,
+        expectedIncome: card.expectedIncome,
+        responsible: card.responsible,
+        additionalResponsible: card.additionalResponsible,
+        source: card.source,
+        sourceComment: card.sourceComment,
+        comment: card.comment,
+        gph: card.gph,
+        selfEmployed: card.selfEmployed,
+        unofficial: card.unofficial,
+        apprentice: card.apprentice,
+        internship: card.internship,
+        targetedContract: card.targetedContract,
+        contractTraining: card.contractTraining,
+        internshipStartDate: card.internshipStartDate,
+        internshipEndDate: card.internshipEndDate,
+        university: card.university,
+        contacts: card.contacts,
         linkedPerson: !!card.personUid,
         hasChat: !!(card.chatUuid || owner.chatUuid),
       };
     });
+  }
+  async open(p: AuthPrincipal, erpUid: string) {
+    requireReviewGroup(p, "RU");
+    const card = await this.erp.card(erpUid.toLowerCase());
+    if (card.erpUid !== erpUid.toLowerCase())
+      throw new ConflictException("ERP_CANDIDATE_IDENTITY_CHANGED");
+    return this.project(card, p);
+  }
+  async operation(p: AuthPrincipal, requestId: string) {
+    const actor = this.actor(p);
+    if (
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(
+        requestId,
+      )
+    )
+      throw new BadRequestException("INVALID_REQUEST_ID");
+    const result = await this.erp.request("operation", erpOperationSchema, {
+      requestId,
+      actor,
+    });
+    if (result.state !== "COMPLETED") return { state: result.state };
+    if (
+      result.httpStatus &&
+      result.httpStatus >= 200 &&
+      result.httpStatus < 300 &&
+      result.card
+    )
+      return {
+        state: "SUCCEEDED" as const,
+        candidate: await this.project(result.card, p),
+      };
+    const code = safeOperationRejection(result.code);
+    if (
+      result.httpStatus &&
+      result.httpStatus >= 400 &&
+      result.httpStatus < 500 &&
+      code &&
+      !["OPERATION_RESULT_UNKNOWN", "IDEMPOTENCY_CONFLICT"].includes(code)
+    )
+      return { state: "REJECTED" as const, code };
+    return { state: "UNKNOWN" as const, ...(code ? { code } : {}) };
   }
   async card(id: string, p: AuthPrincipal) {
     const row = await this.owner(id, p);
@@ -380,15 +544,46 @@ export class CandidateWorkspaceService {
     const card = await this.erp.card(owner.erpUid!);
     if (card.erpUid !== owner.erpUid)
       throw new ConflictException("ERP_CANDIDATE_IDENTITY_CHANGED");
-    if (!card.position?.code)
+    const missing = [
+      ...(!card.position?.code ? [CandidateProfileField.POSITION_CODE] : []),
+      ...(!card.citizenship ? [CandidateProfileField.CITIZENSHIP] : []),
+    ];
+    if (missing.length)
       throw new CandidateDocumentError(
         CandidateDocumentErrorCode.CANDIDATE_PROFILE_INCOMPLETE,
-        [CandidateProfileField.POSITION_CODE],
+        missing,
       );
-    return this.catalog.list(card.position.code, card.citizenship);
+    return this.catalog.list(card.position!.code, card.citizenship!);
   }
   async create(p: AuthPrincipal, body: CreateCandidateDto) {
     const actor = this.actor(p);
+    const selected = body.personSelection
+      ? this.choice(body.personSelection, p)
+      : undefined;
+    if (selected && selected.kind !== "person")
+      throw new BadRequestException("PERSON_SELECTION_REQUIRED");
+    const ignored = (body.ignoredSelections ?? []).map((value) =>
+      this.choice(value, p),
+    );
+    if (
+      selected &&
+      ignored.some((value) =>
+        value.kind === "person"
+          ? value.id === selected.id
+          : selected.candidateUids.includes(value.id),
+      )
+    )
+      throw new BadRequestException("CONTRADICTORY_DUPLICATE_SELECTION");
+    const ignoredDuplicates = {
+      persons: [
+        ...new Set(ignored.filter((c) => c.kind === "person").map((c) => c.id)),
+      ],
+      candidates: [
+        ...new Set(
+          ignored.filter((c) => c.kind === "candidate").map((c) => c.id),
+        ),
+      ],
+    };
     const card = await this.erp.request(
       "create",
       erpCardSchema,
@@ -397,9 +592,8 @@ export class CandidateWorkspaceService {
         actor,
         requestId: body.requestId,
         fields: body.fields,
-        ...(body.personSelection
-          ? { personUid: this.person(body.personSelection, p) }
-          : {}),
+        ...(selected ? { personUid: selected.id } : {}),
+        ...(ignored.length ? { ignoredDuplicates } : {}),
       },
     );
     return this.project(card, p);
@@ -493,14 +687,20 @@ export class CandidateWorkspaceService {
     if (doc) {
       if (!doc.originalAvailable)
         throw new NotFoundException("Оригинал недоступен");
-      if (candidateReviewGroup(row) === "IG" && doc.sourceId.startsWith("edo:")) {
+      if (
+        candidateReviewGroup(row) === "IG" &&
+        doc.sourceId.startsWith("edo:")
+      ) {
         const parts = doc.sourceId.split(":");
-        if (parts.length !== 3 || !this.ownHistory) throw new NotFoundException();
+        if (parts.length !== 3 || !this.ownHistory)
+          throw new NotFoundException();
         const version = await this.prisma.documentVersion.findFirst({
           where: {
             id: parts[2],
             documentId: parts[1],
-            document: { candidate: { code1c: row.code1c, chatUuid: null } },
+            document: {
+              candidate: { code1c: row.code1c, AND: [reviewGroupWhere("IG")] },
+            },
           },
           include: {
             files: { where: { deletedAt: null }, orderBy: { ordinal: "asc" } },
@@ -524,9 +724,8 @@ export class CandidateWorkspaceService {
           id: documentId,
           candidate: {
             code1c: row.code1c,
-            chatUuid: null,
             AND: [
-              { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
+              reviewGroupWhere("IG"),
               { OR: [{ personUid: null }, { personUid: row.personUid }] },
             ],
           },
@@ -534,7 +733,10 @@ export class CandidateWorkspaceService {
         include: {
           versions: {
             include: {
-              files: { where: { deletedAt: null }, orderBy: { ordinal: "asc" } },
+              files: {
+                where: { deletedAt: null },
+                orderBy: { ordinal: "asc" },
+              },
             },
             orderBy: { version: "desc" },
           },

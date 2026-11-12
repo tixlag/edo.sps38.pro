@@ -3,6 +3,7 @@ import {
   useSearchCandidatePersons,
   type CandidateReferenceDto,
 } from "@edo/api-client";
+import { Button } from "@edo/ui";
 import { SearchSelect } from "./SearchSelect";
 import { formatBirthDateRu } from "../lib/review-groups";
 
@@ -11,10 +12,12 @@ export function CandidatePersonPicker({
   disabled,
   onChange,
   initialQuery = "",
+  onOpenCandidate,
 }: {
   disabled: boolean;
-  onChange: (personSelection: string | undefined) => void;
+  onChange: (personSelection: string | undefined, personUid?: string) => void;
   initialQuery?: string;
+  onOpenCandidate?: (erpUid: string) => void;
 }) {
   const [query, setQuery] = useState(initialQuery);
   const [selected, setSelected] = useState<CandidateReferenceDto>();
@@ -75,19 +78,42 @@ export function CandidatePersonPicker({
         <div className="space-y-2 rounded-md bg-[var(--muted)] p-3 text-sm">
           <p className="font-medium">{selected.name}</p>
           <p>Дата рождения: {formatBirthDateRu(selected.birthDate)}</p>
-          <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={confirmed}
-              disabled={disabled}
-              onChange={(event) => {
-                setConfirmed(event.target.checked);
-                onChange(event.target.checked ? selected.id : undefined);
-              }}
-            />
-            Подтверждаю, что это нужный человек для текущего оформления
-          </label>
+          {onOpenCandidate && (selected.candidateUids ?? []).length > 0 ? (
+            <div className="space-y-2">
+              <p>
+                У физлица уже есть кандидат. Откройте существующую карточку.
+              </p>
+              {selected.candidateUids?.map((id) => (
+                <Button
+                  key={id}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={() => onOpenCandidate(id)}
+                >
+                  Открыть существующую карточку
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={confirmed}
+                disabled={disabled}
+                onChange={(event) => {
+                  setConfirmed(event.target.checked);
+                  onChange(
+                    event.target.checked ? selected.id : undefined,
+                    event.target.checked ? selected.personUid : undefined,
+                  );
+                }}
+              />
+              Подтверждаю, что это нужный человек для текущего оформления
+            </label>
+          )}
         </div>
       )}
     </div>

@@ -1,3 +1,4 @@
+import { reviewGroupWhere } from "../src/documents/review-group";
 import { describe, expect, it, vi } from "vitest";
 import { NotFoundException } from "@nestjs/common";
 import { plainToInstance } from "class-transformer";
@@ -306,6 +307,7 @@ describe("candidate review queue", () => {
       revision: 4,
       deliveryStatus: null,
       deliveryErrorReason: null,
+      deliveredHistorically: false,
       pendingDeliveryVersions: [1],
       submittedAt: null,
       reviewedAt: null,
@@ -365,7 +367,7 @@ describe("candidate review queue", () => {
     );
     expect(nested).toEqual({
       ...access.documentWhere(scoped),
-      candidate: { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] },
+      candidate: reviewGroupWhere("RU"),
       currentVersion: { gt: 0 },
       versions: { some: { status: "RETURNED" } },
       documentType: { code: "PASSPORT" },
@@ -767,9 +769,10 @@ describe("candidate details", () => {
       result.stageDocuments?.required.documents[0].returnedVersions?.[0]
         .rejectionReason,
     ).toBe("Фото");
-    expect(result.stageDocuments?.required.missingDocuments).toEqual([
-      { code: "A", title: "Документ" },
+    expect(result.stageDocuments?.required.documents).toEqual([
+      expect.objectContaining({ id: "d1", status: "DRAFT" }),
     ]);
+    expect(result.stageDocuments?.required.missingDocuments).toEqual([]);
   });
   it("returns the profile even when there are no documents", async () => {
     const { reads, prisma } = setup();

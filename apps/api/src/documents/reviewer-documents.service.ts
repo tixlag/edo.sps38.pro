@@ -1,3 +1,5 @@
+import { CandidateDocumentError } from "./candidate-document.error";
+import { CandidateDocumentErrorCode, CandidateProfileField } from "./dto/candidate-error.dto";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { AuthPrincipal } from "../auth/auth-principal";
@@ -26,22 +28,28 @@ export class ReviewerDocumentsService {
     requireReviewGroup(principal, candidateReviewGroup(owner));
     return owner;
   }
+  private requireProfile(owner:{positionCode:string|null;citizenship:string|null}) {
+    const fields=[...(!owner.positionCode ? [CandidateProfileField.POSITION_CODE] : []),...(!owner.citizenship ? [CandidateProfileField.CITIZENSHIP] : [])];
+    if(fields.length) throw new CandidateDocumentError(CandidateDocumentErrorCode.CANDIDATE_PROFILE_INCOMPLETE,fields);
+  }
   async types(id: string, principal: AuthPrincipal) {
     const owner = await this.owner(id, principal);
-    return this.catalog.list(owner.positionCode ?? "", owner.citizenship ?? "ru",
+    this.requireProfile(owner);
+    return this.catalog.list(owner.positionCode!, owner.citizenship!,
       owner.sexKnown && (owner.sex === "male" || owner.sex === "female") ? owner.sex : null, owner.projectCode);
   }
   async upload(id: string, principal: AuthPrincipal, req: Parameters<DocumentUploadService["parse"]>[0], key: string | undefined, correlationId: string) {
     const owner = await this.owner(id, principal);
     if (candidateReviewGroup(owner) === "RU" ? !owner.erpUid : !owner.personUid || !owner.code1c)
       throw new ConflictException("ERP_DOCUMENT_RECIPIENT_REQUIRED");
+    this.requireProfile(owner);
     const upload = await this.uploads.parse(req, undefined, true);
     try {
       if (upload.metadata) throw new BadRequestException("Reviewer upload accepts documentTypeCode and files only");
       const type = await this.prisma.documentType.findUnique({ where: { code: upload.documentTypeCode } });
       if (!type?.erpUid) throw new BadRequestException("Unknown document type");
-      upload.metadata = { documentUid: type.erpUid, position_code_1c: owner.positionCode ?? "",
-        citizenship: owner.citizenship ?? "ru", project_code_1c: owner.projectCode ?? undefined,
+      upload.metadata = { documentUid: type.erpUid, position_code_1c: owner.positionCode!,
+        citizenship: owner.citizenship!, project_code_1c: owner.projectCode ?? undefined,
         documentFields: {} };
       return await this.manual.upload(upload, key ?? upload.idempotencyKey, correlationId, { candidateId: id, principal });
     } finally { await this.uploads.dispose(upload); }
