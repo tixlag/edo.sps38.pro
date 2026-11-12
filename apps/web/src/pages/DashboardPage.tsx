@@ -1,3 +1,5 @@
+import { FilterBar } from "@edo/ui";
+import { filterValues, parseFilterValues } from "../lib/filter-values";
 import {
   useGetDashboard,
   useGetMe,
@@ -61,8 +63,6 @@ const COLORS = [
   "var(--primary)",
   "var(--muted-foreground)",
 ];
-const CONTROL =
-  "rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]";
 export function parseDashboardSearch(
   raw: Record<string, unknown>,
 ): GetDashboardParams {
@@ -70,6 +70,10 @@ export function parseDashboardSearch(
     typeof value === "string" && value.trim() ? value : undefined;
   const group = raw.reviewGroup;
   return {
+    reviewGroups: parseFilterValues(raw.reviewGroups)?.filter(
+      (value): value is "RU" | "IG" => value === "RU" || value === "IG",
+    ),
+    managerKeys: parseFilterValues(raw.managerKeys),
     reviewGroup:
       group === "RU" || group === "IG" || group === "ALL" ? group : undefined,
     managerCode1c: text(raw.managerCode1c),
@@ -134,11 +138,15 @@ export function DashboardPage() {
         ? "unassigned"
         : "";
   const selectedGroup =
-    params.reviewGroup && params.reviewGroup !== "ALL"
-      ? params.reviewGroup
-      : groups.length === 1
-        ? groups[0]
-        : undefined;
+    params.reviewGroups?.length === 1
+      ? params.reviewGroups[0]
+      : params.reviewGroups?.length
+        ? undefined
+        : params.reviewGroup && params.reviewGroup !== "ALL"
+          ? params.reviewGroup
+          : groups.length === 1
+            ? groups[0]
+            : undefined;
   const metrics = (kpis: KpiDto[], group?: "RU" | "IG") => (
     <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-2 xl:grid-cols-5">
       {kpis.map((kpi) => {
@@ -160,6 +168,11 @@ export function DashboardPage() {
                       search: {
                         status: kpi.key === "rework" ? "RETURNED" : "IN_REVIEW",
                         currentStatus: meta.currentStatus,
+                        managerKeys: params.managerKeys,
+                        managerId:
+                          params.managerKeys !== undefined || !manager
+                            ? "all"
+                            : undefined,
                         managerCode1c: params.managerCode1c,
                         managerName: params.managerName,
                         managerUnassigned: params.managerUnassigned,
@@ -175,77 +188,52 @@ export function DashboardPage() {
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-[26px_28px_28px_28px]">
       <PageHeader title="Дашборд" subtitle="Приёмка документов кандидатов" />
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs font-semibold">
-          Отдел
-          <select
-            className={CONTROL}
-            aria-label="Отдел"
-            value={params.reviewGroup ?? "ALL"}
-            onChange={(event) =>
+      <FilterBar
+        label="Фильтры дашборда"
+        onReset={() => void navigate({ to: "/", search: {} })}
+        filters={[
+          {
+            label: "Отдел",
+            placeholder: "Все доступные отделы",
+            value: filterValues(raw, "reviewGroups", "reviewGroup").filter(
+              (value) => value !== "ALL",
+            ),
+            options: groups.map((group) => ({
+              value: group,
+              label: group === "RU" ? "РУ" : "ИГ",
+            })),
+            onChange: (values) =>
+              setFilters({ reviewGroups: values, reviewGroup: undefined }),
+          },
+          {
+            label: "Менеджер",
+            placeholder: "Все менеджеры",
+            value: params.managerKeys ?? (manager ? [manager] : []),
+            options: (data?.managers ?? []).map((item) => ({
+              value: item.key,
+              label: item.name,
+            })),
+            selectedLabels: manager
+              ? {
+                  [manager]:
+                    params.managerName ??
+                    params.managerCode1c ??
+                    "Без менеджера",
+                }
+              : undefined,
+            onChange: (values) =>
               setFilters({
-                reviewGroup: event.target.value,
+                managerKeys: values,
                 managerCode1c: undefined,
                 managerName: undefined,
                 managerUnassigned: undefined,
-              })
-            }
-          >
-            <option value="ALL">Все доступные отделы</option>
-            {groups.map((group) => (
-              <option key={group} value={group}>
-                {group === "RU" ? "РУ" : "ИГ"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex min-w-0 max-w-full flex-col gap-1 text-xs font-semibold">
-          Менеджер
-          <select
-            className={CONTROL}
-            aria-label="Менеджер"
-            value={manager}
-            onChange={(event) => {
-              const value = event.target.value;
-              setFilters({
-                managerCode1c: value.startsWith("code:")
-                  ? value.slice(5)
-                  : undefined,
-                managerName: value.startsWith("name:")
-                  ? value.slice(5)
-                  : undefined,
-                managerUnassigned: value === "unassigned" ? true : undefined,
-              });
-            }}
-          >
-            <option value="">Все менеджеры</option>
-            {manager &&
-              !data?.managers.some((item) => item.key === manager) && (
-                <option value={manager}>
-                  {params.managerName ??
-                    params.managerCode1c ??
-                    "Без менеджера"}
-                </option>
-              )}
-            {(data?.managers ?? []).map((item) => (
-              <option key={item.key} value={item.key}>
-                {item.name}
-                {item.code1c
-                  ? ` (${item.code1c})`
-                  : item.key === "unassigned"
-                    ? ""
-                    : " · без кода"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Button
-          variant="outline"
-          onClick={() => void navigate({ to: "/", search: {} })}
-        >
-          Сбросить фильтры
-        </Button>
-      </div>
+              }),
+            isLoading,
+            isError,
+            onRetry: () => void refetch(),
+          },
+        ]}
+      />
       {isLoading && <p role="status">Загрузка дашборда…</p>}
       {isError && (
         <div role="alert" className="flex flex-wrap items-center gap-3">

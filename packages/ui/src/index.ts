@@ -7,3 +7,4 @@ export * from './components/metric-card';
 export * from './components/page-header';
 export * from './components/status-badge';
 export * from './components/full-screen-dialog';
+export * from './components/multi-select';

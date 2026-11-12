@@ -1,7 +1,9 @@
+import { selectedValues } from "../common/query-values";
+import { managerFilter } from "../documents/manager-filter";
+import { candidateNamePage } from "../documents/candidate-name-page";
 import { DocumentReadService } from "../documents/document-read.service";
 import { reviewGroupWhere } from "../documents/review-group";
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   Optional,
@@ -240,72 +242,63 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
   }
   async list(principal: AuthPrincipal, query: CommunicationCandidatesQueryDto) {
     const limit = query.limit ?? 50;
-    let after: { name: string | null; id: string } | undefined;
-    if (query.cursor) {
-      try {
-        const raw = JSON.parse(
-          Buffer.from(query.cursor, "base64url").toString(),
-        ) as { name: unknown; id: unknown };
-        if (
-          (raw.name !== null && typeof raw.name !== "string") ||
-          typeof raw.id !== "string"
-        )
-          throw new Error();
-        after = { name: raw.name as string | null, id: raw.id };
-      } catch {
-        throw new BadRequestException("Invalid candidate cursor");
-      }
-    }
-    const items = await this.prisma.candidate.findMany({
-      where: {
+    const result = await candidateNamePage(
+      (args) => this.prisma.candidate.findMany(args),
+      {
         AND: [
           this.access.candidateWhere(principal),
           { erpDeleted: false },
           reviewGroupWhere("RU"),
-          ...(query.statusId
-            ? [{ statusId: query.statusId }]
+          ...(selectedValues(query.statusIds, query.statusId).length
+            ? [
+                {
+                  statusId:
+                    query.statusIds === undefined
+                      ? query.statusId
+                      : { in: query.statusIds },
+                },
+              ]
             : [buildDefaultExcludedRuStatusWhere()]),
-          ...(query.managerId ? [{ managerId: query.managerId }] : []),
-          ...(query.projectCode ? [{ projectCode: query.projectCode }] : []),
-          ...(query.positionCode ? [{ positionCode: query.positionCode }] : []),
-          ...(query.mentorCode1c ? [{ mentorCode1c: query.mentorCode1c }] : []),
+          ...(query.managerKeys !== undefined
+            ? [managerFilter(query.managerKeys) ?? {}]
+            : query.managerId
+              ? [{ managerId: query.managerId }]
+              : []),
+          ...(
+            [
+              ["projectCodes", "projectCode"],
+              ["positionCodes", "positionCode"],
+              ["mentorCodes1c", "mentorCode1c"],
+            ] as const
+          ).flatMap(([plural, single]) => {
+            const values = selectedValues(query[plural], query[single]);
+            return values.length
+              ? [
+                  {
+                    [single]:
+                      query[plural] === undefined
+                        ? query[single]
+                        : { in: values },
+                  },
+                ]
+              : [];
+          }),
           ...(query.q?.trim()
             ? [{ fullName: { contains: query.q.trim() } }]
             : []),
-          ...(after
-            ? [
-                {
-                  OR:
-                    after.name === null
-                      ? [
-                          { fullName: null, id: { gt: after.id } },
-                          { fullName: { not: null } },
-                        ]
-                      : [
-                          { fullName: { gt: after.name } },
-                          { fullName: after.name, id: { gt: after.id } },
-                        ],
-                },
-              ]
-            : []),
         ],
       },
-      orderBy: [{ fullName: "asc" }, { id: "asc" }],
-      take: limit + 1,
-    });
-    const page = items.slice(0, limit),
-      last = page.at(-1);
+      limit,
+      query.cursor,
+    );
+    const page = result.items;
     const profiles = page.map((row) => toCandidateProfile(row)!);
-    if (!this.documentReads) throw new Error("CANDIDATE_DOCUMENT_READER_REQUIRED");
+    if (!this.documentReads)
+      throw new Error("CANDIDATE_DOCUMENT_READER_REQUIRED");
     await this.documentReads.enrichReviewCandidates(principal, profiles);
     return {
       items: profiles,
-      nextCursor:
-        items.length > limit && last
-          ? Buffer.from(
-              JSON.stringify({ name: last.fullName, id: last.id }),
-            ).toString("base64url")
-          : null,
+      nextCursor: result.nextCursor,
       syncedAt: await this.redis.get("edo:candidate-catalog:last-success"),
     };
   }

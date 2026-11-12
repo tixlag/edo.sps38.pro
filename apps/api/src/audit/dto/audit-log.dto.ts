@@ -1,5 +1,6 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AuditAction } from '@prisma/client';
+import { QueryValues } from "../../common/query-values";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { AuditAction } from "@prisma/client";
 import {
   IsBoolean,
   IsEnum,
@@ -9,17 +10,17 @@ import {
   Max,
   MaxLength,
   Min,
-} from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+} from "class-validator";
+import { Transform, Type } from "class-transformer";
 
 export class AuditLogItemDto {
-  @ApiProperty({ description: 'Audit row id' })
+  @ApiProperty({ description: "Audit row id" })
   id!: string;
 
   @ApiProperty({
     type: String,
     nullable: true,
-    description: 'Author uuid (JWT sub); null for system rows without actor',
+    description: "Author uuid (JWT sub); null for system rows without actor",
   })
   actorId!: string | null;
 
@@ -27,24 +28,26 @@ export class AuditLogItemDto {
     type: String,
     nullable: true,
     description:
-      'Author display name from the local LK projection (by uuid, fallback by code1c); never matched by full name',
+      "Author display name from the local LK projection (by uuid, fallback by code1c); never matched by full name",
   })
   actorName!: string | null;
 
-  @ApiProperty({ enum: AuditAction, enumName: 'AuditAction' })
+  @ApiProperty({ enum: AuditAction, enumName: "AuditAction" })
   action!: AuditAction;
 
-  @ApiProperty({ description: 'Audited entity type, e.g. Document or Employee' })
+  @ApiProperty({
+    description: "Audited entity type, e.g. Document or Employee",
+  })
   entityType!: string;
 
-  @ApiProperty({ description: 'Audited entity id' })
+  @ApiProperty({ description: "Audited entity id" })
   entityId!: string;
 
   @ApiProperty({
     type: String,
     nullable: true,
     description:
-      'Return reason for DOCUMENT_RETURNED rows (taken from after.rejectionReason)',
+      "Return reason for DOCUMENT_RETURNED rows (taken from after.rejectionReason)",
   })
   rejectionReason!: string | null;
 
@@ -52,18 +55,18 @@ export class AuditLogItemDto {
     type: Number,
     nullable: true,
     description:
-      'Document version the action applied to (from after.version); null for non-document rows and legacy rows without a version',
+      "Document version the action applied to (from after.version); null for non-document rows and legacy rows without a version",
   })
   version!: number | null;
 
-  @ApiProperty({ format: 'date-time' })
+  @ApiProperty({ format: "date-time" })
   createdAt!: string;
 
   @ApiProperty({
     type: String,
     nullable: true,
     description:
-      'Frontend deep-link hint, e.g. /review/<id>; null when no route is known. The web client appends ?version=N for versioned rows.',
+      "Frontend deep-link hint, e.g. /review/<id>; null when no route is known. The web client appends ?version=N for versioned rows.",
   })
   linkHint!: string | null;
 }
@@ -75,12 +78,15 @@ export class AuditLogListDto {
   @ApiProperty({
     type: String,
     nullable: true,
-    description: 'Opaque cursor for the next page; null when exhausted',
+    description: "Opaque cursor for the next page; null when exhausted",
   })
   nextCursor!: string | null;
 }
 
 export class AuditLogQueryDto {
+  @QueryValues({ maxLength: 64, values: Object.values(AuditAction) })
+  actions?: AuditAction[];
+
   @ApiPropertyOptional({
     maxLength: 64,
     description: 'Filter by author uuid; the literal "me" means the caller',
@@ -92,17 +98,17 @@ export class AuditLogQueryDto {
 
   @ApiPropertyOptional({
     default: false,
-    description: 'When true, show only the caller actions',
+    description: "When true, show only the caller actions",
   })
   @IsOptional()
   @Transform(({ value }) => {
     const v = Array.isArray(value) ? value[0] : value;
-    return v === true || v === 1 || v === 'true' || v === '1';
+    return v === true || v === 1 || v === "true" || v === "1";
   })
   @IsBoolean()
   mine?: boolean;
 
-  @ApiPropertyOptional({ enum: AuditAction, enumName: 'AuditAction' })
+  @ApiPropertyOptional({ enum: AuditAction, enumName: "AuditAction" })
   @IsOptional()
   @IsEnum(AuditAction)
   action?: AuditAction;
@@ -128,7 +134,7 @@ export class AuditLogQueryDto {
   limit?: number;
 
   @ApiPropertyOptional({
-    description: 'Opaque cursor from a previous AuditLogListDto.nextCursor',
+    description: "Opaque cursor from a previous AuditLogListDto.nextCursor",
   })
   @IsOptional()
   @IsString()

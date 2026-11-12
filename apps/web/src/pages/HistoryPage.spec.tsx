@@ -1,0 +1,23 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { HistoryPage } from './HistoryPage';
+const state = vi.hoisted(() => ({ search: { actions: ['DOCUMENT_APPROVED', 'DOCUMENT_RETURNED'], entityId: 'existing-object' } as Record<string, unknown>, list: vi.fn(), navigate: vi.fn() }));
+vi.mock('@tanstack/react-router', () => ({ useSearch: () => state.search, useNavigate: () => state.navigate, Link: () => null }));
+vi.mock('@edo/api-client', () => { const empty = { data: { items: [], nextCursor: null }, isLoading: false }; return ({ useGetMe: () => ({ isSuccess: true, data: { permissions: { '20009': [] } } }), useListAuditLogs: (params: unknown) => { state.list(params); return empty; }, getListAuditLogsQueryKey: (params: unknown) => ['audit', params] }); });
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+let root: Root | undefined;
+let view: HTMLDivElement;
+afterEach(() => { if (root) act(() => root?.unmount()); root = undefined; view?.remove(); vi.useRealTimers(); vi.clearAllMocks(); });
+it('restores several actions and entityId from a deep link without erasing the entity filter', async () => {
+  vi.useFakeTimers();
+  view = document.createElement('div'); document.body.append(view); root = createRoot(view);
+  await act(async () => root?.render(<HistoryPage />));
+  await act(async () => vi.advanceTimersByTimeAsync(301));
+  expect(state.list).toHaveBeenLastCalledWith(expect.objectContaining({ actions: ['DOCUMENT_APPROVED', 'DOCUMENT_RETURNED'], entityId: 'existing-object' }));
+  expect(state.navigate).not.toHaveBeenCalled();
+  expect(view.querySelector('[role="combobox"]')?.textContent).toContain('ещё 1');
+  await act(async () => view.querySelector<HTMLButtonElement>('button[aria-label="Убрать Действие: Подтверждено"]')!.click());
+  const navigation = state.navigate.mock.calls.at(-1)![0];
+  expect(navigation.search(state.search)).toMatchObject({ actions: ['DOCUMENT_RETURNED'], entityId: 'existing-object', cursor: undefined });
+});

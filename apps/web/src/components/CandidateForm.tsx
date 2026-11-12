@@ -1,5 +1,7 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { findCurrentUserAsManager } from "../lib/manager-default";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
+  useGetMe,
   useListCandidateManagers,
   useListCatalogManagers,
   getListCatalogManagersQueryKey,
@@ -119,6 +121,8 @@ export function CandidateForm({
   onOpenCandidate?: (erpUid: string) => void;
   compact?: boolean;
 }) {
+  const me = useGetMe();
+  const managerTouched = useRef(false);
   const [fields, setFields] = useState(() => candidateFormFields(profile));
   const [personEnabled, setPersonEnabled] = useState(false);
   const [personSelection, setPersonSelection] = useState<string>();
@@ -146,6 +150,26 @@ export function CandidateForm({
           .includes(managerQuery.trim().toLocaleLowerCase("ru")),
       )
     : (managers.data?.items ?? []);
+  const defaultManagers = useListCandidateManagers();
+  const currentManager = findCurrentUserAsManager(
+    defaultManagers.data?.items ?? knownManagers.data?.items,
+    me.data,
+  );
+  useEffect(() => {
+    if (
+      profile ||
+      managerTouched.current ||
+      !currentManager ||
+      pending ||
+      locked
+    )
+      return;
+    setFields((previous) =>
+      previous.managerId
+        ? previous
+        : { ...previous, managerId: currentManager.id },
+    );
+  }, [profile, currentManager?.id, pending, locked]);
   const positions = useListCandidatePositions({
     q: positionQuery || undefined,
   });
@@ -307,6 +331,58 @@ export function CandidateForm({
             onChange={(event) => set("birthDate", event.target.value || null)}
           />
         </label>
+        <div className="space-y-1 text-sm">
+          <p>Ведущий менеджер</p>
+          <SearchSelect
+            label="Менеджер"
+            value={fields.managerId}
+            selectedLabel={
+              profile?.manager?.name ??
+              (fields.managerId === currentManager?.id
+                ? currentManager?.name
+                : undefined)
+            }
+            options={managerOptions.map((item) => ({
+              value: item.id,
+              label: item.name,
+            }))}
+            onSearchChange={setManagerQuery}
+            onChange={(value) => {
+              managerTouched.current = true;
+              set("managerId", value ?? null);
+            }}
+            isLoading={
+              useFallback ? knownManagers.isLoading : managers.isLoading
+            }
+            isError={
+              useFallback
+                ? knownManagers.isError
+                : managers.isError && !managers.data
+            }
+            onRetry={() => {
+              if (useFallback) void knownManagers.refetch();
+              else void managers.refetch();
+            }}
+            disabled={pending || locked}
+          />
+          {useFallback && !knownManagers.isError && (
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Менеджеры из ранее загруженных кандидатов: справочник 1С
+              недоступен, список может быть неполным.{" "}
+              <button
+                type="button"
+                className="text-[var(--primary)] underline"
+                onClick={() =>
+                  void managers.refetch().then((result) => {
+                    if (!result.isError) setManagerFallback(false);
+                  })
+                }
+              >
+                Повторить загрузку справочника
+              </button>
+            </p>
+          )}
+        </div>
         {profile && (
           <>
             <div className="space-y-1 text-sm">
@@ -326,52 +402,6 @@ export function CandidateForm({
                 onRetry={() => void positions.refetch()}
                 disabled={pending || locked}
               />
-            </div>
-            <div className="space-y-1 text-sm">
-              <p>Ведущий менеджер</p>
-              <SearchSelect
-                label="Менеджер"
-                value={fields.managerId}
-                selectedLabel={profile.manager?.name}
-                options={managerOptions.map((item) => ({
-                  value: item.id,
-                  label: item.name,
-                }))}
-                onSearchChange={setManagerQuery}
-                onChange={(value) => {
-                  set("managerId", value ?? null);
-                }}
-                isLoading={
-                  useFallback ? knownManagers.isLoading : managers.isLoading
-                }
-                isError={
-                  useFallback
-                    ? knownManagers.isError
-                    : managers.isError && !managers.data
-                }
-                onRetry={() => {
-                  if (useFallback) void knownManagers.refetch();
-                  else void managers.refetch();
-                }}
-                disabled={pending || locked}
-              />
-              {useFallback && !knownManagers.isError && (
-                <p className="text-xs text-[var(--muted-foreground)]">
-                  Менеджеры из ранее загруженных кандидатов: справочник 1С
-                  недоступен, список может быть неполным.{" "}
-                  <button
-                    type="button"
-                    className="text-[var(--primary)] underline"
-                    onClick={() =>
-                      void managers.refetch().then((result) => {
-                        if (!result.isError) setManagerFallback(false);
-                      })
-                    }
-                  >
-                    Повторить загрузку справочника
-                  </button>
-                </p>
-              )}
             </div>
             <div className="space-y-1 text-sm">
               <p>Объект</p>

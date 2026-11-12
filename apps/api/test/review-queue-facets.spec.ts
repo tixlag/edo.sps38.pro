@@ -247,10 +247,14 @@ describe("reviewCandidates", () => {
       distinct: ["candidateId"],
     });
     expect(candidateFind).toHaveBeenCalledWith({
-      where: { id: { in: ["c1", "c2"] }, fullName: { contains: "иван" } },
+      where: {
+        id: { in: ["c1", "c2"] },
+        fullName: { contains: "иван" },
+        AND: [{ fullName: { not: null }, NOT: { fullName: "" } }],
+      },
       select: { id: true, fullName: true },
-      orderBy: { fullName: "asc" },
-      take: 20,
+      orderBy: [{ fullName: "asc" }, { id: "asc" }],
+      take: 21,
     });
     expect(page).toEqual({ items: [{ id: "c1", fullName: "Иван Петров" }] });
   });

@@ -660,9 +660,9 @@ describe("arrival registry", () => {
   it("resolves a selected object name from its URL even outside the options page", async () => {
     state.search = { view: "arrivals", igLocationUid: "selected" };
     const view = await render();
-    expect(
-      (view.querySelector('[aria-label="Объект"]') as HTMLInputElement).value,
-    ).toBe("Склад Восток");
+    expect(view.querySelector('[aria-label="Объект"]')?.textContent).toContain(
+      "Склад Восток",
+    );
     expect(state.groupCalls).toContainEqual(
       expect.objectContaining({ locationUid: "selected" }),
     );

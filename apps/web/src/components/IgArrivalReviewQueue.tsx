@@ -1,3 +1,5 @@
+import { FilterBar } from "@edo/ui";
+import { filterValues } from "../lib/filter-values";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -13,7 +15,6 @@ import {
 import { Badge, Button, EmptyState } from "@edo/ui";
 import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { CandidateAvatar } from "./CandidateAvatar";
-import { SearchSelect } from "./SearchSelect";
 import { formatDateRu, formatLocalArrivalTime } from "../lib/date-format";
 import { parseIgRegistrySearch } from "../lib/ig-registry-search";
 
@@ -188,6 +189,12 @@ export function IgArrivalReviewQueue({
     dateTo: (search.igDateTo ??
       (defaultPeriod ? defaults.igDateTo : undefined)) as string | undefined,
     locationUid: search.igLocationUid as string | undefined,
+    locationUids: search.igLocationUids as string[] | undefined,
+    requirementsActions:
+      search.igRequirementsActions as CommonParams["requirementsActions"],
+    documentStatuses:
+      search.igDocumentStatuses as CommonParams["documentStatuses"],
+    documentStatus: search.igDocumentStatus as CommonParams["documentStatus"],
     requirementsAction:
       search.igRequirementsAction as CommonParams["requirementsAction"],
     needsAttention: search.igNeedsAttention === true ? true : undefined,
@@ -208,7 +215,8 @@ export function IgArrivalReviewQueue({
   const selectedLocationParams = {
     archive: common.archive,
     locationUid: common.locationUid,
-    limit: 1,
+    locationUids: common.locationUids,
+    limit: 100,
   };
   const selectedLocation = useListIgArrivalRegistryLocations(
     selectedLocationParams,
@@ -217,7 +225,8 @@ export function IgArrivalReviewQueue({
         queryKey: getListIgArrivalRegistryLocationsQueryKey(
           selectedLocationParams,
         ),
-        enabled: allowed && Boolean(common.locationUid),
+        enabled:
+          allowed && Boolean(common.locationUid || common.locationUids?.length),
       },
     },
   );
@@ -282,86 +291,115 @@ export function IgArrivalReviewQueue({
     );
   return (
     <div className={`space-y-3 ${className}`}>
-      <div className="flex flex-wrap items-end gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
-        <label className="flex min-w-56 flex-1 flex-col gap-1 text-xs font-medium">
+      <FilterBar
+        label="Фильтры заездов ИГ"
+        active={Boolean(
+          query || common.needsAttention || common.dateFrom || common.dateTo,
+        )}
+        onReset={() => {
+          setQuery("");
+          changeFilters({
+            igQ: undefined,
+            igLocationUids: undefined,
+            igLocationUid: undefined,
+            igRequirementsActions: undefined,
+            igRequirementsAction: undefined,
+            igDocumentStatuses: undefined,
+            igDocumentStatus: undefined,
+            igNeedsAttention: undefined,
+            igDateFrom: undefined,
+            igDateTo: undefined,
+            igPeriod: "all",
+          });
+        }}
+        filters={[
+          {
+            label: "Объект",
+            placeholder: "Все объекты",
+            value: filterValues(search, "igLocationUids", "igLocationUid"),
+            options: (locations.data?.items ?? []).map((item) => ({
+              value: item.locationUid,
+              label: item.locationName ?? "Без названия",
+            })),
+            selectedLabels: Object.fromEntries(
+              (selectedLocation.data?.items ?? []).map((item) => [
+                item.locationUid,
+                item.locationName ?? "Без названия",
+              ]),
+            ),
+            onSearchChange: setLocationQuery,
+            onChange: (values) =>
+              changeFilters({
+                igLocationUids: values,
+                igLocationUid: undefined,
+              }),
+            isLoading: locations.isLoading,
+            isError: locations.isError,
+            onRetry: () => void locations.refetch(),
+          },
+          {
+            label: "Что требуется",
+            placeholder: "Все действия",
+            value: filterValues(
+              search,
+              "igRequirementsActions",
+              "igRequirementsAction",
+            ),
+            options: Object.entries(requirementLabels).map(
+              ([value, label]) => ({ value, label }),
+            ),
+            onChange: (values) =>
+              changeFilters({
+                igRequirementsActions: values,
+                igRequirementsAction: undefined,
+                igDocumentStatus: undefined,
+                igDocumentStatuses: undefined,
+              }),
+          },
+        ]}
+      >
+        <label className="min-w-0 text-xs font-medium text-[var(--muted-foreground)]">
           Поиск по ФИО или коду 1С
           <input
-            className={inputClass}
+            className={`${inputClass} mt-1.5 h-10 w-full`}
             type="search"
             maxLength={128}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-medium">
-          Дата с
-          <input
-            className={inputClass}
-            type="date"
-            value={common.dateFrom ?? ""}
-            onChange={(e) =>
-              changeFilters({ igDateFrom: e.target.value, igPeriod: "custom" })
-            }
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium">
-          Дата по
-          <input
-            className={inputClass}
-            type="date"
-            value={common.dateTo ?? ""}
-            onChange={(e) =>
-              changeFilters({ igDateTo: e.target.value, igPeriod: "custom" })
-            }
-          />
-        </label>
-        <div className="flex min-w-48 flex-col gap-1 text-xs font-medium">
-          <span>Объект</span>
-          <SearchSelect
-            className="[&_input]:bg-[var(--card)]"
-            label="Объект"
-            placeholder="Все объекты"
-            value={common.locationUid}
-            selectedLabel={
-              selectedLocation.data?.items[0]?.locationName ?? undefined
-            }
-            options={(locations.data?.items ?? []).map((item) => ({
-              value: item.locationUid,
-              label: item.locationName ?? "Без названия",
-            }))}
-            onSearchChange={setLocationQuery}
-            onChange={(value) => changeFilters({ igLocationUid: value })}
-            isLoading={locations.isLoading}
-            isError={locations.isError}
-            onRetry={() => void locations.refetch()}
-            emptyText="Объект не найден"
-          />
-          {locations.data?.nextCursor && (
-            <span className="text-[var(--muted-foreground)]">
-              Уточните название для поиска остальных объектов.
-            </span>
-          )}
-        </div>
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium">
-          Что требуется
-          <select
-            className={inputClass}
-            value={common.requirementsAction ?? ""}
-            onChange={(e) =>
-              changeFilters({
-                igRequirementsAction: e.target.value,
-                igDocumentStatus: undefined,
-              })
-            }
-          >
-            <option value="">Все</option>
-            {Object.entries(requirementLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <fieldset className="min-w-0 sm:col-span-2">
+          <legend className="mb-1.5 text-xs font-medium text-[var(--muted-foreground)]">
+            Дата заезда
+          </legend>
+          <div className="flex items-center gap-2">
+            <input
+              className={`${inputClass} h-10 w-full`}
+              type="date"
+              aria-label="Дата с"
+              value={common.dateFrom ?? ""}
+              onChange={(event) =>
+                changeFilters({
+                  igDateFrom: event.target.value,
+                  igPeriod: "custom",
+                })
+              }
+            />
+            <span className="text-[var(--muted-foreground)]">—</span>
+            <input
+              className={`${inputClass} h-10 w-full`}
+              type="date"
+              aria-label="Дата по"
+              value={common.dateTo ?? ""}
+              onChange={(event) =>
+                changeFilters({
+                  igDateTo: event.target.value,
+                  igPeriod: "custom",
+                })
+              }
+            />
+          </div>
+        </fieldset>
         <label className="flex h-9 items-center gap-2 text-xs">
           <input
             type="checkbox"
@@ -387,7 +425,7 @@ export function IgArrivalReviewQueue({
         >
           <RefreshCw size={14} /> Обновить
         </Button>
-      </div>
+      </FilterBar>
       <Button
         size="sm"
         variant={!common.dateFrom && !common.dateTo ? "default" : "outline"}

@@ -1,3 +1,4 @@
+import { selectedValues } from "../common/query-values";
 import { safeArrivalCandidate } from "./ig-arrival-safe-binding.sql";
 import {
   BadRequestException,
@@ -33,6 +34,9 @@ type Filters = {
   dateFrom: string | null;
   dateTo: string | null;
   locationUid: string | null;
+  locationUids: string[];
+  requirementsActions: string[];
+  documentStatuses: string[];
   q: string | null;
   documentStatus: string | null;
   requirementsAction: string | null;
@@ -132,10 +136,24 @@ function filters(q: IgArrivalRegistryQueryDto): Filters {
     archive: q.archive ?? "current",
     dateFrom: q.dateFrom ?? null,
     dateTo: q.dateTo ?? null,
-    locationUid: q.locationUid?.toLowerCase() ?? null,
+    locationUid:
+      q.locationUids === undefined
+        ? (q.locationUid?.toLowerCase() ?? null)
+        : null,
+    locationUids: selectedValues(q.locationUids, q.locationUid)
+      .map((value) => value.toLowerCase())
+      .sort(),
+    requirementsActions: selectedValues(
+      q.requirementsActions,
+      q.requirementsAction,
+    ).sort(),
+    documentStatuses: selectedValues(
+      q.documentStatuses,
+      q.documentStatus,
+    ).sort(),
     q: q.q?.trim() || null,
-    documentStatus: q.documentStatus ?? null,
-    requirementsAction: q.requirementsAction ?? null,
+    documentStatus: null,
+    requirementsAction: null,
     needsAttention: q.needsAttention ?? null,
   };
 }
@@ -175,17 +193,48 @@ function cursor(
   group: string | null,
 ): string[] | null {
   if (!value) return null;
-  const v = decode(value, 1024);
+  const v = decode(value, 4096);
+  const legacyFilters = {
+    archive: f.archive,
+    dateFrom: f.dateFrom,
+    dateTo: f.dateTo,
+    locationUid: f.locationUids.length === 1 ? f.locationUids[0] : null,
+    q: f.q,
+    documentStatus:
+      f.documentStatuses.length === 1 ? f.documentStatuses[0] : null,
+    requirementsAction:
+      f.requirementsActions.length === 1 ? f.requirementsActions[0] : null,
+    needsAttention: f.needsAttention,
+  };
+  const legacyFingerprint = createHash("sha256")
+    .update(JSON.stringify([kind, legacyFilters, group]))
+    .digest("hex");
+  if (
+    Array.isArray(v) &&
+    v.length === 3 &&
+    v[0] === 1 &&
+    Array.isArray(v[2]) &&
+    v[2].length === (kind === "groups" ? 3 : 1) &&
+    v[2].every(
+      (item: unknown) => typeof item === "string" && item.length <= 128,
+    ) &&
+    v[1] === legacyFingerprint
+  )
+    return null;
   if (
     !Array.isArray(v) ||
     v.length !== 3 ||
-    v[0] !== 1 ||
+    ![1, 2].includes(v[0]) ||
     v[1] !== fingerprint(f, kind, group) ||
     !Array.isArray(v[2]) ||
-    v[2].length !== (kind === "groups" ? 3 : 1) ||
-    v[2].some((x: unknown) => typeof x !== "string" || x.length > 128)
+    v[2].length !==
+      (kind === "groups" || (kind === "participations" && v[0] === 2)
+        ? 3
+        : 1) ||
+    v[2].some((x: unknown) => typeof x !== "string" || x.length > 512)
   )
     throw new BadRequestException("Invalid registry cursor");
+  if (kind === "participations" && v[0] === 1) return null;
   return v[2] as string[];
 }
 const hasReturned = Prisma.sql`EXISTS (SELECT 1 FROM documents d WHERE d.candidateId=c.id AND d.status='RETURNED')`;
@@ -204,10 +253,10 @@ function base(f: Filters) {
     f.archive === "current"
       ? Prisma.sql`(m.cancelled=0 AND m.factsArchived=0)`
       : Prisma.sql`(m.cancelled=1 OR m.factsArchived=1)`;
-  return Prisma.sql`WHERE ${archive} ${f.dateFrom ? Prisma.sql`AND m.arrivalDate>=${f.dateFrom}` : Prisma.empty} ${f.dateTo ? Prisma.sql`AND m.arrivalDate<=${f.dateTo}` : Prisma.empty} ${f.locationUid ? Prisma.sql`AND m.locationUid=${f.locationUid}` : Prisma.empty}`;
+  return Prisma.sql`WHERE ${archive} ${f.dateFrom ? Prisma.sql`AND m.arrivalDate>=${f.dateFrom}` : Prisma.empty} ${f.dateTo ? Prisma.sql`AND m.arrivalDate<=${f.dateTo}` : Prisma.empty} ${f.locationUids.length ? Prisma.sql`AND m.locationUid IN (${Prisma.join(f.locationUids)})` : Prisma.empty}`;
 }
 function extra(f: Filters) {
-  return Prisma.sql`${f.q ? Prisma.sql`AND (LOCATE(${f.q},COALESCE(m.fullName,c.fullName,''))>0 OR LOCATE(${f.q},COALESCE(p.rawSourceCode1c,p.code1c))>0)` : Prisma.empty} ${f.documentStatus ? Prisma.sql`AND ${docStatus}=${f.documentStatus}` : Prisma.empty} ${f.needsAttention !== null ? Prisma.sql`AND ${problem}=${f.needsAttention ? 1 : 0}` : Prisma.empty} ${f.requirementsAction ? Prisma.sql`AND ${requirementsAction()}=${f.requirementsAction}` : Prisma.empty}`;
+  return Prisma.sql`${f.q ? Prisma.sql`AND (LOCATE(${f.q},COALESCE(m.fullName,c.fullName,''))>0 OR LOCATE(${f.q},COALESCE(p.rawSourceCode1c,p.code1c))>0)` : Prisma.empty} ${f.documentStatuses.length ? Prisma.sql`AND ${docStatus} IN (${Prisma.join(f.documentStatuses)})` : Prisma.empty} ${f.needsAttention !== null ? Prisma.sql`AND ${problem}=${f.needsAttention ? 1 : 0}` : Prisma.empty} ${f.requirementsActions.length ? Prisma.sql`AND ${requirementsAction()} IN (${Prisma.join(f.requirementsActions)})` : Prisma.empty}`;
 }
 const isIssues = Prisma.sql`(m.arrivalDate IS NULL OR m.locationUid IS NULL)`;
 const orderType = Prisma.sql`CASE WHEN ${isIssues} THEN '0' ELSE '1' END`;
@@ -229,12 +278,30 @@ export class IgArrivalRegistryService {
   private async sync() {
     const row = await this.prisma.igArrivalSyncState.findUnique({
       where: { id: "singleton" },
-      select: { completedAt: true, factsFinishedGeneration: true, factsScanIncomplete: true, lastScanHadErrors: true, cursor: true, lockExpiresAt: true },
+      select: {
+        completedAt: true,
+        factsFinishedGeneration: true,
+        factsScanIncomplete: true,
+        lastScanHadErrors: true,
+        cursor: true,
+        lockExpiresAt: true,
+      },
     });
-    const status = row?.factsScanIncomplete || row?.lastScanHadErrors ? "DEGRADED" as const
-      : row?.cursor || (row?.lockExpiresAt && row.lockExpiresAt > new Date()) ? "IN_PROGRESS" as const
-      : row?.factsFinishedGeneration != null ? "COMPLETE" as const : "NOT_STARTED" as const;
-    return { status, lastCompletedAt: row?.factsFinishedGeneration != null ? row.completedAt?.toISOString() ?? null : null };
+    const status =
+      row?.factsScanIncomplete || row?.lastScanHadErrors
+        ? ("DEGRADED" as const)
+        : row?.cursor || (row?.lockExpiresAt && row.lockExpiresAt > new Date())
+          ? ("IN_PROGRESS" as const)
+          : row?.factsFinishedGeneration != null
+            ? ("COMPLETE" as const)
+            : ("NOT_STARTED" as const);
+    return {
+      status,
+      lastCompletedAt:
+        row?.factsFinishedGeneration != null
+          ? (row.completedAt?.toISOString() ?? null)
+          : null,
+    };
   }
   async groups(
     principal: AuthPrincipal,
@@ -280,12 +347,13 @@ export class IgArrivalRegistryService {
     requireReviewGroup(principal, "IG");
     if (
       q.limit !== undefined &&
-      (!Number.isInteger(q.limit) || q.limit < 1 || q.limit > 50)
+      (!Number.isInteger(q.limit) || q.limit < 1 || q.limit > 100)
     )
       throw new BadRequestException("Invalid limit");
     const f = filters({
       archive: q.archive,
       locationUid: q.locationUid,
+      locationUids: q.locationUids,
       q: q.q,
     });
     const limit = q.limit ?? 20,
@@ -320,8 +388,10 @@ export class IgArrivalRegistryService {
         ? Prisma.sql`AND NOT ${isIssues} AND m.arrivalDate=${key.date} AND m.locationUid=${key.location}`
         : Prisma.sql`AND ${isIssues}`;
     const uid = Prisma.sql`COALESCE(m.arrivalMemberUid,CONCAT('~',p.personUid))`;
+    const name = Prisma.sql`COALESCE(NULLIF(TRIM(m.fullName),''),NULLIF(TRIM(c.fullName),''),'')`;
+    const unnamed = Prisma.sql`CASE WHEN ${name}='' THEN '1' ELSE '0' END`;
     const rows = await this.prisma.$queryRaw<ParticipationRow[]>(
-      Prisma.sql`SELECT m.arrivalMemberUid,p.personUid,COALESCE(p.rawSourceCode1c,p.code1c) AS code1c,c.id AS candidateId,COALESCE(m.fullName,c.fullName) AS fullName,COALESCE(c.citizenship,m.citizenship) AS citizenship,c.positionName,m.arrivalDate,m.arrivalDateTime,m.locationUid,m.locationName,m.factsIdentityIssue AS factIdentityIssue,m.latestSiteStatusCancelled,CASE WHEN m.arrivalMemberUid IS NULL THEN 'ISSUE' WHEN m.cancelled=1 THEN 'CANCELLED' WHEN m.factsArchived=1 THEN 'HISTORICAL' ELSE 'CURRENT' END AS participationStatus,p.state AS personState,${docStatus} AS documentStatus,${approvedCount} AS approvedDocuments,${confirmedCount} AS confirmedDocuments,CASE WHEN c.id IS NULL THEN 'UNKNOWN' WHEN ${approvedCount}=0 THEN 'NOT_REQUIRED' WHEN ${deliveryProblem} THEN 'NEEDS_ATTENTION' WHEN ${confirmedCount}<${approvedCount} THEN 'PENDING' ELSE 'CONFIRMED' END AS erpDeliveryStatus,CASE WHEN c.id IS NULL THEN 'UNKNOWN' WHEN c.igCompletionVerified=1 AND c.igCompletedAt IS NOT NULL THEN 'DOCUMENTS_COMPLETED' ELSE 'IN_PROGRESS' END AS employmentStatus,CASE WHEN ${problem} THEN 1 ELSE 0 END AS needsAttention,CASE WHEN m.latestSiteStatusCancelled=1 THEN 'ARRIVAL_SITE_STATUS_CANCELLED' WHEN p.bindingError IS NOT NULL THEN p.bindingError WHEN m.arrivalDate IS NULL OR m.locationUid IS NULL THEN 'ARRIVAL_GROUP_UNASSIGNED' WHEN c.igRequirementsConflict=1 THEN 'ERP_IG_REQUIREMENTS_CONFLICT' WHEN ${hasReturned} THEN 'DOCUMENT_RETURNED' WHEN ${deliveryProblem} THEN 'ERP_DELIVERY_NEEDS_ATTENTION' ELSE NULL END AS issueCode,p.revision AS sourceRevision,${requirementsKnown()} AS requirementsKnown, CASE WHEN ${deliveryProblem} THEN 1 ELSE 0 END AS deliveryNeedsAttention, req.requiredCount,req.presentCount,req.acceptedCount,req.reviewCount,req.returnedCount,req.missingCount,req.processingCount,req.attentionCount,${requirementsReviewAvailable} AS reviewAvailable,${requirementsAction()} AS requirementsAction ${common(f)} ${base(f)} ${selector} ${extra(f)} ${after ? Prisma.sql`AND ${uid}>${after[0]}` : Prisma.empty} ORDER BY ${uid} LIMIT ${limit + 1}`,
+      Prisma.sql`SELECT m.arrivalMemberUid,p.personUid,COALESCE(p.rawSourceCode1c,p.code1c) AS code1c,c.id AS candidateId,${name} AS fullName,COALESCE(c.citizenship,m.citizenship) AS citizenship,c.positionName,m.arrivalDate,m.arrivalDateTime,m.locationUid,m.locationName,m.factsIdentityIssue AS factIdentityIssue,m.latestSiteStatusCancelled,CASE WHEN m.arrivalMemberUid IS NULL THEN 'ISSUE' WHEN m.cancelled=1 THEN 'CANCELLED' WHEN m.factsArchived=1 THEN 'HISTORICAL' ELSE 'CURRENT' END AS participationStatus,p.state AS personState,${docStatus} AS documentStatus,${approvedCount} AS approvedDocuments,${confirmedCount} AS confirmedDocuments,CASE WHEN c.id IS NULL THEN 'UNKNOWN' WHEN ${approvedCount}=0 THEN 'NOT_REQUIRED' WHEN ${deliveryProblem} THEN 'NEEDS_ATTENTION' WHEN ${confirmedCount}<${approvedCount} THEN 'PENDING' ELSE 'CONFIRMED' END AS erpDeliveryStatus,CASE WHEN c.id IS NULL THEN 'UNKNOWN' WHEN c.igCompletionVerified=1 AND c.igCompletedAt IS NOT NULL THEN 'DOCUMENTS_COMPLETED' ELSE 'IN_PROGRESS' END AS employmentStatus,CASE WHEN ${problem} THEN 1 ELSE 0 END AS needsAttention,CASE WHEN m.latestSiteStatusCancelled=1 THEN 'ARRIVAL_SITE_STATUS_CANCELLED' WHEN p.bindingError IS NOT NULL THEN p.bindingError WHEN m.arrivalDate IS NULL OR m.locationUid IS NULL THEN 'ARRIVAL_GROUP_UNASSIGNED' WHEN c.igRequirementsConflict=1 THEN 'ERP_IG_REQUIREMENTS_CONFLICT' WHEN ${hasReturned} THEN 'DOCUMENT_RETURNED' WHEN ${deliveryProblem} THEN 'ERP_DELIVERY_NEEDS_ATTENTION' ELSE NULL END AS issueCode,p.revision AS sourceRevision,${requirementsKnown()} AS requirementsKnown, CASE WHEN ${deliveryProblem} THEN 1 ELSE 0 END AS deliveryNeedsAttention, req.requiredCount,req.presentCount,req.acceptedCount,req.reviewCount,req.returnedCount,req.missingCount,req.processingCount,req.attentionCount,${requirementsReviewAvailable} AS reviewAvailable,${requirementsAction()} AS requirementsAction ${common(f)} ${base(f)} ${selector} ${extra(f)} ${after ? Prisma.sql`AND (${unnamed}>${after[0]} OR (${unnamed}=${after[0]} AND (${name}>${after[1]} OR (${name}=${after[1]} AND ${uid}>${after[2]}))))` : Prisma.empty} ORDER BY ${unnamed},${name},${uid} LIMIT ${limit + 1}`,
     );
     const page = rows.slice(0, limit),
       last = page.at(-1);
@@ -393,9 +463,13 @@ export class IgArrivalRegistryService {
       nextCursor:
         rows.length > limit && last
           ? encode([
-              1,
+              2,
               fingerprint(f, "participations", q.groupKey),
-              [last.arrivalMemberUid ?? `~${last.personUid}`],
+              [
+                last.fullName?.trim() ? "0" : "1",
+                last.fullName?.trim() ?? "",
+                last.arrivalMemberUid ?? `~${last.personUid}`,
+              ],
             ])
           : null,
       sync: await this.sync(),

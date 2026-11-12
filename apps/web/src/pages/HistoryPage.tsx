@@ -1,5 +1,7 @@
+import { FilterBar } from "@edo/ui";
+import { filterValues } from "../lib/filter-values";
 import * as React from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   getListAuditLogsQueryKey,
   useGetMe,
@@ -114,6 +116,20 @@ function AuditLogList({
 }) {
   const profile = useGetMe();
   const navigate = useNavigate();
+  const raw = useSearch({ strict: false }) as Record<string, unknown>;
+  const updateFilters = (patch: Record<string, unknown>) =>
+    void navigate({
+      to: withTabs ? "/my-reviews" : "/history",
+      search: (previous: Record<string, unknown>) => ({
+        ...previous,
+        ...patch,
+        cursor: undefined,
+      }),
+    });
+  const actions = filterValues(raw, "actions", "action").filter((value) =>
+    ACTION_FILTERS.some((option) => option.value === value),
+  ) as NonNullable<ListAuditLogsParams["actions"]>;
+  const actionsKey = JSON.stringify(actions);
   const profileReady = profile.isSuccess;
   const canViewAll =
     profileReady &&
@@ -124,14 +140,21 @@ function AuditLogList({
       hasAccessRule(profile.data, 20002) ||
       hasAccessRule(profile.data, 20011));
 
-  const [scope, setScope] = React.useState<"mine" | "all">(
-    lockMine ? "mine" : "all",
-  );
+  const scope = lockMine || raw.scope === "mine" ? "mine" : "all";
+  const setScope = (value: "mine" | "all") => updateFilters({ scope: value });
   const [action, setAction] = React.useState<string>(
     withTabs ? REVIEW_TABS[0].value : "",
   );
-  const [entityId, setEntityId] = React.useState("");
-  const [debouncedEntityId, setDebouncedEntityId] = React.useState("");
+  const [entityId, setEntityId] = React.useState(
+    typeof raw.entityId === "string" ? raw.entityId : "",
+  );
+  React.useEffect(
+    () => setEntityId(typeof raw.entityId === "string" ? raw.entityId : ""),
+    [raw.entityId],
+  );
+  const [debouncedEntityId, setDebouncedEntityId] = React.useState(
+    typeof raw.entityId === "string" ? raw.entityId.trim() : "",
+  );
   const [cursor, setCursor] = React.useState<string | undefined>();
   const [items, setItems] = React.useState<AuditLogItem[]>([]);
 
@@ -164,7 +187,11 @@ function AuditLogList({
   React.useEffect(() => {
     setCursor(undefined);
     setItems([]);
-  }, [effectiveMine, action, debouncedEntityId]);
+  }, [effectiveMine, action, actionsKey, debouncedEntityId]);
+  React.useEffect(() => {
+    if (debouncedEntityId !== (raw.entityId ?? ""))
+      updateFilters({ entityId: debouncedEntityId || undefined });
+  }, [debouncedEntityId]);
 
   const resetPage = () => {
     setCursor(undefined);
@@ -173,7 +200,10 @@ function AuditLogList({
 
   const params: ListAuditLogsParams = {
     mine: effectiveMine ? true : undefined,
-    action: (action || undefined) as ListAuditLogsParams["action"],
+    action: (withTabs
+      ? action || undefined
+      : undefined) as ListAuditLogsParams["action"],
+    actions: withTabs || !actions.length ? undefined : actions,
     entityId: debouncedEntityId || undefined,
     limit: PAGE_LIMIT,
     cursor,
@@ -227,70 +257,87 @@ function AuditLogList({
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        {canViewAll && !lockMine && (
-          <>
-            <Button
-              variant={scope === "mine" ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setScope("mine");
-                resetPage();
-              }}
-            >
-              Мои
-            </Button>
-            <Button
-              variant={scope === "all" ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setScope("all");
-                resetPage();
-              }}
-            >
-              Все
-            </Button>
-          </>
-        )}
-        {withTabs ? (
-          REVIEW_TABS.map((tab) => (
-            <Button
-              key={tab.value}
-              variant={action === tab.value ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setAction(tab.value);
-                resetPage();
-              }}
-            >
-              {tab.label}
-            </Button>
-          ))
-        ) : (
-          <select
-            aria-label="Действие"
-            className={FILTER_CONTROL}
-            value={action}
-            onChange={(e) => {
-              setAction(e.target.value);
-              resetPage();
-            }}
-          >
-            {ACTION_FILTERS.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        )}
-        <input
-          aria-label="Поиск по entityId"
-          className={`${FILTER_CONTROL} min-w-[220px] flex-1`}
-          placeholder="Поиск по ID объекта…"
-          value={entityId}
-          onChange={(e) => setEntityId(e.target.value)}
-        />
-      </div>
+      <FilterBar
+        label="Фильтры истории"
+        active={Boolean(entityId)}
+        onReset={() => {
+          setEntityId("");
+          setDebouncedEntityId("");
+          updateFilters({
+            actions: undefined,
+            action: undefined,
+            entityId: undefined,
+          });
+          resetPage();
+        }}
+        filters={
+          withTabs
+            ? []
+            : [
+                {
+                  label: "Действие",
+                  placeholder: "Все действия",
+                  value: actions,
+                  options: ACTION_FILTERS.filter((option) => option.value).map(
+                    (option) => ({ value: option.value, label: option.label }),
+                  ),
+                  onChange: (values) => {
+                    updateFilters({ actions: values, action: undefined });
+                    resetPage();
+                  },
+                },
+              ]
+        }
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:col-span-2 xl:col-span-3">
+          {canViewAll && !lockMine && (
+            <>
+              <Button
+                variant={scope === "mine" ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setScope("mine");
+                  resetPage();
+                }}
+              >
+                Мои
+              </Button>
+              <Button
+                variant={scope === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setScope("all");
+                  resetPage();
+                }}
+              >
+                Все
+              </Button>
+            </>
+          )}
+          {withTabs
+            ? REVIEW_TABS.map((tab) => (
+                <Button
+                  key={tab.value}
+                  variant={action === tab.value ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setAction(tab.value);
+                    resetPage();
+                  }}
+                >
+                  {tab.label}
+                </Button>
+              ))
+            : null}
+          <input
+            aria-label="Поиск по entityId"
+            className={`${FILTER_CONTROL} h-10 min-w-0 w-full flex-1 sm:min-w-[220px]`}
+            placeholder="Поиск по ID объекта…"
+            value={entityId}
+            onChange={(e) => setEntityId(e.target.value)}
+          />
+        </div>
+      </FilterBar>
 
       {list.isLoading && items.length === 0 && (
         <Card>

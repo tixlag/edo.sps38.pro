@@ -1,3 +1,5 @@
+import type { ListCandidateReviewQueueParams } from "@edo/api-client";
+import { parseFilterValues } from "./filter-values";
 import type { DocumentStatus } from "@edo/api-client";
 import { formatDateRu } from "./date-format";
 export const LK_BASE_URL_FALLBACK = "https://lk.sps38.pro";
@@ -95,6 +97,16 @@ const REVIEW_TABS: ReviewTab[] = [
 ];
 
 export interface ReviewQueueFilters {
+  candidateIds?: string[];
+  statusIds?: string[];
+  documentTypeCodes?: string[];
+  citizenships?: string[];
+  positionCodes?: string[];
+  projectCodes?: string[];
+  mentorCodes1c?: string[];
+  managerKeys?: string[];
+  hasMentorValues?: ListCandidateReviewQueueParams["hasMentorValues"];
+
   status: ReviewTab;
   currentStatus?: DocumentStatus;
   managerName?: string;
@@ -155,6 +167,21 @@ export function parseReviewSearchParams(
     status: (REVIEW_TABS as string[]).includes(status)
       ? (status as ReviewTab)
       : defaultStatus,
+    candidateIds: parseFilterValues(raw.candidateIds),
+    statusIds: parseFilterValues(raw.statusIds),
+    documentTypeCodes: parseFilterValues(raw.documentTypeCodes),
+    citizenships: parseFilterValues(raw.citizenships),
+    positionCodes: parseFilterValues(raw.positionCodes),
+    projectCodes: parseFilterValues(raw.projectCodes),
+    mentorCodes1c: parseFilterValues(raw.mentorCodes1c),
+    managerKeys: parseFilterValues(raw.managerKeys),
+    hasMentorValues: parseFilterValues(raw.hasMentorValues)?.filter(
+      (
+        value,
+      ): value is NonNullable<
+        ListCandidateReviewQueueParams["hasMentorValues"]
+      >[number] => value === "true" || value === "false",
+    ),
     currentStatus: [
       "DRAFT",
       "UPLOADED",
@@ -196,24 +223,35 @@ export function parseReviewSearchParams(
 
 /** True when any server-side filter (besides status tab, cursor, drawer) is set. */
 export function hasActiveReviewFilters(filters: ReviewQueueFilters): boolean {
-  return Boolean(
-    filters.currentStatus ??
-    filters.managerName ??
-    (filters.managerUnassigned ? "unassigned" : undefined) ??
-    filters.candidateId ??
-    filters.statusId ??
-    filters.documentTypeCode ??
-    filters.citizenship ??
-    filters.managerCode1c ??
-    filters.managerId ??
-    filters.mentorCode1c ??
-    filters.birthDateFrom ??
-    filters.birthDateTo ??
-    filters.createdFrom ??
-    filters.createdTo ??
-    filters.positionCode ??
-    filters.projectCode ??
-    (filters.hasMentor !== undefined ? "hasMentor" : undefined),
+  return (
+    Boolean(filters.candidateIds?.length) ||
+    Boolean(filters.statusIds?.length) ||
+    Boolean(filters.documentTypeCodes?.length) ||
+    Boolean(filters.citizenships?.length) ||
+    Boolean(filters.positionCodes?.length) ||
+    Boolean(filters.projectCodes?.length) ||
+    Boolean(filters.mentorCodes1c?.length) ||
+    Boolean(filters.managerKeys?.length) ||
+    Boolean(filters.hasMentorValues?.length) ||
+    Boolean(
+      filters.currentStatus ??
+      filters.managerName ??
+      (filters.managerUnassigned ? "unassigned" : undefined) ??
+      filters.candidateId ??
+      filters.statusId ??
+      filters.documentTypeCode ??
+      filters.citizenship ??
+      filters.managerCode1c ??
+      filters.managerId ??
+      filters.mentorCode1c ??
+      filters.birthDateFrom ??
+      filters.birthDateTo ??
+      filters.createdFrom ??
+      filters.createdTo ??
+      filters.positionCode ??
+      filters.projectCode ??
+      (filters.hasMentor !== undefined ? "hasMentor" : undefined),
+    )
   );
 }
 
@@ -239,7 +277,7 @@ export function canUploadCandidatePhoto(
     const isRu = Boolean(
       (candidate.chatUuid && candidate.chatUuid.trim()) ||
       (candidate.citizenship &&
-        candidate.citizenship.trim().toLowerCase() === "ru")
+        candidate.citizenship.trim().toLowerCase() === "ru"),
     );
     group = isRu ? "RU" : "IG";
   }
@@ -250,4 +288,3 @@ export function canUploadCandidatePhoto(
     return Object.prototype.hasOwnProperty.call(permissions, "20011");
   }
 }
-

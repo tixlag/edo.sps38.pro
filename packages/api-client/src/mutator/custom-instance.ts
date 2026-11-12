@@ -3,6 +3,7 @@ import Axios, { type AxiosRequestConfig } from 'axios';
 export const AXIOS_INSTANCE = Axios.create({
   baseURL: 'http://localhost:3001',
   withCredentials: true,
+  paramsSerializer: { indexes: null },
 });
 
 /** Called once at web bootstrap with `import.meta.env.VITE_API_BASE_URL`. */

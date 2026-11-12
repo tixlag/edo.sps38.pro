@@ -6,6 +6,55 @@
         "operationId": "listAuditLogs",
         "parameters": [
           {
+            "name": "actions",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "EMPLOYEE_CREATED",
+                  "DOCUMENT_UPLOADED",
+                  "DOCUMENT_UPLOAD_STARTED",
+                  "DOCUMENT_UPLOAD_FAILED",
+                  "DOCUMENT_OCR_COMPLETED",
+                  "DOCUMENT_FIELDS_UPDATED",
+                  "CANDIDATE_LINKED",
+                  "DOCUMENT_RETURNED",
+                  "DOCUMENT_APPROVED",
+                  "DOCUMENT_ERP_SEND_REQUESTED",
+                  "DOCUMENT_ERP_SEND_COMPLETED",
+                  "DOCUMENT_SIGNED",
+                  "WORKFLOW_STAGE_CHANGED",
+                  "DATA_IMPORTED",
+                  "LK_REFERENCE_SYNCED",
+                  "LK_EVENT_APPLIED",
+                  "COMMUNICATION_REQUESTED",
+                  "COMMUNICATION_COMPLETED",
+                  "DOCUMENT_OCR_RETRIED",
+                  "DOCUMENT_OCR_REQUESTED",
+                  "ANNOTATION_CATALOG_CHANGED",
+                  "ANNOTATION_PREFERENCE_CHANGED",
+                  "ANNOTATION_CLAIMED",
+                  "ANNOTATION_SAVED",
+                  "ANNOTATION_SUBMITTED",
+                  "ANNOTATION_ACCEPTED",
+                  "ANNOTATION_CHANGES_REQUESTED",
+                  "ANNOTATION_REASSIGNED",
+                  "CONTRACT_CREATED",
+                  "CONTRACT_FILE_REPLACED",
+                  "CONTRACT_SENT",
+                  "CONTRACT_CONFIRMED",
+                  "CONTRACT_DECLINED",
+                  "CONTRACT_PREPARATION_FAILED"
+                ]
+              }
+            }
+          },
+          {
             "name": "actorId",
             "required": false,
             "in": "query",
@@ -206,6 +255,36 @@
       "get": {
         "operationId": "getDashboard",
         "parameters": [
+          {
+            "name": "reviewGroups",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "RU",
+                  "IG"
+                ]
+              }
+            }
+          },
+          {
+            "name": "managerKeys",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
           {
             "name": "reviewGroup",
             "required": false,
@@ -6125,6 +6204,19 @@
         "operationId": "listIgArrivalRegistryLocations",
         "parameters": [
           {
+            "name": "locationUids",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
             "name": "archive",
             "required": false,
             "in": "query",
@@ -6161,7 +6253,7 @@
             "in": "query",
             "schema": {
               "minimum": 1,
-              "maximum": 50,
+              "maximum": 100,
               "default": 20,
               "type": "number"
             }
@@ -6171,7 +6263,7 @@
             "required": false,
             "in": "query",
             "schema": {
-              "maxLength": 1024,
+              "maxLength": 4096,
               "type": "string"
             }
           }
@@ -6294,6 +6386,61 @@
         "operationId": "listIgArrivalRegistryGroups",
         "parameters": [
           {
+            "name": "locationUids",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "requirementsActions",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "REVIEW",
+                  "RETURNED",
+                  "ATTENTION",
+                  "PROCESSING",
+                  "MISSING",
+                  "COMPLETE",
+                  "UNKNOWN"
+                ]
+              }
+            }
+          },
+          {
+            "name": "documentStatuses",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "NO_DOCUMENTS",
+                  "IN_PROGRESS",
+                  "RETURNED",
+                  "APPROVED"
+                ]
+              }
+            }
+          },
+          {
             "name": "archive",
             "required": false,
             "in": "query",
@@ -6398,7 +6545,7 @@
             "required": false,
             "in": "query",
             "schema": {
-              "maxLength": 1024,
+              "maxLength": 4096,
               "type": "string"
             }
           }
@@ -6521,6 +6668,61 @@
         "operationId": "listIgArrivalRegistryParticipations",
         "parameters": [
           {
+            "name": "locationUids",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "requirementsActions",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "REVIEW",
+                  "RETURNED",
+                  "ATTENTION",
+                  "PROCESSING",
+                  "MISSING",
+                  "COMPLETE",
+                  "UNKNOWN"
+                ]
+              }
+            }
+          },
+          {
+            "name": "documentStatuses",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "NO_DOCUMENTS",
+                  "IN_PROGRESS",
+                  "RETURNED",
+                  "APPROVED"
+                ]
+              }
+            }
+          },
+          {
             "name": "archive",
             "required": false,
             "in": "query",
@@ -6625,7 +6827,7 @@
             "required": false,
             "in": "query",
             "schema": {
-              "maxLength": 1024,
+              "maxLength": 4096,
               "type": "string"
             }
           },
@@ -7124,6 +7326,127 @@
             }
           },
           {
+            "name": "candidateIds",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "statusIds",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "documentTypeCodes",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "citizenships",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "positionCodes",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "projectCodes",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "mentorCodes1c",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "managerKeys",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "hasMentorValues",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "true",
+                  "false"
+                ]
+              }
+            }
+          },
+          {
             "name": "currentStatus",
             "required": false,
             "in": "query",
@@ -7457,6 +7780,127 @@
             "in": "query",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "candidateIds",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "statusIds",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "documentTypeCodes",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "citizenships",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "positionCodes",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "projectCodes",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "mentorCodes1c",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "managerKeys",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "hasMentorValues",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "true",
+                  "false"
+                ]
+              }
             }
           },
           {
@@ -16849,6 +17293,71 @@
               "maximum": 100,
               "default": 50,
               "type": "number"
+            }
+          },
+          {
+            "name": "statusIds",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "positionCodes",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "projectCodes",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "mentorCodes1c",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "managerKeys",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           {

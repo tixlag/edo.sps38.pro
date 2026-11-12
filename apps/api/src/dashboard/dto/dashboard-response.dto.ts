@@ -1,3 +1,4 @@
+import { QueryValues, MANAGER_KEY_PATTERN } from "../../common/query-values";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { DocumentStatus } from "@prisma/client";
 import { Transform } from "class-transformer";
@@ -98,6 +99,11 @@ export class DashboardAttentionDto {
     | "IG";
 }
 export class DashboardQueryDto {
+  @QueryValues({ maxLength: 2, values: ["RU", "IG"] })
+  reviewGroups?: Array<"RU" | "IG">;
+  @QueryValues({ maxLength: 517, pattern: MANAGER_KEY_PATTERN })
+  managerKeys?: string[];
+
   @ApiPropertyOptional({
     enum: ["RU", "IG", "ALL"],
     description: "Default: all permitted review groups",

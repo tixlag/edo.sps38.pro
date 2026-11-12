@@ -9,11 +9,18 @@ import {
 } from "./CandidateForm";
 import type { CandidateWorkspaceDto } from "@edo/api-client";
 
-const state = vi.hoisted(() => ({ submit: vi.fn() }));
+const state = vi.hoisted(() => ({
+  submit: vi.fn(),
+  managers: [] as { id: string; name: string }[],
+}));
 vi.mock("@edo/api-client", () => {
   const empty = { data: { items: [] }, isLoading: false, isError: false };
   return {
-    useListCandidateManagers: () => empty,
+    useGetMe: () => ({ data: { fullName: "Текущий менеджер" } }),
+    useListCandidateManagers: () => ({
+      ...empty,
+      data: { items: state.managers },
+    }),
     useListCatalogManagers: () => empty,
     getListCatalogManagersQueryKey: () => ["catalog-managers"],
     useListCandidatePositions: () => empty,
@@ -29,6 +36,7 @@ afterEach(() => {
   if (root) act(() => root.unmount());
   container?.remove();
   vi.clearAllMocks();
+  state.managers = [];
 });
 
 describe("CandidateForm", () => {
@@ -47,7 +55,9 @@ describe("CandidateForm", () => {
         />,
       ),
     );
-    expect(container.querySelector('input[aria-label="Менеджер"]')).toBeNull();
+    expect(
+      container.querySelector('input[aria-label="Менеджер"]'),
+    ).not.toBeNull();
     expect(container.querySelector('input[aria-label="Должность"]')).toBeNull();
     expect(
       container.querySelector<HTMLInputElement>('input[type="date"]')?.required,
@@ -108,4 +118,69 @@ describe("CandidateForm", () => {
     ).toContain("Обратитесь к администратору 1С");
     expect(candidateError({})).toContain("Сначала проверьте результат");
   });
+});
+
+async function renderCreation() {
+  if (!container?.isConnected) {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+  }
+  await act(async () =>
+    root.render(
+      <CandidateForm
+        pending={false}
+        locked={false}
+        error=""
+        onSubmit={state.submit}
+        onCancel={vi.fn()}
+      />,
+    ),
+  );
+}
+async function sendCreation() {
+  await act(async () =>
+    container
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+  );
+  return state.submit.mock.calls.at(-1)![0];
+}
+it("applies the current manager when their directory arrives and sends managerId on creation", async () => {
+  await renderCreation();
+  expect(
+    (container.querySelector('[aria-label="Менеджер"]') as HTMLInputElement)
+      .value,
+  ).toBe("");
+  state.managers = [{ id: "self", name: "Текущий менеджер" }];
+  await renderCreation();
+  expect(
+    (container.querySelector('[aria-label="Менеджер"]') as HTMLInputElement)
+      .value,
+  ).toBe("Текущий менеджер");
+  expect((await sendCreation()).managerId).toBe("self");
+});
+it("does not overwrite a manually selected or cleared manager when the directory refreshes", async () => {
+  state.managers = [{ id: "other", name: "Другой менеджер" }];
+  await renderCreation();
+  await act(async () =>
+    container
+      .querySelector<HTMLInputElement>('[aria-label="Менеджер"]')!
+      .focus(),
+  );
+  await act(async () =>
+    container.querySelector<HTMLElement>('[role="option"]')!.click(),
+  );
+  state.managers = [
+    ...state.managers,
+    { id: "self", name: "Текущий менеджер" },
+  ];
+  await renderCreation();
+  expect((await sendCreation()).managerId).toBe("other");
+  const clear = [...container.querySelectorAll("button")].find((button) =>
+    button.getAttribute("aria-label")?.includes("Очистить"),
+  )!;
+  await act(async () => clear.click());
+  await renderCreation();
+  expect((await sendCreation()).managerId).toBeNull();
 });

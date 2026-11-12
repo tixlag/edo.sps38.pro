@@ -1,3 +1,4 @@
+import { QueryValues, MANAGER_KEY_PATTERN } from "../common/query-values";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import {
@@ -42,6 +43,17 @@ export class CommunicationQueryDto {
   limit?: number;
 }
 export class CommunicationCandidatesQueryDto extends CommunicationQueryDto {
+  @QueryValues({ maxLength: 128 })
+  statusIds?: string[];
+  @QueryValues({ maxLength: 64 })
+  positionCodes?: string[];
+  @QueryValues({ maxLength: 64 })
+  projectCodes?: string[];
+  @QueryValues({ maxLength: 64 })
+  mentorCodes1c?: string[];
+  @QueryValues({ maxLength: 517, pattern: MANAGER_KEY_PATTERN })
+  managerKeys?: string[];
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
