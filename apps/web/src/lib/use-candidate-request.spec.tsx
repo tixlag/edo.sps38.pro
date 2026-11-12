@@ -24,6 +24,11 @@ beforeEach(() => {
 afterEach(() => act(() => root.unmount()));
 describe("candidate operation recovery", () => {
   it.each([
+    [
+      "INVALID_PERSON_MATCH_NAME",
+      "обновление интеграции с карточками кандидатов",
+    ],
+    ["REQUIRED_FIELD_MISSING", "обновление интеграции с карточками кандидатов"],
     ["SOURCE_COMMENT_REQUIRED", "комментарий"],
     ["SOURCE_REFERRER_REQUIRED", "физлицо"],
     ["INTERNSHIP_END_DATE_REQUIRED", "окончания практики"],

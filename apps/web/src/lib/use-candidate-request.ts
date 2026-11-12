@@ -6,6 +6,10 @@ import {
 } from "@edo/api-client";
 
 const candidateMessages: Record<string, string> = {
+  INVALID_PERSON_MATCH_NAME:
+    "ERP не приняла проверку совпадений. Проверьте обновление интеграции с карточками кандидатов у администратора 1С.",
+  REQUIRED_FIELD_MISSING:
+    "ERP требует дополнительные поля. Для создания по ФИО, телефону и дате рождения требуется обновление интеграции с карточками кандидатов. Обратитесь к администратору 1С.",
   CANDIDATE_DUPLICATE_REQUIRES_REVIEW:
     "В ERP найдены похожие кандидаты. Откройте подходящую карточку. Если это другой человек, подтвердите это у совпадения.",
   EXISTING_PERSON_REQUIRES_EXPLICIT_SELECTION:

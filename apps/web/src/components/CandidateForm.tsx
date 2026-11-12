@@ -14,10 +14,10 @@ import {
 } from "@edo/api-client";
 import { Button } from "@edo/ui";
 import { SearchSelect } from "./SearchSelect";
-import { CandidatePersonPicker } from "./CandidatePersonPicker";
 import { CandidateExpandedFields } from "./CandidateExpandedFields";
 import { formatBirthDateRu } from "../lib/review-groups";
 import { candidateRelatedFieldValidation } from "../lib/candidate-related-fields";
+import { candidateError } from "../lib/use-candidate-request";
 export {
   candidateError,
   useCandidateRequest,
@@ -124,7 +124,6 @@ export function CandidateForm({
   const me = useGetMe();
   const managerTouched = useRef(false);
   const [fields, setFields] = useState(() => candidateFormFields(profile));
-  const [personEnabled, setPersonEnabled] = useState(false);
   const [personSelection, setPersonSelection] = useState<string>();
   const [selectedPersonUid, setSelectedPersonUid] = useState<string>();
   const [ignoredSelections, setIgnoredSelections] = useState<string[]>([]);
@@ -187,7 +186,7 @@ export function CandidateForm({
     !profile &&
     identity === identityQuery &&
     (matchName.length >= 3 ||
-      (fields.phone ?? "").replace(/\D/g, "").length >= 7);
+      (fields.phone ?? "").replace(/\D/g, "").length >= 10);
   const matchParams = {
     scope: "creation" as const,
     fullName: matchName || undefined,
@@ -201,6 +200,12 @@ export function CandidateForm({
       refetchOnWindowFocus: false,
     },
   });
+  const duplicateCheckComplete =
+    canCheckPerson &&
+    possiblePersons.data !== undefined &&
+    !possiblePersons.isLoading &&
+    !possiblePersons.isFetching &&
+    !possiblePersons.isError;
   const matchingPersons = canCheckPerson
     ? (possiblePersons.data?.items ?? [])
     : [];
@@ -280,9 +285,7 @@ export function CandidateForm({
     if (
       !profile &&
       !locked &&
-      ((personEnabled && !personSelection) ||
-        unresolvedCandidates ||
-        unresolvedPersons)
+      (!duplicateCheckComplete || unresolvedCandidates || unresolvedPersons)
     )
       return;
     onSubmit(fields, personSelection, ignoredSelections);
@@ -441,12 +444,23 @@ export function CandidateForm({
             Проверяем ФИО и телефон. Если кандидат уже есть в ERP, откройте его
             карточку. Статус сохранится; вернуть в «Подбор» можно вручную.
           </p>
-          {canCheckPerson && possiblePersons.isLoading && (
-            <p role="status">Проверка совпадений…</p>
-          )}
+          {!duplicateCheckComplete &&
+            !(canCheckPerson && possiblePersons.isError) &&
+            (matchName.length >= 3 ||
+              (fields.phone ?? "").replace(/\D/g, "").length >= 10) && (
+              <p role="status">Проверка совпадений…</p>
+            )}
+          {duplicateCheckComplete &&
+            matchingCandidates.length === 0 &&
+            matchingPersons.length === 0 && (
+              <p role="status">
+                Совпадений в ERP не найдено. Можно создать кандидата.
+              </p>
+            )}
           {canCheckPerson && possiblePersons.isError && (
             <p role="alert" className="text-sm text-[var(--danger)]">
               Не удалось проверить совпадения.{" "}
+              {candidateError(possiblePersons.error)}{" "}
               <button
                 type="button"
                 className="underline"
@@ -560,7 +574,6 @@ export function CandidateForm({
                         disabled={pending || locked}
                         onChange={() => {
                           selectPerson(person.id, person.personUid);
-                          setPersonEnabled(false);
                         }}
                       />
                       Подтверждаю: это нужный человек
@@ -580,27 +593,6 @@ export function CandidateForm({
                 </div>
               ))}
             </div>
-          )}
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              aria-label="Выбрать другое физлицо"
-              checked={personEnabled}
-              disabled={pending || locked}
-              onChange={(event) => {
-                setPersonEnabled(event.target.checked);
-                selectPerson(undefined);
-              }}
-            />
-            Найти физлицо вручную
-          </label>
-          {personEnabled && (
-            <CandidatePersonPicker
-              key={identity}
-              disabled={pending || locked}
-              onChange={selectPerson}
-              onOpenCandidate={onOpenCandidate}
-            />
           )}
         </section>
       )}
@@ -628,7 +620,7 @@ export function CandidateForm({
             (!locked && (sourcePersonMissing || relatedErrors.length > 0)) ||
             (!profile &&
               !locked &&
-              ((personEnabled && !personSelection) ||
+              (!duplicateCheckComplete ||
                 unresolvedCandidates ||
                 unresolvedPersons))
           }
