@@ -14,8 +14,14 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
   let stopped = false;
   const documentIds = new Set<string>();
   const candidateIds = new Set<string>();
+  const profileIds = new Set<string>();
   const schedule = () => {
-    if (!stopped && !flushing && !timer && documentIds.size)
+    if (
+      !stopped &&
+      !flushing &&
+      !timer &&
+      (documentIds.size || profileIds.size)
+    )
       timer = setTimeout(() => void flush(), 100);
   };
   const flush = async () => {
@@ -24,8 +30,10 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
     flushing = true;
     const documents = new Set(documentIds);
     const candidates = new Set(candidateIds);
+    const profiles = new Set(profileIds);
     documentIds.clear();
     candidateIds.clear();
+    profileIds.clear();
     try {
       await client.invalidateQueries(
         {
@@ -42,7 +50,16 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
             const candidate = /^\/api\/v1\/candidates\/([^/]+)(?:\/|$)/.exec(
               path,
             );
-            if (candidate) return candidates.has(candidate[1]);
+            if (candidate)
+              return candidates.has(candidate[1]) || profiles.has(candidate[1]);
+            if (
+              profiles.size &&
+              /^\/api\/v1\/(?:review-candidates|review-documents|candidate-review-queue|dashboard|candidates)(?:\/|$)/.test(
+                path,
+              )
+            )
+              return true;
+            if (!documents.size) return false;
             return (
               /^\/api\/v1\/(?:candidate-review-queue|review-documents|review-candidates|dashboard)(?:\/|$)/.test(
                 path,
@@ -63,6 +80,8 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
   };
   const fingerprint = (document: DocumentDto) =>
     JSON.stringify({ ...document, candidate: undefined });
+  const candidateFingerprint = (document: DocumentDto) =>
+    JSON.stringify(document.candidate);
   const mark = (document: DocumentDto) => {
     documentIds.add(document.id);
     if (document.candidateId) candidateIds.add(document.candidateId);
@@ -76,6 +95,13 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
         if (!old || fingerprint(old) !== fingerprint(document)) {
           mark(document);
           if (old) mark(old);
+        }
+        if (
+          old &&
+          candidateFingerprint(old) !== candidateFingerprint(document)
+        ) {
+          if (old.candidateId) profileIds.add(old.candidateId);
+          if (document.candidateId) profileIds.add(document.candidateId);
         }
       }
       for (const old of previous.values()) if (!next.has(old.id)) mark(old);

@@ -124,6 +124,7 @@ export function CandidatePreviousDocumentCard({
       ? documentDeliveryPresentation(
           currentDocument.status,
           currentDocument.deliveryStatus,
+          currentDocument.deliveredHistorically,
         )
       : null;
   const isCompact =

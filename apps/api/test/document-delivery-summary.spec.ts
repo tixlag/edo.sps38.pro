@@ -33,6 +33,19 @@ describe("document delivery summaries", () => {
               },
             ],
           },
+          {
+            id: "previous",
+            status: "APPROVED",
+            currentVersion: 1,
+            documentType: { code: "SNILS", title: "СНИЛС", erpUid: "snils" },
+            versions: [{
+              version: 1,
+              status: "APPROVED",
+              ocrSource: "PREVIOUS_LINK",
+              ocrRaw: { source: "ERP" },
+              delivery: null,
+            }],
+          },
         ]),
       },
     };
@@ -46,7 +59,9 @@ describe("document delivery summaries", () => {
       status: "APPROVED",
       deliveryStatus: "REQUIRES_MANUAL",
       deliveryErrorReason: "1С отклонила файл",
+      deliveredHistorically: false,
     });
+    expect(items[1]).toMatchObject({ deliveryStatus: null, deliveryErrorReason: null, deliveredHistorically: true });
     expect(JSON.stringify(items[0])).not.toContain("PRIVATE_ERROR");
     expect(JSON.stringify(items[0])).not.toContain("ERP_HTTP_422");
   });
@@ -75,10 +90,16 @@ describe("document delivery summaries", () => {
         { version: 2, delivery: status ? { status } : null },
       ],
     });
+    const previousLinked = (id: string, raw: Record<string, unknown>) => ({
+      candidateId: "c",
+      documentTypeId: id,
+      currentVersion: 1,
+      versions: [{ version: 1, delivery: null, ocrSource: "PREVIOUS_LINK", ocrRaw: raw }],
+    });
     const prisma = {
       document: {
         groupBy: vi.fn().mockResolvedValue(
-          ["license", "tachograph", "inn", "other"].map((documentTypeId) => ({
+          ["license", "tachograph", "inn", "other", "previous", "unconfirmed"].map((documentTypeId) => ({
             candidateId: "c",
             documentTypeId,
             status: "APPROVED",
@@ -92,6 +113,8 @@ describe("document delivery summaries", () => {
             deliveryDoc("tachograph", "REQUIRES_MANUAL"),
             deliveryDoc("inn", null),
             deliveryDoc("other", "PENDING"),
+            previousLinked("previous", { source: "ERP" }),
+            previousLinked("unconfirmed", { source: "EDO" }),
           ]),
       },
       documentType: {
@@ -102,6 +125,8 @@ describe("document delivery summaries", () => {
             type("tachograph", false),
             type("inn", false),
             type("other", false),
+            type("previous", false),
+            type("unconfirmed", false),
           ]),
       },
       candidatePreviousDocument: {
@@ -136,7 +161,7 @@ describe("document delivery summaries", () => {
       [profile],
     );
     expect(profile.stageProgress?.[0]).toMatchObject({
-      deliveryProblemCount: 2,
+      deliveryProblemCount: 3,
       required: { approved: 1 },
     });
     expect(prisma.document.findMany).toHaveBeenCalledOnce();

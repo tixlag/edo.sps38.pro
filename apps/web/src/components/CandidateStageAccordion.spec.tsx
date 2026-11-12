@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type {
   CandidateDocumentSummaryDto,
@@ -189,6 +189,47 @@ describe("CandidateStageAccordion", () => {
     });
 
     expect(onReviewDocument).toHaveBeenCalledWith("d2", 1);
+  });
+
+  it("keeps multiple stages independently open and makes closed content inert", async () => {
+    function Pair() {
+      const [open, setOpen] = useState<Record<number, boolean>>({});
+      const stage = (number: number) => (
+        <CandidateStageAccordion
+          stage={number}
+          title={`Этап ${number}`}
+          required={{ documents: [], missingDocuments: [{ code: `DOC${number}`, title: `Документ ${number}` }] }}
+          additional={{ documents: [], missingDocuments: [] }}
+          previousDocuments={[]}
+          candidateId="candidate"
+          isOpen={!!open[number]}
+          onToggle={() => setOpen((previous) => ({ ...previous, [number]: !previous[number] }))}
+        />
+      );
+      return <>{stage(2)}{stage(7)}</>;
+    }
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root?.render(<Pair />));
+    const panels = [...container.querySelectorAll<HTMLElement>('div[id^="stage-content-"]')];
+    expect(panels).toHaveLength(2);
+    expect(panels[0].inert).toBe(true);
+    expect(panels[0].getAttribute("aria-hidden")).toBe("true");
+    expect(panels[0].className).toContain("duration-[250ms]");
+    expect(panels[0].className).toContain("motion-reduce:transition-none");
+
+    const headers = [...container.querySelectorAll<HTMLButtonElement>("button[aria-controls]")];
+    await act(async () => headers[0].click());
+    expect(headers[0].getAttribute("aria-expanded")).toBe("true");
+    expect(panels[0].inert).toBe(false);
+    await act(async () => headers[1].click());
+    expect(headers[1].getAttribute("aria-expanded")).toBe("true");
+    await act(async () => headers[0].click());
+    expect(headers[0].getAttribute("aria-expanded")).toBe("false");
+    expect(headers[1].getAttribute("aria-expanded")).toBe("true");
+    expect(panels[0].inert).toBe(true);
+    expect(panels[1].inert).toBe(false);
   });
 
   it("renders inline StageRing with progress when provided, without duplicate counters in header", async () => {

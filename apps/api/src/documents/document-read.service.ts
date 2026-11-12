@@ -89,6 +89,8 @@ const documentSummaryInclude = {
       reviewedBy: true,
       job: { select: { status: true, errorCode: true } },
       delivery: { select: { status: true, errorCode: true } },
+      ocrSource: true,
+      ocrRaw: true,
       submission: { select: { origin: true } },
     },
   },
@@ -121,6 +123,16 @@ const versionInclude = {
     include: { attempts: { orderBy: { startedAt: "desc" as const } } },
   },
 } satisfies Prisma.DocumentVersionInclude;
+
+function isHistoricallyDelivered(
+  version:
+    | { ocrSource: string | null; ocrRaw: Prisma.JsonValue | null }
+    | undefined,
+): boolean {
+  if (version?.ocrSource !== "PREVIOUS_LINK" || !version.ocrRaw) return false;
+  const raw = version.ocrRaw as Prisma.JsonObject;
+  return raw.source === "ERP" || raw.deliveredHistorically === true;
+}
 
 function comparableDate(value: string): string | null {
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -246,6 +258,7 @@ export class DocumentReadService {
     d: Prisma.DocumentGetPayload<{ include: typeof documentSummaryInclude }>,
   ): CandidateDocumentSummaryDto {
     const current = d.versions.find((v) => v.version === d.currentVersion);
+    const deliveredHistorically = isHistoricallyDelivered(current);
     const returned = d.versions
       .filter((v) => v.status === "RETURNED")
       .sort((a, b) => b.version - a.version)
@@ -274,12 +287,14 @@ export class DocumentReadService {
       title: d.documentType?.title ?? "Документ",
       documentUid: d.documentType?.erpUid ?? null,
       deliveryStatus: current?.delivery?.status ?? null,
-      deliveryErrorReason: erpDeliveryReason(current?.delivery?.errorCode),
+      deliveryErrorReason: deliveredHistorically ? null : erpDeliveryReason(current?.delivery?.errorCode),
+      deliveredHistorically,
       pendingDeliveryVersions: d.versions
         .filter(
           (v) =>
             v.delivery &&
-            ["REQUIRES_MANUAL", "WAITING_CONTRACT"].includes(v.delivery.status),
+            ["REQUIRES_MANUAL", "WAITING_CONTRACT"].includes(v.delivery.status) &&
+            !isHistoricallyDelivered(v),
         )
         .map((v) => v.version)
         .sort((a, b) => b - a),
@@ -808,6 +823,7 @@ export class DocumentReadService {
         ),
       uploadOrigin: row.submission?.origin,
       ocrSource: row.ocrSource,
+      deliveredHistorically: isHistoricallyDelivered(row),
       files: row.files.map((f) => ({
         id: f.id,
         ordinal: f.ordinal,
@@ -1800,13 +1816,15 @@ export class DocumentReadService {
           candidateId: true,
           documentTypeId: true,
           currentVersion: true,
-          versions: { select: { version: true, delivery: { select: { status: true } } } },
+          versions: { select: { version: true, delivery: { select: { status: true } }, ocrSource: true, ocrRaw: true } },
         },
       }),
     ]);
     const deliveryProblems = new Map<string, Set<string>>();
     for (const doc of deliveryDocuments) {
-      const delivery = doc.versions.find(v => v.version === doc.currentVersion)?.delivery;
+      const current = doc.versions.find(v => v.version === doc.currentVersion);
+      const delivery = current?.delivery;
+      if (isHistoricallyDelivered(current)) continue;
       if (!doc.candidateId || !doc.documentTypeId || ["SENT", "PENDING", "SENDING"].includes(delivery?.status ?? "")) continue;
       const types = deliveryProblems.get(doc.candidateId) ?? new Set<string>();
       types.add(doc.documentTypeId);

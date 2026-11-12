@@ -4,12 +4,15 @@ import type { DocumentStatus } from "@edo/api-client";
 export function documentDeliveryPresentation(
   status: DocumentStatus,
   deliveryStatus: string | null | undefined,
+  deliveredHistorically = false,
 ): {
   label: string;
   tone: "success" | "info" | "danger" | "warning";
   problem: boolean;
 } | null {
   if (status !== "APPROVED" && status !== "SIGNED") return null;
+  if (deliveredHistorically)
+    return { label: "Ранее сохранён в ERP", tone: "success", problem: false };
   switch (deliveryStatus) {
     case "SENT":
       return { label: "Сохранён в ERP", tone: "success", problem: false };

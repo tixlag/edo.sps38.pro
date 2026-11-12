@@ -23,6 +23,7 @@ const doc = (id: string, candidateId: string, revision = 1) =>
     currentVersion: 1,
     status: "APPROVED",
     deliveryStatus: "SENT",
+    candidate: { id: candidateId, fullName: "Candidate" },
   }) as DocumentDto;
 describe("document snapshot cache updates", () => {
   let client: QueryClient, stop: () => void;
@@ -115,5 +116,26 @@ describe("document snapshot cache updates", () => {
     stop();
     await vi.advanceTimersByTimeAsync(1000);
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes changed candidate profiles and lists without refetching document binaries", async () => {
+    const candidate = observe("/api/v1/candidates/ca");
+    const list = observe("/api/v1/review-candidates");
+    const document = observe("/api/v1/documents/a/versions/1");
+    const binary = observe("/api/v1/documents/a/versions/1/files/f/file");
+    transport.receive!({
+      items: [
+        {
+          ...doc("a", "ca"),
+          candidate: { id: "ca", fullName: "Updated name", photoKey: "p2" },
+        } as unknown as DocumentDto,
+        doc("b", "cb"),
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(candidate).toHaveBeenCalledTimes(1);
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(document).not.toHaveBeenCalled();
+    expect(binary).not.toHaveBeenCalled();
   });
 });

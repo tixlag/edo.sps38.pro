@@ -851,6 +851,8 @@ export interface DocumentDto {
    * @nullable
    */
   deliveryErrorReason?: string | null;
+  /** Current version was previously delivered to ERP through a confirmed PREVIOUS_LINK */
+  deliveredHistorically?: boolean;
   /** @nullable */
   reviewGroup: DocumentDtoReviewGroup;
   /** @nullable */
@@ -1238,6 +1240,8 @@ export interface DocumentVersionDto {
   revision: number;
   /** @nullable */
   ocrSource: DocumentVersionDtoOcrSource;
+  /** Version was previously delivered to ERP through a confirmed PREVIOUS_LINK */
+  deliveredHistorically?: boolean;
   files: DocumentFileDto[];
   fields: DocumentFieldDto[];
   ocrFields: DocumentOcrFieldDto[];
@@ -1349,6 +1353,8 @@ export interface CandidateDocumentSummaryDto {
    * @nullable
    */
   deliveryErrorReason?: string | null;
+  /** Current version was previously delivered to ERP through a confirmed PREVIOUS_LINK */
+  deliveredHistorically?: boolean;
 }
 
 export type PreviousDocumentAvailabilityState =

@@ -75,6 +75,25 @@ vi.mock("@edo/api-client", () => ({
         },
         documents: state.documents,
         previousDocuments: state.previousDocuments,
+        stages: [
+          {
+            stage: 1,
+            title: "Этап 1",
+            required: {
+              documents: [{
+                id: "doc2",
+                title: "СНИЛС",
+                status: "IN_REVIEW",
+                currentVersion: 2,
+                pendingDeliveryVersions: [],
+                returnedVersions: [],
+              }],
+              missingDocuments: [{ code: "passport", title: "Паспорт" }],
+            },
+            additional: { documents: [], missingDocuments: [] },
+            previousDocuments: [],
+          },
+        ],
         ...(params?.stage
           ? {
               stageDocuments: {
@@ -123,6 +142,8 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 URL.createObjectURL = vi.fn(() => "blob:erp-original");
 URL.revokeObjectURL = vi.fn();
 it("keeps the chat and candidate data visible while selecting a document stage", async () => {
+  state.search = {};
+  state.calls = [];
   const node = document.createElement("div");
   document.body.append(node);
   const root = createRoot(node);
@@ -144,7 +165,7 @@ it("keeps the chat and candidate data visible while selecting a document stage",
   await act(async () => root.render(<CandidateWorkspacePage />));
   expect(state.search.stage).toBe("1");
   expect(state.search.document).toBeUndefined();
-  expect(state.calls).toContainEqual({ stage: "1" });
+  expect(state.calls).not.toContainEqual({ stage: "1" });
   expect(node.textContent).toContain("Паспорт");
   expect(node.textContent).toContain("Не загружен");
   expect(node.textContent).toContain("Ожидает проверки");
@@ -245,12 +266,14 @@ it("renders informative collapsed state with candidate initials and status dot w
 
 it("shows synchronization instead of temporary empty documents and counters until ERP is ready", async () => {
   state.search = { stage: "1" };
+  state.calls = [];
   state.candidate = { reviewGroup: "RU", requiredDocuments: 0, approvedDocuments: 0 };
   state.enrichment = { status: "PENDING", profileReady: false, documentsReady: false };
   state.request.mockClear();
   const node = document.createElement("div"); document.body.append(node);
   const root = createRoot(node);
   await act(async () => root.render(<CandidateWorkspacePage />));
+  expect(state.calls).toContainEqual({ stage: "1" });
   const panel = node.querySelector('[aria-label="Документы кандидата"]')!;
   expect(panel.textContent).toContain("Синхронизация профиля и документов");
   expect(panel.textContent).not.toMatch(/Документы отсутствуют|Не загружен|0 из 0|0\/0|Документы \(0\)/);

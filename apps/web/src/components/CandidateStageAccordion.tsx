@@ -5,6 +5,7 @@ import type {
   ReturnedDocumentVersionDto,
   ReviewStageProgressDto,
 } from "@edo/api-client";
+import { useLayoutEffect, useRef, useState } from "react";
 import { StageRing } from "./StageRing";
 import { cn } from "@edo/ui";
 import { AlertTriangle, ChevronDown, Layers } from "lucide-react";
@@ -61,6 +62,23 @@ export function CandidateStageAccordion({
   onOpenPrevious,
   className,
 }: CandidateStageAccordionProps) {
+  const [hasOpened, setHasOpened] = useState(isOpen);
+  const [panelOpen, setPanelOpen] = useState(isOpen);
+  const openFrame = useRef<number | undefined>(undefined);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    cancelAnimationFrame(openFrame.current ?? 0);
+    if (!isOpen) {
+      setPanelOpen(false);
+      return;
+    }
+    setHasOpened(true);
+    openFrame.current = requestAnimationFrame(() => setPanelOpen(true));
+    return () => cancelAnimationFrame(openFrame.current ?? 0);
+  }, [isOpen]);
+  useLayoutEffect(() => {
+    if (panelRef.current) panelRef.current.inert = !isOpen;
+  }, [isOpen, hasOpened]);
   // Calculate progress: confirmed/reused vs total required
   const approvedRequired = required.documents.filter(
     (d) => d.status === "APPROVED" || d.status === "SIGNED",
@@ -358,12 +376,16 @@ export function CandidateStageAccordion({
         )}
       </div>
 
-      {/* Accordion Content */}
-      {isOpen && (
-        <div
-          id={`stage-content-${stage ?? "none"}`}
-          className="space-y-4 border-t border-[var(--border)]/60 px-3.5 pb-4 pt-3 sm:px-4 sm:pb-4"
-        >
+      {/* Keep opened contents mounted so they can animate closed. */}
+      <div
+        ref={panelRef}
+        id={`stage-content-${stage ?? "none"}`}
+        aria-hidden={!isOpen}
+        className="grid transition-[grid-template-rows] duration-[250ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+        style={{ gridTemplateRows: panelOpen ? "1fr" : "0fr" }}
+      >
+        <div className="min-h-0 overflow-hidden">
+        {hasOpened && <div className="space-y-4 border-t border-[var(--border)]/60 px-3.5 pb-4 pt-3 sm:px-4 sm:pb-4">
           {/* Required documents */}
           {allRequiredCards.length > 0 ? (
             <section aria-label="Обязательные документы" className="space-y-2">
@@ -424,8 +446,9 @@ export function CandidateStageAccordion({
               </div>
             </section>
           )}
+        </div>}
         </div>
-      )}
+      </div>
     </div>
   );
 }

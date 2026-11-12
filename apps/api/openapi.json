@@ -19251,6 +19251,11 @@
             "nullable": true,
             "description": "Safe explanation of the current version ERP delivery failure, without technical codes or response bodies"
           },
+          "deliveredHistorically": {
+            "type": "boolean",
+            "description": "Current version was previously delivered to ERP through a confirmed PREVIOUS_LINK",
+            "default": false
+          },
           "reviewGroup": {
             "type": "string",
             "enum": [
@@ -19981,6 +19986,11 @@
               "EXTERNAL"
             ]
           },
+          "deliveredHistorically": {
+            "type": "boolean",
+            "description": "Version was previously delivered to ERP through a confirmed PREVIOUS_LINK",
+            "default": false
+          },
           "files": {
             "type": "array",
             "items": {
@@ -20260,6 +20270,11 @@
             "type": "string",
             "nullable": true,
             "description": "Safe explanation of the current version ERP delivery failure, without technical codes or response bodies"
+          },
+          "deliveredHistorically": {
+            "type": "boolean",
+            "description": "Current version was previously delivered to ERP through a confirmed PREVIOUS_LINK",
+            "default": false
           }
         },
         "required": [

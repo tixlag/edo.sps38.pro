@@ -277,6 +277,8 @@ export class DocumentVersionDto extends DocumentReviewMetadataDto {
   @ApiProperty() revision!: number;
   @ApiProperty({ type: String, nullable: true, enum: ["STUB", "EXTERNAL"] })
   ocrSource!: string | null;
+  @ApiPropertyOptional({ description: "Version was previously delivered to ERP through a confirmed PREVIOUS_LINK", default: false })
+  deliveredHistorically?: boolean;
   @ApiProperty({ type: [DocumentFileDto] }) files!: DocumentFileDto[];
   @ApiProperty({ type: [DocumentFieldDto] }) fields!: DocumentFieldDto[];
   @ApiProperty({ type: [DocumentOcrFieldDto] })
@@ -426,6 +428,8 @@ export class CandidateDocumentSummaryDto extends DocumentReviewMetadataDto {
   @ApiProperty({ type: String, nullable: true }) deliveryStatus!: string | null;
   @ApiPropertyOptional({ type: String, nullable: true, description: "Safe explanation of the current version ERP delivery failure, without technical codes or response bodies" })
   deliveryErrorReason?: string | null;
+  @ApiPropertyOptional({ description: "Current version was previously delivered to ERP through a confirmed PREVIOUS_LINK", default: false })
+  deliveredHistorically?: boolean;
 }
 export class DocumentDto extends CandidateDocumentSummaryDto {
   @ApiProperty({ enum: ["RU", "IG"], nullable: true })

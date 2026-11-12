@@ -69,6 +69,7 @@ function CandidateDocumentReview({
   const delivery = documentDeliveryPresentation(
     version.data.status,
     version.data.delivery?.status,
+    version.data.deliveredHistorically,
   );
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-auto lg:overflow-hidden">
@@ -102,13 +103,15 @@ function CandidateDocumentReview({
           </select>
         </label>
       </div>
-      {(version.data.uploadOrigin === "REVIEWER" || version.data.delivery) && (
+      {(version.data.uploadOrigin === "REVIEWER" || version.data.delivery || version.data.deliveredHistorically) && (
         <div
           role="status"
           className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg bg-[var(--muted)] p-2 text-sm"
         >
           <span>
-            {version.data.delivery?.status === "SENT"
+            {version.data.deliveredHistorically
+              ? "Документ ранее подтверждён в ERP. Повторная отправка не требуется."
+              : version.data.delivery?.status === "SENT"
               ? "Сохранён в ERP"
               : ["PENDING", "SENDING"].includes(
                     version.data.delivery?.status ?? "",
@@ -120,7 +123,7 @@ function CandidateDocumentReview({
                     ? "Проверьте результат OCR, сохраните исправления и подтвердите отправку в ERP."
                     : "OCR недоступен. Заполните поля вручную и подтвердите отправку в ERP."}
           </span>
-          {!historic && version.data.delivery?.status === "REQUIRES_MANUAL" && (
+          {!historic && !version.data.deliveredHistorically && version.data.delivery?.status === "REQUIRES_MANUAL" && (
             <>
               {version.data.delivery.errorReason && (
                 <span className="font-medium text-[var(--foreground)]">
