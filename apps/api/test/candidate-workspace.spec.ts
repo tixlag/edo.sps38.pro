@@ -56,6 +56,39 @@ it("validates partial edits without making omitted ERP fields mandatory", async 
     ),
   ).toHaveLength(0);
 });
+it("allows minimal creation but still requires a real date of birth", async () => {
+  const minimal = {
+    requestId: randomUUID(),
+    fields: {
+      fullName: fields.fullName,
+      phone: fields.phone,
+      birthDate: fields.birthDate,
+    },
+  };
+  expect(
+    await validate(plainToInstance(CreateCandidateDto, minimal)),
+  ).toHaveLength(0);
+  for (const birthDate of [undefined, null, "2025-02-30"]) {
+    expect(
+      await validate(
+        plainToInstance(CreateCandidateDto, {
+          ...minimal,
+          fields: { ...minimal.fields, birthDate },
+        }),
+      ),
+    ).not.toHaveLength(0);
+  }
+});
+it("permits unchanged null birth date on an old card patch", async () => {
+  expect(
+    await validate(
+      plainToInstance(UpdateCandidateDto, {
+        requestId: randomUUID(),
+        fields: { birthDate: null, phone: fields.phone },
+      }),
+    ),
+  ).toHaveLength(0);
+});
 const db = process.env.EDO_TEST_DATABASE_URL;
 if (db && !/^mysql:\/\/root:isolated-test@127\.0\.0\.1:3308\/edo$/.test(db))
   throw new Error("Refuse non-isolated DB");

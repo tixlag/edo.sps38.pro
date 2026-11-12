@@ -14,9 +14,15 @@ import {
   useGetMe,
   type CandidateWorkspaceDto,
   type CandidateProfileDto,
-  type CandidateFieldsDto,
+  type CandidatePatchFieldsDto,
 } from "@edo/api-client";
-import { Badge, Button, EmptyState, StatusBadge } from "@edo/ui";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  StatusBadge,
+  FullScreenDialog,
+} from "@edo/ui";
 import {
   Briefcase,
   Camera,
@@ -167,44 +173,49 @@ function useConfirmedCandidate(candidateId: string) {
 function EditCandidate({
   profile,
   onClose,
-  compact,
 }: {
   profile: CandidateWorkspaceDto;
   onClose: () => void;
-  compact?: boolean;
 }) {
   const [initial] = useState(() => candidateFormFields(profile));
   const mutation = useUpdateCandidateWorkspace();
   const request = useCandidateRequest();
   const confirmed = useConfirmedCandidate(profile.id);
-  const submit = async (fields: CandidateFieldsDto) => {
+  const submit = async (fields: CandidatePatchFieldsDto) => {
     const changed = candidateChangedFields(initial, fields);
     if (!Object.keys(changed).length) {
       onClose();
       return;
     }
-    request.begin();
-    try {
-      const saved = await mutation.mutateAsync({
-        candidateId: profile.id,
-        data: { requestId: request.requestId, fields: changed },
-      });
-      await confirmed(saved);
-      onClose();
-    } catch (error) {
-      request.fail(error);
-    }
+    const data = { requestId: request.requestId, fields: changed };
+    await request.execute(
+      () => mutation.mutateAsync({ candidateId: profile.id, data }),
+      async (saved) => {
+        await confirmed(saved);
+        onClose();
+      },
+    );
   };
   return (
-    <CandidateForm
-      profile={profile}
-      compact={compact}
-      pending={mutation.isPending}
-      locked={request.locked}
-      error={request.error}
-      onSubmit={(fields) => void submit(fields)}
-      onCancel={onClose}
-    />
+    <FullScreenDialog
+      title={`Редактирование · ${profile.fullName}`}
+      closeLabel="Закрыть редактирование"
+      onClose={() => {
+        if (!request.locked && !mutation.isPending) onClose();
+      }}
+    >
+      <div className="mx-auto w-full max-w-5xl py-4 sm:px-6">
+        <CandidateForm
+          profile={profile}
+          pending={mutation.isPending || request.checking}
+          locked={request.locked}
+          retryBlocked={request.blocked}
+          error={request.error}
+          onSubmit={(fields) => void submit(fields)}
+          onCancel={onClose}
+        />
+      </div>
+    </FullScreenDialog>
   );
 }
 
@@ -236,25 +247,22 @@ function CandidateStatus({
       onSubmit={(event) => {
         event.preventDefault();
         if (!selected || selected.editable === false) return;
-        request.begin();
-        void mutation
-          .mutateAsync({
-            candidateId: profile.id,
-            data: {
-              requestId: request.requestId,
-              statusId,
-              ...(comment.trim() ? { comment: comment.trim() } : {}),
-              ...(selected.requiresProject ? { projectCode } : {}),
-              ...(selected.requiresPlannedArrivalDate
-                ? { plannedArrivalDate }
-                : {}),
-            },
-          })
-          .then(async (saved) => {
+        const data = {
+          requestId: request.requestId,
+          statusId,
+          ...(comment.trim() ? { comment: comment.trim() } : {}),
+          ...(selected.requiresProject ? { projectCode } : {}),
+          ...(selected.requiresPlannedArrivalDate
+            ? { plannedArrivalDate }
+            : {}),
+        };
+        void request.execute(
+          () => mutation.mutateAsync({ candidateId: profile.id, data }),
+          async (saved) => {
             await confirmed(saved);
             onClose();
-          })
-          .catch(request.fail);
+          },
+        );
       }}
     >
       <p className="text-sm text-[var(--muted-foreground)]">
@@ -364,6 +372,8 @@ function CandidateStatus({
           type="submit"
           disabled={
             mutation.isPending ||
+            request.checking ||
+            request.blocked ||
             !selected ||
             selected.editable === false ||
             (selected.requiresProject && !projectCode)
@@ -371,8 +381,8 @@ function CandidateStatus({
         >
           {mutation.isPending
             ? "Сохранение…"
-            : request.error
-              ? "Повторить изменение статуса"
+            : request.error && request.locked
+              ? "Проверить результат изменения статуса"
               : "Сохранить статус"}
         </Button>
         <Button
@@ -402,29 +412,19 @@ function CandidatePersonLink({
   const savedProfile = useConfirmedCandidate(profile.id);
   return (
     <form
-      aria-label={
-        profile.linkedPerson
-          ? "Подтверждение связи с физлицом"
-          : "Повторный приём"
-      }
+      aria-label="Связывание с физлицом"
       className="space-y-3"
       onSubmit={(event) => {
         event.preventDefault();
         if (!personSelection) return;
-        request.begin();
-        void mutation
-          .mutateAsync({
-            candidateId: profile.id,
-            data: {
-              requestId: request.requestId,
-              personSelection,
-            },
-          })
-          .then(async (saved) => {
+        const data = { requestId: request.requestId, personSelection };
+        void request.execute(
+          () => mutation.mutateAsync({ candidateId: profile.id, data }),
+          async (saved) => {
             await savedProfile(saved);
             onClose();
-          })
-          .catch(request.fail);
+          },
+        );
       }}
     >
       <p className="text-sm text-[var(--muted-foreground)]">
@@ -441,11 +441,19 @@ function CandidatePersonLink({
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2 pt-1">
-        <Button type="submit" disabled={mutation.isPending || !personSelection}>
+        <Button
+          type="submit"
+          disabled={
+            mutation.isPending ||
+            request.checking ||
+            request.blocked ||
+            !personSelection
+          }
+        >
           {mutation.isPending
             ? "Связывание…"
-            : request.error
-              ? "Повторить связывание"
+            : request.error && request.locked
+              ? "Проверить результат связывания"
               : "Связать с текущим кандидатом"}
         </Button>
         <Button
@@ -464,7 +472,6 @@ function CandidatePersonLink({
 
 export function CandidateManagement({
   candidateId,
-  compact = false,
   fallbackProfile,
 }: {
   candidateId: string;
@@ -556,28 +563,22 @@ export function CandidateManagement({
                 <Pencil size={13} />
                 <span>Редактировать данные</span>
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setAction("person")}
-                className="w-full justify-center gap-1.5 h-8 text-xs font-medium"
-              >
-                <UserCheck size={13} />
-                <span className="truncate">
-                  {profile.linkedPerson
-                    ? "Подтвердить связь с физлицом"
-                    : "Повторный приём"}
-                </span>
-              </Button>
+              {!profile.linkedPerson && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setAction("person")}
+                  className="w-full justify-center gap-1.5 h-8 text-xs font-medium"
+                >
+                  <UserCheck size={13} />
+                  <span className="truncate">Выбрать физлицо</span>
+                </Button>
+              )}
             </div>
           </div>
         )}
         {action === "edit" && (
-          <EditCandidate
-            profile={profile}
-            compact={compact}
-            onClose={() => setAction(null)}
-          />
+          <EditCandidate profile={profile} onClose={() => setAction(null)} />
         )}
         {action === "status" && (
           <CandidateStatus profile={profile} onClose={() => setAction(null)} />
@@ -739,9 +740,18 @@ export function CandidateManagement({
                     Связь с физлицом
                   </dt>
                   <dd className="break-words font-medium text-[var(--foreground)]">
-                    {profile.linkedPerson
-                      ? "Указана в ERP"
-                      : "Пока не установлена"}
+                    {profile.person ? (
+                      <>
+                        {profile.person.name} ·{" "}
+                        {formatBirthDateRu(profile.person.birthDate) ||
+                          "Дата рождения не указана"}
+                        {profile.person.code ? ` · ${profile.person.code}` : ""}
+                      </>
+                    ) : profile.linkedPerson ? (
+                      "Указана в ERP"
+                    ) : (
+                      "Пока не установлена"
+                    )}
                   </dd>
                 </div>
                 <div className="min-w-0">
@@ -759,6 +769,12 @@ export function CandidateManagement({
                   </dd>
                 </div>
               </dl>
+              {profile.linkedPerson && (
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  Если связь с физлицом неверна, обратитесь к администратору
+                  1С для её исправления.
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -807,9 +823,7 @@ export function CandidateManagement({
           </ol>
         )}
       </section>
-      {profile.linkedPerson && (
-        <CandidatePreviousDocuments candidateId={candidateId} />
-      )}
+      <CandidatePreviousDocuments candidateId={candidateId} />
       <CandidatePhotoUploadDialog
         candidateId={candidateId}
         fullName={profile.fullName}

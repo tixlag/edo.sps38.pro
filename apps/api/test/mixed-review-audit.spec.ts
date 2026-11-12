@@ -32,6 +32,7 @@ const matches = (
     );
   });
 const candidate = (citizenship: string, locationId: number | null) => ({
+  reviewGroup: null,
   chatUuid: null,
   citizenship,
   locationId,

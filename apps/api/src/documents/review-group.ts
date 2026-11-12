@@ -18,9 +18,11 @@ export const IG_PASSPORT_OCR_NAMES: Record<string, string> = {
 };
 
 export function candidateReviewGroup(candidate: {
+  reviewGroup?: ReviewGroup | null;
   chatUuid: string | null;
   citizenship: string | null;
 }): ReviewGroup {
+  if (candidate.reviewGroup) return candidate.reviewGroup;
   return candidate.chatUuid?.trim() ||
     candidate.citizenship?.trim().toLowerCase() === "ru"
     ? "RU"
@@ -28,7 +30,11 @@ export function candidateReviewGroup(candidate: {
 }
 
 export function isForeignPassport(document: {
-  candidate: { chatUuid: string | null; citizenship: string | null } | null;
+  candidate: {
+    reviewGroup?: ReviewGroup | null;
+    chatUuid: string | null;
+    citizenship: string | null;
+  } | null;
   documentType: { code: string; erpUid: string | null } | null;
 }): boolean {
   const type = document.documentType;
@@ -45,14 +51,23 @@ export function isForeignPassport(document: {
 export function reviewGroupWhere(
   group: ReviewGroup,
 ): Prisma.CandidateWhereInput {
-  return group === "RU"
-    ? { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] }
-    : {
-        AND: [
-          { chatUuid: null },
-          { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
-        ],
-      };
+  return {
+    OR: [
+      { reviewGroup: group },
+      group === "RU"
+        ? {
+            reviewGroup: null,
+            OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }],
+          }
+        : {
+            reviewGroup: null,
+            AND: [
+              { chatUuid: null },
+              { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
+            ],
+          },
+    ],
+  };
 }
 
 export function canReviewGroup(

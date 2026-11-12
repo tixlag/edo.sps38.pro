@@ -25,7 +25,7 @@ describe("Candidate ERP linking & auto-healing", () => {
       positionCode: "000000013",
       positionName: "Машинист экскаватора",
       reviewGroup: "RU",
-      _count: { documents: 0 },
+      _count: { documents: 0, previousDocuments: 0 },
     };
 
     const realCandidate = {
@@ -43,7 +43,7 @@ describe("Candidate ERP linking & auto-healing", () => {
       positionCode: "000000013",
       positionName: "Машинист экскаватора",
       reviewGroup: null,
-      _count: { documents: 5 },
+      _count: { documents: 5, previousDocuments: 0 },
     };
 
     const tx = {
@@ -65,7 +65,9 @@ describe("Candidate ERP linking & auto-healing", () => {
       reviewGroup: "RU",
     });
 
-    expect(tx.candidate.delete).toHaveBeenCalledWith({ where: { id: "ghost-1" } });
+    expect(tx.candidate.delete).toHaveBeenCalledWith({
+      where: { id: "ghost-1" },
+    });
     expect(tx.candidate.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "real-1" },
@@ -198,7 +200,7 @@ describe("Candidate ERP linking & auto-healing", () => {
       chatUuid: null,
       statusId: "status-test",
       managerId: "mgr-test",
-      _count: { documents: 0 },
+      _count: { documents: 0, previousDocuments: 0 },
     };
 
     const access = {
@@ -248,7 +250,9 @@ describe("Candidate ERP linking & auto-healing", () => {
 
     const result = await (service as any).owner("real-1", principal);
 
-    expect(tx.candidate.delete).toHaveBeenCalledWith({ where: { id: "ghost-1" } });
+    expect(tx.candidate.delete).toHaveBeenCalledWith({
+      where: { id: "ghost-1" },
+    });
     expect(tx.candidate.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "real-1" },

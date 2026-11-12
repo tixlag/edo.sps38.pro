@@ -141,6 +141,13 @@ describe("ReviewerDocumentsService & Controller", () => {
     });
   });
 
+  it("requires known citizenship before reviewer types or upload instead of guessing RU",async()=>{
+    const {service,access,catalog,uploads}=createService();
+    access.candidate.mockResolvedValue({...ruCandidate,reviewGroup:"RU",citizenship:null});
+    await expect(service.types("c-ru",ruPrincipal)).rejects.toMatchObject({code:"CANDIDATE_PROFILE_INCOMPLETE",fields:["citizenship"]});
+    await expect(service.upload("c-ru",ruPrincipal,{} as never,"request","correlation")).rejects.toMatchObject({code:"CANDIDATE_PROFILE_INCOMPLETE",fields:["citizenship"]});
+    expect(catalog.list).not.toHaveBeenCalled();expect(uploads.parse).not.toHaveBeenCalled();
+  });
   describe("reviewer upload flow", () => {
     it("requires ERP candidateUid for RU candidates without one", async () => {
       const { service, access } = createService();

@@ -94,12 +94,12 @@ describe("candidate identity and source error diagnostics", () => {
     expect(fetcher).toHaveBeenCalledOnce();
   });
   it.each([undefined, null, "", " \t\n"])(
-    "defaults missing ERP citizenship to ru (%s)",
+    "keeps missing ERP citizenship unknown (%s)",
     (citizenship) => {
       expect(
         normalizeErpCandidate({ ...card, citizenship }, uuid),
       ).toMatchObject({
-        citizenship: "ru",
+        citizenship: null,
         position: card.position,
       });
     },

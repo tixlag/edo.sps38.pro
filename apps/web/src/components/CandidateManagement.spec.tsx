@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import type {
+  CandidateResponsibleDto,
+  CandidateSourceCommentDto,
+} from "@edo/api-client";
 import { CandidateManagement } from "./CandidateManagement";
 import { CandidatesPage } from "../pages/CandidatesPage";
 import { CandidateRequirements } from "./CandidateRequirements";
@@ -12,7 +16,13 @@ const state = vi.hoisted(() => ({
     reviewGroup: "RU",
     fullName: "Иванов Иван",
     phone: "+79000000000",
-    birthDate: "1990-02-03",
+    birthDate: "1990-02-03" as string | null,
+    person: null as {
+      id: string;
+      name: string;
+      birthDate: string | null;
+      code?: string;
+    } | null,
     citizenship: "ru",
     position: { code: "position-secret", name: "Водитель" },
     project: null,
@@ -20,6 +30,8 @@ const state = vi.hoisted(() => ({
     mentor: { name: "Пётр Наставник", position: "Мастер" },
     status: { id: "recruiting", name: "Подбор" },
     linkedPerson: false,
+    responsible: null as CandidateResponsibleDto | null,
+    sourceComment: null as CandidateSourceCommentDto | null,
     hasChat: true,
     history: [
       {
@@ -32,6 +44,15 @@ const state = vi.hoisted(() => ({
     ],
   },
   create: vi.fn(),
+  open: vi.fn(),
+  operation: vi.fn(),
+  candidateMatches: [] as Array<{
+    id: string;
+    name: string;
+    birthDate: string | null;
+    selection: string;
+    matchedPhone: boolean;
+  }>,
   update: vi.fn(),
   status: vi.fn(),
   link: vi.fn(),
@@ -40,6 +61,7 @@ const state = vi.hoisted(() => ({
   invalidate: vi.fn(),
   setData: vi.fn(),
   persons: vi.fn(),
+  manualPersonToken: "signed-opaque-person",
   matches: vi.fn(),
   previous: [] as unknown[],
   edoDocuments: [] as unknown[],
@@ -85,7 +107,10 @@ vi.mock("@edo/api-client", () => {
         { id: "manager-secret", name: "Анна Менеджер" },
         { id: "other", name: "Борис" },
       ]),
-    useRequestCandidateEnrichmentBatch: () => ({ mutate: vi.fn(), isPending: false }),
+    useRequestCandidateEnrichmentBatch: () => ({
+      mutate: vi.fn(),
+      isPending: false,
+    }),
     getListCatalogManagersQueryKey: () => ["catalog-managers"],
     useListPositions: () => result([]),
     useListCatalogMentors: () => result([]),
@@ -112,7 +137,8 @@ vi.mock("@edo/api-client", () => {
       state.persons(params, options);
       return result([
         {
-          id: "signed-opaque-person",
+          id: state.manualPersonToken,
+          personUid: "same-person-uid",
           name: "Иванов Иван",
           birthDate: "1990-02-03",
         },
@@ -122,11 +148,12 @@ vi.mock("@edo/api-client", () => {
     getSearchCandidatePersonsQueryKey: (params: unknown) => ["persons", params],
     useFindCandidatePersonMatches: (params: { birthDate: string }) => {
       state.matches(params);
-      return result(
+      const matched = result(
         params.birthDate === "1990-02-03"
           ? [
               {
                 id: "signed-opaque-person",
+                personUid: "same-person-uid",
                 name: "Иванов Иван",
                 birthDate: "1990-02-03",
                 matchedCyrillic: true,
@@ -134,6 +161,10 @@ vi.mock("@edo/api-client", () => {
             ]
           : [],
       );
+      return {
+        ...matched,
+        data: { ...matched.data, candidates: state.candidateMatches },
+      };
     },
     getFindCandidatePersonMatchesQueryKey: (params: unknown) => [
       "person-matches",
@@ -158,6 +189,16 @@ vi.mock("@edo/api-client", () => {
         },
       ]),
     useCreateCandidate: () => mutation(state.create),
+    useOpenExistingCandidate: () => mutation(state.open),
+    useGetCandidateOperation: () => ({ refetch: state.operation }),
+    getGetCandidateOperationQueryKey: (id: string) => ["operation", id],
+    useListCandidateCountries: () => result([]),
+    useListCandidateOrganizations: () => result([]),
+    useListCandidateSources: () => result([]),
+    useListCandidateResponsibles: () => result([]),
+    useListCandidateContactTypes: () => result([]),
+    useListCandidateContactKinds: () => result([]),
+    useListCandidateUniversities: () => result([]),
     useUpdateCandidateWorkspace: () => mutation(state.update),
     useChangeCandidateStatus: () => mutation(state.status),
     useLinkCandidatePerson: () => mutation(state.link),
@@ -229,6 +270,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.permissions = { "20002": [] };
   state.profile.linkedPerson = false;
+  state.profile.birthDate = "1990-02-03";
+  state.profile.person = null;
+  state.profile.responsible = null;
+  state.profile.sourceComment = null;
+  state.manualPersonToken = "signed-opaque-person";
+  state.candidateMatches = [];
+  state.operation.mockResolvedValue({ data: { state: "NOT_FOUND" } });
+  state.open.mockResolvedValue(state.profile);
   state.profile.history = [
     {
       date: "2026-10-26T01:00:00Z",
@@ -254,8 +303,8 @@ afterEach(async () => {
 });
 
 describe("candidate manager flows", () => {
-  it("shows documents from earlier EDO employments with a link to the original case", async () => {
-    state.profile.linkedPerson = true;
+  it("shows earlier EDO documents even without a linked person", async () => {
+    state.profile.linkedPerson = false;
     state.edoDocuments = [
       {
         id: "old-document",
@@ -288,32 +337,37 @@ describe("candidate manager flows", () => {
     expect(view.textContent).toContain("Приём · 05.01.2020");
     expect(view.textContent).toContain("Увольнение · 01.03.2021");
   });
-  it("sends the optional Latin name with the date and candidate name", async () => {
+  it("searches creation matches by name or phone without requiring date of birth", async () => {
     vi.useFakeTimers();
+    state.candidateMatches = [
+      {
+        id: "completed-erp-uid",
+        name: "Иванов Иван",
+        birthDate: null,
+        selection: "signed-candidate",
+        matchedPhone: true,
+      },
+    ];
     await render(<CandidatesPage />);
     await click("Создать кандидата");
-    const inputs = view.querySelectorAll<HTMLInputElement>(
-      "fieldset > label > input",
-    );
-    type(inputs[0], "Иванов Иван");
-    type(inputs[2], "1990-02-03");
-    type(inputs[3], "uz");
-    const latin = [...view.querySelectorAll("label")]
-      .find((label) => label.textContent?.includes("Фамилия и имя латиницей"))
-      ?.querySelector("input");
-    expect(latin).toBeTruthy();
-    type(latin!, "IVANOV IVAN");
+    type(view.querySelector('input[type="tel"]')!, "+79000000000");
     await act(async () => vi.advanceTimersByTime(500));
     expect(state.matches).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        lastName: "Иванов",
-        firstName: "Иван",
-        birthDate: "1990-02-03",
-        latinName: "IVANOV IVAN",
+        scope: "creation",
+        phone: "+79000000000",
+        birthDate: undefined,
       }),
     );
+    expect(view.textContent).toContain("Дата рождения не указана");
+    await click("Открыть существующую карточку");
+    expect(state.open).toHaveBeenCalledWith({
+      data: { erpUid: "completed-erp-uid" },
+    });
+    expect(state.create).not.toHaveBeenCalled();
+    expect(state.status).not.toHaveBeenCalled();
   });
-  it("offers a possible ERP match only when name and date of birth agree", async () => {
+  it("selects a signed matching person directly and invalidates the choice after identity changes", async () => {
     vi.useFakeTimers();
     await render(<CandidatesPage />);
     await click("Создать кандидата");
@@ -321,55 +375,121 @@ describe("candidate manager flows", () => {
       "fieldset > label > input",
     );
     type(inputs[0], "Иванов Иван");
+    type(inputs[1], "+79000000000");
     type(inputs[2], "1990-02-03");
     await act(async () => vi.advanceTimersByTime(500));
-    expect(view.textContent).toContain("В ERP найдены возможные совпадения");
-    expect(state.create).not.toHaveBeenCalled();
-    type(inputs[2], "1991-02-03");
-    expect(view.textContent).not.toContain(
-      "В ERP найдены возможные совпадения",
+    expect(view.textContent).toContain("Возможные физлица");
+    await act(async () =>
+      view.querySelector<HTMLInputElement>('input[type="radio"]')!.click(),
     );
+    await submit("Создание кандидата");
+    expect(state.create).toHaveBeenCalledWith({
+      data: {
+        requestId: expect.any(String),
+        fields: {
+          fullName: "Иванов Иван",
+          phone: "+79000000000",
+          birthDate: "1990-02-03",
+        },
+        personSelection: "signed-opaque-person",
+      },
+    });
+    expect(state.persons).not.toHaveBeenCalled();
   });
-  it("uses known ERP manager IDs when the ERP manager directory is unavailable", async () => {
-    state.managersUnavailable = true;
+  it("recognizes the same physical person when manual and automatic searches return different signed choices", async () => {
+    vi.useFakeTimers();
+    state.manualPersonToken = "signed-manual-choice";
     await render(<CandidatesPage />);
     await click("Создать кандидата");
-    expect(view.textContent).toContain(
-      "Менеджеры из ранее загруженных кандидатов",
-    );
-    const form = view.querySelector("form")!;
-    const inputs = form.querySelectorAll<HTMLInputElement>(
+    const inputs = view.querySelectorAll<HTMLInputElement>(
       "fieldset > label > input",
     );
-    expect(inputs[3].value).toBe("ru");
-    const uzChip = [...view.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Узбекистан (uz)"),
-    );
-    expect(uzChip).toBeDefined();
-    await act(async () => uzChip!.click());
-    expect(inputs[3].value).toBe("uz");
-    type(inputs[3], "ru");
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");
     type(inputs[2], "1990-02-03");
-    await pick("Должность", "Водитель");
-    const managerInput = view.querySelector<HTMLInputElement>(
-      'input[aria-label="Менеджер"]',
+    await act(async () => vi.advanceTimersByTime(500));
+    await act(async () =>
+      view
+        .querySelector<HTMLInputElement>(
+          '[aria-label="Выбрать другое физлицо"]',
+        )!
+        .click(),
+    );
+    const search = view.querySelector<HTMLInputElement>(
+      'input[aria-label="Поиск физлица"]',
     )!;
     await act(async () =>
-      managerInput.dispatchEvent(new FocusEvent("focusin", { bubbles: true })),
+      search.dispatchEvent(new FocusEvent("focusin", { bubbles: true })),
     );
-    type(managerInput, "анна");
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 350)));
-    expect(view.textContent).toContain("Анна Менеджер");
-    expect(view.textContent).not.toContain("Борис");
-    await pick("Менеджер", "Анна Менеджер");
+    type(search, "Иван");
+    await act(async () => vi.advanceTimersByTime(301));
+    await pick("Поиск физлица", "Иванов Иван · 03.02.1990");
+    const confirmation = [...view.querySelectorAll("label")]
+      .find((label) =>
+        label.textContent?.includes("Подтверждаю, что это нужный человек"),
+      )!
+      .querySelector<HTMLInputElement>("input")!;
+    await act(async () => confirmation.click());
+    expect(
+      view.querySelector<HTMLInputElement>('input[type="radio"]')?.checked,
+    ).toBe(true);
     await submit("Создание кандидата");
-    expect(state.create).toHaveBeenCalledWith(
+    expect(state.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        personSelection: "signed-manual-choice",
+      }),
+    });
+    expect(
+      state.create.mock.calls[0][0].data.ignoredSelections,
+    ).toBeUndefined();
+  });
+  it("retains typed source-person and responsible-user references during a sparse card edit", async () => {
+    state.profile.sourceComment = {
+      kind: "person",
+      id: "source-person",
+      name: "Координатор",
+    };
+    state.profile.responsible = {
+      kind: "user",
+      id: "responsible-user",
+      name: "Ирина Ответственная",
+    };
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Редактировать данные");
+    expect(
+      view.querySelector<HTMLSelectElement>(
+        '[aria-label="Тип комментария к источнику"]',
+      )?.value,
+    ).toBe("person");
+    expect(
+      view.querySelector<HTMLInputElement>(
+        'input[aria-label="Физлицо в источнике"]',
+      )?.value,
+    ).toBe("Координатор");
+    expect(
+      view.querySelector<HTMLInputElement>('input[aria-label="Ответственный"]')
+        ?.value,
+    ).toBe("Ирина Ответственная");
+    type(view.querySelector('input[type="tel"]')!, "+79001112233");
+    await submit("Редактирование кандидата");
+    expect(state.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          fields: expect.objectContaining({ managerId: "manager-secret" }),
-        }),
+        data: expect.objectContaining({ fields: { phone: "+79001112233" } }),
+      }),
+    );
+  });
+  it("keeps the manager fallback available in the expanded editor", async () => {
+    state.managersUnavailable = true;
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Редактировать данные");
+    expect(view.textContent).toContain(
+      "Менеджеры из ранее загруженных кандидатов",
+    );
+    await pick("Менеджер", "Борис");
+    await submit("Редактирование кандидата");
+    expect(state.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ fields: { managerId: "other" } }),
       }),
     );
   });
@@ -386,7 +506,7 @@ describe("candidate manager flows", () => {
     );
     expect(view.textContent).not.toContain("Повторить");
   });
-  it("creates in ERP without a required object and retains request/body after an uncertain response", async () => {
+  it("creates with minimal fields and looks up the operation before repeating an uncertain request", async () => {
     state.create.mockRejectedValueOnce(new Error("Lost response"));
     await render(<CandidatesPage />);
     await click("Создать кандидата");
@@ -394,19 +514,9 @@ describe("candidate manager flows", () => {
     const inputs = form.querySelectorAll<HTMLInputElement>(
       "fieldset > label > input",
     );
-    expect(inputs[3].value).toBe("ru");
-    const uzChip = [...view.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Узбекистан (uz)"),
-    );
-    expect(uzChip).toBeDefined();
-    await act(async () => uzChip!.click());
-    expect(inputs[3].value).toBe("uz");
-    type(inputs[3], "ru");
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");
-    type(inputs[2], "1990-02-03");
-    await pick("Должность", "Водитель");
-    await pick("Менеджер", "Анна Менеджер");
+    type(inputs[2], "1991-02-03");
     await submit("Создание кандидата");
     expect(state.create).toHaveBeenCalledWith({
       data: {
@@ -414,16 +524,13 @@ describe("candidate manager flows", () => {
         fields: {
           fullName: "Иванов Иван",
           phone: "+79000000000",
-          birthDate: "1990-02-03",
-          citizenship: "ru",
-          positionCode: "position-secret",
-          managerId: "manager-secret",
-          projectCode: null,
+          birthDate: "1991-02-03",
         },
       },
     });
     expect(form.querySelector("fieldset")!.disabled).toBe(true);
     await submit("Создание кандидата");
+    expect(state.operation).toHaveBeenCalledTimes(1);
     expect(state.create.mock.calls[0][0]).toEqual(
       state.create.mock.calls[1][0],
     );
@@ -431,77 +538,52 @@ describe("candidate manager flows", () => {
       expect.objectContaining({ params: { candidateId: "current-cycle" } }),
     );
   });
-
-  it("confirms an existing physical person when creating a new admission and reuses that signed choice after a lost response", async () => {
-    state.create.mockRejectedValueOnce(new Error("Lost response"));
+  it("requires an explicit different-person acknowledgement for candidate matches", async () => {
+    vi.useFakeTimers();
+    state.candidateMatches = [
+      {
+        id: "other-erp",
+        name: "Иванов Иван",
+        birthDate: null,
+        selection: "signed-other-candidate",
+        matchedPhone: true,
+      },
+    ];
     await render(<CandidatesPage />);
     await click("Создать кандидата");
-    const form = view.querySelector("form")!;
-    const inputs = form.querySelectorAll<HTMLInputElement>(
+    const inputs = view.querySelectorAll<HTMLInputElement>(
       "fieldset > label > input",
     );
-    expect(inputs[3].value).toBe("ru");
-    const uzChip = [...view.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Узбекистан (uz)"),
-    );
-    expect(uzChip).toBeDefined();
-    await act(async () => uzChip!.click());
-    expect(inputs[3].value).toBe("uz");
-    type(inputs[3], "ru");
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");
-    type(inputs[2], "1990-02-03");
-    await pick("Должность", "Водитель");
-    await pick("Менеджер", "Анна Менеджер");
-    await act(async () =>
-      view
-        .querySelector<HTMLInputElement>(
-          '[aria-label="Повторный приём при создании"]',
-        )!
-        .click(),
-    );
+    type(inputs[2], "1991-02-03");
+    await act(async () => vi.advanceTimersByTime(500));
     await submit("Создание кандидата");
     expect(state.create).not.toHaveBeenCalled();
-    vi.useFakeTimers();
-    const searchInput = view.querySelector<HTMLInputElement>(
-      'input[aria-label="Поиск физлица"]',
-    )!;
-    await act(async () =>
-      searchInput.dispatchEvent(new FocusEvent("focusin", { bubbles: true })),
-    );
-    type(searchInput, "Иван");
-    await act(async () => vi.advanceTimersByTime(301));
-    await pick("Поиск физлица", "Иванов Иван · 03.02.1990");
-    await submit("Создание кандидата");
-    expect(state.create).not.toHaveBeenCalled();
-    expect(view.textContent).toContain("03.02.1990");
-    const confirmation = form.querySelector<HTMLInputElement>(
-      'section input[type="checkbox"]:not([aria-label])',
-    )!;
-    await act(async () => confirmation.click());
+    const ignored = [...view.querySelectorAll("label")]
+      .find((label) => label.textContent?.includes("Это другой человек"))!
+      .querySelector<HTMLInputElement>("input")!;
+    await act(async () => ignored.click());
     await submit("Создание кандидата");
     expect(state.create).toHaveBeenCalledWith({
-      data: {
-        requestId: expect.any(String),
-        fields: expect.objectContaining({
-          fullName: "Иванов Иван",
-          projectCode: null,
-        }),
-        personSelection: "signed-opaque-person",
-      },
+      data: expect.objectContaining({
+        ignoredSelections: ["signed-other-candidate"],
+      }),
     });
-    expect(confirmation.disabled).toBe(true);
-    expect(searchInput.disabled).toBe(true);
+  });
+  it("edits an old card with null DOB without requiring a replacement date", async () => {
+    state.profile.birthDate = null;
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Редактировать данные");
     expect(
-      form.querySelector<HTMLInputElement>(
-        '[aria-label="Повторный приём при создании"]',
-      )!.disabled,
-    ).toBe(true);
-    expect(button("Отмена").disabled).toBe(true);
-    expect(view.textContent).not.toContain("signed-opaque-person");
-    await submit("Создание кандидата");
-    expect(state.create.mock.calls[1][0]).toEqual(
-      state.create.mock.calls[0][0],
+      view.querySelector<HTMLInputElement>('input[type="date"]')?.required,
+    ).toBe(false);
+    type(view.querySelector('input[type="tel"]')!, "+79001112233");
+    await submit("Редактирование кандидата");
+    expect(state.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ fields: { phone: "+79001112233" } }),
+      }),
     );
   });
 
@@ -558,49 +640,47 @@ describe("candidate manager flows", () => {
     expect(view.querySelector("dl")).not.toBeNull();
   });
 
-  it.each([false, true])(
-    "requires explicit current-cycle confirmation even when ERP already reports a linked person (%s)",
-    async (alreadyLinked) => {
-      state.profile.linkedPerson = alreadyLinked;
-      await render(<CandidateManagement candidateId="current-cycle" />);
-      await click(
-        alreadyLinked ? "Подтвердить связь с физлицом" : "Повторный приём",
-      );
-      expect(view.querySelector("dl")).toBeNull();
-      expect(view.textContent).toContain("Кадровый приём выполняется в ERP");
-      expect(state.persons.mock.calls.at(-1)?.[1]).toEqual(
-        expect.objectContaining({
-          query: expect.objectContaining({ enabled: false }),
-        }),
-      );
-      vi.useFakeTimers();
-      const searchInput = view.querySelector<HTMLInputElement>(
-        'input[aria-label="Поиск физлица"]',
-      )!;
-      await act(async () =>
-        searchInput.dispatchEvent(new FocusEvent("focusin", { bubbles: true })),
-      );
-      type(searchInput, "Иван");
-      await act(async () => vi.advanceTimersByTime(301));
-      await pick("Поиск физлица", "Иванов Иван · 03.02.1990");
-      expect(view.textContent).toContain("03.02.1990");
-      expect(button("Связать с текущим кандидатом").disabled).toBe(true);
-      await act(async () =>
-        view.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(),
-      );
-      await submit(
-        alreadyLinked ? "Подтверждение связи с физлицом" : "Повторный приём",
-      );
-      expect(state.link).toHaveBeenCalledWith({
-        candidateId: "current-cycle",
-        data: {
-          requestId: expect.any(String),
-          personSelection: "signed-opaque-person",
-        },
-      });
-      expect(view.textContent).not.toContain("signed-opaque-person");
-    },
-  );
+  it("shows the exact linked person and does not offer ordinary relinking", async () => {
+    state.profile.linkedPerson = true;
+    state.profile.person = {
+      id: "exact-person",
+      name: "Иванов Иван Петрович",
+      birthDate: null,
+      code: "00123",
+    };
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    expect(view.textContent).toContain("Иванов Иван Петрович");
+    expect(view.textContent).toContain("00123");
+    expect(view.textContent).toContain("обратитесь к администратору");
+    expect(button("Выбрать физлицо")).toBeUndefined();
+    expect(state.link).not.toHaveBeenCalled();
+  });
+  it("requires an explicit signed selection before linking an unlinked card", async () => {
+    vi.useFakeTimers();
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Выбрать физлицо");
+    const search = view.querySelector<HTMLInputElement>(
+      'input[aria-label="Поиск физлица"]',
+    )!;
+    await act(async () =>
+      search.dispatchEvent(new FocusEvent("focusin", { bubbles: true })),
+    );
+    type(search, "Иван");
+    await act(async () => vi.advanceTimersByTime(301));
+    await pick("Поиск физлица", "Иванов Иван · 03.02.1990");
+    expect(button("Связать с текущим кандидатом").disabled).toBe(true);
+    await act(async () =>
+      view.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(),
+    );
+    await submit("Связывание с физлицом");
+    expect(state.link).toHaveBeenCalledWith({
+      candidateId: "current-cycle",
+      data: {
+        requestId: expect.any(String),
+        personSelection: "signed-opaque-person",
+      },
+    });
+  });
 
   it("shows old documents with their attributes and without manual recheck form", async () => {
     state.profile.linkedPerson = true;

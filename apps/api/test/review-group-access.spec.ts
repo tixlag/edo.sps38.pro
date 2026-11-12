@@ -36,6 +36,8 @@ describe("review group isolation", () => {
 
   it.each([
     [{ chatUuid: "chat", citizenship: "uz" }, "RU"],
+    [{ reviewGroup: "RU", chatUuid: null, citizenship: "uz" }, "RU"],
+    [{ reviewGroup: "IG", chatUuid: "chat", citizenship: "ru" }, "IG"],
     [{ chatUuid: null, citizenship: "ru" }, "RU"],
     [{ chatUuid: null, citizenship: "RU" }, "RU"],
     [{ chatUuid: null, citizenship: "uz" }, "IG"],
@@ -46,9 +48,15 @@ describe("review group isolation", () => {
 
   it("keeps NULL citizenship in IG and requires both no chat and no RU citizenship", () => {
     expect(reviewGroupWhere("IG")).toEqual({
-      AND: [
-        { chatUuid: null },
-        { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
+      OR: [
+        { reviewGroup: "IG" },
+        {
+          reviewGroup: null,
+          AND: [
+            { chatUuid: null },
+            { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
+          ],
+        },
       ],
     });
   });

@@ -148,12 +148,12 @@ describe("candidate sex and document exceptions", () => {
     expect(applicable(military, "P", "ru")).toBe(true);
   });
 
-  it("uses the citizenship default for documents without overwriting a saved nationality", () => {
+  it("preserves unknown citizenship without overwriting a saved nationality", () => {
     const card = normalizeErpCandidate({
       candidate: { citizenship: "" },
       position: { code: "P" },
     });
-    expect(card.citizenship).toBe("ru");
+    expect(card.citizenship).toBeNull();
     expect(
       snapshotUpdateInput(candidateSnapshotSchema.parse(card)),
     ).not.toHaveProperty("citizenship");

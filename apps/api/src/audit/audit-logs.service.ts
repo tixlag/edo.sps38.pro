@@ -389,9 +389,9 @@ function scopedPredicate(
   const loc = locationIds ? Prisma.join(locationIds) : Prisma.sql`NULL`;
   const candidateGroup =
     group === "RU"
-      ? Prisma.sql`(c.chatUuid IS NOT NULL OR c.citizenship = 'ru')`
+      ? Prisma.sql`(c.reviewGroup = 'RU' OR (c.reviewGroup IS NULL AND (c.chatUuid IS NOT NULL OR c.citizenship = 'ru')))`
       : group === "IG"
-        ? Prisma.sql`(c.chatUuid IS NULL AND (c.citizenship IS NULL OR c.citizenship <> 'ru'))`
+        ? Prisma.sql`(c.reviewGroup = 'IG' OR (c.reviewGroup IS NULL AND c.chatUuid IS NULL AND (c.citizenship IS NULL OR c.citizenship <> 'ru')))`
         : Prisma.sql`1=1`;
   const documentGroup =
     group === "RU"

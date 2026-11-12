@@ -29,6 +29,9 @@ import {
 } from "../documents/dto/document.dto";
 import { CandidateWorkspaceService } from "./candidate-workspace.service";
 import {
+  CandidateOperationDto,
+  OpenExistingCandidateDto,
+  CandidatePersonMatchesDto,
   CandidatePersonLinkDto,
   CandidatePersonMatchQueryDto,
   CandidatePreviousDocumentsDto,
@@ -59,6 +62,87 @@ const Errors = () =>
 @Controller("v1/candidates")
 export class CandidateWorkspaceController {
   constructor(private readonly workspace: CandidateWorkspaceService) {}
+  @Get("references/countries")
+  @ApiOperation({
+    operationId: "listCandidateCountries",
+    summary: "ERP countries",
+  })
+  @ApiResponse({ status: 200, type: CandidateReferencesDto })
+  refsCountries(
+    @CurrentPrincipal() p: AuthPrincipal,
+    @Query() q: CandidateReferenceQueryDto,
+  ) {
+    return this.workspace.references("countries", p, q.q);
+  }
+  @Get("references/organizations")
+  @ApiOperation({
+    operationId: "listCandidateOrganizations",
+    summary: "ERP organizations",
+  })
+  @ApiResponse({ status: 200, type: CandidateReferencesDto })
+  refsOrganizations(
+    @CurrentPrincipal() p: AuthPrincipal,
+    @Query() q: CandidateReferenceQueryDto,
+  ) {
+    return this.workspace.references("organizations", p, q.q);
+  }
+  @Get("references/sources")
+  @ApiOperation({ operationId: "listCandidateSources", summary: "ERP sources" })
+  @ApiResponse({ status: 200, type: CandidateReferencesDto })
+  refsSources(
+    @CurrentPrincipal() p: AuthPrincipal,
+    @Query() q: CandidateReferenceQueryDto,
+  ) {
+    return this.workspace.references("sources", p, q.q);
+  }
+  @Get("references/responsibles")
+  @ApiOperation({
+    operationId: "listCandidateResponsibles",
+    summary: "ERP responsibles",
+  })
+  @ApiResponse({ status: 200, type: CandidateReferencesDto })
+  refsResponsibles(
+    @CurrentPrincipal() p: AuthPrincipal,
+    @Query() q: CandidateReferenceQueryDto,
+  ) {
+    return this.workspace.references("responsibles", p, q.q);
+  }
+  @Get("references/contact-types")
+  @ApiOperation({
+    operationId: "listCandidateContactTypes",
+    summary: "ERP contact-types",
+  })
+  @ApiResponse({ status: 200, type: CandidateReferencesDto })
+  refsContactTypes(
+    @CurrentPrincipal() p: AuthPrincipal,
+    @Query() q: CandidateReferenceQueryDto,
+  ) {
+    return this.workspace.references("contact-types", p, q.q);
+  }
+  @Get("references/contact-kinds")
+  @ApiOperation({
+    operationId: "listCandidateContactKinds",
+    summary: "ERP contact-kinds",
+  })
+  @ApiResponse({ status: 200, type: CandidateReferencesDto })
+  refsContactKinds(
+    @CurrentPrincipal() p: AuthPrincipal,
+    @Query() q: CandidateReferenceQueryDto,
+  ) {
+    return this.workspace.references("contact-kinds", p, q.q);
+  }
+  @Get("references/universities")
+  @ApiOperation({
+    operationId: "listCandidateUniversities",
+    summary: "ERP universities",
+  })
+  @ApiResponse({ status: 200, type: CandidateReferencesDto })
+  refsUniversities(
+    @CurrentPrincipal() p: AuthPrincipal,
+    @Query() q: CandidateReferenceQueryDto,
+  ) {
+    return this.workspace.references("universities", p, q.q);
+  }
   @Get("references/managers")
   @ApiOperation({
     operationId: "listCandidateManagers",
@@ -127,12 +211,37 @@ export class CandidateWorkspaceController {
     summary:
       "Find possible ERP physical person matches for explicit confirmation",
   })
-  @ApiResponse({ status: 200, type: CandidateReferencesDto })
+  @ApiResponse({ status: 200, type: CandidatePersonMatchesDto })
   matches(
     @CurrentPrincipal() p: AuthPrincipal,
     @Query() q: CandidatePersonMatchQueryDto,
   ) {
     return this.workspace.personMatches(p, q);
+  }
+  @Post("open")
+  @HttpCode(200)
+  @ApiOperation({
+    operationId: "openExistingCandidate",
+    summary: "Open exact existing ERP candidate without changing status",
+  })
+  @ApiResponse({ status: 200, type: CandidateWorkspaceDto })
+  open(
+    @CurrentPrincipal() p: AuthPrincipal,
+    @Body() body: OpenExistingCandidateDto,
+  ) {
+    return this.workspace.open(p, body.erpUid);
+  }
+  @Get("operations/:requestId")
+  @ApiOperation({
+    operationId: "getCandidateOperation",
+    summary: "Read durable ERP mutation outcome for the verified actor",
+  })
+  @ApiResponse({ status: 200, type: CandidateOperationDto })
+  operation(
+    @CurrentPrincipal() p: AuthPrincipal,
+    @Param("requestId") requestId: string,
+  ) {
+    return this.workspace.operation(p, requestId);
   }
   @Post()
   @ApiOperation({

@@ -870,11 +870,11 @@ export class CandidateSnapshotDto {
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   birthDate?: string;
-  @ApiPropertyOptional({ maxLength: 2 })
+  @ApiPropertyOptional({ type:String,nullable:true,maxLength: 2 })
   @IsOptional()
   @IsString()
   @Matches(/^[a-zA-Z]{2}$/)
-  citizenship?: string;
+  citizenship?: string|null;
   @ApiPropertyOptional({ type: () => CandidateSnapshotPositionDto })
   @IsOptional()
   position?: CandidateSnapshotPositionDto | string;

@@ -3,7 +3,10 @@ import {
   CandidateDocumentError,
   withinDocumentDeadline,
 } from "./candidate-document.error";
-import { CandidateDocumentErrorCode as Code } from "./dto/candidate-error.dto";
+import {
+  CandidateDocumentErrorCode as Code,
+  CandidateProfileField as Field,
+} from "./dto/candidate-error.dto";
 import type { EdoCandidateChat } from "@edo/lk-client";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
@@ -60,6 +63,10 @@ export class CandidateContextService {
       throw error;
     }
     signal?.throwIfAborted();
+    if (!snapshot.citizenship)
+      throw new CandidateDocumentError(Code.CANDIDATE_PROFILE_INCOMPLETE, [
+        Field.CITIZENSHIP,
+      ]);
     return {
       ...identity,
       positionCode1c: (snapshot.position as { code: string }).code,
@@ -99,6 +106,10 @@ export class CandidateContextService {
         throw new CandidateDocumentError(error.code, error.fields);
       throw error;
     }
+    if (!snapshot.citizenship)
+      throw new CandidateDocumentError(Code.CANDIDATE_PROFILE_INCOMPLETE, [
+        Field.CITIZENSHIP,
+      ]);
     // A returned uuid is a chat identifier, but only LK can authorize its ownership.
     let chatUuid: string | null = null;
     if (snapshot.uuid) {
