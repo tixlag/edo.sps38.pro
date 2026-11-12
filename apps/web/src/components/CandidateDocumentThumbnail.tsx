@@ -1,12 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { getCandidatePreviousDocumentOriginal } from "@edo/api-client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  getCandidatePreviousDocumentOriginal,
+  getGetDocumentVersionQueryKey,
+  getGetDocumentFileBinaryQueryKey,
+  useGetDocumentVersion,
+  useGetDocumentFileBinary,
+} from "@edo/api-client";
 import { cn } from "@edo/ui";
-import { ExternalLink, FileText, Loader2 } from "lucide-react";
+import { FileText, Loader2 } from "lucide-react";
+
+import { PdfPage } from "./DocumentPreview";
 
 export interface CandidateDocumentThumbnailProps {
   candidateId: string;
   documentId: string;
   originalAvailable: boolean;
+  /** Present for documents uploaded to EDO; omitted for previous originals. */
+  version?: number;
   title: string;
   className?: string;
   onClick?: () => void;
@@ -16,6 +26,7 @@ export function CandidateDocumentThumbnail({
   candidateId,
   documentId,
   originalAvailable,
+  version,
   title,
   className,
   onClick,
@@ -28,6 +39,77 @@ export function CandidateDocumentThumbnail({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPdf, setIsPdf] = useState(false);
+  const [renderFailed, setRenderFailed] = useState(false);
+  const onPreviewError = useCallback(() => setRenderFailed(true), []);
+  const onPdfReady = useCallback(() => undefined, []);
+  const versionQuery = useGetDocumentVersion(documentId, version ?? 0, {
+    query: {
+      queryKey: getGetDocumentVersionQueryKey(documentId, version ?? 0),
+      enabled: isVisible && originalAvailable && version !== undefined,
+      staleTime: 240_000,
+      retry: false,
+    },
+  });
+  // Match DocumentReviewWorkspace: returned versions never request originals.
+  const file =
+    versionQuery.data?.status === "RETURNED"
+      ? undefined
+      : versionQuery.data?.files
+          .filter((file) => !file.deleted)
+          .sort((a, b) => a.ordinal - b.ordinal)[0];
+  const binaryQuery = useGetDocumentFileBinary(
+    documentId,
+    version ?? 0,
+    file?.id ?? "",
+    {
+      query: {
+        queryKey: getGetDocumentFileBinaryQueryKey(
+          documentId,
+          version ?? 0,
+          file?.id ?? "",
+        ),
+        enabled:
+          isVisible && originalAvailable && version !== undefined && !!file,
+        staleTime: 240_000,
+        gcTime: 60_000,
+        retry: false,
+      },
+    },
+  );
+  useEffect(() => {
+    if (version === undefined) return;
+    setObjectUrl(null);
+    setRenderFailed(false);
+    if (
+      !originalAvailable ||
+      !binaryQuery.data ||
+      !file ||
+      versionQuery.data?.status === "RETURNED"
+    )
+      return;
+    const url = URL.createObjectURL(binaryQuery.data);
+    setIsPdf(file.mimeType === "application/pdf");
+    setObjectUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [
+    version,
+    originalAvailable,
+    binaryQuery.data,
+    file,
+    versionQuery.data?.status,
+  ]);
+  const pending =
+    version === undefined
+      ? loading
+      : versionQuery.isFetching || binaryQuery.isFetching;
+  const unavailable =
+    !originalAvailable ||
+    renderFailed ||
+    (version === undefined
+      ? !!error
+      : versionQuery.isError ||
+        binaryQuery.isError ||
+        (versionQuery.isSuccess && !file));
 
   useEffect(() => {
     if (isVisible || typeof IntersectionObserver === "undefined") return;
@@ -41,7 +123,7 @@ export function CandidateDocumentThumbnail({
           observer.disconnect();
         }
       },
-      { rootMargin: "100px" },
+      { rootMargin: "0px" },
     );
 
     observer.observe(element);
@@ -49,6 +131,7 @@ export function CandidateDocumentThumbnail({
   }, [isVisible]);
 
   useEffect(() => {
+    if (version !== undefined) return;
     if (!isVisible || !originalAvailable || !candidateId || !documentId) {
       setObjectUrl(null);
       setLoading(false);
@@ -62,6 +145,7 @@ export function CandidateDocumentThumbnail({
 
     setLoading(true);
     setError(null);
+    setRenderFailed(false);
 
     Promise.resolve(
       getCandidatePreviousDocumentOriginal(
@@ -97,7 +181,7 @@ export function CandidateDocumentThumbnail({
         URL.revokeObjectURL(createdUrl);
       }
     };
-  }, [isVisible, candidateId, documentId, originalAvailable, title]);
+  }, [isVisible, candidateId, documentId, originalAvailable, title, version]);
 
   const handleOpen = () => {
     if (onClick) {
@@ -132,101 +216,61 @@ export function CandidateDocumentThumbnail({
     }
   };
 
-  if (!originalAvailable) {
-    return (
-      <div
-        className={cn(
-          "flex h-24 w-20 shrink-0 select-none flex-col items-center justify-center rounded-lg border border-dashed border-[var(--border)] bg-[var(--card)] p-2 text-center text-xs text-[var(--muted-foreground)]",
-          className,
-        )}
-        aria-label={`Оригинал недоступен: ${title}`}
-      >
-        <FileText className="mb-1 h-6 w-6 opacity-60" aria-hidden />
-        <span className="text-[10px] font-medium leading-tight">
-          Оригинал недоступен
-        </span>
-      </div>
-    );
-  }
-
   return (
     <div
       ref={containerRef}
       className={cn(
-        "group relative flex h-24 w-20 shrink-0 flex-col items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] transition-colors hover:border-[var(--primary)] focus-within:ring-2 focus-within:ring-[var(--primary)]",
+        "relative flex h-24 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] focus-within:ring-2 focus-within:ring-[var(--primary)]",
         className,
       )}
     >
-      {loading && (
+      {pending && (
+        <Loader2
+          className="h-5 w-5 animate-spin"
+          aria-label="Загрузка превью"
+        />
+      )}
+      {!pending && (unavailable || !objectUrl) && (
         <div
-          role="status"
-          className="flex h-full w-full flex-col items-center justify-center p-1 text-[10px] text-[var(--muted-foreground)]"
+          className="flex flex-col items-center gap-1 p-1 text-center text-[10px] leading-tight"
+          aria-label={`Превью недоступно: ${title}`}
         >
-          <Loader2
-            className="mb-1 h-5 w-5 animate-spin text-[var(--primary)]"
-            aria-hidden
+          <FileText className="h-5 w-5 opacity-60" aria-hidden />
+          <span>
+            {!originalAvailable ? "Оригинал недоступен" : "Превью недоступно"}
+          </span>
+        </div>
+      )}
+      {objectUrl &&
+        !pending &&
+        !unavailable &&
+        (isPdf ? (
+          <PdfPage
+            key={objectUrl}
+            url={objectUrl}
+            pageNumber={1}
+            onReady={onPdfReady}
+            onError={onPreviewError}
+            maxWidth={160}
+            maxHeight={192}
+            className="block h-full w-full object-contain"
           />
-          <span>Загрузка…</span>
-        </div>
-      )}
-
-      {error && !loading && (
-        <div
-          role="alert"
-          className="flex h-full w-full flex-col items-center justify-center p-1 text-center text-[10px] text-[var(--primary)]"
-        >
-          <FileText className="mb-1 h-5 w-5 opacity-70" aria-hidden />
-          <span className="line-clamp-2">Ошибка</span>
-        </div>
-      )}
-
-      {objectUrl && !loading && (
-        <>
-          {isPdf ? (
-            <object
-              data={`${objectUrl}#toolbar=0&navpanes=0`}
-              type="application/pdf"
-              className="pointer-events-none h-full w-full object-cover"
-              aria-label={title}
-            >
-              <div className="flex h-full w-full flex-col items-center justify-center p-1 text-center text-[10px] text-[var(--muted-foreground)]">
-                <FileText
-                  className="mb-1 h-6 w-6 text-[var(--primary)]"
-                  aria-hidden
-                />
-                <span className="font-semibold">PDF</span>
-              </div>
-            </object>
-          ) : (
-            <img
-              src={objectUrl}
-              alt={title}
-              className="h-full w-full object-cover"
-            />
-          )}
-
-          <div
-            className="absolute inset-0 flex flex-col items-center justify-center rounded-lg bg-black/60 p-1 text-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-            aria-hidden
-          >
-            <ExternalLink className="mb-0.5 h-4 w-4 text-white" />
-            <span className="text-[9px] font-medium leading-tight text-white">
-              Открыть документ
-            </span>
-          </div>
-        </>
-      )}
-
+        ) : (
+          <img
+            src={objectUrl}
+            alt={title}
+            className="h-full w-full object-contain"
+            onError={onPreviewError}
+          />
+        ))}
       <button
         type="button"
         onClick={handleOpen}
-        disabled={loading || !!error}
+        disabled={!onClick && (!originalAvailable || pending || unavailable)}
         aria-label={`Открыть документ: ${title}`}
         title="Открыть документ"
-        className="absolute inset-0 h-full w-full cursor-pointer opacity-0 focus:opacity-100 focus:outline-none"
-      >
-        <span className="sr-only">Открыть документ</span>
-      </button>
+        className="absolute inset-0 h-full w-full cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] disabled:cursor-default"
+      />
     </div>
   );
 }

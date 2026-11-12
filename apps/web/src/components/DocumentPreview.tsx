@@ -31,18 +31,24 @@ import {
 const ZOOM_LEVELS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 type PageSize = { width: number; height: number };
 
-function PdfPage({
+export function PdfPage({
   url,
   pageNumber,
   onReady,
   onError,
   canonicalSource,
+  maxWidth = 1600,
+  maxHeight = 2200,
+  className = "block h-auto w-full",
 }: {
   url: string;
   pageNumber: number;
   onReady: (size: PageSize) => void;
   onError: () => void;
   canonicalSource?: AnnotationPageDto;
+  maxWidth?: number;
+  maxHeight?: number;
+  className?: string;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const canonicalWidth = canonicalSource?.width,
@@ -72,7 +78,7 @@ function PdfPage({
       const viewport = page.getViewport({
         scale: canonicalDpi
           ? canonicalDpi / 72
-          : Math.min(2, 1600 / base.width, 2200 / base.height),
+          : Math.min(2, maxWidth / base.width, maxHeight / base.height),
       });
       canvas.current.width = canonicalWidth ?? Math.ceil(viewport.width);
       canvas.current.height = canonicalHeight ?? Math.ceil(viewport.height);
@@ -95,11 +101,13 @@ function PdfPage({
     canonicalWidth,
     canonicalHeight,
     canonicalDpi,
+    maxWidth,
+    maxHeight,
   ]);
   return (
     <canvas
       ref={canvas}
-      className="block h-auto w-full"
+      className={className}
       role="img"
       aria-label={`Страница ${pageNumber} PDF`}
     />
@@ -160,11 +168,7 @@ export function DocumentPreview({
   const previewUrl = annotation?.source.previewUrl ?? blobUrl;
   const binaryQuery = useGetDocumentFileBinary(documentId, version, file.id, {
     query: {
-      queryKey: getGetDocumentFileBinaryQueryKey(
-        documentId,
-        version,
-        file.id,
-      ),
+      queryKey: getGetDocumentFileBinaryQueryKey(documentId, version, file.id),
       staleTime: 240_000,
       enabled: !annotation?.source.previewUrl,
     },
@@ -526,7 +530,8 @@ export function DocumentPreview({
                       DOCUMENT_FIELD_LABELS[field.name] ??
                       field.label ??
                       field.name;
-                    const ocrText = region.text ?? field.originalValue ?? "Не распознано";
+                    const ocrText =
+                      region.text ?? field.originalValue ?? "Не распознано";
                     const dateField =
                       ("kind" in field && field.kind === "date") ||
                       isDateFieldName(field.name);
@@ -618,9 +623,9 @@ export function DocumentPreview({
             ? formatDateRu(
                 inspected.region.text ?? inspected.field.originalValue,
               )
-            : inspected.region.text ??
+            : (inspected.region.text ??
               inspected.field.originalValue ??
-              "Не распознано"}
+              "Не распознано")}
           »
         </p>
       )}

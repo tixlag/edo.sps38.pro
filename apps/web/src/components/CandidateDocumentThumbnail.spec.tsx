@@ -1,16 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CandidateDocumentThumbnail } from "./CandidateDocumentThumbnail";
 
 const mockApi = vi.hoisted(() => ({
   getCandidatePreviousDocumentOriginal: vi.fn(),
+  getDocumentVersion: vi.fn(),
+  getDocumentFileBinary: vi.fn(),
+  getPage: vi.fn(),
 }));
 
-vi.mock("@edo/api-client", () => ({
-  getCandidatePreviousDocumentOriginal: (
-    ...args: Parameters<typeof mockApi.getCandidatePreviousDocumentOriginal>
-  ) => mockApi.getCandidatePreviousDocumentOriginal(...args),
+vi.mock("@edo/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@edo/api-client")>()),
+  getCandidatePreviousDocumentOriginal: (...args: unknown[]) =>
+    mockApi.getCandidatePreviousDocumentOriginal(...args),
+}));
+vi.mock("../../../../packages/api-client/src/mutator/custom-instance", () => ({
+  customInstance: (config: { url: string }) =>
+    config.url.endsWith("/file")
+      ? mockApi.getDocumentFileBinary(config)
+      : mockApi.getDocumentVersion(config),
+}));
+vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
+  GlobalWorkerOptions: {},
+  getDocument: () => ({
+    promise: Promise.resolve({ getPage: mockApi.getPage }),
+    destroy: async () => undefined,
+  }),
 }));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -24,6 +41,13 @@ describe("CandidateDocumentThumbnail", () => {
   let revokedUrls: string[] = [];
 
   beforeEach(() => {
+    mockApi.getPage.mockResolvedValue({
+      getViewport: ({ scale }: { scale: number }) => ({
+        width: 600 * scale,
+        height: 900 * scale,
+      }),
+      render: () => ({ promise: Promise.resolve(), cancel: vi.fn() }),
+    });
     createdUrls = [];
     revokedUrls = [];
     originalCreateObjectURL = URL.createObjectURL;
@@ -48,19 +72,22 @@ describe("CandidateDocumentThumbnail", () => {
     URL.revokeObjectURL = originalRevokeObjectURL;
   });
 
-  async function render(props: {
-    candidateId: string;
-    documentId: string;
-    originalAvailable: boolean;
-    title: string;
-    className?: string;
-    onClick?: () => void;
-  }) {
+  async function render(
+    props: Parameters<typeof CandidateDocumentThumbnail>[0],
+  ) {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
     await act(async () => {
-      root?.render(<CandidateDocumentThumbnail {...props} />);
+      root?.render(
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <CandidateDocumentThumbnail {...props} />
+        </QueryClientProvider>,
+      );
     });
   }
 
@@ -79,7 +106,9 @@ describe("CandidateDocumentThumbnail", () => {
 
   it("loads blob and creates image thumbnail when original is available", async () => {
     const fakeBlob = new Blob(["fake-image-bytes"], { type: "image/png" });
-    mockApi.getCandidatePreviousDocumentOriginal.mockResolvedValueOnce(fakeBlob);
+    mockApi.getCandidatePreviousDocumentOriginal.mockResolvedValueOnce(
+      fakeBlob,
+    );
 
     await render({
       candidateId: "cand-1",
@@ -104,11 +133,14 @@ describe("CandidateDocumentThumbnail", () => {
     expect(img).toBeTruthy();
     expect(img?.getAttribute("alt")).toBe("Скан паспорта");
     expect(img?.getAttribute("src")).toBe(createdUrls[0]);
+    expect(img?.className).toContain("object-contain");
   });
 
   it("revokes object URL upon component unmount", async () => {
     const fakeBlob = new Blob(["fake-image-bytes"], { type: "image/png" });
-    mockApi.getCandidatePreviousDocumentOriginal.mockResolvedValueOnce(fakeBlob);
+    mockApi.getCandidatePreviousDocumentOriginal.mockResolvedValueOnce(
+      fakeBlob,
+    );
 
     await render({
       candidateId: "cand-1",
@@ -134,7 +166,9 @@ describe("CandidateDocumentThumbnail", () => {
 
   it("opens document in a new window when button is clicked", async () => {
     const fakeBlob = new Blob(["fake-image-bytes"], { type: "image/jpeg" });
-    mockApi.getCandidatePreviousDocumentOriginal.mockResolvedValueOnce(fakeBlob);
+    mockApi.getCandidatePreviousDocumentOriginal.mockResolvedValueOnce(
+      fakeBlob,
+    );
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
 
     await render({
@@ -164,9 +198,11 @@ describe("CandidateDocumentThumbnail", () => {
     );
   });
 
-  it("renders PDF object preview when blob is a PDF", async () => {
+  it("renders the first PDF page with PDF.js", async () => {
     const fakeBlob = new Blob(["fake-pdf-bytes"], { type: "application/pdf" });
-    mockApi.getCandidatePreviousDocumentOriginal.mockResolvedValueOnce(fakeBlob);
+    mockApi.getCandidatePreviousDocumentOriginal.mockResolvedValueOnce(
+      fakeBlob,
+    );
 
     await render({
       candidateId: "cand-1",
@@ -179,9 +215,122 @@ describe("CandidateDocumentThumbnail", () => {
       await Promise.resolve();
     });
 
-    const pdfObject = container?.querySelector("object");
-    expect(pdfObject).toBeTruthy();
-    expect(pdfObject?.getAttribute("type")).toBe("application/pdf");
-    expect(pdfObject?.getAttribute("data")).toContain(createdUrls[0]);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(container?.querySelector("canvas")).toBeTruthy();
+    expect(mockApi.getPage).toHaveBeenCalledWith(1);
   });
+  it("loads the EDO version and its first retained file only after visibility", async () => {
+    let intersect:
+      | ((
+          entries: IntersectionObserverEntry[],
+          observer: IntersectionObserver,
+        ) => void)
+      | undefined;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(
+          callback: (
+            entries: IntersectionObserverEntry[],
+            observer: IntersectionObserver,
+          ) => void,
+        ) {
+          intersect = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    mockApi.getDocumentVersion.mockResolvedValue({
+      status: "APPROVED",
+      files: [
+        { id: "deleted", deleted: true, ordinal: 0 },
+        { id: "second", deleted: false, ordinal: 2 },
+        { id: "first", deleted: false, ordinal: 1, mimeType: "image/webp" },
+      ],
+    });
+    mockApi.getDocumentFileBinary.mockResolvedValue(
+      new Blob(["image"], { type: "image/webp" }),
+    );
+    try {
+      await render({
+        candidateId: "candidate",
+        documentId: "edo",
+        version: 3,
+        originalAvailable: true,
+        title: "ИНН",
+      });
+      expect(mockApi.getDocumentVersion).not.toHaveBeenCalled();
+      await act(async () => {
+        intersect?.(
+          [{ isIntersecting: true }] as IntersectionObserverEntry[],
+          {} as IntersectionObserver,
+        );
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      });
+      expect(mockApi.getDocumentVersion).toHaveBeenCalledWith(
+        expect.objectContaining({ url: "/api/v1/documents/edo/versions/3" }),
+      );
+      expect(mockApi.getDocumentFileBinary).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "/api/v1/documents/edo/versions/3/files/first/file",
+        }),
+      );
+      await vi.waitFor(async () => {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        });
+        expect(container?.querySelector("img")).toBeTruthy();
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(["RETURNED", "EMPTY", "DENIED"])(
+    "keeps %s EDO files unavailable without breaking opening versions",
+    async (state) => {
+      mockApi.getDocumentVersion.mockResolvedValue({
+        status: state === "RETURNED" ? "RETURNED" : "APPROVED",
+        files:
+          state === "EMPTY"
+            ? []
+            : [
+                {
+                  id: "first",
+                  deleted: false,
+                  ordinal: 0,
+                  mimeType: "image/png",
+                },
+              ],
+      });
+      mockApi.getDocumentFileBinary.mockRejectedValue(new Error("403"));
+      const onClick = vi.fn();
+      await render({
+        candidateId: "candidate",
+        documentId: "edo",
+        version: 1,
+        originalAvailable: true,
+        title: "ИНН",
+        onClick,
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      });
+      await vi.waitFor(async () => {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        });
+        expect(container?.textContent).toContain("Превью недоступно");
+      });
+      if (state !== "DENIED")
+        expect(mockApi.getDocumentFileBinary).not.toHaveBeenCalled();
+      await act(async () => container?.querySelector("button")?.click());
+      expect(onClick).toHaveBeenCalledOnce();
+    },
+  );
 });
