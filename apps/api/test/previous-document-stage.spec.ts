@@ -92,6 +92,129 @@ function setup(group: "RU" | "IG", expired = false, currentStatus?: string) {
 }
 
 describe("former documents in the current stage", () => {
+  describe.each(["RU", "IG"] as const)("%s document presence", (group) => {
+    describe.each(["required", "additional"] as const)(
+      "%s types",
+      (category) => {
+        it.each([undefined, "1", "none"])(
+          "keeps drafts separate from missing documents and preserves progress (stage %s)",
+          async (stage) => {
+            const { reads, prisma } = setup(group, false, "DRAFT");
+            prisma.candidatePreviousDocument.findMany.mockResolvedValue([]);
+            prisma.documentType.findMany.mockResolvedValue([
+              {
+                ...catalog,
+                stage: stage === "none" ? null : 1,
+                requiredForAll: category === "required",
+                allRu: category === "required",
+                allForeign: category === "required",
+                positions: [
+                  { code1c: "position", required: category === "required" },
+                ],
+              },
+            ]);
+
+            const result = await reads.candidateDetails(
+              "cycle",
+              principal,
+              stage,
+            );
+            const selected =
+              stage === undefined
+                ? result.documentGroups
+                : result.stageDocuments;
+            for (const groups of [selected, ...(result.stages ?? [])]) {
+              expect(groups?.[category].documents).toEqual([
+                expect.objectContaining({
+                  id: "new",
+                  status: "DRAFT",
+                  title: "Паспорт",
+                }),
+              ]);
+              expect(groups?.[category].missingDocuments).toEqual([]);
+            }
+            expect(result.documents).toHaveLength(1);
+            expect(result.missingDocuments).toEqual([]);
+            expect(result.previousDocuments).toEqual([]);
+            expect(result.candidate.approvedDocuments).toBe(0);
+            expect(result.candidate.stageProgress?.[0][category]).toMatchObject(
+              {
+                draft: 1,
+                missing: 0,
+                approved: 0,
+                reused: 0,
+                signed: 0,
+              },
+            );
+          },
+        );
+      },
+    );
+
+    it.each([undefined, "1"])(
+      "uses the catalog name for a genuinely missing document (stage %s)",
+      async (stage) => {
+        const { reads, prisma } = setup(group);
+        prisma.candidatePreviousDocument.findMany.mockResolvedValue([]);
+        const result = await reads.candidateDetails("cycle", principal, stage);
+        const selected =
+          stage === undefined ? result.documentGroups : result.stageDocuments;
+        const missing = [{ code: "PASSPORT", title: "Паспорт" }];
+        for (const groups of [selected, ...(result.stages ?? [])]) {
+          expect(groups?.required.documents).toEqual([]);
+          expect(groups?.required.missingDocuments).toEqual(missing);
+        }
+        expect(result.missingDocuments).toEqual(missing);
+        expect(result.candidate.approvedDocuments).toBe(0);
+        expect(result.candidate.stageProgress?.[0].required).toMatchObject({
+          draft: 0,
+          missing: 1,
+          approved: 0,
+          reused: 0,
+          signed: 0,
+        });
+      },
+    );
+
+    it.each([false, true])(
+      "does not duplicate a draft alongside an ERP source (expired %s)",
+      async (expired) => {
+        const { reads } = setup(group, expired, "DRAFT");
+        for (const stage of [undefined, "1"]) {
+          const result = await reads.candidateDetails(
+            "cycle",
+            principal,
+            stage,
+          );
+          const selected =
+            stage === undefined ? result.documentGroups : result.stageDocuments;
+          for (const groups of [selected, ...(result.stages ?? [])]) {
+            expect(groups?.required.documents).toHaveLength(1);
+            expect(groups?.required.documents[0].status).toBe("DRAFT");
+            expect(groups?.required.missingDocuments).toEqual([]);
+          }
+          expect(result.previousDocuments).toEqual([
+            expect.objectContaining({
+              id: "former",
+              source: "ERP",
+              state: expired ? "EXPIRED" : "REUSED",
+            }),
+          ]);
+          expect(result.stages?.[0].previousDocuments).toHaveLength(1);
+          expect(result.missingDocuments).toEqual([]);
+          expect(result.candidate.approvedDocuments).toBe(expired ? 0 : 1);
+          expect(result.candidate.stageProgress?.[0].required).toMatchObject({
+            draft: expired ? 1 : 0,
+            missing: 0,
+            approved: 0,
+            reused: expired ? 0 : 1,
+            signed: 0,
+          });
+        }
+      },
+    );
+  });
+
   it("shows imported RU originals in stages before a person or employee code exists", async () => {
     const { reads, access } = setup("RU");
     access.candidate.mockResolvedValue({ id: "cycle", erpUid: "erp-candidate", code1c: null, personUid: null, chatUuid: "chat", citizenship: "ru", positionCode: "position", isReemployment: false, previousDocumentsSyncedAt: null } as never);

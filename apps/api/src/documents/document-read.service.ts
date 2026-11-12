@@ -379,12 +379,8 @@ export class DocumentReadService {
                 this.documentSummary(doc),
               );
             if (
-              (!doc &&
-                !(
-                  type.erpUid && previousUids.has(type.erpUid.toLowerCase())
-                )) ||
-              (doc?.status === "DRAFT" &&
-                !(type.erpUid && previousUids.has(type.erpUid.toLowerCase())))
+              !doc &&
+              !(type.erpUid && previousUids.has(type.erpUid.toLowerCase()))
             )
               stageDocuments[category].missingDocuments.push({
                 code: type.code,
@@ -524,12 +520,8 @@ export class DocumentReadService {
             if (doc)
               stageItem[category].documents.push(this.documentSummary(doc));
             if (
-              (!doc &&
-                !(
-                  type.erpUid && previousUids.has(type.erpUid.toLowerCase())
-                )) ||
-              (doc?.status === "DRAFT" &&
-                !(type.erpUid && previousUids.has(type.erpUid.toLowerCase())))
+              !doc &&
+              !(type.erpUid && previousUids.has(type.erpUid.toLowerCase()))
             ) {
               stageItem[category].missingDocuments.push({
                 code: type.code,

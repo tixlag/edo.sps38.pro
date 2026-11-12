@@ -59,6 +59,62 @@ describe("CandidateStageAccordion", () => {
     });
   }
 
+  describe.each(["RU", "IG"] as const)("%s drafts", (reviewGroup) => {
+    it.each([null, "REUSED", "EXPIRED"] as const)(
+      "renders one draft card without a missing duplicate (ERP state %s)",
+      async (state) => {
+        await renderAccordion({
+          stage: 1,
+          title: "Этап 1",
+          reviewGroup,
+          candidateId: "candidate",
+          isOpen: true,
+          onToggle: vi.fn(),
+          required: {
+            documents: [
+              {
+                id: "draft",
+                documentTypeCode: "PASSPORT",
+                title: "Паспорт",
+                status: "DRAFT",
+                currentVersion: 1,
+                deliveryStatus: null,
+              } as CandidateDocumentSummaryDto,
+            ],
+            missingDocuments: [],
+          },
+          additional: { documents: [], missingDocuments: [] },
+          previousDocuments: state
+            ? [
+                {
+                  id: "erp",
+                  documentUid: "passport-uid",
+                  documentTypeCode: "PASSPORT",
+                  title: "Паспорт",
+                  state,
+                  source: "ERP",
+                  sourceDescription: "Из ERP",
+                  fields: {},
+                  category: "required",
+                  originalAvailable: true,
+                  expiresAt: null,
+                  recordedAt: null,
+                },
+              ]
+            : [],
+        });
+
+        expect(container!.querySelectorAll("article")).toHaveLength(1);
+        expect(container!.querySelector("article h3")?.textContent).toBe(
+          "Паспорт",
+        );
+        expect(container!.textContent).toContain("Черновик");
+        expect(container!.textContent).not.toContain("Не загружен");
+        expect(container!.textContent).toContain("Проверено: 0 из 1");
+      },
+    );
+  });
+
   it("renders stage badge, title once with progress counter and triggers onToggle", async () => {
     const onToggle = vi.fn();
 
