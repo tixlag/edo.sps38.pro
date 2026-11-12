@@ -308,14 +308,17 @@ describe("ERP transport configuration", () => {
     DATABASE_URL: "mysql://test:test@127.0.0.1:3308/edo",
     JWT_SECRET: "test-only",
   };
-  it("defaults new approvals to v2, with retries off and a bounded deadline", () => {
+  it("defaults new approvals to v2, with bounded retries and a bounded deadline", () => {
     expect(validateEnv(base)).toMatchObject({
       ERP_DOCUMENTS_TRANSPORT: "multipart-v2",
-      ERP_DOCUMENTS_V2_AUTO_RETRY: "false",
+      ERP_DOCUMENTS_V2_AUTO_RETRY: "true",
       ERP_DOCUMENTS_V2_TIMEOUT_MS: 300000,
     });
     expect(() =>
       validateEnv({ ...base, ERP_DOCUMENTS_TRANSPORT: "base64-v1" }),
+    ).toThrow();
+    expect(() =>
+      validateEnv({ ...base, ERP_DOCUMENTS_V2_AUTO_RETRY: "maybe" }),
     ).toThrow();
   });
   it.each([

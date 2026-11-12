@@ -270,7 +270,7 @@ it("shows synchronization instead of temporary empty documents and counters unti
   state.enrichment = undefined;
 });
 
-it("opens the approved ERP original for an adaptation document deep link", async () => {
+it("opens the EDO document for a document deep link even when an approved ERP original exists", async () => {
   state.search = { document: "adaptation", version: 1 };
   state.candidate = { reviewGroup: "RU" };
   state.enrichment = undefined;
@@ -279,8 +279,24 @@ it("opens the approved ERP original for an adaptation document deep link", async
   const node = document.createElement("div"); document.body.append(node);
   const root = createRoot(node);
   await act(async () => root.render(<CandidateWorkspacePage />));
+  // The EDO document is opened with its own versions, the ERP original is not
+  // substituted for it.
+  expect(node.querySelector('[data-erp-original="approved-erp"]')).toBeNull();
+  expect(node.textContent).toContain("Загрузка документа…");
+  await act(async () => root.unmount()); node.remove();
+  state.documents = []; state.previousDocuments = [];
+});
+
+it("opens the ERP original when the reviewer asks for it", async () => {
+  state.search = { previousDocument: "approved-erp" };
+  state.candidate = { reviewGroup: "RU" };
+  state.enrichment = undefined;
+  state.documents = [{ id: "adaptation", documentTypeCode: "PASSPORT", status: "IN_REVIEW", title: "Паспорт", currentVersion: 1 }];
+  state.previousDocuments = [{ id: "approved-erp", documentTypeCode: "PASSPORT", source: "ERP", state: "REUSED", originalAvailable: true }];
+  const node = document.createElement("div"); document.body.append(node);
+  const root = createRoot(node);
+  await act(async () => root.render(<CandidateWorkspacePage />));
   expect(node.querySelector('[data-erp-original="approved-erp"]')).not.toBeNull();
-  expect(node.textContent).not.toContain("Загрузка документа…");
   await act(async () => root.unmount()); node.remove();
   state.documents = []; state.previousDocuments = [];
 });

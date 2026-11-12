@@ -984,10 +984,15 @@ export function DocumentReviewWorkspace({
                         ? "Требует отправки в ERP"
                         : "Отправка в ERP"}
                 </p>
-                {canDebug && data.delivery.errorCode && (
+                {(data.delivery.errorReason ||
+                  (canDebug && data.delivery.errorCode)) && (
                   <p className="mt-1">
-                    ERP недоступна или не приняла документ. Документ сохранён в
-                    ЭДО. Код: {data.delivery.errorCode}
+                    {data.delivery.errorReason ??
+                      "ERP недоступна или не приняла документ."}{" "}
+                    Документ сохранён в ЭДО.
+                    {canDebug && data.delivery.errorCode
+                      ? ` Код: ${data.delivery.errorCode}`
+                      : ""}
                   </p>
                 )}
                 {canDebug && data.delivery.attempts[0] && (

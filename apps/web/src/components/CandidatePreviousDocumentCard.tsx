@@ -18,6 +18,10 @@ import { formatDateRu } from "../lib/date-format";
 
 export interface CandidatePreviousDocumentCardProps {
   candidateId: string;
+  /**
+   * Kept for compatibility: the source of the card is derived from the
+   * document facts only, so RU and IG candidates behave identically.
+   */
   reviewGroup?: "RU" | "IG" | null;
   title: string;
   status?: string;
@@ -70,7 +74,6 @@ function formatRequisites(fields?: Record<string, unknown>): string[] {
 
 export function CandidatePreviousDocumentCard({
   candidateId,
-  reviewGroup,
   title,
   status,
   currentDocument,
@@ -83,35 +86,46 @@ export function CandidatePreviousDocumentCard({
   className,
 }: CandidatePreviousDocumentCardProps) {
   const [openingOriginal, setOpeningOriginal] = useState(false);
-  // A confirmed RU ERP original is authoritative over a parallel adaptation upload.
-  if (reviewGroup !== "IG" && previousDocument?.source === "ERP" &&
-      previousDocument.state === "REUSED" && previousDocument.originalAvailable &&
-      !(currentDocument?.uploadOrigin === "REVIEWER" && currentDocument.deliveryStatus !== "SENT")) {
-    currentDocument = undefined;
-    returnedVersion = undefined;
-    status = "APPROVED";
-    mode = "expanded";
-  }
-
+  // One card shows exactly one document. The source is derived from the
+  // document facts only, so RU and IG candidates behave identically.
+  const hasEdo = !!currentDocument;
+  const edoDelivered = hasEdo && currentDocument?.deliveryStatus === "SENT";
+  const creditedErpOriginal =
+    previousDocument?.source === "ERP" &&
+    previousDocument.state === "REUSED" &&
+    previousDocument.originalAvailable;
+  const primary: "EDO" | "PREVIOUS" | "NONE" =
+    hasEdo && (edoDelivered || !creditedErpOriginal)
+      ? "EDO"
+      : previousDocument
+        ? "PREVIOUS"
+        : "NONE";
+  const showPrevious = primary === "PREVIOUS" && !!previousDocument;
 
   const effectiveStatus =
-    status ??
-    (isMissing
-      ? "MISSING"
-      : returnedVersion
-        ? "RETURNED"
-        : currentDocument?.status ?? previousDocument?.state ?? "DRAFT");
+    primary === "PREVIOUS" && creditedErpOriginal
+      ? "APPROVED"
+      : (status ??
+        (isMissing
+          ? "MISSING"
+          : returnedVersion
+            ? "RETURNED"
+            : currentDocument?.status ??
+              previousDocument?.state ??
+              "DRAFT"));
 
   const rejectionReason =
-    returnedVersion?.rejectionReason ??
-    currentDocument?.returnedVersions?.[0]?.rejectionReason ??
-    previousDocument?.rejectionReason ??
-    null;
+    primary === "EDO"
+      ? (returnedVersion?.rejectionReason ??
+        currentDocument?.returnedVersions?.[0]?.rejectionReason ??
+        null)
+      : (previousDocument?.rejectionReason ?? null);
 
   // Decide compact vs expanded mode
   const isCompact =
     mode === "compact" ||
     (mode !== "expanded" &&
+      !creditedErpOriginal &&
       ((isMissing && !previousDocument) ||
         (effectiveStatus === "MISSING" && !previousDocument) ||
         (effectiveStatus === "APPROVED" &&
@@ -122,6 +136,19 @@ export function CandidatePreviousDocumentCard({
           previousDocument?.state === "REUSED") &&
           !currentDocument &&
           !returnedVersion)));
+
+  const edoActionLabel =
+    currentDocument?.uploadOrigin === "REVIEWER"
+      ? "Продолжить загрузку"
+      : currentDocument?.status === "IN_REVIEW"
+        ? "Проверить документ"
+        : "Открыть документ";
+
+  const openEdoDocument = () =>
+    onReviewCurrent?.(
+      currentDocument!.id,
+      currentDocument!.currentVersion ?? returnedVersion?.version,
+    );
 
   const handleOpenOriginal = async () => {
     if (!previousDocument) return;
@@ -210,7 +237,18 @@ export function CandidatePreviousDocumentCard({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {renderBadge()}
-          {previousDocument && (
+          {primary === "EDO" && currentDocument && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={openEdoDocument}
+              aria-label={`${title}, версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
+            >
+              {edoActionLabel}
+            </Button>
+          )}
+          {primary === "PREVIOUS" && previousDocument && (
             <Button
               size="sm"
               variant="outline"
@@ -279,7 +317,7 @@ export function CandidatePreviousDocumentCard({
         )}
 
       {/* Previous version block */}
-      {previousDocument && (
+      {showPrevious && previousDocument && (
         <div className="rounded-lg bg-[var(--muted)]/40 border border-[var(--border)]/50 p-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
             <CandidateDocumentThumbnail
@@ -353,23 +391,18 @@ export function CandidatePreviousDocumentCard({
       {currentDocument && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border)]/50 pt-2.5">
           <div className="text-xs text-[var(--muted-foreground)]">
-            Текущая версия: {currentDocument.currentVersion}
+            {primary === "EDO"
+              ? `Текущая версия: ${currentDocument.currentVersion}`
+              : `Загрузка в ЭДО: версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
           </div>
-          {effectiveStatus !== "RETURNED" && (
-            <Button
-              size="sm"
-              aria-label={`${title}, версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
-              onClick={() =>
-                onReviewCurrent?.(
-                  currentDocument.id,
-                  currentDocument.currentVersion ?? returnedVersion?.version,
-                )
-              }
-              className="text-xs font-medium"
-            >
-              {currentDocument.uploadOrigin === "REVIEWER" ? "Продолжить загрузку" : "Проверить документ"}
-            </Button>
-          )}
+          <Button
+            size="sm"
+            aria-label={`${title}, версия ${currentDocument.currentVersion ?? returnedVersion?.version ?? 1}`}
+            onClick={openEdoDocument}
+            className="text-xs font-medium"
+          >
+            {edoActionLabel}
+          </Button>
         </div>
       )}
     </div>

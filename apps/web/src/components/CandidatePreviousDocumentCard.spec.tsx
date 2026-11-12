@@ -375,19 +375,145 @@ describe("CandidatePreviousDocumentCard", () => {
 
     expect(container?.textContent).toContain("Ожидает проверки");
   });
-  it("shows only the approved ERP original for RU when adaptation has another upload", async () => {
+  it("shows the approved ERP original and keeps the EDO upload reachable", async () => {
     const onReviewCurrent = vi.fn();
     await renderCard({ candidateId: "candidate", reviewGroup: "RU", title: "Паспорт", status: "IN_REVIEW",
-      currentDocument: { id: "adaptation-doc", status: "IN_REVIEW", currentVersion: 1 } as never,
+      currentDocument: { id: "adaptation-doc", status: "IN_REVIEW", currentVersion: 1, deliveryStatus: "NONE" } as never,
       previousDocument: { id: "erp-original", title: "Паспорт", source: "ERP", state: "REUSED", originalAvailable: true, fields: {} } as never,
       onReviewCurrent,
     });
     expect(container?.textContent).toContain("Документ принят");
     expect(container?.textContent).toContain("Документ из ERP");
-    expect(container?.textContent).not.toContain("Проверить документ");
+    // One document block only: the EDO upload is an action, not a second block
     expect(container?.textContent).not.toContain("Текущая версия");
+    expect(container?.textContent).toContain("Загрузка в ЭДО: версия 1");
     expect(mockApi.getCandidatePreviousDocumentOriginal).toHaveBeenCalledWith("candidate", "erp-original", expect.any(AbortSignal));
-    expect(onReviewCurrent).not.toHaveBeenCalled();
+
+    const edoBtn = [...(container?.querySelectorAll("button") ?? [])].find((btn) =>
+      btn.textContent?.includes("Проверить документ"),
+    );
+    expect(edoBtn).toBeTruthy();
+    await act(async () => {
+      edoBtn?.click();
+    });
+    expect(onReviewCurrent).toHaveBeenCalledWith("adaptation-doc", 1);
   });
 
+  it.each(["RU", "IG"] as const)(
+    "behaves identically for %s candidates",
+    async (reviewGroup) => {
+      const onReviewCurrent = vi.fn();
+      await renderCard({
+        candidateId: "candidate",
+        reviewGroup,
+        title: "Паспорт",
+        status: "IN_REVIEW",
+        currentDocument: {
+          id: "adaptation-doc",
+          status: "IN_REVIEW",
+          currentVersion: 1,
+          deliveryStatus: "NONE",
+        } as never,
+        previousDocument: {
+          id: "erp-original",
+          title: "Паспорт",
+          source: "ERP",
+          state: "REUSED",
+          originalAvailable: true,
+          fields: {},
+        } as never,
+        onReviewCurrent,
+      });
+      expect(container?.textContent).toContain("Документ из ERP");
+      expect(container?.textContent).toContain("Загрузка в ЭДО: версия 1");
+      expect(container?.textContent).not.toContain("Текущая версия");
+    },
+  );
+
+  it("makes a delivered EDO document the primary source", async () => {
+    const onReviewCurrent = vi.fn();
+    await renderCard({
+      candidateId: "candidate",
+      title: "Реквизиты банка",
+      status: "APPROVED",
+      currentDocument: {
+        id: "edo-doc",
+        status: "APPROVED",
+        currentVersion: 2,
+        deliveryStatus: "SENT",
+        uploadOrigin: "CANDIDATE",
+      } as never,
+      previousDocument: {
+        id: "erp-original",
+        title: "Реквизиты банка",
+        source: "ERP",
+        state: "REUSED",
+        originalAvailable: true,
+        fields: {},
+      } as never,
+      onReviewCurrent,
+    });
+    // The EDO document won: no competing ERP block, versions stay reachable
+    expect(container?.textContent).not.toContain("Документ из ERP");
+    expect(container?.textContent).toContain("Текущая версия: 2");
+    const openBtn = [...(container?.querySelectorAll("button") ?? [])].find((btn) =>
+      btn.textContent?.includes("Открыть документ"),
+    );
+    expect(openBtn).toBeTruthy();
+    await act(async () => {
+      openBtn?.click();
+    });
+    expect(onReviewCurrent).toHaveBeenCalledWith("edo-doc", 2);
+  });
+
+  it("opens an EDO document in compact mode even without an ERP original", async () => {
+    const onReviewCurrent = vi.fn();
+    await renderCard({
+      candidateId: "candidate",
+      title: "ИНН",
+      status: "APPROVED",
+      currentDocument: {
+        id: "inn-doc",
+        status: "APPROVED",
+        currentVersion: 1,
+        deliveryStatus: "REQUIRES_MANUAL",
+        uploadOrigin: "CANDIDATE",
+      } as never,
+      onReviewCurrent,
+    });
+    const openBtn = [...(container?.querySelectorAll("button") ?? [])].find((btn) =>
+      btn.textContent?.includes("Открыть документ"),
+    );
+    expect(openBtn).toBeTruthy();
+    await act(async () => {
+      openBtn?.click();
+    });
+    expect(onReviewCurrent).toHaveBeenCalledWith("inn-doc", 1);
+  });
+
+  it("keeps a returned EDO document openable", async () => {
+    const onReviewCurrent = vi.fn();
+    await renderCard({
+      candidateId: "candidate",
+      title: "Трудовой договор",
+      status: "RETURNED",
+      currentDocument: {
+        id: "returned-doc",
+        status: "RETURNED",
+        currentVersion: 1,
+        deliveryStatus: "NONE",
+        uploadOrigin: "CANDIDATE",
+      } as never,
+      onReviewCurrent,
+    });
+    expect(container?.textContent).toContain("Возвращён");
+    const openBtn = [...(container?.querySelectorAll("button") ?? [])].find((btn) =>
+      btn.textContent?.includes("Открыть документ"),
+    );
+    expect(openBtn).toBeTruthy();
+    await act(async () => {
+      openBtn?.click();
+    });
+    expect(onReviewCurrent).toHaveBeenCalledWith("returned-doc", 1);
+  });
 });

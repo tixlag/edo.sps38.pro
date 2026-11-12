@@ -191,11 +191,6 @@ function CandidateWorkspace() {
   const previousDocumentId = typeof search.previousDocument === "string" ? search.previousDocument : undefined;
   const uploading = search.uploadDocument === true;
 
-  const selectedType = details.data?.documents.find((doc) => doc.id === documentId)?.documentTypeCode;
-  const approvedErpDocument = profile?.reviewGroup !== "IG" && search.reviewUpload !== true
-    ? details.data?.previousDocuments?.find((doc) => doc.documentTypeCode === selectedType && doc.source === "ERP" && doc.state === "REUSED" && doc.originalAvailable)
-    : undefined;
-
   const queueSearch = { ...parseReviewSearchParams(search, "ALL") };
   delete queueSearch.candidate;
   const openDocument = (
@@ -217,7 +212,6 @@ function CandidateWorkspace() {
         version: ver,
         previousDocument: undefined,
         uploadDocument: undefined,
-        reviewUpload: undefined,
       }),
     });
   };
@@ -730,10 +724,10 @@ function CandidateWorkspace() {
       </div>
       {(documentId || previousDocumentId || uploading) && (
         <DocumentReviewDialog candidateId={candidateId} documentId={documentId}
-          previousDocumentId={previousDocumentId ?? approvedErpDocument?.id} version={version} uploading={uploading}
-          onClose={() => void navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (prev: Record<string, unknown>) => { const next = { ...prev }; for (const key of ["document", "version", "previousDocument", "uploadDocument", "reviewUpload"]) delete next[key]; return next; } })}
+          previousDocumentId={previousDocumentId} version={version} uploading={uploading}
+          onClose={() => void navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (prev: Record<string, unknown>) => { const next = { ...prev }; for (const key of ["document", "version", "previousDocument", "uploadDocument"]) delete next[key]; return next; } })}
           chooseVersion={(selected) => void navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (prev: Record<string, unknown>) => ({ ...prev, version: selected }) })}
-          onUploaded={async (id, number) => { await details.refetch(); await navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (prev: Record<string, unknown>) => ({ ...prev, document: id, version: number, previousDocument: undefined, uploadDocument: undefined, reviewUpload: true }) }); }}
+          onUploaded={async (id, number) => { await details.refetch(); await navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (prev: Record<string, unknown>) => ({ ...prev, document: id, version: number, previousDocument: undefined, uploadDocument: undefined }) }); }}
         />
       )}
       <CandidatePhotoUploadDialog

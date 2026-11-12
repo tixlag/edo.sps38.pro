@@ -9478,7 +9478,7 @@
             "access-jwt": []
           }
         ],
-        "summary": "Retry an approved reviewer upload using its existing ERP delivery key",
+        "summary": "Repeat an approved document delivery using its existing ERP delivery key",
         "tags": [
           "documents"
         ]
@@ -19886,6 +19886,11 @@
             "type": "string",
             "nullable": true
           },
+          "errorReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Plain explanation of the failure without the technical machine code"
+          },
           "attempts": {
             "type": "array",
             "items": {
@@ -19896,6 +19901,7 @@
         "required": [
           "status",
           "errorCode",
+          "errorReason",
           "attempts"
         ]
       },

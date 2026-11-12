@@ -25,6 +25,7 @@ import {
   nextDeliveryAttempt,
 } from "./erp-multipart";
 import { erpDocumentHeaders } from "./erp-document-auth";
+import { isInvalidFileContent } from "./erp-retry-selection";
 import { tryCompleteIgEmployment } from "./ig-completion";
 import { isIgRecipient, matchesIgRecipient } from "./ig-recipient";
 import { ErpWorkspaceClient } from "./erp-workspace.client";
@@ -82,6 +83,10 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
       },
     });
     if (!row) throw new ConflictException("Document has no ERP delivery");
+    // A historic version is never repeated: the document already has a newer
+    // current version, and the delivery key of the old one must not be reused.
+    if (row.version.document.currentVersion !== version)
+      throw new ConflictException("Document version is not current");
     if (row.status === "WAITING_CONTRACT") {
       const candidate = row.version.document.candidate;
       if (!candidate?.code1c || !this.erp || !isIgRecipient(candidate))
@@ -154,8 +159,45 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
         });
       });
     }
+    await this.repairArtifact(row.id);
     await this.send(row.id, principal.uuid, correlationId, principal);
     return this.reads.version(documentId, version);
+  }
+  /**
+   * Rebuilds the approved artifact of a version whose delivery was rejected
+   * because of an invalid file container. Only a one-file JPEG with a
+   * removable trailer is rebuilt; any other document keeps its artifact and is
+   * repeated as is. Failures are logged, never thrown: the repeated delivery
+   * reports the real problem.
+   */
+  async repairArtifact(deliveryId: string): Promise<boolean> {
+    try {
+      const row = await this.prisma.erpDocumentDelivery.findUnique({
+        where: { id: deliveryId },
+        include: {
+          attempts: { orderBy: { startedAt: "desc" }, take: 1 },
+        },
+      });
+      if (!row) return false;
+      const attempt = row.attempts[0];
+      if (
+        !isInvalidFileContent(row.errorCode, attempt?.responseBody ?? null)
+      )
+        return false;
+      const artifact = await this.pdf.reprepareCanonical(row.versionId);
+      if (!artifact) return false;
+      this.logger.log(
+        `Approved artifact rebuilt for delivery ${deliveryId} (${artifact.sizeBytes} bytes)`,
+      );
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `Approved artifact rebuild failed for delivery ${deliveryId}: ${
+          error instanceof Error ? error.message : "unknown"
+        }`,
+      );
+      return false;
+    }
   }
   async send(
     id: string,

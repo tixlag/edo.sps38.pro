@@ -20,6 +20,7 @@ import { ConfigService } from "@nestjs/config";
 import { usablePreviousUids } from "./ig-completion";
 import { previousDocumentAvailability } from "./previous-document-availability";
 import { documentCheckEnabled } from "../ocr/document-check";
+import { erpDeliveryReason } from "./erp-delivery-error";
 import {
   canRetryDocumentOcr,
   canStartDocumentOcr,
@@ -906,7 +907,10 @@ export class DocumentReadService {
       delivery: row.delivery
         ? {
             status: row.delivery.status,
+            // The technical code and the attempts stay a diagnostic (admins
+            // only); every reviewer gets a plain explanation of the failure.
             errorCode: canDebug ? row.delivery.errorCode : null,
+            errorReason: principal ? erpDeliveryReason(row.delivery.errorCode) : null,
             attempts: (canDebug ? row.delivery.attempts : []).map((a) => ({
               id: a.id,
               actorId: a.actorId,

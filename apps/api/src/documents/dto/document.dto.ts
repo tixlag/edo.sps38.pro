@@ -205,6 +205,13 @@ export class DocumentDeliveryDto {
   })
   status!: string;
   @ApiProperty({ type: String, nullable: true }) errorCode!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "Plain explanation of the failure without the technical machine code",
+  })
+  errorReason!: string | null;
   @ApiProperty({ type: [DocumentDeliveryAttemptDto] })
   attempts!: DocumentDeliveryAttemptDto[];
 }

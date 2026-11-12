@@ -37,8 +37,9 @@ const envSchema = z.object({
   ERP_ADAPTATION_TOKEN: z.string().optional(),
   ERP_DOCUMENTS_BASE_URL: z.string().url().default('https://api-erp.sps38.pro/ERP/hs/api/'),
   ERP_DOCUMENTS_TRANSPORT: z.literal('multipart-v2').default('multipart-v2'),
-  // Enable only after idempotency acceptance on the target 1C publication.
-  ERP_DOCUMENTS_V2_AUTO_RETRY: z.enum(['true', 'false']).default('false'),
+  // The published 1C publication keeps an idempotency register, so bounded
+  // retries of a failed delivery are safe.
+  ERP_DOCUMENTS_V2_AUTO_RETRY: z.enum(['true', 'false']).default('true'),
   ERP_DOCUMENTS_V2_TIMEOUT_MS: z.coerce.number().int().min(60000).max(600000).default(300000),
   ERP_DOCUMENTS_TOKEN: z.string().optional(),
   ERP_CANDIDATE_URL: z.string().url().optional(),

@@ -46,11 +46,11 @@ export class ReviewerDocumentsService {
       return await this.manual.upload(upload, key ?? upload.idempotencyKey, correlationId, { candidateId: id, principal });
     } finally { await this.uploads.dispose(upload); }
   }
-  async assertReviewerDelivery(candidateId: string, documentId: string, version: number, principal: AuthPrincipal) {
+  async assertDeliveryRetry(candidateId: string, documentId: string, version: number, principal: AuthPrincipal) {
     await this.owner(candidateId, principal);
     const row = await this.prisma.documentVersion.findFirst({ where: { documentId, version,
-      document: { candidateId }, submission: { origin: "REVIEWER" } } });
-    if (!row) throw new NotFoundException("REVIEWER_UPLOAD_NOT_FOUND");
+      document: { candidateId }, submission: { origin: { in: ["REVIEWER", "CANDIDATE"] } } } });
+    if (!row) throw new NotFoundException("DELIVERY_RETRY_NOT_FOUND");
   }
   private async load(tx: Prisma.TransactionClient, candidateId: string, id: string) {
     const row = await tx.candidatePreviousDocument.findFirst({ where: { id, candidateId }, include: { fieldEdits: true } });

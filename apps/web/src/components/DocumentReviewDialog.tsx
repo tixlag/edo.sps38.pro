@@ -81,10 +81,29 @@ function CandidateDocumentReview({
           </select>
         </label>
       </div>
-      {version.data.uploadOrigin === "REVIEWER" && (
+      {(version.data.uploadOrigin === "REVIEWER" || version.data.delivery) && (
         <div role="status" className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg bg-[var(--muted)] p-2 text-sm">
-          {version.data.delivery?.status === "SENT" ? "Сохранён в ERP" : ["PENDING", "SENDING"].includes(version.data.delivery?.status ?? "") ? "Документ подтверждён. Отправляем в ERP…" : version.data.status === "APPROVED" ? "Не удалось сохранить в ERP. Загрузка и поля сохранены в ЭДО." : version.data.job ? "Проверьте результат OCR, сохраните исправления и подтвердите отправку в ERP." : "OCR недоступен. Заполните поля вручную и подтвердите отправку в ERP."}
-          {version.data.delivery?.status === "REQUIRES_MANUAL" && <Button variant="outline" disabled={resend.isPending} onClick={() => resend.mutate({ candidateId, documentId, version: number }, { onSuccess: () => void version.refetch() })}>Повторить отправку в ERP</Button>}
+          <span>
+            {version.data.delivery?.status === "SENT"
+              ? "Сохранён в ERP"
+              : ["PENDING", "SENDING"].includes(version.data.delivery?.status ?? "")
+                ? "Документ подтверждён. Отправляем в ERP…"
+                : version.data.status === "APPROVED"
+                  ? "Не удалось сохранить в ERP. Загрузка и поля сохранены в ЭДО."
+                  : version.data.job
+                    ? "Проверьте результат OCR, сохраните исправления и подтвердите отправку в ERP."
+                    : "OCR недоступен. Заполните поля вручную и подтвердите отправку в ERP."}
+          </span>
+          {!historic && version.data.delivery?.status === "REQUIRES_MANUAL" && (
+            <>
+              {version.data.delivery.errorReason && (
+                <span className="font-medium text-[var(--foreground)]">
+                  {version.data.delivery.errorReason}
+                </span>
+              )}
+              <Button variant="outline" disabled={resend.isPending} onClick={() => resend.mutate({ candidateId, documentId, version: number }, { onSuccess: () => void version.refetch() })}>Повторить отправку в ERP</Button>
+            </>
+          )}
           {resend.isError && <span role="alert">{candidateError(resend.error)}</span>}
         </div>
       )}

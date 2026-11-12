@@ -1155,6 +1155,11 @@ export interface DocumentDeliveryDto {
   status: DocumentDeliveryDtoStatus;
   /** @nullable */
   errorCode: string | null;
+  /**
+   * Plain explanation of the failure without the technical machine code
+   * @nullable
+   */
+  errorReason: string | null;
   attempts: DocumentDeliveryAttemptDto[];
 }
 
@@ -9857,7 +9862,7 @@ export const useEditPreviousDocumentFields = <
 };
 
 /**
- * @summary Retry an approved reviewer upload using its existing ERP delivery key
+ * @summary Repeat an approved document delivery using its existing ERP delivery key
  */
 export const retryReviewerDocumentDelivery = (
   candidateId: string,
@@ -9916,7 +9921,7 @@ export type RetryReviewerDocumentDeliveryMutationResult = NonNullable<
 export type RetryReviewerDocumentDeliveryMutationError = ApiErrorDto;
 
 /**
- * @summary Retry an approved reviewer upload using its existing ERP delivery key
+ * @summary Repeat an approved document delivery using its existing ERP delivery key
  */
 export const useRetryReviewerDocumentDelivery = <
   TError = ApiErrorDto,
