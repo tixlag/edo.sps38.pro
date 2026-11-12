@@ -32,6 +32,9 @@ const state = vi.hoisted(() => ({
     linkedPerson: false,
     responsible: null as CandidateResponsibleDto | null,
     sourceComment: null as CandidateSourceCommentDto | null,
+    source: null as { id: string; name: string } | null,
+    internship: false,
+    internshipEndDate: null as string | null,
     hasChat: true,
     history: [
       {
@@ -194,8 +197,15 @@ vi.mock("@edo/api-client", () => {
     getGetCandidateOperationQueryKey: (id: string) => ["operation", id],
     useListCandidateCountries: () => result([]),
     useListCandidateOrganizations: () => result([]),
-    useListCandidateSources: () => result([]),
-    useListCandidateResponsibles: () => result([]),
+    useListCandidateSources: () =>
+      result([
+        { id: "Другое", name: "Другое" },
+        { id: "ПоРекомендации", name: "По рекомендации" },
+      ]),
+    useListCandidateResponsibles: () =>
+      result([
+        { kind: "person", id: "referrer-person", name: "Ирина Рекомендатель" },
+      ]),
     useListCandidateContactTypes: () => result([]),
     useListCandidateContactKinds: () => result([]),
     useListCandidateUniversities: () => result([]),
@@ -274,6 +284,9 @@ beforeEach(() => {
   state.profile.person = null;
   state.profile.responsible = null;
   state.profile.sourceComment = null;
+  state.profile.source = null;
+  state.profile.internship = false;
+  state.profile.internshipEndDate = null;
   state.manualPersonToken = "signed-opaque-person";
   state.candidateMatches = [];
   state.operation.mockResolvedValue({ data: { state: "NOT_FOUND" } });
@@ -442,6 +455,107 @@ describe("candidate manager flows", () => {
     expect(
       state.create.mock.calls[0][0].data.ignoredSelections,
     ).toBeUndefined();
+  });
+  it("requires a nonblank comment for Other before sending the edit", async () => {
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Редактировать данные");
+    await pick("Источник", "Другое");
+    await submit("Редактирование кандидата");
+    expect(state.update).not.toHaveBeenCalled();
+    expect(view.textContent).toContain("Укажите комментарий к источнику");
+    const comment = view.querySelector<HTMLInputElement>(
+      'input[aria-label="Текст комментария к источнику"]',
+    )!;
+    type(comment, "   ");
+    await submit("Редактирование кандидата");
+    expect(state.update).not.toHaveBeenCalled();
+    type(comment, "Обратился самостоятельно");
+    await submit("Редактирование кандидата");
+    expect(state.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fields: {
+            sourceId: "Другое",
+            sourceComment: { kind: "text", text: "Обратился самостоятельно" },
+          },
+        }),
+      }),
+    );
+  });
+  it("clears the old source comment and requires a selected referrer on recommendation", async () => {
+    state.profile.source = { id: "Другое", name: "Другое" };
+    state.profile.sourceComment = { kind: "text", text: "Старое пояснение" };
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Редактировать данные");
+    await pick("Источник", "По рекомендации");
+    expect(
+      view.querySelector('input[aria-label="Текст комментария к источнику"]'),
+    ).toBeNull();
+    expect(
+      view.querySelector<HTMLInputElement>(
+        'input[aria-label="Физлицо в источнике"]',
+      )?.value,
+    ).toBe("");
+    await submit("Редактирование кандидата");
+    expect(state.update).not.toHaveBeenCalled();
+    expect(view.textContent).toContain(
+      "Выберите физлицо, которое рекомендовало кандидата",
+    );
+    await pick("Физлицо в источнике", "Ирина Рекомендатель");
+    await submit("Редактирование кандидата");
+    expect(state.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fields: {
+            sourceId: "ПоРекомендации",
+            sourceComment: {
+              kind: "person",
+              id: "referrer-person",
+              name: "Ирина Рекомендатель",
+            },
+          },
+        }),
+      }),
+    );
+  });
+  it("requires the practice end date after enabling the student flag", async () => {
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Редактировать данные");
+    const flag = [...view.querySelectorAll("label")]
+      .find((label) => label.textContent?.includes("Студент на практике"))!
+      .querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    await act(async () => flag.click());
+    await submit("Редактирование кандидата");
+    expect(state.update).not.toHaveBeenCalled();
+    expect(view.textContent).toContain("Укажите дату окончания практики");
+    const end = [...view.querySelectorAll("label")]
+      .find((label) => label.textContent?.includes("Окончание практики"))!
+      .querySelector<HTMLInputElement>("input")!;
+    expect(end.required).toBe(true);
+    type(end, "2026-12-31");
+    await submit("Редактирование кандидата");
+    expect(state.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fields: { internship: true, internshipEndDate: "2026-12-31" },
+        }),
+      }),
+    );
+  });
+  it("allows an unrelated phone edit on a legacy card with incomplete source and practice", async () => {
+    state.profile.source = { id: "ПоРекомендации", name: "По рекомендации" };
+    state.profile.sourceComment = { kind: "text", text: "Прежнее описание" };
+    state.profile.internship = true;
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Редактировать данные");
+    type(view.querySelector('input[type="tel"]')!, "+79001112233");
+    expect(view.querySelector("form")!.checkValidity()).toBe(true);
+    await submit("Редактирование кандидата");
+    expect(state.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ fields: { phone: "+79001112233" } }),
+      }),
+    );
   });
   it("retains typed source-person and responsible-user references during a sparse card edit", async () => {
     state.profile.sourceComment = {

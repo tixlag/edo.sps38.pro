@@ -15,6 +15,7 @@ import { SearchSelect } from "./SearchSelect";
 import { CandidatePersonPicker } from "./CandidatePersonPicker";
 import { CandidateExpandedFields } from "./CandidateExpandedFields";
 import { formatBirthDateRu } from "../lib/review-groups";
+import { candidateRelatedFieldValidation } from "../lib/candidate-related-fields";
 export {
   candidateError,
   useCandidateRequest,
@@ -244,11 +245,14 @@ export function CandidateForm({
       (!selectedPersonUid || person.personUid !== selectedPersonUid) &&
       !ignoredSelections.includes(person.id),
   );
+  const relatedErrors = profile
+    ? candidateRelatedFieldValidation(profile, fields).errors
+    : [];
   const sourcePersonMissing =
     fields.sourceComment?.kind === "person" && !fields.sourceComment.id;
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (sourcePersonMissing && !locked) return;
+    if ((sourcePersonMissing || relatedErrors.length > 0) && !locked) return;
     if (
       !profile &&
       !locked &&
@@ -591,7 +595,7 @@ export function CandidateForm({
           disabled={
             pending ||
             retryBlocked ||
-            sourcePersonMissing ||
+            (!locked && (sourcePersonMissing || relatedErrors.length > 0)) ||
             (!profile &&
               !locked &&
               ((personEnabled && !personSelection) ||

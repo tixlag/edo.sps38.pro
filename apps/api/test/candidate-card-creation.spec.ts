@@ -80,6 +80,36 @@ function setup() {
 }
 afterEach(() => vi.unstubAllGlobals());
 describe("candidate card creation and recovery", () => {
+  it.each([
+    "SOURCE_COMMENT_REQUIRED",
+    "SOURCE_REFERRER_REQUIRED",
+    "INTERNSHIP_END_DATE_REQUIRED",
+  ])(
+    "keeps %s a definitive validation rejection, including operation recovery",
+    async (code) => {
+      const { service } = setup();
+      vi.stubGlobal("fetch", async () =>
+        Response.json({ code }, { status: 400 }),
+      );
+      await expect(
+        service.create(actor, {
+          requestId: randomUUID(),
+          fields: {
+            fullName: "Person",
+            phone: "+70000000000",
+            birthDate: "1990-01-01",
+          },
+        }),
+      ).rejects.toThrow(code);
+      vi.stubGlobal("fetch", async () =>
+        Response.json({ state: "COMPLETED", httpStatus: 400, code }),
+      );
+      expect(await service.operation(actor, randomUUID())).toEqual({
+        state: "REJECTED",
+        code,
+      });
+    },
+  );
   it("opens exact UID with sparse birth/citizenship and excluded status without a status mutation", async () => {
     const { service, updates } = setup();
     const calls: any[] = [];

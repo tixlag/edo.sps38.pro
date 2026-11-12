@@ -14,6 +14,7 @@ import {
 import { Button } from "@edo/ui";
 import { SearchSelect } from "./SearchSelect";
 import { CANDIDATE_CONTROL } from "./CandidateForm";
+import { candidateRelatedFieldValidation } from "../lib/candidate-related-fields";
 
 export function CandidateExpandedFields({
   profile,
@@ -26,6 +27,11 @@ export function CandidateExpandedFields({
   onChange: (fields: CandidatePatchFieldsDto) => void;
   disabled: boolean;
 }) {
+  const validation = candidateRelatedFieldValidation(profile, fields);
+  const commentKind = validation.isRecommendation
+    ? "person"
+    : (fields.sourceComment?.kind ??
+      (fields.sourceId === "Другое" ? "text" : ""));
   const [countryQuery, setCountryQuery] = useState("");
   const [organizationQuery, setOrganizationQuery] = useState("");
   const [sourceQuery, setSourceQuery] = useState("");
@@ -200,7 +206,11 @@ export function CandidateExpandedFields({
               selectedLabel={profile.source?.name}
               options={referenceOptions(sources.data?.items)}
               onSearchChange={setSourceQuery}
-              onChange={(value) => set("sourceId", value ?? null)}
+              onChange={(value) => {
+                const sourceId = value ?? null;
+                if (sourceId !== (fields.sourceId ?? null))
+                  onChange({ ...fields, sourceId, sourceComment: null });
+              }}
               disabled={disabled}
               isLoading={sources.isLoading}
               isError={sources.isError}
@@ -210,10 +220,12 @@ export function CandidateExpandedFields({
           <div className="space-y-2 text-sm">
             <label className="block space-y-1">
               Комментарий к источнику
+              {validation.sourceCommentRequired ? " · обязательно" : ""}
               <select
                 aria-label="Тип комментария к источнику"
                 className={CANDIDATE_CONTROL}
-                value={fields.sourceComment?.kind ?? ""}
+                value={commentKind}
+                disabled={validation.isRecommendation}
                 onChange={(event) =>
                   set(
                     "sourceComment",
@@ -230,12 +242,19 @@ export function CandidateExpandedFields({
                 <option value="person">Физлицо</option>
               </select>
             </label>
-            {fields.sourceComment?.kind === "text" && (
+            {commentKind === "text" && (
               <input
                 aria-label="Текст комментария к источнику"
                 maxLength={200}
                 className={CANDIDATE_CONTROL}
-                value={fields.sourceComment.text ?? ""}
+                required={
+                  validation.sourceChanged && validation.sourceCommentRequired
+                }
+                value={
+                  fields.sourceComment?.kind === "text"
+                    ? (fields.sourceComment.text ?? "")
+                    : ""
+                }
                 onChange={(event) =>
                   set("sourceComment", {
                     kind: "text",
@@ -244,12 +263,18 @@ export function CandidateExpandedFields({
                 }
               />
             )}
-            {fields.sourceComment?.kind === "person" && (
+            {commentKind === "person" && (
               <SearchSelect
                 label="Физлицо в источнике"
-                value={fields.sourceComment.id}
+                value={
+                  fields.sourceComment?.kind === "person"
+                    ? fields.sourceComment.id
+                    : null
+                }
                 selectedLabel={
-                  fields.sourceComment.name ?? fields.sourceComment.id
+                  fields.sourceComment?.kind === "person"
+                    ? (fields.sourceComment.name ?? fields.sourceComment.id)
+                    : undefined
                 }
                 options={referenceOptions(
                   responsibles.data?.items.filter(
@@ -292,7 +317,7 @@ export function CandidateExpandedFields({
               ["selfEmployed", "Самозанятый"],
               ["unofficial", "Неофициальное оформление"],
               ["apprentice", "Ученик"],
-              ["internship", "Стажировка"],
+              ["internship", "Студент на практике"],
               ["targetedContract", "Целевой договор"],
               ["contractTraining", "Обучение по договору"],
             ] as const
@@ -309,7 +334,7 @@ export function CandidateExpandedFields({
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-1 text-sm">
-            Начало стажировки
+            Начало практики
             <input
               type="date"
               className={CANDIDATE_CONTROL}
@@ -320,10 +345,11 @@ export function CandidateExpandedFields({
             />
           </label>
           <label className="space-y-1 text-sm">
-            Окончание стажировки
+            Окончание практики{fields.internship ? " · обязательно" : ""}
             <input
               type="date"
               className={CANDIDATE_CONTROL}
+              required={validation.practiceChanged && !!fields.internship}
               value={fields.internshipEndDate ?? ""}
               onChange={(event) =>
                 set("internshipEndDate", event.target.value || null)
@@ -346,6 +372,15 @@ export function CandidateExpandedFields({
             />
           </div>
         </div>
+        {validation.errors.map((message) => (
+          <p
+            key={message}
+            role="alert"
+            className="text-sm text-[var(--danger)]"
+          >
+            {message}
+          </p>
+        ))}
         <label className="block space-y-1 text-sm">
           Комментарий
           <textarea

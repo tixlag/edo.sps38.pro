@@ -23,6 +23,28 @@ beforeEach(() => {
 });
 afterEach(() => act(() => root.unmount()));
 describe("candidate operation recovery", () => {
+  it.each([
+    ["SOURCE_COMMENT_REQUIRED", "комментарий"],
+    ["SOURCE_REFERRER_REQUIRED", "физлицо"],
+    ["INTERNSHIP_END_DATE_REQUIRED", "окончания практики"],
+  ])(
+    "allows correcting %s with a readable message and a new operation ID",
+    async (code, text) => {
+      const original = request.requestId;
+      await act(async () =>
+        request.execute(
+          vi.fn().mockRejectedValue({
+            response: { status: 400, data: { message: code } },
+          }),
+          vi.fn(),
+        ),
+      );
+      expect(request.locked).toBe(false);
+      expect(request.requestId).not.toBe(original);
+      expect(request.error).toContain(text);
+      expect(request.error).not.toContain(code);
+    },
+  );
   it("unlocks known business 409 with a new request ID", async () => {
     const original = request.requestId;
     await act(async () =>

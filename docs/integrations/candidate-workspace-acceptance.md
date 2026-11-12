@@ -19,6 +19,12 @@ Known business rejections release the form with a new request UUID. Uncertain re
 - ERP: all 65 Python checks passed (23 candidate workspace / 42 IG); branch/MR policy and diff checks passed. BSL parser reports no syntax errors for the four affected modules; two query-parser warnings concern pre-existing dynamic expressions.
 - No e2e, live 1C execution, deployment or merge was performed. The platform acceptance below remains required before release.
 
+### Source and practice follow-up
+
+EDO and ERP API validate source/comment and practice fields when that group is edited. `Другое` requires a nonblank comment; `ПоРекомендации` requires a physical-person reference. Changing the source clears the previous comment before applying any explicitly supplied new comment. A student on practice requires an end date. Minimal creation and unrelated edits of incomplete historical cards remain available. These ERP validation rejections remain definitive through operation recovery, so the form can be corrected with a new request ID.
+
+Targeted follow-up checks: 9 API tests, 38 web tests, TypeScript and changed-file lint; 26 ERP workspace static checks. Four materialized contact-search queries (both catalogs, with/without a phone) are checked separately by the query parser. Name-only search skips contact tables. Phone search uses one joined set of distinct matching owners instead of repeating the contact subquery; several phone rows do not duplicate a candidate. Phone normalization still requires scanning telephone rows; actual latency and base-configuration field availability require a test-base check.
+
 ### Required isolated 1C acceptance
 
 Local contract/static tests cannot prove platform execution. Before release, use a test base to verify:

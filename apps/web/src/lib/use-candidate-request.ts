@@ -55,6 +55,11 @@ const candidateMessages: Record<string, string> = {
     "Окончание стажировки не может быть раньше её начала.",
   INVALID_SOURCE_COMMENT:
     "Проверьте комментарий к источнику: укажите текст или выберите физлицо.",
+  SOURCE_COMMENT_REQUIRED: "Укажите комментарий к источнику кандидата.",
+  SOURCE_REFERRER_REQUIRED:
+    "Выберите физлицо, по рекомендации которого обратился кандидат.",
+  INTERNSHIP_END_DATE_REQUIRED:
+    "Для студента на практике укажите дату окончания практики.",
   INVALID_RESPONSIBLE:
     "Выберите ответственного из справочника пользователей или физлиц ERP.",
   RESPONSIBLE_NOT_FOUND:
