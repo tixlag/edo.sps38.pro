@@ -9,8 +9,8 @@ import {
 } from "lucide-react";
 import { Button } from "@edo/ui";
 import {
-  getGetDocumentFileDownloadQueryKey,
-  useGetDocumentFileDownload,
+  getGetDocumentFileBinaryQueryKey,
+  useGetDocumentFileBinary,
   type DocumentFieldDto,
   type DocumentFileDto,
   type OcrRegionDto,
@@ -156,17 +156,29 @@ export function DocumentPreview({
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
-  const download = useGetDocumentFileDownload(documentId, version, file.id, {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const previewUrl = annotation?.source.previewUrl ?? blobUrl;
+  const binaryQuery = useGetDocumentFileBinary(documentId, version, file.id, {
     query: {
-      queryKey: getGetDocumentFileDownloadQueryKey(
+      queryKey: getGetDocumentFileBinaryQueryKey(
         documentId,
         version,
         file.id,
       ),
       staleTime: 240_000,
-      refetchInterval: 240_000,
+      enabled: !annotation?.source.previewUrl,
     },
   });
+
+  useEffect(() => {
+    if (!binaryQuery.data) {
+      setBlobUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(binaryQuery.data);
+    setBlobUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [binaryQuery.data]);
   const regions = useMemo(() => {
     const candidates = [
       ...fields.flatMap((field) =>
@@ -229,7 +241,7 @@ export function DocumentPreview({
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [download.data, failed]);
+  }, [previewUrl, failed]);
   const pageWidth = viewportWidth * zoom;
   const sourceSize = annotation?.source ?? pageSize;
   const pageHeight = (pageWidth * sourceSize.height) / sourceSize.width;
@@ -298,7 +310,7 @@ export function DocumentPreview({
       regions.find((item) => item.region.id === localHoveredRegion)) ||
     selected;
   const retry = async () => {
-    const refreshed = await download.refetch();
+    const refreshed = await binaryQuery.refetch();
     if (!refreshed.isError) {
       setFailed(false);
       setReady(false);
@@ -318,10 +330,11 @@ export function DocumentPreview({
         >
           {file.filename}
         </span>
-        {download.data && (
+        {blobUrl && (
           <a
             className="flex h-8 shrink-0 items-center gap-1.5 rounded-[10px] border border-[var(--border)] px-2.5 font-medium hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
-            href={download.data.url}
+            href={blobUrl}
+            download={file.filename}
             target="_blank"
             rel="noreferrer"
             aria-label="Скачать оригинал"
@@ -415,12 +428,12 @@ export function DocumentPreview({
           </label>
         )}
       </div>
-      {(download.isLoading || (download.data && !ready && !failed)) && (
+      {(binaryQuery.isLoading || (previewUrl && !ready && !failed)) && (
         <p role="status" className="text-sm">
           Загрузка превью…
         </p>
       )}
-      {(download.isError || failed) && (
+      {(binaryQuery.isError || failed) && (
         <div
           role="alert"
           className="flex flex-col items-start gap-3 py-6 text-sm"
@@ -431,14 +444,14 @@ export function DocumentPreview({
           <Button
             size="sm"
             variant="outline"
-            disabled={download.isFetching}
+            disabled={binaryQuery.isFetching}
             onClick={() => void retry()}
           >
-            Обновить ссылку
+            Обновить превью
           </Button>
         </div>
       )}
-      {download.data && !failed && (
+      {previewUrl && !failed && (
         <div
           ref={viewport}
           className="min-h-[240px] max-h-[60dvh] flex-1 overflow-auto rounded-[12px] border border-[var(--border)] bg-[var(--muted)] lg:min-h-0 lg:max-h-none"
@@ -463,9 +476,7 @@ export function DocumentPreview({
             >
               {file.mimeType === "application/pdf" ? (
                 <PdfPage
-                  url={
-                    annotation?.source.previewUrl ?? download.data.previewUrl
-                  }
+                  url={previewUrl}
                   pageNumber={pageNumber}
                   canonicalSource={annotation?.source}
                   onReady={onReady}
@@ -476,9 +487,7 @@ export function DocumentPreview({
                   className={
                     annotation ? "block h-full w-full" : "block h-auto w-full"
                   }
-                  src={
-                    annotation?.source.previewUrl ?? download.data.previewUrl
-                  }
+                  src={previewUrl}
                   alt={`Загруженная страница документа: ${file.filename}`}
                   onLoad={(event) =>
                     onReady({

@@ -1,4 +1,5 @@
 import { IgEnrichmentQueueService } from "./ig-enrichment-queue.service";
+import type { Readable } from "node:stream";
 import {
   candidateReviewGroup,
   IG_PASSPORT_LATIN_FIELDS,
@@ -1059,6 +1060,66 @@ export class DocumentReadService {
       url,
       previewUrl,
       expiresAt: new Date(Date.now() + 300_000).toISOString(),
+    };
+  }
+
+  async fileStream(
+    documentId: string,
+    version: number,
+    fileId: string,
+    principal: AuthPrincipal,
+  ): Promise<{
+    stream: Readable;
+    mimeType: string;
+    filename: string;
+    sizeBytes: number;
+  }> {
+    await this.access.document(documentId, principal);
+    const file = await this.prisma.documentVersionFile.findFirst({
+      where: {
+        id: fileId,
+        deletedAt: null,
+        version: {
+          documentId,
+          version,
+          status: { not: "RETURNED" },
+          cleanupPending: false,
+          OR: [{ submission: null }, { submission: { status: "SUCCEEDED" } }],
+        },
+        OR: [
+          { version: { job: null } },
+          {
+            version: {
+              job: { status: "REJECTED", cleanupPending: false },
+            },
+          },
+          {
+            version: {
+              job: { status: { in: ["SUCCEEDED", "QUEUED", "RUNNING"] } },
+            },
+          },
+          {
+            version: {
+              job: {
+                status: "FAILED",
+                errorCode: { not: "UPLOAD_FAILED" },
+                cleanupPending: false,
+              },
+            },
+          },
+        ],
+      },
+    });
+    if (!file) throw new NotFoundException("Document file not available");
+    const stream = await this.storage.openRead(
+      file.storageKey,
+      AbortSignal.timeout(60_000),
+    );
+    return {
+      stream,
+      mimeType: file.mimeType,
+      filename: file.filename,
+      sizeBytes: file.sizeBytes,
     };
   }
 

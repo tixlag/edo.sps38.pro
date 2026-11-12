@@ -12,6 +12,7 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
   ParseUUIDPipe,
 } from "@nestjs/common";
@@ -24,7 +25,7 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
-import type { FastifyRequest } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { Public } from "../auth/public.decorator";
 import { RequireAccessRule } from "../auth/require-access-rule.decorator";
 import { CurrentPrincipal } from "../auth/current-principal.decorator";
@@ -360,6 +361,39 @@ export class DocumentsController {
     @CurrentPrincipal() principal: AuthPrincipal,
   ): Promise<DownloadDto> {
     return this.reads.download(id, version, fileId, principal);
+  }
+
+  @Get("documents/:documentId/versions/:version/files/:fileId/file")
+  @RequireAccessRule(EdoAccessRule.ACCESS)
+  @ApiOperation({
+    summary: "Authorized binary file content stream for preview and download",
+    operationId: "getDocumentFileBinary",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Document file binary",
+    content: {
+      "application/octet-stream": {
+        schema: { type: "string", format: "binary" },
+      },
+    },
+  })
+  async file(
+    @Param("documentId") id: string,
+    @Param("version", ParseIntPipe) version: number,
+    @Param("fileId") fileId: string,
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Res() reply: FastifyReply,
+  ) {
+    const file = await this.reads.fileStream(id, version, fileId, principal);
+    const safe = file.filename.replace(/[^a-zA-Z0-9._-]+/g, "_") || "document";
+    return reply
+      .header("Content-Type", file.mimeType)
+      .header("Content-Length", file.sizeBytes)
+      .header("Content-Disposition", `inline; filename="${safe}"`)
+      .header("Cache-Control", "private, max-age=300")
+      .header("X-Content-Type-Options", "nosniff")
+      .send(file.stream);
   }
 
   @Patch("documents/:documentId/versions/:version/fields")
