@@ -1,3 +1,4 @@
+import { reviewGroupWhere } from "../src/documents/review-group";
 import { describe, expect, it, vi } from "vitest";
 import { NotFoundException } from "@nestjs/common";
 import { plainToInstance } from "class-transformer";
@@ -364,7 +365,7 @@ describe("candidate review queue", () => {
     );
     expect(nested).toEqual({
       ...access.documentWhere(scoped),
-      candidate: { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] },
+      candidate: reviewGroupWhere("RU"),
       currentVersion: { gt: 0 },
       versions: { some: { status: "RETURNED" } },
       documentType: { code: "PASSPORT" },

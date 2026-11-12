@@ -92,7 +92,7 @@ export function normalizeErpCandidate(
   const citizenship =
     row.citizenship == null ||
     (typeof row.citizenship === "string" && !row.citizenship.trim())
-      ? "ru"
+      ? null
       : row.citizenship;
   if (fields.length)
     throw new ErpCandidateError(
@@ -104,8 +104,8 @@ export function normalizeErpCandidate(
   if (
     typeof position?.code !== "string" ||
     !/^\S{1,64}$/.test(position.code) ||
-    typeof citizenship !== "string" ||
-    !/^[a-zA-Z]{2}$/.test(citizenship)
+    (citizenship !== null && (typeof citizenship !== "string" ||
+    !/^[a-zA-Z]{2}$/.test(citizenship)))
   )
     throw new ErpCandidateError(502, false);
   const result: Record<string, unknown> = {
@@ -113,7 +113,7 @@ export function normalizeErpCandidate(
     ...(typeof row.erpUid === "string"
       ? { erpUid: row.erpUid.toLowerCase() }
       : {}),
-    citizenship: citizenship.toLowerCase(),
+    citizenship: typeof citizenship === "string" ? citizenship.toLowerCase() : null,
   };
   if (
     row.citizenshipProvided === false ||

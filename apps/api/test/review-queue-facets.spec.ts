@@ -1,3 +1,4 @@
+import { reviewGroupWhere } from "../src/documents/review-group";
 import { describe, expect, it, vi } from "vitest";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
@@ -95,7 +96,7 @@ describe("reviewDocumentFacets scope", () => {
     expect(documentFind).toHaveBeenCalledWith({
       where: {
         ...access.documentWhere(scoped20007),
-        candidate: { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] },
+        candidate: reviewGroupWhere("RU"),
         currentVersion: { gt: 0 },
         candidateId: { not: null },
       },
@@ -238,7 +239,7 @@ describe("reviewCandidates", () => {
     expect(documentFind).toHaveBeenCalledWith({
       where: {
         ...access.documentWhere(scoped20007),
-        candidate: { OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }] },
+        candidate: reviewGroupWhere("RU"),
         currentVersion: { gt: 0 },
         candidateId: { not: null },
       },

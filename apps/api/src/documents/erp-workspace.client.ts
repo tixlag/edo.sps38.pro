@@ -37,6 +37,38 @@ const safeForbiddenCodes = new Set([
   "STATUS_OWNED_BY_DISPATCH_OR_HR",
 ]);
 const safeBadRequestCodes = new Set([
+  "REFERENCE_NOT_FOUND",
+  "INVALID_FULL_NAME",
+  "CONTACT_KIND_NOT_FOUND",
+  "CONTACT_KIND_TYPE_MISMATCH",
+  "INVALID_CODE",
+  "INVALID_CONTACT_COMMENT",
+  "INVALID_CONTACT_PRESENTATION",
+  "INVALID_CONTACT_ROW",
+  "INVALID_CONTACTS",
+  "INVALID_CONTACT_TYPE",
+  "INVALID_EXPECTED_INCOME",
+  "INVALID_IGNORED_DUPLICATES",
+  "INVALID_INTERNSHIP_DATE",
+  "INVALID_INTERNSHIP_DATE_RANGE",
+  "INVALID_PERSON_MATCH_NAME",
+  "INVALID_RESPONSIBLE",
+  "INVALID_SEARCH",
+  "INVALID_SETTLEMENT",
+  "INVALID_SEX",
+  "INVALID_SOURCE",
+  "INVALID_SOURCE_COMMENT",
+  "SOURCE_COMMENT_REQUIRED",
+  "SOURCE_REFERRER_REQUIRED",
+  "INTERNSHIP_END_DATE_REQUIRED",
+  "MISSING_CANDIDATE",
+  "PERSON_MATCH_NAME_REQUIRED",
+  "PERSON_NOT_FOUND",
+  "PERSON_REQUIRED",
+  "READONLY_OR_UNKNOWN_FIELD",
+  "RESPONSIBLE_NOT_FOUND",
+  "SEARCH_TOO_SHORT",
+  "UNKNOWN_FIELD",
   "INVALID_CURSOR",
   "POSITION_NOT_FOUND_OR_AMBIGUOUS",
   "COUNTRY_NOT_FOUND",
@@ -92,8 +124,14 @@ export const erpCardSchema = z.object({
   reviewGroup: z.literal("RU"),
   fullName: z.string(),
   phone: z.string(),
-  birthDate: z.string(),
-  citizenship: z.string().regex(/^[a-zA-Z]{2}$/),
+  birthDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable(),
+  citizenship: z
+    .string()
+    .regex(/^[a-zA-Z]{2}$/)
+    .nullable(),
   position: named.nullable(),
   project: named.nullable(),
   manager: z.object({ id: z.string(), name: z.string() }).nullable(),
@@ -102,6 +140,86 @@ export const erpCardSchema = z.object({
     .passthrough()
     .nullable(),
   status: z.object({ id: z.string(), name: z.string() }).nullable(),
+  person: z
+    .object({
+      id: uuid,
+      name: z.string(),
+      birthDate: z.string().nullable(),
+      code: z.string().optional(),
+    })
+    .nullable()
+    .default(null),
+  sex: z.enum(["male", "female"]).nullable().default(null),
+  settlement: z.string().max(500).nullable().default(null),
+  expectedIncome: z.number().finite().nonnegative().nullable().default(null),
+  sourceComment: z
+    .union([
+      z.object({ kind: z.literal("text"), text: z.string() }),
+      z.object({
+        kind: z.literal("person"),
+        id: uuid,
+        name: z.string().optional(),
+      }),
+    ])
+    .nullable()
+    .default(null),
+  comment: z.string().default(""),
+  contacts: z
+    .array(
+      z.object({
+        rowNumber: z.number().int().positive().optional(),
+        typeId: z.string(),
+        kindId: z.string().nullable().optional(),
+        presentation: z.string(),
+        comment: z.string().optional(),
+      }),
+    )
+    .default([]),
+  organization: z
+    .object({ id: z.string(), name: z.string() })
+    .nullable()
+    .default(null),
+  source: z
+    .object({ id: z.string(), name: z.string() })
+    .nullable()
+    .default(null),
+  university: z
+    .object({ id: z.string(), name: z.string() })
+    .nullable()
+    .default(null),
+  responsible: z
+    .object({
+      kind: z.enum(["user", "person"]),
+      id: uuid,
+      name: z.string().optional(),
+    })
+    .nullable()
+    .default(null),
+  additionalResponsible: z
+    .object({
+      kind: z.enum(["user", "person"]),
+      id: uuid,
+      name: z.string().optional(),
+    })
+    .nullable()
+    .default(null),
+  gph: z.boolean().default(false),
+  selfEmployed: z.boolean().default(false),
+  unofficial: z.boolean().default(false),
+  apprentice: z.boolean().default(false),
+  internship: z.boolean().default(false),
+  targetedContract: z.boolean().default(false),
+  contractTraining: z.boolean().default(false),
+  internshipStartDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .default(null),
+  internshipEndDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .default(null),
   history: z.array(
     z.object({
       date: z.string(),
@@ -156,6 +274,9 @@ export const referencesSchema = z.object({
       name: z.string(),
       code: z.string().optional(),
       birthDate: z.string().nullable().optional(),
+      candidateUids: z.array(uuid).optional(),
+      kind: z.enum(["user", "person"]).optional(),
+      typeId: z.string().optional(),
       editable: z.boolean().optional(),
       requiresProject: z.boolean().optional(),
       requiresPlannedArrivalDate: z.boolean().optional(),
@@ -168,14 +289,47 @@ export const personMatchesSchema = z.object({
       z.object({
         id: uuid,
         name: z.string().max(512),
-        birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        birthDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullable(),
         latinName: z.string().max(512).nullable(),
         matchedCyrillic: z.boolean(),
         matchedLatin: z.boolean(),
+        matchedPhone: z.boolean().default(false),
+        matchedBirthDate: z.boolean().default(false),
+        candidateUids: z.array(uuid).default([]),
       }),
     )
     .max(100),
+  candidates: z
+    .array(
+      z.object({
+        id: uuid,
+        name: z.string(),
+        birthDate: z.string().nullable(),
+        matchedName: z.boolean(),
+        matchedPhone: z.boolean(),
+        matchedBirthDate: z.boolean(),
+      }),
+    )
+    .max(100)
+    .default([]),
 });
+export const erpOperationSchema = z.object({
+  state: z.enum(["NOT_FOUND", "UNKNOWN", "COMPLETED"]),
+  httpStatus: z.number().int().optional(),
+  card: erpCardSchema.optional(),
+  code: z.string().optional(),
+});
+export function safeOperationRejection(code: string | undefined) {
+  return code &&
+    (safeConflictCodes.has(code) ||
+      safeBadRequestCodes.has(code) ||
+      safeForbiddenCodes.has(code))
+    ? code
+    : undefined;
+}
 
 /** Shared narrow ERP business bridge. No automatic retries of mutations. */
 @Injectable()
@@ -346,7 +500,7 @@ export class ErpWorkspaceClient {
   }
   async request<T>(
     action: string,
-    schema: z.ZodType<T>,
+    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
     query: Record<string, string> = {},
     body?: unknown,
     signal?: AbortSignal,

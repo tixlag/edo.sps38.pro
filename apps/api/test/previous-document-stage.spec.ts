@@ -58,16 +58,14 @@ function setup(group: "RU" | "IG", expired = false, currentStatus?: string) {
   const prisma = {
     document: {
       findMany: vi.fn().mockResolvedValue(current),
-      groupBy: vi
-        .fn()
-        .mockResolvedValue(
-          current.map((doc) => ({
-            candidateId: "cycle",
-            documentTypeId: "passport",
-            status: doc.status,
-            _count: { _all: 1 },
-          })),
-        ),
+      groupBy: vi.fn().mockResolvedValue(
+        current.map((doc) => ({
+          candidateId: "cycle",
+          documentTypeId: "passport",
+          status: doc.status,
+          _count: { _all: 1 },
+        })),
+      ),
     },
     documentType: { findMany: vi.fn().mockResolvedValue([catalog]) },
     candidatePreviousDocument: {
@@ -92,11 +90,60 @@ function setup(group: "RU" | "IG", expired = false, currentStatus?: string) {
 }
 
 describe("former documents in the current stage", () => {
+  it.each([undefined, "1"])(
+    "keeps uploaded documents visible without guessing requirements for unknown citizenship (stage %s)",
+    async (stage) => {
+      const { reads, access } = setup("RU", false, "IN_REVIEW");
+      access.candidate.mockResolvedValue({
+        id: "cycle",
+        erpUid: "erp-candidate",
+        reviewGroup: "RU",
+        chatUuid: null,
+        citizenship: null,
+        positionCode: "position",
+        birthDate: null,
+        code1c: null,
+        personUid: null,
+      } as never);
+      const result = await reads.candidateDetails("cycle", principal, stage);
+      expect(result.candidate).toMatchObject({
+        reviewGroup: "RU",
+        citizenship: null,
+        birthDate: null,
+        requiredDocuments: null,
+        stageProgress: null,
+      });
+      expect(result.documents).toEqual([
+        expect.objectContaining({
+          id: "new",
+          status: "IN_REVIEW",
+          currentVersion: 1,
+        }),
+      ]);
+      expect(result.missingDocuments).toBeNull();
+      expect(
+        stage === undefined ? result.documentGroups : result.stageDocuments,
+      ).toBeNull();
+      expect(result.stages).toBeUndefined();
+    },
+  );
   it("shows imported RU originals in stages before a person or employee code exists", async () => {
     const { reads, access } = setup("RU");
-    access.candidate.mockResolvedValue({ id: "cycle", erpUid: "erp-candidate", code1c: null, personUid: null, chatUuid: "chat", citizenship: "ru", positionCode: "position", isReemployment: false, previousDocumentsSyncedAt: null } as never);
+    access.candidate.mockResolvedValue({
+      id: "cycle",
+      erpUid: "erp-candidate",
+      code1c: null,
+      personUid: null,
+      chatUuid: "chat",
+      citizenship: "ru",
+      positionCode: "position",
+      isReemployment: false,
+      previousDocumentsSyncedAt: null,
+    } as never);
     const result = await reads.candidateDetails("cycle", principal, "1");
-    expect(result.previousDocuments).toEqual([expect.objectContaining({ id: "former", state: "REUSED" })]);
+    expect(result.previousDocuments).toEqual([
+      expect.objectContaining({ id: "former", state: "REUSED" }),
+    ]);
     expect(result.stageDocuments?.required.missingDocuments).toEqual([]);
   });
   it.each(["RU", "IG"] as const)(
@@ -154,9 +201,15 @@ describe("former documents in the current stage", () => {
   it("uses the approved RU ERP original over an adaptation replacement and counts it once", async () => {
     const { reads } = setup("RU", false, "IN_REVIEW");
     const result = await reads.candidateDetails("cycle", principal, "1");
-    expect(result.previousDocuments?.[0]).toMatchObject({ state: "REUSED", source: "ERP" });
+    expect(result.previousDocuments?.[0]).toMatchObject({
+      state: "REUSED",
+      source: "ERP",
+    });
     expect(result.candidate.approvedDocuments).toBe(1);
-    expect(result.candidate.stageProgress?.[0].required).toMatchObject({ reused: 1, inReview: 0, missing: 0 });
+    expect(result.candidate.stageProgress?.[0].required).toMatchObject({
+      reused: 1,
+      inReview: 0,
+      missing: 0,
+    });
   });
-
 });

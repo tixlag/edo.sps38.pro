@@ -18,6 +18,23 @@ vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: mock.invalidate }),
 }));
 vi.mock("@edo/api-client", () => ({
+  useGetDocumentVersion: () => ({
+    data: { status: "APPROVED", files: [] },
+    isFetching: false,
+    isError: false,
+    isSuccess: true,
+  }),
+  getGetDocumentVersionQueryKey: (id: string, version: number) => [
+    "version",
+    id,
+    version,
+  ],
+  useGetDocumentFileBinary: () => ({ isFetching: false, isError: false }),
+  getGetDocumentFileBinaryQueryKey: (
+    id: string,
+    version: number,
+    file: string,
+  ) => ["file", id, version, file],
   getGetCandidateDetailsQueryKey: (id: string) => ["candidate", id],
   getListCandidatePreviousDocumentsQueryKey: (id: string) => ["previous", id],
   getListReviewCandidatesQueryKey: () => ["review"],
@@ -417,9 +434,21 @@ describe("priority document loading", () => {
     expect(mock.request).not.toHaveBeenCalled();
   });
   it("refreshes RU documents on opening even when an old snapshot exists and no person is linked", async () => {
-    mock.data = { candidate: { id: "c1", reviewGroup: "RU", erpUid: "erp-ru", personUid: null, code1c: null }, documents: [], enrichment: { status: "READY", profileReady: true, documentsReady: true } };
+    mock.data = {
+      candidate: {
+        id: "c1",
+        reviewGroup: "RU",
+        erpUid: "erp-ru",
+        personUid: null,
+        code1c: null,
+      },
+      documents: [],
+      enrichment: { status: "READY", profileReady: true, documentsReady: true },
+    };
     await render(false, undefined);
-    expect(mock.request).toHaveBeenCalledWith({ candidateId: "c1" }, expect.anything());
+    expect(mock.request).toHaveBeenCalledWith(
+      { candidateId: "c1" },
+      expect.anything(),
+    );
   });
-
 });

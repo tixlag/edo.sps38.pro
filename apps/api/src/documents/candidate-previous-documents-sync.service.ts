@@ -13,7 +13,11 @@ import { AuditService } from "../audit/audit.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { DocumentAccessService } from "./document-access.service";
 import { OwnDocumentHistoryService } from "./own-document-history.service";
-import { candidateReviewGroup, requireReviewGroup } from "./review-group";
+import {
+  candidateReviewGroup,
+  requireReviewGroup,
+  reviewGroupWhere,
+} from "./review-group";
 import {
   ErpWorkspaceClient,
   previousDocumentsSchema,
@@ -138,9 +142,8 @@ export class CandidatePreviousDocumentsSyncService {
             candidate: {
               id: { not: id },
               code1c: row.code1c,
-              chatUuid: null,
               AND: [
-                { OR: [{ citizenship: null }, { citizenship: { not: "ru" } }] },
+                reviewGroupWhere("IG"),
                 { OR: [{ personUid: null }, { personUid: personUid }] },
               ],
             },
@@ -295,7 +298,8 @@ export class CandidatePreviousDocumentsSyncService {
         }
         if (p) requireReviewGroup(p, candidateReviewGroup(current));
         const oldDocuments = await tx.candidatePreviousDocument.findMany({
-          where: { candidateId: id }, include: { fieldEdits: true },
+          where: { candidateId: id },
+          include: { fieldEdits: true },
         });
         const oldBySource = new Map(
           oldDocuments.map((doc) => [doc.sourceId, doc]),
@@ -359,11 +363,20 @@ export class CandidatePreviousDocumentsSyncService {
               ? { isInvalid }
               : {}),
           } as Prisma.InputJsonObject;
-          const fields = applyPreviousDocumentEdits(erpFields, old?.fieldEdits ?? []) as Prisma.InputJsonObject;
-          const expiryEdit = old?.fieldEdits?.find((edit) => edit.name === "expiryDate");
-          const sourceExpiresAt = doc.expiresAt ? new Date(`${doc.expiresAt}T00:00:00Z`) : null;
+          const fields = applyPreviousDocumentEdits(
+            erpFields,
+            old?.fieldEdits ?? [],
+          ) as Prisma.InputJsonObject;
+          const expiryEdit = old?.fieldEdits?.find(
+            (edit) => edit.name === "expiryDate",
+          );
+          const sourceExpiresAt = doc.expiresAt
+            ? new Date(`${doc.expiresAt}T00:00:00Z`)
+            : null;
           const effectiveExpiry = expiryEdit ? expiryEdit.value : doc.expiresAt;
-          const expiresAt = effectiveExpiry ? new Date(`${effectiveExpiry}T00:00:00Z`) : null;
+          const expiresAt = effectiveExpiry
+            ? new Date(`${effectiveExpiry}T00:00:00Z`)
+            : null;
           const automaticallyConfirmed =
             !!doc.documentUid &&
             doc.verifiedOwner &&
@@ -493,7 +506,8 @@ export class CandidatePreviousDocumentsSyncService {
             (!doc.originalAvailable ||
               !doc.verifiedOriginal ||
               isDocInvalid ||
-              (sourceExpiresAt !== null && isPreviousDocumentExpired(sourceExpiresAt)) ||
+              (sourceExpiresAt !== null &&
+                isPreviousDocumentExpired(sourceExpiresAt)) ||
               (isIg &&
                 (!doc.documentUid || needsNewIgDocument(doc.documentUid))));
           const awaitingVerification =
@@ -504,7 +518,8 @@ export class CandidatePreviousDocumentsSyncService {
             !isDocInvalid;
           const knownReplacement =
             isDocInvalid ||
-            (sourceExpiresAt !== null && isPreviousDocumentExpired(sourceExpiresAt)) ||
+            (sourceExpiresAt !== null &&
+              isPreviousDocumentExpired(sourceExpiresAt)) ||
             (isIg && (!doc.documentUid || needsNewIgDocument(doc.documentUid)));
           const unchangedConfirmation =
             old?.sourceFingerprint === doc.sourceFingerprint ||
@@ -776,7 +791,9 @@ export class CandidatePreviousDocumentsSyncService {
       ) {
         for (const doc of allDocuments) {
           await assertActive();
-          const expiresAt = doc.expiresAt ? new Date(`${doc.expiresAt}T00:00:00Z`) : null;
+          const expiresAt = doc.expiresAt
+            ? new Date(`${doc.expiresAt}T00:00:00Z`)
+            : null;
           let isDocInvalid =
             doc.isInvalid === true ||
             (doc.fields &&

@@ -1,5 +1,42 @@
 # Candidate workspace: EDO acceptance and release notes
 
+## Candidate card update — 1C-122234 (2026-11-12)
+
+The candidate card is a permanent entity. A returning candidate, including one returning years after dismissal, opens the existing ERP candidate and EDO card. ERP UID, EDO ID, chat, document versions and status/employment history remain attached to that card. Opening by ERP UID must work even when the ordinary catalog hides its completed status, and must not change the status. A manager can explicitly choose `Подбор`, which appends a status event. This rule supersedes the older admission-cycle creation descriptions below.
+
+Creation requires only full name, phone and birth date. A legacy card can have a null birth date or citizenship and still open and accept unrelated edits. Unknown citizenship is never replaced with `ru`. The wider editor uses ERP reference values and preserves the distinct leading manager, responsible/additional responsible, typed source comment and contact information. Contact edits retain `Вид`, `ЗначенияПолей` and untouched rows; ERP's CRM after-write handler remains enabled.
+
+Preflight and creation use the same name-or-phone duplicate checks, including candidates related to a matched person. Confirming an existing candidate opens it. A physical person can receive a new candidate card only if no candidate exists. False positives require explicit confirmation of the exact reviewed matches, followed by another ERP check. Multiple candidate cards and ambiguous links require human resolution rather than automatic merging or relation closure.
+
+An explicit stored `reviewGroup` takes priority over citizenship and chat both in application classification and database filters. Legacy classification applies only when the stored group is null. RU with foreign/unknown citizenship and no chat remains RU; confirmed IG remains IG. Existing document synchronization, originals, versions, review decisions and local field corrections retain their owners.
+
+Known business rejections release the form with a new request UUID. Uncertain results first query the existing ERP operation ledger; they retain the original UUID/body until the outcome is established. An idempotency conflict is reported separately and never silently changes the UUID to submit an altered operation.
+
+### Verification for 1C-122234
+
+- EDO: full API suite — 119 files / 1218 tests passed; 23 files / 190 environment-dependent tests skipped. Full web suite — 53 files / 436 tests passed; final wording check — 22 tests passed.
+- Root `pnpm build` and `pnpm lint` passed (existing lint/chunk-size warnings remain). OpenAPI and Orval client regenerated. No database migration was needed.
+- ERP: all 65 Python checks passed (23 candidate workspace / 42 IG); branch/MR policy and diff checks passed. BSL parser reports no syntax errors for the four affected modules; two query-parser warnings concern pre-existing dynamic expressions.
+- No e2e, live 1C execution, deployment or merge was performed. The platform acceptance below remains required before release.
+
+### Source and practice follow-up
+
+EDO and ERP API validate source/comment and practice fields when that group is edited. `Другое` requires a nonblank comment; `ПоРекомендации` requires a physical-person reference. Changing the source clears the previous comment before applying any explicitly supplied new comment. A student on practice requires an end date. Minimal creation and unrelated edits of incomplete historical cards remain available. These ERP validation rejections remain definitive through operation recovery, so the form can be corrected with a new request ID.
+
+Targeted follow-up checks: 9 API tests, 38 web tests, TypeScript and changed-file lint; 26 ERP workspace static checks. Four materialized contact-search queries (both catalogs, with/without a phone) are checked separately by the query parser. Name-only search skips contact tables. Phone search uses one joined set of distinct matching owners instead of repeating the contact subquery; several phone rows do not duplicate a candidate. Phone normalization still requires scanning telephone rows; actual latency and base-configuration field availability require a test-base check.
+
+### Required isolated 1C acceptance
+
+Local contract/static tests cannot prove platform execution. Before release, use a test base to verify:
+
+1. Create a candidate with only full name, phone and birth date, read it back and fill the remaining fields. Keep metadata `fillChecking=ShowError` and the existing checks for other ERP entry points.
+2. Open a completed candidate by exact UID without changing its status; explicitly return it to `Подбор` and verify that the earlier status and employment events remain.
+3. Open a card with null birth date/citizenship and edit an unrelated field. Verify the candidate object write handlers and `PROFI_CRMКоммуникацииСервер.ПослеЗаписиКандидата` complete normally.
+4. Edit/add a phone and a non-phone contact; verify untouched rows, `Вид` and `ЗначенияПолей` survive and CRM sees the updated phone.
+5. Exercise duplicate review, existing person selection and operation-result recovery with synthetic records; verify document original access and RU/IG separation.
+
+No merge or deployment is authorized by these acceptance instructions. ERP still needs separate follow-up contracts for fetching documents for a list of candidate UUIDs and saving corrected fields of an existing document; local EDO corrections are not ERP writes.
+
 Implementation targets the ERP contract in `1c-erp/docs/integrations/edo-candidate-workspace.md`. No production deployment, shared migration or real document delivery is part of this change.
 
 ## Confirmed identity and direction

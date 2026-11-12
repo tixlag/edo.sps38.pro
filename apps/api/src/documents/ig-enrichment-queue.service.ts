@@ -11,7 +11,11 @@ import { Prisma, type Candidate } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { DocumentAccessService } from "./document-access.service";
-import { candidateReviewGroup, requireReviewGroup, reviewGroupWhere } from "./review-group";
+import {
+  candidateReviewGroup,
+  requireReviewGroup,
+  reviewGroupWhere,
+} from "./review-group";
 import { IgProfileEnrichmentService } from "./ig-profile-enrichment.service";
 import { CandidateEnrichmentDto } from "./dto/candidate-enrichment.dto";
 
@@ -29,7 +33,7 @@ const eligible: Prisma.CandidateWhereInput = {
     igEligible,
     {
       erpUid: { not: null },
-      OR: [{ chatUuid: { not: null } }, { citizenship: "ru" }],
+      AND: [reviewGroupWhere("RU")],
     },
   ],
 };
@@ -62,8 +66,7 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     const tick = () => {
       for (const lane of ["priority", "background"] as const) {
-        if (this.running.has(lane) || this.stopping)
-          continue;
+        if (this.running.has(lane) || this.stopping) continue;
         const work = this.runLane(lane)
           .catch(() =>
             this.logger.warn("Employee enrichment failed; retry scheduled"),
@@ -124,10 +127,13 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
           c.citizenship?.toLowerCase() === "ru"
     )
       throw new ConflictException("ERP_PERSON_IDENTITY_REQUIRED");
-    if (c.previousDocumentsSyncedAt && (
-      (group === "IG" && profileReady(c)) ||
-      (group === "RU" && Date.now() - c.previousDocumentsSyncedAt.getTime() < 5 * 60_000)
-    )) return this.status(id);
+    if (
+      c.previousDocumentsSyncedAt &&
+      ((group === "IG" && profileReady(c)) ||
+        (group === "RU" &&
+          Date.now() - c.previousDocumentsSyncedAt.getTime() < 5 * 60_000))
+    )
+      return this.status(id);
     // Upsert only promotes priority; reopening never resets attempts or cooldown.
     await this.prisma.$transaction(async (tx) => {
       await tx.igEnrichmentJob.upsert({
@@ -150,26 +156,52 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
     requireReviewGroup(principal, "RU");
     // One scoped read for the visible page; never fan out to ERP in an HTTP request.
     const candidates = await this.prisma.candidate.findMany({
-      where: { AND: [this.access.candidateWhere(principal), reviewGroupWhere("RU"),
-        { id: { in: [...new Set(ids)] }, erpUid: { not: null }, erpDeleted: false } ] },
+      where: {
+        AND: [
+          this.access.candidateWhere(principal),
+          reviewGroupWhere("RU"),
+          {
+            id: { in: [...new Set(ids)] },
+            erpUid: { not: null },
+            erpDeleted: false,
+          },
+        ],
+      },
       select: { id: true, previousDocumentsSyncedAt: true },
     });
     const cutoff = Date.now() - 5 * 60_000;
-    const staleIds = candidates.filter((c) => !c.previousDocumentsSyncedAt || c.previousDocumentsSyncedAt.getTime() < cutoff).map((c) => c.id);
+    const staleIds = candidates
+      .filter(
+        (c) =>
+          !c.previousDocumentsSyncedAt ||
+          c.previousDocumentsSyncedAt.getTime() < cutoff,
+      )
+      .map((c) => c.id);
     if (staleIds.length) {
       await this.prisma.$transaction(async (tx) => {
         await tx.igEnrichmentJob.createMany({
-          data: staleIds.map((candidateId) => ({ candidateId, priority: false })),
+          data: staleIds.map((candidateId) => ({
+            candidateId,
+            priority: false,
+          })),
           skipDuplicates: true,
         });
         await tx.igEnrichmentJob.updateMany({
           where: { candidateId: { in: staleIds }, status: "READY" },
-          data: { status: "PENDING", requestedAt: new Date(), nextAttemptAt: new Date(), attempts: 0 },
+          data: {
+            status: "PENDING",
+            requestedAt: new Date(),
+            nextAttemptAt: new Date(),
+            attempts: 0,
+          },
         });
       });
     }
     const pending = await this.prisma.igEnrichmentJob.findMany({
-      where: { candidateId: { in: candidates.map((c) => c.id) }, status: { in: ["PENDING", "RUNNING", "RETRY"] } },
+      where: {
+        candidateId: { in: candidates.map((c) => c.id) },
+        status: { in: ["PENDING", "RUNNING", "RETRY"] },
+      },
       select: { candidateId: true },
     });
     return { pendingCandidateIds: pending.map((job) => job.candidateId) };

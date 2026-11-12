@@ -23,18 +23,48 @@ export async function resolveCandidateIdentity(
   ];
   const rows = await tx.candidate.findMany({
     where: { OR: refs },
-    include: { _count: { select: { documents: true } } },
+    include: {
+      _count: { select: { documents: true, previousDocuments: true } },
+    },
   });
   if (rows.length > 1) {
     const ghost = rows.find(
-      (r) => r.erpUid && !r.chatUuid && ((r as any)._count?.documents ?? 0) === 0,
+      (r) =>
+        r.erpUid &&
+        !r.chatUuid &&
+        r._count.documents === 0 &&
+        r._count.previousDocuments === 0,
     );
     const real = rows.find(
       (r) =>
         r.id !== ghost?.id &&
         (r.chatUuid || ((r as any)._count?.documents ?? 0) > 0),
     );
-    if (ghost && real && rows.length === 2) {
+    if (
+      ghost &&
+      real &&
+      rows.length === 2 &&
+      (!identity.expectedId || identity.expectedId === real.id) &&
+      (!real.erpUid || real.erpUid === ghost.erpUid) &&
+      (!real.reviewGroup ||
+        !ghost.reviewGroup ||
+        real.reviewGroup === ghost.reviewGroup) &&
+      (!identity.reviewGroup ||
+        !real.reviewGroup ||
+        identity.reviewGroup === real.reviewGroup) &&
+      (!identity.reviewGroup ||
+        !ghost.reviewGroup ||
+        identity.reviewGroup === ghost.reviewGroup) &&
+      (!real.personUid ||
+        !ghost.personUid ||
+        real.personUid === ghost.personUid) &&
+      (!identity.personUid ||
+        !real.personUid ||
+        identity.personUid === real.personUid) &&
+      (!identity.personUid ||
+        !ghost.personUid ||
+        identity.personUid === ghost.personUid)
+    ) {
       await tx.candidate.delete({ where: { id: ghost.id } });
       await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${real.id} FOR UPDATE`;
       return tx.candidate.update({
