@@ -1,3 +1,4 @@
+vi.mock("../components/CandidateDocumentThumbnail", () => ({ CandidateDocumentThumbnail: () => null }));
 vi.mock("../components/ApprovedErpDocumentPreview", () => ({ ApprovedErpDocumentPreview: ({ document }: { document: { id: string } }) => <div data-erp-original={document.id}>Оригинал ERP</div> }));
 vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
 import { expect, it, vi } from "vitest";
@@ -299,4 +300,16 @@ it("opens the ERP original when the reviewer asks for it", async () => {
   expect(node.querySelector('[data-erp-original="approved-erp"]')).not.toBeNull();
   await act(async () => root.unmount()); node.remove();
   state.documents = []; state.previousDocuments = [];
+});
+
+it("keeps a complete snapshot and the chat mounted during a background sync", async () => {
+  state.search={stage:"1"};state.candidate={reviewGroup:"RU"};state.enrichment={status:"READY",profileReady:true,documentsReady:true};
+  const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
+  await act(async()=>root.render(<CandidateWorkspacePage/>));
+  const mounts=state.chatMounts;
+  state.enrichment={status:"RUNNING",profileReady:true,documentsReady:true};
+  await act(async()=>root.render(<CandidateWorkspacePage/>));
+  const panel=node.querySelector('[aria-label="Документы кандидата"]')!;
+  expect(panel.textContent).toContain("Обновляем данные");expect(panel.textContent).toContain("СНИЛС");expect(state.chatMounts).toBe(mounts);
+  await act(async()=>root.unmount());node.remove();state.enrichment=undefined;state.candidate=undefined;
 });

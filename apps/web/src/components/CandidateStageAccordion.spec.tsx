@@ -295,4 +295,24 @@ describe("CandidateStageAccordion", () => {
     expect(titles.map((el) => el.textContent)).toEqual(["ИНН", "СНИЛС"]);
     expect(titles[0].closest("article")).not.toBe(titles[1].closest("article"));
   });
+  it("shows delivery problems on a collapsed stage while keeping approved required counters", async () => {
+    await renderAccordion({
+      stage: 7,
+      title: "Этап 7",
+      candidateId: "candidate",
+      isOpen: false,
+      onToggle: vi.fn(),
+      required: { documents: [], missingDocuments: [] },
+      additional: { documents: [], missingDocuments: [] },
+      previousDocuments: [],
+      progress: {
+        stage: 7,
+        required: { approved: 1 },
+        additional: { approved: 1 },
+        deliveryProblemCount: 1,
+      } as ReviewStageProgressDto,
+    });
+    expect(container?.textContent).toContain("Проверено: 1 из 1");
+    expect(container?.textContent).toContain("Проблемы отправки: 1");
+  });
 });

@@ -1,15 +1,46 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getCandidatePreviousDocumentOriginal,
+  getDocumentVersion,
+  getDocumentFileBinary,
   getGetDocumentVersionQueryKey,
   getGetDocumentFileBinaryQueryKey,
   useGetDocumentVersion,
   useGetDocumentFileBinary,
 } from "@edo/api-client";
-import { cn } from "@edo/ui";
+import { Button, cn } from "@edo/ui";
 import { FileText, Loader2 } from "lucide-react";
 
 import { PdfPage } from "./DocumentPreview";
+
+const PREVIEW_TIMEOUT_MS = 30_000;
+function withPreviewTimeout<T>(
+  load: (signal: AbortSignal) => Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  const controller = new AbortController();
+  let cleanup: () => void = () => undefined;
+  const interrupted = new Promise<never>((_resolve, reject) => {
+    const abort = () => {
+      controller.abort();
+      reject(new Error("Preview interrupted"));
+    };
+    const timer = window.setTimeout(abort, PREVIEW_TIMEOUT_MS);
+    signal.addEventListener("abort", abort, { once: true });
+    cleanup = () => {
+      window.clearTimeout(timer);
+      signal.removeEventListener("abort", abort);
+    };
+    if (signal.aborted) abort();
+  });
+  return Promise.race([
+    Promise.resolve().then(() => {
+      if (controller.signal.aborted) throw new Error("Preview interrupted");
+      return load(controller.signal);
+    }),
+    interrupted,
+  ]).finally(cleanup);
+}
 
 export interface CandidateDocumentThumbnailProps {
   candidateId: string;
@@ -36,16 +67,27 @@ export function CandidateDocumentThumbnail({
     return typeof IntersectionObserver === "undefined";
   });
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPdf, setIsPdf] = useState(false);
   const [renderFailed, setRenderFailed] = useState(false);
   const onPreviewError = useCallback(() => setRenderFailed(true), []);
-  const onPdfReady = useCallback(() => undefined, []);
+  const [ready, setReady] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const onReady = useCallback(() => {
+    setReady(true);
+    setTimedOut(false);
+  }, []);
   const versionQuery = useGetDocumentVersion(documentId, version ?? 0, {
     query: {
       queryKey: getGetDocumentVersionQueryKey(documentId, version ?? 0),
       enabled: isVisible && originalAvailable && version !== undefined,
+      queryFn: ({ signal }) =>
+        withPreviewTimeout(
+          (previewSignal) =>
+            getDocumentVersion(documentId, version ?? 0, previewSignal),
+          signal,
+        ),
       staleTime: 240_000,
       retry: false,
     },
@@ -70,6 +112,17 @@ export function CandidateDocumentThumbnail({
         ),
         enabled:
           isVisible && originalAvailable && version !== undefined && !!file,
+        queryFn: ({ signal }) =>
+          withPreviewTimeout(
+            (previewSignal) =>
+              getDocumentFileBinary(
+                documentId,
+                version ?? 0,
+                file?.id ?? "",
+                previewSignal,
+              ),
+            signal,
+          ),
         staleTime: 240_000,
         gcTime: 60_000,
         retry: false,
@@ -80,6 +133,7 @@ export function CandidateDocumentThumbnail({
     if (version === undefined) return;
     setObjectUrl(null);
     setRenderFailed(false);
+    setReady(false);
     if (
       !originalAvailable ||
       !binaryQuery.data ||
@@ -97,19 +151,38 @@ export function CandidateDocumentThumbnail({
     binaryQuery.data,
     file,
     versionQuery.data?.status,
+    retryCount,
   ]);
-  const pending =
-    version === undefined
-      ? loading
-      : versionQuery.isFetching || binaryQuery.isFetching;
   const unavailable =
     !originalAvailable ||
     renderFailed ||
     (version === undefined
       ? !!error
-      : versionQuery.isError ||
-        binaryQuery.isError ||
+      : (versionQuery.isError && !versionQuery.data) ||
+        (binaryQuery.isError && !binaryQuery.data) ||
         (versionQuery.isSuccess && !file));
+  // Background reads keep the already rendered preview in place.
+  const pending =
+    isVisible && originalAvailable && !ready && !unavailable && !timedOut;
+  useEffect(() => {
+    if (!isVisible || !originalAvailable || ready || unavailable) return;
+    const timer = window.setTimeout(
+      () => setTimedOut(true),
+      PREVIEW_TIMEOUT_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [isVisible, originalAvailable, ready, unavailable, retryCount]);
+  const retry = () => {
+    setTimedOut(false);
+    setRenderFailed(false);
+    setReady(false);
+    setRetryCount((count) => count + 1);
+    if (version !== undefined) {
+      if (!file || versionQuery.isError)
+        void versionQuery.refetch({ cancelRefetch: false });
+      else void binaryQuery.refetch({ cancelRefetch: false });
+    }
+  };
 
   useEffect(() => {
     if (isVisible || typeof IntersectionObserver === "undefined") return;
@@ -134,7 +207,6 @@ export function CandidateDocumentThumbnail({
     if (version !== undefined) return;
     if (!isVisible || !originalAvailable || !candidateId || !documentId) {
       setObjectUrl(null);
-      setLoading(false);
       setError(null);
       return;
     }
@@ -143,14 +215,14 @@ export function CandidateDocumentThumbnail({
     let createdUrl: string | null = null;
     const controller = new AbortController();
 
-    setLoading(true);
     setError(null);
     setRenderFailed(false);
+    setReady(false);
 
     Promise.resolve(
-      getCandidatePreviousDocumentOriginal(
-        candidateId,
-        documentId,
+      withPreviewTimeout(
+        (signal) =>
+          getCandidatePreviousDocumentOriginal(candidateId, documentId, signal),
         controller.signal,
       ),
     )
@@ -167,11 +239,6 @@ export function CandidateDocumentThumbnail({
       .catch((err: unknown) => {
         if (!active || controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : "Не удалось загрузить");
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false);
-        }
       });
 
     return () => {
@@ -181,7 +248,15 @@ export function CandidateDocumentThumbnail({
         URL.revokeObjectURL(createdUrl);
       }
     };
-  }, [isVisible, candidateId, documentId, originalAvailable, title, version]);
+  }, [
+    isVisible,
+    candidateId,
+    documentId,
+    originalAvailable,
+    title,
+    version,
+    retryCount,
+  ]);
 
   const handleOpen = () => {
     if (onClick) {
@@ -227,10 +302,11 @@ export function CandidateDocumentThumbnail({
       {pending && (
         <Loader2
           className="h-5 w-5 animate-spin"
+          role="status"
           aria-label="Загрузка превью"
         />
       )}
-      {!pending && (unavailable || !objectUrl) && (
+      {!pending && (unavailable || timedOut || !objectUrl) && (
         <div
           className="flex flex-col items-center gap-1 p-1 text-center text-[10px] leading-tight"
           aria-label={`Превью недоступно: ${title}`}
@@ -239,28 +315,40 @@ export function CandidateDocumentThumbnail({
           <span>
             {!originalAvailable ? "Оригинал недоступен" : "Превью недоступно"}
           </span>
+          {originalAvailable && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="relative z-10 h-6 px-1 text-[10px]"
+              aria-label={`Повторить загрузку превью: ${title}`}
+              onClick={retry}
+            >
+              Повторить
+            </Button>
+          )}
         </div>
       )}
       {objectUrl &&
-        !pending &&
         !unavailable &&
+        !timedOut &&
         (isPdf ? (
           <PdfPage
             key={objectUrl}
             url={objectUrl}
             pageNumber={1}
-            onReady={onPdfReady}
+            onReady={onReady}
             onError={onPreviewError}
             maxWidth={160}
             maxHeight={192}
-            className="block h-full w-full object-contain"
+            className="absolute inset-0 block h-full w-full object-contain"
           />
         ) : (
           <img
             src={objectUrl}
             alt={title}
-            className="h-full w-full object-contain"
+            className="absolute inset-0 h-full w-full object-contain"
             onError={onPreviewError}
+            onLoad={onReady}
           />
         ))}
       <button

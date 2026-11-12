@@ -352,4 +352,30 @@ describe("review stage progress", () => {
       attention: 3,
     });
   });
+  it("reports required and additional delivery problems without changing review counts", () => {
+    const type = (id: string, requiredForAll: boolean) => ({
+      id,
+      code: id,
+      stage: 7,
+      requiredForAll,
+      allRu: false,
+      allForeign: false,
+      positions: requiredForAll ? [] : [{ code1c: "001", required: false }],
+    });
+    const [stage] = reviewStageProgress(
+      [type("license", true), type("tachograph", false)],
+      [
+        { documentTypeId: "license", status: "APPROVED" },
+        { documentTypeId: "tachograph", status: "APPROVED" },
+      ],
+      { positionCode: "001", citizenship: "ru", sex: null },
+      [],
+      false,
+      ["tachograph"],
+    );
+    expect(stage.required.approved).toBe(1);
+    expect(stage.additional.approved).toBe(1);
+    expect(stage.required.attention).toBe(0);
+    expect(stage.deliveryProblemCount).toBe(1);
+  });
 });

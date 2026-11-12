@@ -1,12 +1,19 @@
 import { useRef, useState } from "react";
 import { useBlocker } from "@tanstack/react-router";
-import { useGetDocumentInfo, useRetryReviewerDocumentDelivery } from "@edo/api-client";
-import { Button, FullScreenDialog, StatusBadge } from "@edo/ui";
-import { DocumentReviewWorkspace, type DocumentReviewNavigationState } from "./DocumentReviewWorkspace";
+import {
+  useGetDocumentInfo,
+  useRetryReviewerDocumentDelivery,
+} from "@edo/api-client";
+import { Badge, Button, FullScreenDialog, StatusBadge } from "@edo/ui";
+import {
+  DocumentReviewWorkspace,
+  type DocumentReviewNavigationState,
+} from "./DocumentReviewWorkspace";
 import { PreviousDocumentEditor } from "./PreviousDocumentEditor";
 import { ReviewerDocumentUpload } from "./ReviewerDocumentUpload";
 import { useLiveDocumentVersion } from "../lib/use-live-document-version";
 import { isHistoricVersion } from "../lib/audit-types";
+import { documentDeliveryPresentation } from "../lib/document-delivery-presentation";
 import { candidateError } from "./CandidateForm";
 
 function CandidateDocumentReview({
@@ -59,11 +66,19 @@ function CandidateDocumentReview({
       number,
     ]),
   ].sort((a, b) => b - a);
+  const delivery = documentDeliveryPresentation(
+    version.data.status,
+    version.data.delivery?.status,
+  );
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-auto lg:overflow-hidden">
       <div className="flex shrink-0 flex-wrap items-center gap-2 text-sm">
         <h2 className="mr-auto font-semibold">{info.data?.title}</h2>
-        <StatusBadge status={version.data.status} document />
+        {delivery ? (
+          <Badge tone={delivery.tone}>{delivery.label}</Badge>
+        ) : (
+          <StatusBadge status={version.data.status} document />
+        )}
         <label className="text-xs">
           Версия{" "}
           <select
@@ -76,17 +91,28 @@ function CandidateDocumentReview({
               <option key={v} value={v}>
                 {v}
                 {v === info.data?.currentVersion ? " — текущая" : ""}
+                {info.data?.returnedVersions?.some((item) => item.version === v)
+                  ? " — возвращена"
+                  : ""}
+                {info.data?.pendingDeliveryVersions?.includes(v)
+                  ? " — требуется отправка в ERP"
+                  : ""}
               </option>
             ))}
           </select>
         </label>
       </div>
       {(version.data.uploadOrigin === "REVIEWER" || version.data.delivery) && (
-        <div role="status" className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg bg-[var(--muted)] p-2 text-sm">
+        <div
+          role="status"
+          className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg bg-[var(--muted)] p-2 text-sm"
+        >
           <span>
             {version.data.delivery?.status === "SENT"
               ? "Сохранён в ERP"
-              : ["PENDING", "SENDING"].includes(version.data.delivery?.status ?? "")
+              : ["PENDING", "SENDING"].includes(
+                    version.data.delivery?.status ?? "",
+                  )
                 ? "Документ подтверждён. Отправляем в ERP…"
                 : version.data.status === "APPROVED"
                   ? "Не удалось сохранить в ERP. Загрузка и поля сохранены в ЭДО."
@@ -101,14 +127,30 @@ function CandidateDocumentReview({
                   {version.data.delivery.errorReason}
                 </span>
               )}
-              <Button variant="outline" disabled={resend.isPending} onClick={() => resend.mutate({ candidateId, documentId, version: number }, { onSuccess: () => void version.refetch() })}>Повторить отправку в ERP</Button>
+              <Button
+                variant="outline"
+                disabled={resend.isPending}
+                onClick={() =>
+                  resend.mutate(
+                    { candidateId, documentId, version: number },
+                    { onSuccess: () => void version.refetch() },
+                  )
+                }
+              >
+                Повторить отправку в ERP
+              </Button>
             </>
           )}
-          {resend.isError && <span role="alert">{candidateError(resend.error)}</span>}
+          {resend.isError && (
+            <span role="alert">{candidateError(resend.error)}</span>
+          )}
         </div>
       )}
       {historic && (
-        <p role="status" className="shrink-0 rounded-md bg-[var(--muted)] p-2 text-xs">
+        <p
+          role="status"
+          className="shrink-0 rounded-md bg-[var(--muted)] p-2 text-xs"
+        >
           Историческая версия {number}. Изменение запрещено.{" "}
           <button
             onClick={() => chooseVersion(info.data!.currentVersion)}
@@ -132,22 +174,75 @@ function CandidateDocumentReview({
   );
 }
 
-export function DocumentReviewDialog({ candidateId, documentId, previousDocumentId, version, uploading, onClose, chooseVersion, onUploaded }: {
-  candidateId: string; documentId?: string; previousDocumentId?: string; version?: number; uploading?: boolean;
-  onClose: () => void; chooseVersion: (version: number) => void;
+export function DocumentReviewDialog({
+  candidateId,
+  documentId,
+  previousDocumentId,
+  version,
+  uploading,
+  onClose,
+  chooseVersion,
+  onUploaded,
+}: {
+  candidateId: string;
+  documentId?: string;
+  previousDocumentId?: string;
+  version?: number;
+  uploading?: boolean;
+  onClose: () => void;
+  chooseVersion: (version: number) => void;
   onUploaded: (documentId: string, version: number) => Promise<void>;
 }) {
-  const [state, setState] = useState<DocumentReviewNavigationState>({ busy: false, hasUnsavedChanges: false });
+  const [state, setState] = useState<DocumentReviewNavigationState>({
+    busy: false,
+    hasUnsavedChanges: false,
+  });
   const bypass = useRef(false);
   useBlocker({
-    shouldBlockFn: () => !bypass.current && (state.busy || (state.hasUnsavedChanges && !window.confirm("Есть несохранённые изменения. Закрыть без сохранения?"))),
+    shouldBlockFn: () =>
+      !bypass.current &&
+      (state.busy ||
+        (state.hasUnsavedChanges &&
+          !window.confirm(
+            "Есть несохранённые изменения. Закрыть без сохранения?",
+          ))),
     enableBeforeUnload: state.busy || state.hasUnsavedChanges,
   });
-  return <FullScreenDialog title={uploading ? "Загрузка документа" : "Документ кандидата"} onClose={onClose}>
-    {uploading ? <ReviewerDocumentUpload candidateId={candidateId} onState={setState} onUploaded={async (id, number) => {
-      bypass.current = true;
-      try { await onUploaded(id, number); } finally { bypass.current = false; }
-    }} /> : previousDocumentId ? <PreviousDocumentEditor key={previousDocumentId} candidateId={candidateId} documentId={previousDocumentId} onState={setState} />
-      : documentId ? <CandidateDocumentReview key={`${documentId}:${version}`} candidateId={candidateId} documentId={documentId} version={version} chooseVersion={chooseVersion} onState={setState} /> : null}
-  </FullScreenDialog>;
+  return (
+    <FullScreenDialog
+      title={uploading ? "Загрузка документа" : "Документ кандидата"}
+      onClose={onClose}
+    >
+      {uploading ? (
+        <ReviewerDocumentUpload
+          candidateId={candidateId}
+          onState={setState}
+          onUploaded={async (id, number) => {
+            bypass.current = true;
+            try {
+              await onUploaded(id, number);
+            } finally {
+              bypass.current = false;
+            }
+          }}
+        />
+      ) : previousDocumentId ? (
+        <PreviousDocumentEditor
+          key={previousDocumentId}
+          candidateId={candidateId}
+          documentId={previousDocumentId}
+          onState={setState}
+        />
+      ) : documentId ? (
+        <CandidateDocumentReview
+          key={`${documentId}:${version}`}
+          candidateId={candidateId}
+          documentId={documentId}
+          version={version}
+          chooseVersion={chooseVersion}
+          onState={setState}
+        />
+      ) : null}
+    </FullScreenDialog>
+  );
 }

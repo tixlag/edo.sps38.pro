@@ -34,6 +34,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 describe("CandidateDocumentThumbnail", () => {
   let root: Root | undefined;
+  let client: QueryClient;
   let container: HTMLDivElement | undefined;
   let originalCreateObjectURL: typeof URL.createObjectURL;
   let originalRevokeObjectURL: typeof URL.revokeObjectURL;
@@ -68,6 +69,7 @@ describe("CandidateDocumentThumbnail", () => {
     await act(async () => root?.unmount());
     container?.remove();
     vi.clearAllMocks();
+    vi.useRealTimers();
     URL.createObjectURL = originalCreateObjectURL;
     URL.revokeObjectURL = originalRevokeObjectURL;
   });
@@ -78,13 +80,10 @@ describe("CandidateDocumentThumbnail", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     await act(async () => {
       root?.render(
-        <QueryClientProvider
-          client={
-            new QueryClient({ defaultOptions: { queries: { retry: false } } })
-          }
-        >
+        <QueryClientProvider client={client}>
           <CandidateDocumentThumbnail {...props} />
         </QueryClientProvider>,
       );
@@ -187,6 +186,9 @@ describe("CandidateDocumentThumbnail", () => {
     ) as HTMLButtonElement;
     expect(button).toBeTruthy();
 
+    await act(async () => {
+      container?.querySelector("img")?.dispatchEvent(new Event("load"));
+    });
     await act(async () => {
       button.click();
     });
@@ -329,8 +331,107 @@ describe("CandidateDocumentThumbnail", () => {
       });
       if (state !== "DENIED")
         expect(mockApi.getDocumentFileBinary).not.toHaveBeenCalled();
-      await act(async () => container?.querySelector("button")?.click());
+      await act(async () =>
+        container
+          ?.querySelector<HTMLButtonElement>('button[title="Открыть документ"]')
+          ?.click(),
+      );
       expect(onClick).toHaveBeenCalledOnce();
     },
   );
+  it("stops waiting after 30 seconds, aborts a slow ERP request, and supports retry and opening", async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    mockApi.getCandidatePreviousDocumentOriginal.mockImplementationOnce(
+      (_candidate: string, _document: string, value: AbortSignal) => {
+        signal = value;
+        return new Promise(() => undefined);
+      },
+    );
+    mockApi.getCandidatePreviousDocumentOriginal.mockResolvedValueOnce(
+      new Blob(["image"], { type: "image/png" }),
+    );
+    const onClick = vi.fn();
+    await render({
+      candidateId: "c",
+      documentId: "p",
+      originalAvailable: true,
+      title: "Паспорт",
+      onClick,
+    });
+    expect(
+      container?.querySelector('[aria-label="Загрузка превью"]'),
+    ).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(signal!.aborted).toBe(true);
+    expect(container?.textContent).toContain("Превью недоступно");
+    expect(
+      container?.querySelector('[aria-label="Загрузка превью"]'),
+    ).toBeNull();
+    await act(async () =>
+      container
+        ?.querySelector<HTMLButtonElement>('button[title="Открыть документ"]')!
+        .click(),
+    );
+    expect(onClick).toHaveBeenCalledOnce();
+    await act(async () =>
+      container
+        ?.querySelector<HTMLButtonElement>(
+          'button[aria-label="Повторить загрузку превью: Паспорт"]',
+        )!
+        .click(),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(container?.querySelector("img")).toBeTruthy();
+  });
+  it("keeps a ready EDO image visible throughout a background refetch", async () => {
+    vi.useFakeTimers();
+    mockApi.getDocumentVersion.mockResolvedValue({
+      status: "APPROVED",
+      files: [
+        { id: "first", deleted: false, ordinal: 0, mimeType: "image/png" },
+      ],
+    });
+    mockApi.getDocumentFileBinary.mockResolvedValue(
+      new Blob(["first"], { type: "image/png" }),
+    );
+    await render({
+      candidateId: "c",
+      documentId: "edo",
+      version: 1,
+      originalAvailable: true,
+      title: "ИНН",
+    });
+    // Metadata and binary queries notify React in separate timer turns.
+    for (let i=0;i<3;i++) await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+    expect(container?.querySelector("img")).toBeTruthy();
+    await act(async () =>
+      container?.querySelector("img")!.dispatchEvent(new Event("load")),
+    );
+    const src = container?.querySelector("img")?.src;
+    let resolve: (value: Blob) => void = () => undefined;
+    mockApi.getDocumentFileBinary.mockImplementationOnce(
+      () => new Promise<Blob>((done) => (resolve = done)),
+    );
+    let pending: Promise<void>;
+    await act(async () => {
+      pending = client.refetchQueries({
+        queryKey: ["/api/v1/documents/edo/versions/1/files/first/file"],
+      });
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    expect(container?.querySelector("img")?.src).toBe(src);
+    expect(
+      container?.querySelector('[aria-label="Загрузка превью"]'),
+    ).toBeNull();
+    await act(async () => {
+      resolve(new Blob(["second"], { type: "image/png" }));
+      await pending!;
+      await vi.advanceTimersByTimeAsync(20);
+    });
+  });
 });

@@ -172,10 +172,11 @@ describe("live document version through the generated API client", () => {
     server = response("SUCCEEDED", 2);
     await act(async () => {
       stream.enqueue(
-        new TextEncoder().encode('event: documents\ndata: {"items":[]}\n\n'),
+        new TextEncoder().encode('event: documents\ndata: {"items":[{"id":"document","revision":2,"currentVersion":4}]}\n\n'),
       );
     });
-    await tick(0);
+    await tick(100);
+    await tick(1);
     expect(node.textContent).toBe("SUCCEEDED:2");
     expect(requests).toHaveBeenCalledTimes(2);
     stream.close();

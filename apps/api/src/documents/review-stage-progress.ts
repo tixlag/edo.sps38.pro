@@ -1,5 +1,8 @@
 import { classifyRule, excludedForSex } from "./document-contract";
-import { isPatentExempt, needsNewIgDocument } from "./reemployment-document-policy";
+import {
+  isPatentExempt,
+  needsNewIgDocument,
+} from "./reemployment-document-policy";
 
 type Type = {
   id: string;
@@ -37,6 +40,7 @@ type Counts = {
   attention: number;
 };
 export type StageProgress = {
+  deliveryProblemCount: number;
   stage: number | null;
   required: Counts;
   additional: Counts;
@@ -80,7 +84,8 @@ export function classifyStageType(
     profile.citizenship,
     profile.projectCode,
   );
-  return category === "required" && isPatentExempt(type.erpUid, profile.citizenship)
+  return category === "required" &&
+    isPatentExempt(type.erpUid, profile.citizenship)
     ? "additional"
     : category;
 }
@@ -91,15 +96,15 @@ export function reviewStageProgress(
   profile: Profile,
   previousUids: string[] = [],
   isIg = true,
+  deliveryProblemTypeIds: readonly string[] = [],
 ): StageProgress[] {
+  const deliveryProblems = new Set(deliveryProblemTypeIds);
   const nonDraftStates = new Map(
     documents
       .filter((d) => d.status !== "DRAFT")
       .map((d) => [d.documentTypeId, d.status]),
   );
-  const allStates = new Map(
-    documents.map((d) => [d.documentTypeId, d.status]),
-  );
+  const allStates = new Map(documents.map((d) => [d.documentTypeId, d.status]));
   const reused = new Set(previousUids.map((uid) => uid.toLowerCase()));
   const stages = new Map<number | null, StageProgress>();
   for (const type of types) {
@@ -110,17 +115,23 @@ export function reviewStageProgress(
       if (!category) continue;
       let entry = stages.get(stage);
       if (!entry) {
-        entry = { stage, required: empty(), additional: empty() };
+        entry = {
+          stage,
+          required: empty(),
+          additional: empty(),
+          deliveryProblemCount: 0,
+        };
         stages.set(stage, entry);
       }
+      if (deliveryProblems.has(type.id)) entry.deliveryProblemCount++;
       const count = category === "required" ? entry.required : entry.additional;
       const activeStatus = nonDraftStates.get(type.id);
       const isReused =
         !activeStatus &&
         Boolean(
           type.erpUid &&
-            (!isIg || !needsNewIgDocument(type.erpUid)) &&
-            reused.has(type.erpUid.toLowerCase()),
+          (!isIg || !needsNewIgDocument(type.erpUid)) &&
+          reused.has(type.erpUid.toLowerCase()),
         );
 
       if (isReused) {

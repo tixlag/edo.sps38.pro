@@ -672,6 +672,10 @@ function CandidateWorkspace() {
                   Загрузка документов этапа…
                 </p>
               )}
+            {details.updating && <p role="status" className="px-2 py-1 text-xs text-[var(--muted-foreground)]">
+              {details.syncError || details.data?.enrichment?.status === "RETRY" ? "Не удалось обновить данные. Показан последний полный снимок." : "Обновляем данные…"}
+              {details.syncError && <Button size="sm" variant="outline" onClick={details.requestSync}>Повторить</Button>}
+            </p>}
             {details.synchronizing && (
               <p
                 role="status"

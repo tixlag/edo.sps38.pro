@@ -312,6 +312,12 @@ export class ReviewStageCountsDto {
   @ApiPropertyOptional() attention?: number;
 }
 export class ReviewStageProgressDto {
+  @ApiPropertyOptional({
+    type: Number,
+    minimum: 0,
+    description: "Current approved/signed documents with unconfirmed or blocked ERP delivery, including additional documents; independent of review counters",
+  })
+  deliveryProblemCount?: number;
   @ApiProperty({ type: Number, nullable: true }) stage!: number | null;
   @ApiProperty({ type: ReviewStageCountsDto }) required!: ReviewStageCountsDto;
   @ApiProperty({ type: ReviewStageCountsDto })
@@ -418,6 +424,8 @@ export class CandidateDocumentSummaryDto extends DocumentReviewMetadataDto {
   @ApiProperty() title!: string;
   @ApiProperty({ type: String, nullable: true }) documentUid!: string | null;
   @ApiProperty({ type: String, nullable: true }) deliveryStatus!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, description: "Safe explanation of the current version ERP delivery failure, without technical codes or response bodies" })
+  deliveryErrorReason?: string | null;
 }
 export class DocumentDto extends CandidateDocumentSummaryDto {
   @ApiProperty({ enum: ["RU", "IG"], nullable: true })

@@ -39,9 +39,8 @@ vi.mock("../lib/use-live-document-version", () => ({
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-const { useLiveDocumentVersion } = await import(
-  "../lib/use-live-document-version"
-);
+const { useLiveDocumentVersion } =
+  await import("../lib/use-live-document-version");
 
 function versionData(overrides: Partial<DocumentVersionDto> = {}) {
   return {
@@ -86,6 +85,7 @@ describe("DocumentReviewDialog delivery actions", () => {
   async function renderDialog(props: {
     version?: number;
     currentVersion?: number;
+    returned?: boolean;
   }) {
     const currentVersion = props.currentVersion ?? 1;
     vi.mocked(useGetDocumentInfo).mockReturnValue({
@@ -96,7 +96,9 @@ describe("DocumentReviewDialog delivery actions", () => {
         currentVersion,
         status: "APPROVED",
         pendingDeliveryVersions: [],
-        returnedVersions: [],
+        returnedVersions: props.returned
+          ? [{ version: 1, rejectionReason: "Старая причина" }]
+          : [],
       },
     } as never);
     vi.mocked(useLiveDocumentVersion).mockReturnValue({
@@ -124,8 +126,8 @@ describe("DocumentReviewDialog delivery actions", () => {
 
   it("offers the delivery retry for the current version", async () => {
     await renderDialog({ version: 2, currentVersion: 2 });
-    const retry = [...(container?.querySelectorAll("button") ?? [])].find((btn) =>
-      btn.textContent?.includes("Повторить отправку в ERP"),
+    const retry = [...(container?.querySelectorAll("button") ?? [])].find(
+      (btn) => btn.textContent?.includes("Повторить отправку в ERP"),
     );
     expect(retry).toBeTruthy();
     expect(container?.textContent).toContain(
@@ -135,12 +137,21 @@ describe("DocumentReviewDialog delivery actions", () => {
 
   it("hides the delivery retry for a historic version but keeps it viewable", async () => {
     await renderDialog({ version: 1, currentVersion: 2 });
-    const retry = [...(container?.querySelectorAll("button") ?? [])].find((btn) =>
-      btn.textContent?.includes("Повторить отправку в ERP"),
+    const retry = [...(container?.querySelectorAll("button") ?? [])].find(
+      (btn) => btn.textContent?.includes("Повторить отправку в ERP"),
     );
     expect(retry).toBeUndefined();
     // The historic version itself stays available
     expect(container?.textContent).toContain("Историческая версия 1");
     expect(container?.querySelector('[data-testid="workspace"]')).toBeTruthy();
+  });
+  it("labels current and returned EDO versions without offering ERP copies", async () => {
+    await renderDialog({ currentVersion: 2, version: 2, returned: true });
+    const options = [...container!.querySelectorAll("option")].map(
+      (option) => option.textContent,
+    );
+    expect(options).toEqual(["2 — текущая", "1 — возвращена"]);
+    expect(container?.textContent).not.toContain("Старая причина");
+    expect(container?.textContent).toContain("Не сохранён в ERP");
   });
 });

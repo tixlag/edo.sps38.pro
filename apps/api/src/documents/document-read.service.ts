@@ -88,7 +88,7 @@ const documentSummaryInclude = {
       reviewedAt: true,
       reviewedBy: true,
       job: { select: { status: true, errorCode: true } },
-      delivery: { select: { status: true } },
+      delivery: { select: { status: true, errorCode: true } },
       submission: { select: { origin: true } },
     },
   },
@@ -274,6 +274,7 @@ export class DocumentReadService {
       title: d.documentType?.title ?? "Документ",
       documentUid: d.documentType?.erpUid ?? null,
       deliveryStatus: current?.delivery?.status ?? null,
+      deliveryErrorReason: erpDeliveryReason(current?.delivery?.errorCode),
       pendingDeliveryVersions: d.versions
         .filter(
           (v) =>
@@ -1752,7 +1753,7 @@ export class DocumentReadService {
    * progress. Counters are global per candidate and tab-independent: APPROVED
    * counts run over the same access scope as the queue (documentWhere)
    * without the status/tab filters, so "approved X of Y" stays stable across
-   * tabs. Exactly 2 queries per page (scoped groupBy, catalog snapshot) —
+   * tabs. Batched queries per page (scoped groupBy, catalog, delivery and history snapshots) —
    * never N+1 per document.
    */
   async enrichReviewCandidates(
@@ -1764,7 +1765,7 @@ export class DocumentReadService {
     // A stale snapshot stays available while the catalog service refreshes it.
     // A catalog outage must not block the review queue.
     void this.catalog?.ensure().catch(() => undefined);
-    const [grouped, catalog] = await Promise.all([
+    const [grouped, catalog, deliveryDocuments] = await Promise.all([
       this.prisma.document.groupBy({
         by: ["candidateId", "status", "documentTypeId"],
         where: {
@@ -1788,7 +1789,29 @@ export class DocumentReadService {
           },
         },
       }),
+      this.prisma.document.findMany({
+        where: {
+          candidateId: { in: candidateIds },
+          ...this.access.documentWhere(principal),
+          currentVersion: { gt: 0 },
+          status: { in: ["APPROVED", "SIGNED"] },
+        },
+        select: {
+          candidateId: true,
+          documentTypeId: true,
+          currentVersion: true,
+          versions: { select: { version: true, delivery: { select: { status: true } } } },
+        },
+      }),
     ]);
+    const deliveryProblems = new Map<string, Set<string>>();
+    for (const doc of deliveryDocuments) {
+      const delivery = doc.versions.find(v => v.version === doc.currentVersion)?.delivery;
+      if (!doc.candidateId || !doc.documentTypeId || ["SENT", "PENDING", "SENDING"].includes(delivery?.status ?? "")) continue;
+      const types = deliveryProblems.get(doc.candidateId) ?? new Set<string>();
+      types.add(doc.documentTypeId);
+      deliveryProblems.set(doc.candidateId, types);
+    }
     const igIds = profiles
       .filter((profile) => profile.reviewGroup === "RU" || profile.code1c || profile.isReemployment)
       .map((profile) => profile.id);
@@ -1878,6 +1901,7 @@ export class DocumentReadService {
               },
               previousUids,
               profile.reviewGroup === "IG",
+              [...(deliveryProblems.get(profile.id) ?? [])],
             )
           : null;
       profile.approvedDocuments =

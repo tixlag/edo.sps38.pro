@@ -53,7 +53,7 @@ function setup() {
     candidatePreviousDocument: { findMany: vi.fn(async () => []) },
     candidate: { findMany: vi.fn(), findFirst: vi.fn() },
     document: {
-      findMany: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
       groupBy: vi.fn().mockResolvedValue([
         {
           candidateId: "c1",
@@ -305,6 +305,7 @@ describe("candidate review queue", () => {
       currentVersion: 2,
       revision: 4,
       deliveryStatus: null,
+      deliveryErrorReason: null,
       pendingDeliveryVersions: [1],
       submittedAt: null,
       reviewedAt: null,
@@ -806,6 +807,6 @@ describe("candidate details", () => {
     await expect(
       reads.candidateDetails("denied", scoped),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(prisma.document.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.document.findMany).toHaveBeenCalledTimes(2);
   });
 });

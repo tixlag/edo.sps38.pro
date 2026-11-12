@@ -702,6 +702,11 @@ export interface ReviewStageCountsDto {
 }
 
 export interface ReviewStageProgressDto {
+  /**
+   * Current approved/signed documents with unconfirmed or blocked ERP delivery, including additional documents; independent of review counters
+   * @minimum 0
+   */
+  deliveryProblemCount?: number;
   /** @nullable */
   stage: number | null;
   required: ReviewStageCountsDto;
@@ -841,6 +846,11 @@ export interface DocumentDto {
   documentUid: string | null;
   /** @nullable */
   deliveryStatus: string | null;
+  /**
+   * Safe explanation of the current version ERP delivery failure, without technical codes or response bodies
+   * @nullable
+   */
+  deliveryErrorReason?: string | null;
   /** @nullable */
   reviewGroup: DocumentDtoReviewGroup;
   /** @nullable */
@@ -1334,6 +1344,11 @@ export interface CandidateDocumentSummaryDto {
   documentUid: string | null;
   /** @nullable */
   deliveryStatus: string | null;
+  /**
+   * Safe explanation of the current version ERP delivery failure, without technical codes or response bodies
+   * @nullable
+   */
+  deliveryErrorReason?: string | null;
 }
 
 export type PreviousDocumentAvailabilityState =

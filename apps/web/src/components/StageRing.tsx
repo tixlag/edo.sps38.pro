@@ -144,6 +144,7 @@ function StageTooltip({
           })}
         </tbody>
       </table>
+      {!!progress.deliveryProblemCount && <p className="mt-2 text-xs font-medium text-[var(--danger)]">Проблемы отправки в ERP: {progress.deliveryProblemCount}. Проверка документов учитывается отдельно.</p>}
     </div>,
     document.body,
   );
@@ -207,6 +208,7 @@ export function StageRing({
     (progress.required.inReview ?? progress.required.pending ?? 0) +
     (progress.additional.inReview ?? progress.additional.pending ?? 0);
   const attention =
+    (progress.deliveryProblemCount ?? 0) +
     (progress.required.returned ?? 0) +
     (progress.additional.returned ?? 0) +
     (progress.required.ocrFailed ?? 0) +
@@ -225,7 +227,7 @@ export function StageRing({
   const totalCount = total(progress.required) + total(progress.additional);
   const completedCount =
     completed(progress.required) + completed(progress.additional);
-  const color = inReview
+  const color = (progress.deliveryProblemCount ?? 0) > 0 ? "var(--danger)" : inReview
     ? "var(--warning)"
     : attention
       ? "var(--danger)"
