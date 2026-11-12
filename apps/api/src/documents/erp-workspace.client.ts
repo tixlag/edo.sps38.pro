@@ -318,6 +318,23 @@ export class ErpWorkspaceClient {
             : "ERP_OPERATION_RESULT_UNKNOWN",
         );
       }
+      if (response.status === 500) {
+        let code: unknown;
+        try {
+          const bytes = await this.readBounded(response, 8192);
+          const parsed = JSON.parse(bytes.toString("utf8")) as {
+            code?: unknown;
+          };
+          code = parsed.code;
+        } catch {
+          signal?.throwIfAborted();
+        }
+        if (code === "PHOTO_UPLOAD_FAILED") {
+          throw new ServiceUnavailableException(
+            "Не удалось сохранить фотографию в 1С. Попробуйте ещё раз",
+          );
+        }
+      }
       await response.body?.cancel();
       if (response.status === 404)
         throw new NotFoundException("ERP_ENTITY_NOT_FOUND");

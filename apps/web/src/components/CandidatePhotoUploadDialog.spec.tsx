@@ -6,6 +6,7 @@ import { CandidatePhotoUploadDialog } from "./CandidatePhotoUploadDialog";
 const mock = vi.hoisted(() => ({
   uploadMutate: vi.fn(),
   invalidateQueries: vi.fn(),
+  mutationError: null as unknown,
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -24,7 +25,11 @@ vi.mock("@edo/api-client", () => ({
     return {
       mutate: (args: unknown) => {
         mock.uploadMutate(args);
-        mutation?.onSuccess?.({ photoPath: "/api/v1/candidates/c1/photo?v=123" });
+        if (mock.mutationError) {
+          mutation?.onError?.(mock.mutationError);
+        } else {
+          mutation?.onSuccess?.({ photoPath: "/api/v1/candidates/c1/photo?v=123" });
+        }
       },
       isPending: false,
     };
@@ -152,5 +157,44 @@ describe("CandidatePhotoUploadDialog", () => {
       data: { file: validFile },
     });
     expect(onSuccess).toHaveBeenCalledWith("/api/v1/candidates/c1/photo?v=123");
+  });
+
+  it("displays friendly Russian error message when 1C photo upload fails with PHOTO_UPLOAD_FAILED", async () => {
+    mock.mutationError = {
+      response: {
+        data: {
+          message: "Не удалось сохранить фотографию в 1С. Попробуйте ещё раз",
+        },
+      },
+    };
+
+    await act(async () => {
+      root?.render(
+        <CandidatePhotoUploadDialog
+          candidateId="c1"
+          isOpen={true}
+          onClose={vi.fn()}
+        />,
+      );
+    });
+
+    const fileInput = container?.querySelector("input[type='file']") as HTMLInputElement;
+    const validFile = new File(["image-bytes"], "avatar.webp", { type: "image/webp" });
+    Object.defineProperty(validFile, "size", { value: 500 * 1024 });
+
+    await act(async () => {
+      Object.defineProperty(fileInput, "files", { value: [validFile] });
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const saveButton = Array.from(container?.querySelectorAll("button") || []).find(
+      (btn) => btn.textContent?.includes("Сохранить"),
+    );
+    await act(async () => {
+      saveButton?.click();
+    });
+
+    expect(container?.textContent).toContain("Не удалось сохранить фотографию в 1С. Попробуйте ещё раз");
+    mock.mutationError = null;
   });
 });
