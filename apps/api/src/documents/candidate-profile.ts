@@ -146,7 +146,7 @@ export function snapshotUpdateInput(
     put("citizenship", snapshot.citizenship);
   put("sex", snapshot.sex);
   put("sexKnown", snapshot.sexKnown);
-  put("photoPath", snapshot.photoPath);
+  // Do not overwrite photoPath with 1C filesystem path; EDO owns public relative photoPath URL.
   put("masterName", snapshot.masterName);
   put("masterCode1c", snapshot.masterCode1c);
   put("supervisorName", snapshot.supervisorName);

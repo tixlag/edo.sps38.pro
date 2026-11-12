@@ -6,6 +6,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   CopyObjectCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createReadStream } from "node:fs";
@@ -148,6 +149,18 @@ export class StorageService implements OnModuleDestroy {
       }),
       { abortSignal: AbortSignal.timeout(120000) },
     );
+  }
+
+  async exists(key: string): Promise<boolean> {
+    try {
+      await this.s3().send(
+        new HeadObjectCommand({ Bucket: this.bucket(), Key: key }),
+        { abortSignal: AbortSignal.timeout(5000) },
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async downloadUrl(

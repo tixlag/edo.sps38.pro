@@ -488,6 +488,167 @@
         ]
       }
     },
+    "/api/v1/candidates/{candidateId}/photo": {
+      "get": {
+        "operationId": "getCandidatePhoto",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "size",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "thumb",
+              "type": "string",
+              "enum": [
+                "thumb",
+                "full"
+              ]
+            }
+          },
+          {
+            "name": "v",
+            "required": false,
+            "in": "query",
+            "description": "Cache busting timestamp or version",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "WebP profile photo",
+            "content": {
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get candidate profile photo in WebP format (publicly cached)",
+        "tags": [
+          "candidates"
+        ]
+      },
+      "post": {
+        "operationId": "uploadCandidatePhoto",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Candidate profile photo file (JPEG, PNG, WebP, HEIC up to 10MB)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidatePhotoUploadResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Upload candidate profile photo (requires RU or IG review permission)",
+        "tags": [
+          "candidates"
+        ]
+      }
+    },
     "/api/v1/candidates/enrichment-batch": {
       "post": {
         "operationId": "requestCandidateEnrichmentBatch",
@@ -18068,6 +18229,23 @@
           "message",
           "correlationId",
           "path"
+        ]
+      },
+      "CandidatePhotoUploadResponseDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "photoPath": {
+            "type": "string",
+            "example": "/api/v1/candidates/cm0123/photo?v=1731320000000"
+          }
+        },
+        "required": [
+          "success",
+          "photoPath"
         ]
       },
       "CandidateEnrichmentBatchRequestDto": {

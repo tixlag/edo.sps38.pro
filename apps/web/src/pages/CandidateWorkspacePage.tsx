@@ -1,5 +1,8 @@
 import { DocumentReviewDialog } from "../components/DocumentReviewDialog";
 import { useCandidateDocumentSync } from "../lib/use-candidate-document-sync";
+import { CandidateAvatar } from "../components/CandidateAvatar";
+import { CandidatePhotoUploadDialog } from "../components/CandidatePhotoUploadDialog";
+import { canUploadCandidatePhoto } from "../lib/review-groups";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Link,
@@ -89,6 +92,7 @@ export function CandidateWorkspacePage() {
 }
 
 function CandidateWorkspace() {
+  const me = useGetMe();
   const { candidateId } = useParams({ strict: false }) as {
     candidateId: string;
   };
@@ -112,6 +116,7 @@ function CandidateWorkspace() {
     },
   });
   const [collapsed, setCollapsed] = useState(false);
+  const [isPhotoUploadOpen, setIsPhotoUploadOpen] = useState(false);
   const candidatesPanel = useRef<HTMLElement>(null);
   const documentsPanel = useRef<HTMLElement>(null);
   const [mobilePanel, setMobilePanel] = useState<
@@ -444,19 +449,37 @@ function CandidateWorkspace() {
               <p role="status">Загрузка кандидата…</p>
             ) : (
               <>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="min-w-0 break-words text-lg font-bold text-[var(--foreground)]">
-                    {workspace.data?.fullName ||
+                <div className="flex flex-wrap items-center gap-3">
+                  <CandidateAvatar
+                    candidateId={candidateId}
+                    fullName={
+                      workspace.data?.fullName ||
                       profile?.fullName ||
-                      "Кандидат"}
-                  </h1>
-                  {candidateStatus && <StatusBadge status={candidateStatus} />}
-                  {profile?.citizenship && (
-                    <Badge>{profile.citizenship.toUpperCase()}</Badge>
-                  )}
-                  {profile?.isReemployment && (
-                    <Badge tone="warning">Повторный найм</Badge>
-                  )}
+                      "Кандидат"
+                    }
+                    photoPath={profile?.photoPath}
+                    size="md"
+                    editable={canUploadCandidatePhoto(
+                      me.data?.permissions,
+                      profile,
+                    )}
+                    onUploadClick={() => setIsPhotoUploadOpen(true)}
+                    allowEnlarge
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="min-w-0 break-words text-lg font-bold text-[var(--foreground)]">
+                      {workspace.data?.fullName ||
+                        profile?.fullName ||
+                        "Кандидат"}
+                    </h1>
+                    {candidateStatus && <StatusBadge status={candidateStatus} />}
+                    {profile?.citizenship && (
+                      <Badge>{profile.citizenship.toUpperCase()}</Badge>
+                    )}
+                    {profile?.isReemployment && (
+                      <Badge tone="warning">Повторный найм</Badge>
+                    )}
+                  </div>
                 </div>
                 {profile && (
                   <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted-foreground)]">
@@ -713,6 +736,16 @@ function CandidateWorkspace() {
           onUploaded={async (id, number) => { await details.refetch(); await navigate({ to: "/review/candidates/$candidateId", params: { candidateId }, search: (prev: Record<string, unknown>) => ({ ...prev, document: id, version: number, previousDocument: undefined, uploadDocument: undefined, reviewUpload: true }) }); }}
         />
       )}
+      <CandidatePhotoUploadDialog
+        candidateId={candidateId}
+        fullName={workspace.data?.fullName || profile?.fullName}
+        isOpen={isPhotoUploadOpen}
+        onClose={() => setIsPhotoUploadOpen(false)}
+        onSuccess={() => {
+          void details.refetch();
+          void workspace.refetch();
+        }}
+      />
     </div>
   );
 }

@@ -2,6 +2,8 @@ import { ReviewerDocumentsController } from "./reviewer-documents.controller";
 import { ReviewerDocumentsService } from "./reviewer-documents.service";
 import { CandidateEnrichmentController } from "./candidate-enrichment.controller";
 import { IgEnrichmentQueueService } from "./ig-enrichment-queue.service";
+import { CandidatePhotosController } from "./candidate-photos.controller";
+import { CandidatePhotosService } from "./candidate-photos.service";
 import { ErpWorkspaceClient } from "./erp-workspace.client";
 import { Module } from "@nestjs/common";
 import { RedisModule } from "../redis/redis.module";
@@ -75,6 +77,7 @@ import { LkModule } from "../lk/lk.module";
     LkModule,
   ],
   controllers: [
+    CandidatePhotosController,
     CandidateEnrichmentController,
     BrowserCandidateDocumentsController,
     MyCandidateDocumentsController,
@@ -89,6 +92,7 @@ import { LkModule } from "../lk/lk.module";
     ReviewerDocumentsController,
   ],
   exports: [
+    CandidatePhotosService,
     DocumentReadService,
     CandidateContextService,
     DocumentCatalogService,
@@ -99,6 +103,7 @@ import { LkModule } from "../lk/lk.module";
     ErpCandidateClient,
   ],
   providers: [
+    CandidatePhotosService,
     ReviewerDocumentsService,
     IgEnrichmentQueueService,
     ErpWorkspaceClient,

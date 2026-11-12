@@ -216,3 +216,38 @@ export function hasActiveReviewFilters(filters: ReviewQueueFilters): boolean {
     (filters.hasMentor !== undefined ? "hasMentor" : undefined),
   );
 }
+
+/** Check if current user permissions allow uploading photo for candidate */
+export function canUploadCandidatePhoto(
+  permissions: Record<string, unknown> | undefined,
+  candidate:
+    | {
+        reviewGroup?: string | null;
+        chatUuid?: string | null;
+        citizenship?: string | null;
+      }
+    | null
+    | undefined,
+): boolean {
+  if (!permissions || !candidate) return false;
+  if (Object.prototype.hasOwnProperty.call(permissions, "20009")) return true;
+
+  let group: "RU" | "IG";
+  if (candidate.reviewGroup === "RU" || candidate.reviewGroup === "IG") {
+    group = candidate.reviewGroup;
+  } else {
+    const isRu = Boolean(
+      (candidate.chatUuid && candidate.chatUuid.trim()) ||
+      (candidate.citizenship &&
+        candidate.citizenship.trim().toLowerCase() === "ru")
+    );
+    group = isRu ? "RU" : "IG";
+  }
+
+  if (group === "RU") {
+    return Object.prototype.hasOwnProperty.call(permissions, "20002");
+  } else {
+    return Object.prototype.hasOwnProperty.call(permissions, "20011");
+  }
+}
+

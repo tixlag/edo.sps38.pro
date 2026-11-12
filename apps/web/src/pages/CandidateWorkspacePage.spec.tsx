@@ -28,6 +28,7 @@ vi.mock("@tanstack/react-router", () => ({
   useSearch: () => state.search,
 }));
 vi.mock("@edo/api-client", () => ({
+  useUploadCandidatePhoto: () => ({ mutate: vi.fn(), isPending: false }),
   getListCandidatePreviousDocumentsQueryKey: () => ["previous"],
   getListCandidateReviewQueueQueryKey: () => ["queue"],
   getListReviewCandidatesQueryKey: () => ["candidates"],
