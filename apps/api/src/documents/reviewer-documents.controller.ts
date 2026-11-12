@@ -55,11 +55,11 @@ export class ReviewerDocumentsController {
   }
   @Post("documents/:documentId/versions/:version/delivery")
   @HttpCode(200)
-  @ApiOperation({ operationId: "retryReviewerDocumentDelivery", summary: "Retry an approved reviewer upload using its existing ERP delivery key" })
+  @ApiOperation({ operationId: "retryReviewerDocumentDelivery", summary: "Repeat an approved document delivery using its existing ERP delivery key" })
   @ApiResponse({ status: 200, type: DocumentVersionDto })
   async retry(@Param("candidateId") id: string, @Param("documentId") documentId: string, @Param("version", ParseIntPipe) version: number,
     @CurrentPrincipal() principal: AuthPrincipal, @Req() req: { correlationId?: string }) {
-    await this.documents.assertReviewerDelivery(id, documentId, version, principal);
+    await this.documents.assertDeliveryRetry(id, documentId, version, principal);
     return this.delivery.request(documentId, version, principal, req.correlationId ?? "");
   }
 }

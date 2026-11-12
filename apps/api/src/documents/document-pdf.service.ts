@@ -21,6 +21,7 @@ import {
   type ApprovedArtifact,
   type DocumentTransport,
 } from "./approved-artifact";
+import { canonicalJpeg } from "./container-normalization";
 
 /** EXIF top-left coordinates expressed in PDF's bottom-left coordinate system. */
 export function orientationMatrix(
@@ -229,6 +230,82 @@ export class DocumentPdfService {
       await this.discard(versionId, key);
       throw error;
     }
+  }
+  /**
+   * Rebuilds the approved artifact of an already approved version from the
+   * canonical bytes of its single original file.
+   *
+   * Only a one-file JPEG whose container carries a removable trailer is
+   * eligible; any other document keeps its artifact and is retried as is.
+   * The original object is never touched: only the approved copy is replaced.
+   * The previous artifact is deleted only after the new one is stored and the
+   * version row points to it.
+   */
+  async reprepareCanonical(
+    versionId: string,
+  ): Promise<ApprovedArtifact | null> {
+    const version = await this.prisma.documentVersion.findUniqueOrThrow({
+      where: { id: versionId },
+      include: {
+        files: { where: { deletedAt: null }, orderBy: { ordinal: "asc" } },
+      },
+    });
+    if (version.files.length !== 1) return null;
+    const file = version.files[0];
+    if (file.mimeType !== "image/jpeg") return null;
+    const previousKey = version.approvedStorageKey;
+    if (!previousKey) return null;
+    const bytes = await this.storage.read(file.storageKey, MAX_APPROVED_BYTES);
+    if (bytes.length !== file.sizeBytes)
+      throw new Error("APPROVED_ARTIFACT_MISMATCH");
+    if (
+      file.sha256 &&
+      createHash("sha256").update(bytes).digest("hex") !== file.sha256
+    )
+      throw new Error("APPROVED_ARTIFACT_MISMATCH");
+    const trimmed = await canonicalJpeg(bytes);
+    if (!trimmed) return null;
+    const mimeType = "image/jpeg";
+    const extension = artifactExtensions[mimeType];
+    const sizeBytes = trimmed.length;
+    const sha256 = createHash("sha256").update(trimmed).digest("hex");
+    const key = this.storage.keyFor(
+      version.documentId,
+      version.version,
+      `approved-${randomUUID()}.${extension}`,
+    );
+    await this.storage.uploadBuffer(key, trimmed, mimeType);
+    const preparation = "original-copy-v3-trimmed";
+    await this.prisma.$transaction(async (tx) => {
+      const changed = await tx.documentVersion.updateMany({
+        where: { id: versionId, approvedStorageKey: previousKey },
+        data: {
+          approvedStorageKey: key,
+          approvedMimeType: mimeType,
+          approvedExtension: extension,
+          approvedFilename: `document.${extension}`,
+          approvedSizeBytes: sizeBytes,
+          approvedSha256: sha256,
+          approvedPageCount: file.pageCount,
+          approvedPreparation: preparation,
+          pendingApprovalStorageKey: null,
+        },
+      });
+      if (!changed.count) throw new Error("APPROVED_ARTIFACT_CHANGED");
+    });
+    // The replaced artifact is removed only after the row points to the new one.
+    if (previousKey !== key) await this.storage.delete(previousKey);
+    return {
+      key,
+      mimeType,
+      extension,
+      filename: `document.${extension}`,
+      sizeBytes,
+      sha256,
+      pageCount: file.pageCount,
+      preparation,
+      transport: "multipart-v2",
+    };
   }
   async discard(versionId: string, key: string): Promise<void> {
     // Serialize with approval's UPDATE. A stale maintenance read must never

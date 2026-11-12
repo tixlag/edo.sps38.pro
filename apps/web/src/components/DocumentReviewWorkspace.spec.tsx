@@ -1034,6 +1034,7 @@ describe("DocumentReviewWorkspace hover vs select", () => {
     data.delivery = {
       status: "WAITING_CONTRACT",
       errorCode: "ERP_PERSON_IDENTITY_UNAVAILABLE",
+      errorReason: null,
       attempts: [],
     };
     const view = renderWorkspace(data);
@@ -1044,11 +1045,32 @@ describe("DocumentReviewWorkspace hover vs select", () => {
     }
   });
 
+  it("explains a failed delivery to a reviewer without the technical code", () => {
+    const data = buildData();
+    data.delivery = {
+      status: "REQUIRES_MANUAL",
+      errorCode: null,
+      errorReason: "1С отклонила файл: некорректный формат",
+      attempts: [],
+    };
+    const { container, cleanup } = renderWorkspace(data);
+    try {
+      expect(container.textContent).toContain("Требует отправки в ERP");
+      expect(container.textContent).toContain(
+        "1С отклонила файл: некорректный формат",
+      );
+      expect(container.textContent).not.toContain("ERP_INVALID_FILE_CONTENT");
+    } finally {
+      cleanup();
+    }
+  });
+
   it("hides ERP response diagnostics from ordinary reviewers even if old cached data contains them", () => {
     const data = buildData();
     data.delivery = {
       status: "REQUIRES_MANUAL",
       errorCode: "PRIVATE_ERROR",
+      errorReason: null,
       attempts: [
         {
           id: "private-attempt",
@@ -1083,6 +1105,7 @@ describe("DocumentReviewWorkspace hover vs select", () => {
     data.delivery = {
       status: "REQUIRES_MANUAL",
       errorCode: "ERP_HTTP_400",
+      errorReason: null,
       attempts: [
         {
           id: "failed-send",
@@ -1122,6 +1145,7 @@ describe("DocumentReviewWorkspace hover vs select", () => {
     data.delivery = {
       status: "REQUIRES_MANUAL",
       errorCode: "ERP_HTTP_400",
+      errorReason: null,
       attempts: [
         {
           id: "old-send",

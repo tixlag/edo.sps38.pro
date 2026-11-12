@@ -160,6 +160,35 @@ export type ErpDocumentRecipient = {
   code1c?: string;
 };
 
+/**
+ * Machine codes of the 1C delivery contract mapped to stable EDO error codes.
+ * The 1C codes are an allowlist: nothing else from the response body is kept.
+ */
+export const ERP_DELIVERY_ERROR_CODES: Record<string, string> = {
+  INVALID_FILE_CONTENT: "ERP_INVALID_FILE_CONTENT",
+  INVALID_METADATA: "ERP_INVALID_METADATA",
+  INVALID_DOCUMENT_FIELDS: "ERP_INVALID_DOCUMENT_FIELDS",
+  INVALID_FILE_HASH: "ERP_INVALID_FILE_HASH",
+  INVALID_FILE_SIZE: "ERP_INVALID_FILE_SIZE",
+  UNSUPPORTED_FILE_FORMAT: "ERP_UNSUPPORTED_FILE_FORMAT",
+  FILE_TYPE_MISMATCH: "ERP_FILE_TYPE_MISMATCH",
+  DOCUMENT_ALREADY_EXISTS: "ERP_DOCUMENT_ALREADY_EXISTS",
+  DOCUMENT_CONFLICT: "ERP_DOCUMENT_CONFLICT",
+  CANDIDATE_OR_DOCUMENT_NOT_FOUND: "ERP_CANDIDATE_OR_DOCUMENT_NOT_FOUND",
+  FILE_STORAGE_NOT_CONFIGURED: "ERP_FILE_STORAGE_NOT_CONFIGURED",
+  IDEMPOTENCY_CONFLICT: "ERP_IDEMPOTENCY_CONFLICT",
+};
+
+/** EDO error code of a failed delivery attempt, derived from the 1C answer. */
+export function erpDeliveryErrorCode(
+  httpStatus: number,
+  erpCode: string | undefined,
+): string | null {
+  if (erpCode && ERP_DELIVERY_ERROR_CODES[erpCode])
+    return ERP_DELIVERY_ERROR_CODES[erpCode];
+  return `ERP_HTTP_${httpStatus}`;
+}
+
 export async function sendErpMultipart(options: {
   storage: StorageService;
   artifact: DeliveryArtifact;
@@ -292,7 +321,7 @@ export async function sendErpMultipart(options: {
         ? null
         : [200, 201].includes(response.status)
           ? "ERP_RECEIPT_INVALID"
-          : `ERP_HTTP_${response.status}`,
+          : erpDeliveryErrorCode(response.status, code),
       retryable,
     };
   } finally {

@@ -288,6 +288,7 @@ describe("OCR review data boundaries", () => {
     expect(reviewer.delivery).toEqual({
       status: "REQUIRES_MANUAL",
       errorCode: null,
+      errorReason: null,
       attempts: [],
     });
     const admin = await reads.publicVersion(

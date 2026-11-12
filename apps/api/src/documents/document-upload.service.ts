@@ -9,8 +9,9 @@ import { PDFDocument } from "pdf-lib";
 import sharp from "sharp";
 import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, readdir, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, readdir, stat, writeFile } from "node:fs/promises";
 import { isHeic, normalizeHeic } from "./heic-normalization";
+import { isJpegContainer, jpegImageEnd } from "./container-normalization";
 import { join, basename } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -143,6 +144,31 @@ export class DocumentUploadService {
             sha256: sourceSha256,
           };
         }
+        let inspected: { mimeType: string; pageCount: number } | undefined;
+        if (isJpegContainer(original)) {
+          // Cameras may append non-image bytes after the EOI marker; 1C rejects
+          // such containers. The container is detected by signature and the
+          // trimmed bytes must decode before they replace the original.
+          const end = jpegImageEnd(original);
+          if (end !== null && end < original.length) {
+            const trimmed = original.subarray(0, end);
+            try {
+              inspected = await this.inspect(trimmed);
+              canonicalPath = `${path}.trim`;
+              await writeFile(canonicalPath, trimmed);
+              canonicalBytes = trimmed;
+              normalization = "jpeg-trailer-trim-v1";
+              source = {
+                filename,
+                mimeType: "image/jpeg",
+                sizeBytes,
+                sha256: sourceSha256,
+              };
+            } catch {
+              inspected = undefined;
+            }
+          }
+        }
         storedTotal += canonicalBytes.length;
         if (
           canonicalBytes.length > MAX_FILE_BYTES ||
@@ -151,7 +177,8 @@ export class DocumentUploadService {
           throw new PayloadTooLargeException(
             "Normalized upload size limit exceeded",
           );
-        const { mimeType, pageCount } = await this.inspect(canonicalBytes);
+        const { mimeType, pageCount } =
+          inspected ?? (await this.inspect(canonicalBytes));
         files.push({
           id,
           path: canonicalPath,
