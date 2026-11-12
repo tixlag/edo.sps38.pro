@@ -318,6 +318,28 @@ export class ErpWorkspaceClient {
             : "ERP_OPERATION_RESULT_UNKNOWN",
         );
       }
+      if (response.status === 500) {
+        let code: unknown;
+        let description: unknown;
+        try {
+          const bytes = await this.readBounded(response, 8192);
+          const parsed = JSON.parse(bytes.toString("utf8")) as {
+            code?: unknown;
+            description?: unknown;
+          };
+          code = parsed.code;
+          description = parsed.description;
+        } catch {
+          signal?.throwIfAborted();
+        }
+        if (code === "PHOTO_UPLOAD_FAILED") {
+          throw new ServiceUnavailableException(
+            typeof description === "string" && description
+              ? `ERP_PHOTO_UPLOAD_FAILED: ${description}`
+              : "ERP_PHOTO_UPLOAD_FAILED: 1C ERP не удалось сохранить файл фотографии кандидата",
+          );
+        }
+      }
       await response.body?.cancel();
       if (response.status === 404)
         throw new NotFoundException("ERP_ENTITY_NOT_FOUND");
