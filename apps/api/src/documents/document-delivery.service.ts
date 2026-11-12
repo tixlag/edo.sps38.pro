@@ -83,6 +83,10 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
       },
     });
     if (!row) throw new ConflictException("Document has no ERP delivery");
+    // A historic version is never repeated: the document already has a newer
+    // current version, and the delivery key of the old one must not be reused.
+    if (row.version.document.currentVersion !== version)
+      throw new ConflictException("Document version is not current");
     if (row.status === "WAITING_CONTRACT") {
       const candidate = row.version.document.candidate;
       if (!candidate?.code1c || !this.erp || !isIgRecipient(candidate))

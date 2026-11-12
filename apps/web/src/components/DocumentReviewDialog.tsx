@@ -94,7 +94,7 @@ function CandidateDocumentReview({
                     ? "Проверьте результат OCR, сохраните исправления и подтвердите отправку в ERP."
                     : "OCR недоступен. Заполните поля вручную и подтвердите отправку в ERP."}
           </span>
-          {version.data.delivery?.status === "REQUIRES_MANUAL" && (
+          {!historic && version.data.delivery?.status === "REQUIRES_MANUAL" && (
             <>
               {version.data.delivery.errorReason && (
                 <span className="font-medium text-[var(--foreground)]">

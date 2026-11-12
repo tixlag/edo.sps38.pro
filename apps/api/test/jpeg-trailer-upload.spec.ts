@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -8,6 +8,13 @@ import {
   DocumentUploadService,
   type StagedUpload,
 } from "../src/documents/document-upload.service";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, writeFile: vi.fn(actual.writeFile) };
+});
+
+const { writeFile } = await import("node:fs/promises");
 
 const cache = join(__dirname, "../../../.cache/document-uploads/tests");
 const parser = new DocumentUploadService();
@@ -50,6 +57,7 @@ function withTrailer(bytes: Buffer): Buffer {
 }
 
 afterEach(async () => {
+  vi.mocked(writeFile).mockClear();
   for (const dir of directories.splice(0))
     await rm(dir, { recursive: true, force: true });
 });
@@ -101,5 +109,44 @@ describe("JPEG trailer normalization on upload", () => {
     const upload = await parse(bytes, "scan.png");
     expect(upload.files[0].mimeType).toBe("image/png");
     expect(upload.files[0].normalization).toBeUndefined();
+  });
+
+  it("fails the upload when the canonical file cannot be stored", async () => {
+    await mkdir(cache, { recursive: true });
+    const bytes = await jpeg();
+    const original = withTrailer(bytes);
+    vi.mocked(writeFile).mockRejectedValueOnce(
+      new Error("ENOSPC: no space left on device"),
+    );
+    await expect(parse(original, "IMG_20261112_104141.jpg")).rejects.toThrow(
+      "ENOSPC",
+    );
+    // The canonical file was the one that failed; the upload must not
+    // continue with a path that points to a missing file.
+    expect(vi.mocked(writeFile).mock.calls[0][0]).toContain(".trim");
+  });
+
+  it("keeps the original when the trimmed bytes do not decode", async () => {
+    await mkdir(cache, { recursive: true });
+    const bytes = await jpeg();
+    const original = withTrailer(bytes);
+    const real = parser.inspect.bind(parser);
+    let calls = 0;
+    const inspect = vi.spyOn(parser, "inspect").mockImplementation(async (b) => {
+      calls += 1;
+      // The trimmed bytes are rejected, the original is fine.
+      if (calls === 1) throw new Error("damaged");
+      return real(b);
+    });
+    try {
+      const upload = await parse(original, "photo.jpg");
+      const file = upload.files[0];
+      expect(file.normalization).toBeUndefined();
+      expect(file.source).toBeUndefined();
+      expect((await readFile(file.path)).equals(original)).toBe(true);
+      expect(calls).toBe(2);
+    } finally {
+      inspect.mockRestore();
+    }
   });
 });

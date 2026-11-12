@@ -152,10 +152,21 @@ export class DocumentUploadService {
           const end = jpegImageEnd(original);
           if (end !== null && end < original.length) {
             const trimmed = original.subarray(0, end);
+            let decodes = false;
             try {
               inspected = await this.inspect(trimmed);
-              canonicalPath = `${path}.trim`;
-              await writeFile(canonicalPath, trimmed);
+              decodes = true;
+            } catch {
+              // The trimmed bytes do not decode: the original is kept.
+              inspected = undefined;
+            }
+            if (decodes) {
+              // The canonical path is set only after the file is stored: a
+              // failed write must fail the upload instead of leaving a path
+              // that points to a missing or partial file.
+              const trimPath = `${path}.trim`;
+              await writeFile(trimPath, trimmed);
+              canonicalPath = trimPath;
               canonicalBytes = trimmed;
               normalization = "jpeg-trailer-trim-v1";
               source = {
@@ -164,8 +175,6 @@ export class DocumentUploadService {
                 sizeBytes,
                 sha256: sourceSha256,
               };
-            } catch {
-              inspected = undefined;
             }
           }
         }
