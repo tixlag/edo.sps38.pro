@@ -1,4 +1,10 @@
-vi.mock("../lib/use-visible-ru-document-sync", () => ({ useVisibleRuDocumentSync: () => ({ pendingIds: new Set(), error: false, retry: vi.fn() }) }));
+vi.mock("../lib/use-visible-ru-document-sync", () => ({
+  useVisibleRuDocumentSync: () => ({
+    pendingIds: new Set(),
+    error: false,
+    retry: vi.fn(),
+  }),
+}));
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -150,6 +156,7 @@ afterEach(async () => {
   await act(async () => root?.unmount());
   container?.remove();
   vi.clearAllMocks();
+  vi.useRealTimers();
   state.search = {};
   state.links = [];
   state.permissions = { "20011": [] };
@@ -216,11 +223,11 @@ describe("RU and IG review pages", () => {
     ];
     const view = await render("RU");
     const input = view.querySelector(
-      'input[aria-label="Статус кандидата"]',
+      'button[aria-label="Статус кандидата"]',
     ) as HTMLInputElement;
     expect(input).not.toBeNull();
     await act(async () => {
-      input.focus();
+      input.click();
     });
     const listbox = view.querySelector('ul[aria-label="Статус кандидата"]');
     expect(listbox).not.toBeNull();
@@ -270,6 +277,7 @@ describe("RU and IG review pages", () => {
     });
   });
   it("shows stage progress and highlights documents awaiting review", async () => {
+    vi.useFakeTimers();
     state.queueItems = [
       {
         candidate: {
@@ -352,10 +360,11 @@ describe("RU and IG review pages", () => {
     );
     expect(parseFloat((tooltip as HTMLElement).style.top)).toBeLessThan(740);
     bounds.mockRestore();
-    expect(tooltip.querySelectorAll("tbody tr")).toHaveLength(11);
-    expect(tooltip.textContent).toContain("Зачтён ранее");
-    expect(tooltip.textContent).toContain("Подписан");
-    expect(tooltip.textContent).toContain("Ошибка OCR");
+    expect(tooltip.querySelectorAll("tbody tr")).toHaveLength(3);
+    expect(tooltip.textContent).toContain("Одобрен");
+    expect(tooltip.textContent).toContain("На проверке");
+    expect(tooltip.textContent).toContain("Не загружен");
+    expect(tooltip.textContent).not.toContain("Ошибка OCR");
     expect(tooltip.textContent).toContain("Обязательные");
     expect(tooltip.textContent).toContain("Дополнительные");
     expect(ring.getAttribute("aria-describedby")).toBe(tooltip.id);
@@ -366,6 +375,7 @@ describe("RU and IG review pages", () => {
         new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
       ),
     );
+    await act(async () => vi.advanceTimersByTimeAsync(121));
     expect(document.querySelector('[role="tooltip"]')).toBeNull();
     await act(async () => ring.blur());
     const hover = new Event("pointerover", { bubbles: true });
@@ -373,6 +383,7 @@ describe("RU and IG review pages", () => {
     await act(async () => ring.dispatchEvent(hover));
     expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
     await act(async () => ring.click());
+    await act(async () => vi.advanceTimersByTimeAsync(121));
     expect(document.querySelector('[role="tooltip"]')).toBeNull();
     expect(state.navigate).toHaveBeenCalled();
     const navigation = state.navigate.mock.calls.at(-1)![0];

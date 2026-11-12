@@ -1,8 +1,17 @@
+import { parseFilterValues } from "./filter-values";
 /** Validated, bounded view state that survives a trip to a document. */
 export function parseIgRegistrySearch(
   raw: Record<string, unknown>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
+  for (const key of [
+    "igLocationUids",
+    "igRequirementsActions",
+    "igDocumentStatuses",
+  ] as const) {
+    const values = parseFilterValues(raw[key]);
+    if (values !== undefined) result[key] = values;
+  }
   if (raw.igPeriod === "all" || raw.igPeriod === "custom")
     result.igPeriod = raw.igPeriod;
   for (const key of ["igGroupStack", "igPageStacks"] as const) {

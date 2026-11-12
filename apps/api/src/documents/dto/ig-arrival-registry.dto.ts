@@ -1,3 +1,4 @@
+import { QueryValues } from "../../common/query-values";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type, Transform } from "class-transformer";
 import {
@@ -33,6 +34,16 @@ export const REQUIREMENTS_ACTIONS = [
 export type RequirementsAction = (typeof REQUIREMENTS_ACTIONS)[number];
 
 export class IgArrivalRegistryQueryDto {
+  @QueryValues({
+    maxLength: 36,
+    pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  })
+  locationUids?: string[];
+  @QueryValues({ maxLength: 64, values: REQUIREMENTS_ACTIONS })
+  requirementsActions?: string[];
+  @QueryValues({ maxLength: 64, values: DOCUMENT_STATUSES })
+  documentStatuses?: string[];
+
   @ApiPropertyOptional({ enum: ["current", "archive"], default: "current" })
   @IsOptional()
   @IsIn(["current", "archive"])
@@ -76,10 +87,10 @@ export class IgArrivalRegistryQueryDto {
   @Min(1)
   @Max(100)
   limit?: number;
-  @ApiPropertyOptional({ maxLength: 1024 })
+  @ApiPropertyOptional({ maxLength: 4096 })
   @IsOptional()
   @IsString()
-  @MaxLength(1024)
+  @MaxLength(4096)
   cursor?: string;
 }
 export class IgArrivalRegistryParticipationsQueryDto extends IgArrivalRegistryQueryDto {
@@ -196,6 +207,11 @@ export class IgArrivalRegistryParticipationsDto {
   sync!: IgArrivalRegistrySyncDto;
 }
 export class IgArrivalRegistryLocationsQueryDto {
+  @QueryValues({
+    maxLength: 36,
+    pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  })
+  locationUids?: string[];
   @ApiPropertyOptional({ enum: ["current", "archive"], default: "current" })
   @IsOptional()
   @IsIn(["current", "archive"])
@@ -209,17 +225,17 @@ export class IgArrivalRegistryLocationsQueryDto {
   @IsOptional()
   @IsUUID()
   locationUid?: string;
-  @ApiPropertyOptional({ minimum: 1, maximum: 50, default: 20 })
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 20 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(50)
+  @Max(100)
   limit?: number;
-  @ApiPropertyOptional({ maxLength: 1024 })
+  @ApiPropertyOptional({ maxLength: 4096 })
   @IsOptional()
   @IsString()
-  @MaxLength(1024)
+  @MaxLength(4096)
   cursor?: string;
 }
 export class IgArrivalRegistryLocationDto {

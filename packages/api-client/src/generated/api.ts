@@ -3269,6 +3269,10 @@ export interface ChatStreamGrantDto {
 
 export type ListAuditLogsParams = {
   /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  actions?: ListAuditLogsActionsItem[];
+  /**
    * Filter by author uuid; the literal "me" means the caller
    */
   actorId?: string;
@@ -3286,7 +3290,56 @@ export type ListAuditLogsParams = {
   cursor?: string;
 };
 
+export type ListAuditLogsActionsItem =
+  (typeof ListAuditLogsActionsItem)[keyof typeof ListAuditLogsActionsItem];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListAuditLogsActionsItem = {
+  EMPLOYEE_CREATED: "EMPLOYEE_CREATED",
+  DOCUMENT_UPLOADED: "DOCUMENT_UPLOADED",
+  DOCUMENT_UPLOAD_STARTED: "DOCUMENT_UPLOAD_STARTED",
+  DOCUMENT_UPLOAD_FAILED: "DOCUMENT_UPLOAD_FAILED",
+  DOCUMENT_OCR_COMPLETED: "DOCUMENT_OCR_COMPLETED",
+  DOCUMENT_FIELDS_UPDATED: "DOCUMENT_FIELDS_UPDATED",
+  CANDIDATE_LINKED: "CANDIDATE_LINKED",
+  DOCUMENT_RETURNED: "DOCUMENT_RETURNED",
+  DOCUMENT_APPROVED: "DOCUMENT_APPROVED",
+  DOCUMENT_ERP_SEND_REQUESTED: "DOCUMENT_ERP_SEND_REQUESTED",
+  DOCUMENT_ERP_SEND_COMPLETED: "DOCUMENT_ERP_SEND_COMPLETED",
+  DOCUMENT_SIGNED: "DOCUMENT_SIGNED",
+  WORKFLOW_STAGE_CHANGED: "WORKFLOW_STAGE_CHANGED",
+  DATA_IMPORTED: "DATA_IMPORTED",
+  LK_REFERENCE_SYNCED: "LK_REFERENCE_SYNCED",
+  LK_EVENT_APPLIED: "LK_EVENT_APPLIED",
+  COMMUNICATION_REQUESTED: "COMMUNICATION_REQUESTED",
+  COMMUNICATION_COMPLETED: "COMMUNICATION_COMPLETED",
+  DOCUMENT_OCR_RETRIED: "DOCUMENT_OCR_RETRIED",
+  DOCUMENT_OCR_REQUESTED: "DOCUMENT_OCR_REQUESTED",
+  ANNOTATION_CATALOG_CHANGED: "ANNOTATION_CATALOG_CHANGED",
+  ANNOTATION_PREFERENCE_CHANGED: "ANNOTATION_PREFERENCE_CHANGED",
+  ANNOTATION_CLAIMED: "ANNOTATION_CLAIMED",
+  ANNOTATION_SAVED: "ANNOTATION_SAVED",
+  ANNOTATION_SUBMITTED: "ANNOTATION_SUBMITTED",
+  ANNOTATION_ACCEPTED: "ANNOTATION_ACCEPTED",
+  ANNOTATION_CHANGES_REQUESTED: "ANNOTATION_CHANGES_REQUESTED",
+  ANNOTATION_REASSIGNED: "ANNOTATION_REASSIGNED",
+  CONTRACT_CREATED: "CONTRACT_CREATED",
+  CONTRACT_FILE_REPLACED: "CONTRACT_FILE_REPLACED",
+  CONTRACT_SENT: "CONTRACT_SENT",
+  CONTRACT_CONFIRMED: "CONTRACT_CONFIRMED",
+  CONTRACT_DECLINED: "CONTRACT_DECLINED",
+  CONTRACT_PREPARATION_FAILED: "CONTRACT_PREPARATION_FAILED",
+} as const;
+
 export type GetDashboardParams = {
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  reviewGroups?: GetDashboardReviewGroupsItem[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  managerKeys?: string[];
   /**
    * Default: all permitted review groups
    */
@@ -3304,6 +3357,15 @@ export type GetDashboardParams = {
    */
   managerUnassigned?: boolean;
 };
+
+export type GetDashboardReviewGroupsItem =
+  (typeof GetDashboardReviewGroupsItem)[keyof typeof GetDashboardReviewGroupsItem];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetDashboardReviewGroupsItem = {
+  RU: "RU",
+  IG: "IG",
+} as const;
 
 export type GetDashboardReviewGroup =
   (typeof GetDashboardReviewGroup)[keyof typeof GetDashboardReviewGroup];
@@ -3432,6 +3494,10 @@ export type GetCandidateDocumentDraftParams = {
 };
 
 export type ListIgArrivalRegistryLocationsParams = {
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  locationUids?: string[];
   archive?: ListIgArrivalRegistryLocationsArchive;
   q?: string;
   locationUid?: string;
@@ -3449,6 +3515,18 @@ export const ListIgArrivalRegistryLocationsArchive = {
 } as const;
 
 export type ListIgArrivalRegistryGroupsParams = {
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  locationUids?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  requirementsActions?: ListIgArrivalRegistryGroupsRequirementsActionsItem[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  documentStatuses?: ListIgArrivalRegistryGroupsDocumentStatusesItem[];
   archive?: ListIgArrivalRegistryGroupsArchive;
   dateFrom?: string;
   dateTo?: string;
@@ -3460,6 +3538,32 @@ export type ListIgArrivalRegistryGroupsParams = {
   limit?: number;
   cursor?: string;
 };
+
+export type ListIgArrivalRegistryGroupsRequirementsActionsItem =
+  (typeof ListIgArrivalRegistryGroupsRequirementsActionsItem)[keyof typeof ListIgArrivalRegistryGroupsRequirementsActionsItem];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryGroupsRequirementsActionsItem = {
+  REVIEW: "REVIEW",
+  RETURNED: "RETURNED",
+  ATTENTION: "ATTENTION",
+  PROCESSING: "PROCESSING",
+  MISSING: "MISSING",
+  COMPLETE: "COMPLETE",
+  UNKNOWN: "UNKNOWN",
+} as const;
+
+export type ListIgArrivalRegistryGroupsDocumentStatusesItem =
+  (typeof ListIgArrivalRegistryGroupsDocumentStatusesItem)[keyof typeof ListIgArrivalRegistryGroupsDocumentStatusesItem];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryGroupsDocumentStatusesItem = {
+  UNKNOWN: "UNKNOWN",
+  NO_DOCUMENTS: "NO_DOCUMENTS",
+  IN_PROGRESS: "IN_PROGRESS",
+  RETURNED: "RETURNED",
+  APPROVED: "APPROVED",
+} as const;
 
 export type ListIgArrivalRegistryGroupsArchive =
   (typeof ListIgArrivalRegistryGroupsArchive)[keyof typeof ListIgArrivalRegistryGroupsArchive];
@@ -3497,6 +3601,18 @@ export const ListIgArrivalRegistryGroupsRequirementsAction = {
 } as const;
 
 export type ListIgArrivalRegistryParticipationsParams = {
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  locationUids?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  requirementsActions?: ListIgArrivalRegistryParticipationsRequirementsActionsItem[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  documentStatuses?: ListIgArrivalRegistryParticipationsDocumentStatusesItem[];
   archive?: ListIgArrivalRegistryParticipationsArchive;
   dateFrom?: string;
   dateTo?: string;
@@ -3509,6 +3625,32 @@ export type ListIgArrivalRegistryParticipationsParams = {
   cursor?: string;
   groupKey: string;
 };
+
+export type ListIgArrivalRegistryParticipationsRequirementsActionsItem =
+  (typeof ListIgArrivalRegistryParticipationsRequirementsActionsItem)[keyof typeof ListIgArrivalRegistryParticipationsRequirementsActionsItem];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryParticipationsRequirementsActionsItem = {
+  REVIEW: "REVIEW",
+  RETURNED: "RETURNED",
+  ATTENTION: "ATTENTION",
+  PROCESSING: "PROCESSING",
+  MISSING: "MISSING",
+  COMPLETE: "COMPLETE",
+  UNKNOWN: "UNKNOWN",
+} as const;
+
+export type ListIgArrivalRegistryParticipationsDocumentStatusesItem =
+  (typeof ListIgArrivalRegistryParticipationsDocumentStatusesItem)[keyof typeof ListIgArrivalRegistryParticipationsDocumentStatusesItem];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListIgArrivalRegistryParticipationsDocumentStatusesItem = {
+  UNKNOWN: "UNKNOWN",
+  NO_DOCUMENTS: "NO_DOCUMENTS",
+  IN_PROGRESS: "IN_PROGRESS",
+  RETURNED: "RETURNED",
+  APPROVED: "APPROVED",
+} as const;
 
 export type ListIgArrivalRegistryParticipationsArchive =
   (typeof ListIgArrivalRegistryParticipationsArchive)[keyof typeof ListIgArrivalRegistryParticipationsArchive];
@@ -3593,6 +3735,42 @@ export type ListCandidateReviewQueueParams = {
    */
   cursor?: string;
   /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  candidateIds?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  statusIds?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  documentTypeCodes?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  citizenships?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  positionCodes?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  projectCodes?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  mentorCodes1c?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  managerKeys?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  hasMentorValues?: ListCandidateReviewQueueHasMentorValuesItem[];
+  /**
    * Exact current document status; unlike status=RETURNED this excludes historic returns
    */
   currentStatus?: DocumentStatus;
@@ -3655,6 +3833,15 @@ export type ListCandidateReviewQueueParams = {
   createdTo?: string;
 };
 
+export type ListCandidateReviewQueueHasMentorValuesItem =
+  (typeof ListCandidateReviewQueueHasMentorValuesItem)[keyof typeof ListCandidateReviewQueueHasMentorValuesItem];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListCandidateReviewQueueHasMentorValuesItem = {
+  true: "true",
+  false: "false",
+} as const;
+
 export type ListCandidateReviewQueueStatus =
   (typeof ListCandidateReviewQueueStatus)[keyof typeof ListCandidateReviewQueueStatus];
 
@@ -3669,6 +3856,42 @@ export const ListCandidateReviewQueueStatus = {
 export type ListReviewDocumentsParams = {
   limit?: number;
   cursor?: string;
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  candidateIds?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  statusIds?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  documentTypeCodes?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  citizenships?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  positionCodes?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  projectCodes?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  mentorCodes1c?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  managerKeys?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  hasMentorValues?: ListReviewDocumentsHasMentorValuesItem[];
   /**
    * Exact current document status; unlike status=RETURNED this excludes historic returns
    */
@@ -3719,6 +3942,15 @@ export type ListReviewDocumentsParams = {
    */
   mentorCode1c?: string;
 };
+
+export type ListReviewDocumentsHasMentorValuesItem =
+  (typeof ListReviewDocumentsHasMentorValuesItem)[keyof typeof ListReviewDocumentsHasMentorValuesItem];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ListReviewDocumentsHasMentorValuesItem = {
+  true: "true",
+  false: "false",
+} as const;
 
 export type ListReviewDocumentsStatus =
   (typeof ListReviewDocumentsStatus)[keyof typeof ListReviewDocumentsStatus];
@@ -3914,6 +4146,26 @@ export const FindCandidatePersonMatchesScope = {
 export type ListCommunicationCandidatesParams = {
   cursor?: string;
   limit?: number;
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  statusIds?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  positionCodes?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  projectCodes?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  mentorCodes1c?: string[];
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  managerKeys?: string[];
   statusId?: string;
   managerId?: string;
   projectCode?: string;

@@ -52,7 +52,7 @@ const document = (id: string) => ({
 function setup() {
   const prisma = {
     candidatePreviousDocument: { findMany: vi.fn(async () => []) },
-    candidate: { findMany: vi.fn(), findFirst: vi.fn() },
+    candidate: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn() },
     document: {
       findMany: vi.fn().mockResolvedValue([]),
       groupBy: vi.fn().mockResolvedValue([
@@ -115,7 +115,7 @@ describe("candidate review queue", () => {
     expect(result.items).toEqual([{ id: "ig1", fullName: "Петров" }]);
     expect(prisma.candidate.findMany).toHaveBeenCalled();
   });
-  it("includes candidates with and without uploaded documents in separate ordered groups", async () => {
+  it("includes candidates regardless of document presence in one alphabetical result", async () => {
     const { reads, prisma } = setup();
     prisma.candidate.findMany
       .mockResolvedValueOnce([{ ...owner("c1"), documents: [document("d1")] }])
@@ -134,12 +134,12 @@ describe("candidate review queue", () => {
     expect(prisma.candidate.findMany.mock.calls[1][0].where.AND).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          documents: expect.objectContaining({ none: expect.anything() }),
+          OR: [{ fullName: null }, { fullName: "" }],
         }),
       ]),
     );
   });
-  it("continues into the next group without repeating the previous candidate", async () => {
+  it("continues the name cursor without repeating the previous candidate", async () => {
     const { reads, prisma } = setup();
     const first = {
       ...owner("c1"),
@@ -220,7 +220,11 @@ describe("candidate review queue", () => {
               NOT: {
                 OR: [
                   { statusId: { in: ["Заезд", "Отказ", "ЗаездПодтвержден"] } },
-                  { statusName: { in: ["Заезд/выход", "Отказ", "Заезд подтвержден"] } },
+                  {
+                    statusName: {
+                      in: ["Заезд/выход", "Отказ", "Заезд подтвержден"],
+                    },
+                  },
                 ],
               },
             },
@@ -251,7 +255,7 @@ describe("candidate review queue", () => {
       reviewGroup: "RU",
       documentTypeCode: "PASSPORT",
     });
-    expect(prisma.candidate.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.candidate.findMany).toHaveBeenCalledTimes(2);
     expect(prisma.candidate.findMany.mock.calls[0][0].where.AND).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -294,7 +298,9 @@ describe("candidate review queue", () => {
     const page1 = await reads.candidateReviewQueue(principal, { limit: 1 });
     expect(page1.items).toHaveLength(1);
     expect(page1.items[0].documents).toHaveLength(80);
-    expect(page1.nextCursor).toBe("c1");
+    expect(
+      JSON.parse(Buffer.from(page1.nextCursor!, "base64url").toString()),
+    ).toMatchObject({ v: 2, name: first.fullName, id: "c1" });
     expect(page1.items[0].candidate.approvedDocuments).toBe(1);
     expect(page1.items[0].candidate.requiredDocuments).toBe(1);
     expect(page1.items[0].documents[0]).toEqual({
@@ -322,8 +328,17 @@ describe("candidate review queue", () => {
     expect(page2.items.map((item) => item.candidate.id)).toEqual(["c2"]);
     expect(page2.nextCursor).toBeNull();
     expect(prisma.candidate.findMany.mock.calls[1][0]).toMatchObject({
-      where: { AND: expect.arrayContaining([{ id: { gt: "c1" } }]) },
-      orderBy: { id: "asc" },
+      where: {
+        AND: expect.arrayContaining([
+          {
+            OR: [
+              { fullName: { gt: first.fullName } },
+              { fullName: first.fullName, id: { gt: "c1" } },
+            ],
+          },
+        ]),
+      },
+      orderBy: [{ fullName: "asc" }, { id: "asc" }],
       take: 2,
     });
     expect(
@@ -354,7 +369,9 @@ describe("candidate review queue", () => {
     const nested = args.include.documents.where;
     expect(args.where.AND).toContainEqual(access.candidateWhere(scoped));
     expect(args.where.AND).toContainEqual({ documents: { some: nested } });
-    expect(args.where.AND[1].AND).toEqual(
+    expect(
+      args.where.AND.find((part: { AND?: unknown }) => part.AND)?.AND,
+    ).toEqual(
       expect.arrayContaining([
         { id: "c1" },
         { fullName: { contains: "иван" } },

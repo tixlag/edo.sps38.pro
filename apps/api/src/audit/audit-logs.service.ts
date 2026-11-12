@@ -1,3 +1,4 @@
+import { selectedValues } from "../common/query-values";
 import {
   canReviewGroup,
   reviewGroupWhere,
@@ -120,7 +121,13 @@ export class AuditLogsService {
         : query.actorId
           ? { actorId: query.actorId }
           : {}),
-      ...(query.action ? { action: query.action } : {}),
+      ...(selectedValues(query.actions, query.action).length
+        ? {
+            action: {
+              in: selectedValues(query.actions, query.action) as AuditAction[],
+            },
+          }
+        : {}),
       ...(entityType ? { entityType } : {}),
       ...(entityId ? { entityId } : {}),
     };
@@ -260,8 +267,9 @@ export class AuditLogsService {
     } else if (query.actorId) {
       conds.push(Prisma.sql`\`a\`.\`actorId\` = ${query.actorId}`);
     }
-    if (query.action) {
-      conds.push(Prisma.sql`\`a\`.\`action\` = ${query.action}`);
+    const actions = selectedValues(query.actions, query.action);
+    if (actions.length) {
+      conds.push(Prisma.sql`\`a\`.\`action\` IN (${Prisma.join(actions)})`);
     }
     if (entityType) {
       conds.push(Prisma.sql`\`a\`.\`entityType\` = ${entityType}`);

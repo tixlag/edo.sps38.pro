@@ -1,3 +1,4 @@
+import { QueryValues, MANAGER_KEY_PATTERN } from "../../common/query-values";
 import { CandidateEnrichmentDto } from "./candidate-enrichment.dto";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { DocumentStatus, OcrJobStatus } from "@prisma/client";
@@ -257,7 +258,8 @@ export class DocumentReviewMetadataDto {
   reviewedBy!: string | null;
 }
 export class DocumentVersionDto extends DocumentReviewMetadataDto {
-  @ApiPropertyOptional({ enum: ["CANDIDATE", "REVIEWER"] }) uploadOrigin?: string;
+  @ApiPropertyOptional({ enum: ["CANDIDATE", "REVIEWER"] })
+  uploadOrigin?: string;
   @ApiPropertyOptional({ enum: ["RU", "IG"], enumName: "ReviewGroup" })
   reviewGroup?: "RU" | "IG" | null;
   @ApiProperty({
@@ -277,7 +279,11 @@ export class DocumentVersionDto extends DocumentReviewMetadataDto {
   @ApiProperty() revision!: number;
   @ApiProperty({ type: String, nullable: true, enum: ["STUB", "EXTERNAL"] })
   ocrSource!: string | null;
-  @ApiPropertyOptional({ description: "Version was previously delivered to ERP through a confirmed PREVIOUS_LINK", default: false })
+  @ApiPropertyOptional({
+    description:
+      "Version was previously delivered to ERP through a confirmed PREVIOUS_LINK",
+    default: false,
+  })
   deliveredHistorically?: boolean;
   @ApiProperty({ type: [DocumentFileDto] }) files!: DocumentFileDto[];
   @ApiProperty({ type: [DocumentFieldDto] }) fields!: DocumentFieldDto[];
@@ -317,7 +323,8 @@ export class ReviewStageProgressDto {
   @ApiPropertyOptional({
     type: Number,
     minimum: 0,
-    description: "Current approved/signed documents with unconfirmed or blocked ERP delivery, including additional documents; independent of review counters",
+    description:
+      "Current approved/signed documents with unconfirmed or blocked ERP delivery, including additional documents; independent of review counters",
   })
   deliveryProblemCount?: number;
   @ApiProperty({ type: Number, nullable: true }) stage!: number | null;
@@ -400,7 +407,8 @@ export class ReturnedDocumentVersionDto extends DocumentReviewMetadataDto {
 
 /** Document properties shared by candidate details and document-oriented APIs. */
 export class CandidateDocumentSummaryDto extends DocumentReviewMetadataDto {
-  @ApiPropertyOptional({ enum: ["CANDIDATE", "REVIEWER"] }) uploadOrigin?: string;
+  @ApiPropertyOptional({ enum: ["CANDIDATE", "REVIEWER"] })
+  uploadOrigin?: string;
   @ApiProperty({ enum: OcrJobStatus, enumName: "OcrJobStatus", nullable: true })
   ocrStatus!: OcrJobStatus | null;
   @ApiProperty({ type: String, nullable: true }) ocrErrorCode!: string | null;
@@ -426,9 +434,18 @@ export class CandidateDocumentSummaryDto extends DocumentReviewMetadataDto {
   @ApiProperty() title!: string;
   @ApiProperty({ type: String, nullable: true }) documentUid!: string | null;
   @ApiProperty({ type: String, nullable: true }) deliveryStatus!: string | null;
-  @ApiPropertyOptional({ type: String, nullable: true, description: "Safe explanation of the current version ERP delivery failure, without technical codes or response bodies" })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      "Safe explanation of the current version ERP delivery failure, without technical codes or response bodies",
+  })
   deliveryErrorReason?: string | null;
-  @ApiPropertyOptional({ description: "Current version was previously delivered to ERP through a confirmed PREVIOUS_LINK", default: false })
+  @ApiPropertyOptional({
+    description:
+      "Current version was previously delivered to ERP through a confirmed PREVIOUS_LINK",
+    default: false,
+  })
   deliveredHistorically?: boolean;
 }
 export class DocumentDto extends CandidateDocumentSummaryDto {
@@ -532,8 +549,10 @@ export class PreviousDocumentAvailabilityDto {
 export class CandidateStageItemDto {
   @ApiProperty({ type: Number, nullable: true }) stage!: number | null;
   @ApiProperty({ type: String }) title!: string;
-  @ApiProperty({ type: StageDocumentGroupDto }) required!: StageDocumentGroupDto;
-  @ApiProperty({ type: StageDocumentGroupDto }) additional!: StageDocumentGroupDto;
+  @ApiProperty({ type: StageDocumentGroupDto })
+  required!: StageDocumentGroupDto;
+  @ApiProperty({ type: StageDocumentGroupDto })
+  additional!: StageDocumentGroupDto;
   @ApiProperty({ type: [PreviousDocumentAvailabilityDto] })
   previousDocuments!: PreviousDocumentAvailabilityDto[];
 }
@@ -882,11 +901,11 @@ export class CandidateSnapshotDto {
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   birthDate?: string;
-  @ApiPropertyOptional({ type:String,nullable:true,maxLength: 2 })
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 2 })
   @IsOptional()
   @IsString()
   @Matches(/^[a-zA-Z]{2}$/)
-  citizenship?: string|null;
+  citizenship?: string | null;
   @ApiPropertyOptional({ type: () => CandidateSnapshotPositionDto })
   @IsOptional()
   position?: CandidateSnapshotPositionDto | string;
@@ -1008,6 +1027,25 @@ export class DocumentUploadGrantDto {
   @ApiProperty({ format: "date-time" }) expiresAt!: string;
 }
 export class ReviewDocumentsQueryDto extends CandidateQueryDto {
+  @QueryValues({ maxLength: 64 })
+  candidateIds?: string[];
+  @QueryValues({ maxLength: 128 })
+  statusIds?: string[];
+  @QueryValues({ maxLength: 64 })
+  documentTypeCodes?: string[];
+  @QueryValues({ maxLength: 2, pattern: /^[a-zA-Z]{2}$/ })
+  citizenships?: string[];
+  @QueryValues({ maxLength: 64 })
+  positionCodes?: string[];
+  @QueryValues({ maxLength: 64 })
+  projectCodes?: string[];
+  @QueryValues({ maxLength: 64 })
+  mentorCodes1c?: string[];
+  @QueryValues({ maxLength: 517, pattern: MANAGER_KEY_PATTERN })
+  managerKeys?: string[];
+  @QueryValues({ maxLength: 5, values: ["true", "false"] })
+  hasMentorValues?: string[];
+
   @ApiPropertyOptional({
     enum: DocumentStatus,
     enumName: "DocumentStatus",
@@ -1110,7 +1148,9 @@ export class ReviewDocumentsQueryDto extends CandidateQueryDto {
   @MaxLength(64)
   @Matches(/^\S+$/)
   candidateId?: string;
-  @ApiPropertyOptional({ description: "Exact candidate statusId (e.g. Заезд, Отказ, Подбор)" })
+  @ApiPropertyOptional({
+    description: "Exact candidate statusId (e.g. Заезд, Отказ, Подбор)",
+  })
   @IsOptional()
   @IsString()
   @MaxLength(128)

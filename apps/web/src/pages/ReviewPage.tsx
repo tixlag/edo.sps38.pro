@@ -1,13 +1,10 @@
+import { FilterBar } from "@edo/ui";
+import { filterValues } from "../lib/filter-values";
 import { DocumentReviewDialog } from "../components/DocumentReviewDialog";
 import { useVisibleRuDocumentSync } from "../lib/use-visible-ru-document-sync";
 import { StageRing } from "../components/StageRing";
 import { parseIgRegistrySearch } from "../lib/ig-registry-search";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Link,
   useNavigate,
@@ -34,8 +31,6 @@ import {
 } from "@edo/api-client";
 import {
   PageHeader,
-  Card,
-  CardContent,
   Button,
   Badge,
   StatusBadge,
@@ -59,7 +54,7 @@ import {
 } from "../components/DocumentReviewWorkspace";
 import { ReviewDocumentNavigation } from "../components/ReviewDocumentNavigation";
 import { useLiveDocumentVersion } from "../lib/use-live-document-version";
-import { SearchSelect, type SearchSelectOption } from "../components/SearchSelect";
+import type { SearchSelectOption } from "../components/SearchSelect";
 import { CandidateDrawer } from "../components/CandidateDrawer";
 import { CreateCandidate } from "../components/CreateCandidate";
 import { IgArrivalReviewQueue } from "../components/IgArrivalReviewQueue";
@@ -94,68 +89,12 @@ const PAGE_LIMIT = 50;
 const CANDIDATE_SELECTOR_LIMIT = 20;
 const POSITION_SELECTOR_LIMIT = 50;
 
-const FILTER_CONTROL =
-  "rounded-[6px] border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[13px] text-[var(--foreground)]";
-
 const TABS: { value: ReviewTab; label: string }[] = [
   { value: "ALL", label: "Все кандидаты" },
   { value: "IN_REVIEW", label: "Ожидают проверки" },
   { value: "RETURNED", label: "Возвращённые" },
   { value: "ERP_PENDING", label: "Требуют отправки в ERP" },
 ];
-
-/**
- * Search selector over a static (facet/directory) option list: the dropdown
- * search text filters the already loaded options client-side.
- */
-function StaticSearchSelect({
-  label,
-  placeholder,
-  value,
-  selectedLabel,
-  allOptions,
-  onChange,
-  className,
-  isLoading,
-  isError,
-  onRetry,
-}: {
-  label: string;
-  placeholder?: string;
-  value?: string | null;
-  selectedLabel?: string;
-  allOptions: SearchSelectOption[];
-  onChange: (next: string | undefined) => void;
-  className?: string;
-  isLoading?: boolean;
-  isError?: boolean;
-  onRetry?: () => void;
-}) {
-  const [query, setQuery] = useState("");
-  const options = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return allOptions;
-    return allOptions.filter((option) =>
-      option.label.toLowerCase().includes(needle),
-    );
-  }, [allOptions, query]);
-  return (
-    <SearchSelect
-      label={label}
-      placeholder={placeholder}
-      value={value}
-      selectedLabel={selectedLabel}
-      options={options}
-      onSearchChange={setQuery}
-      onChange={onChange}
-      className={className}
-      isLoading={isLoading}
-      isError={isError}
-      onRetry={onRetry}
-    />
-  );
-}
-
 
 function CandidateRow({
   group,
@@ -300,7 +239,12 @@ function CandidateRow({
           <div className="min-w-0 flex-1 pb-1">
             <div className="flex w-full flex-wrap items-center justify-end gap-1">
               {synchronizing ? (
-                <p role="status" className="p-3 text-xs text-[var(--muted-foreground)]">Синхронизация документов…</p>
+                <p
+                  role="status"
+                  className="p-3 text-xs text-[var(--muted-foreground)]"
+                >
+                  Синхронизация документов…
+                </p>
               ) : candidate?.stageProgress ? (
                 candidate.stageProgress.map((progress) => (
                   <StageRing
@@ -379,17 +323,15 @@ export function ReviewPage({
       filters.birthDateTo &&
       filters.birthDateFrom > filters.birthDateTo)
   );
-  const igView = (rawSearch.view as string) === "arrivals" ? "arrivals" : "list";
+  const igView =
+    (rawSearch.view as string) === "arrivals" ? "arrivals" : "list";
 
   // Functional search update: selector commits always apply on top of the
   // latest URL, so concurrent changes cannot drop each other (stale-closure
   // overwrite). Every filter change resets pagination (cursor); opening the
   // drawer keeps it.
   const setFilters = useCallback(
-    (
-      patch: Record<string, string | undefined>,
-      opts?: { keepCursor?: boolean },
-    ) => {
+    (patch: Record<string, unknown>, opts?: { keepCursor?: boolean }) => {
       void navigate({
         to: base,
         search: (prev: Record<string, unknown>) => {
@@ -420,6 +362,15 @@ export function ReviewPage({
   const resetFilters = () => {
     setFilters({
       currentStatus: undefined,
+      candidateIds: undefined,
+      statusIds: undefined,
+      documentTypeCodes: undefined,
+      citizenships: undefined,
+      positionCodes: undefined,
+      projectCodes: undefined,
+      mentorCodes1c: undefined,
+      managerKeys: [],
+      hasMentorValues: undefined,
       statusId: undefined,
       managerName: undefined,
       managerUnassigned: undefined,
@@ -427,7 +378,7 @@ export function ReviewPage({
       documentTypeCode: undefined,
       citizenship: undefined,
       managerCode1c: undefined,
-      managerId: undefined,
+      managerId: "all",
       mentorCode1c: undefined,
       hasMentor: undefined,
       birthDateFrom: undefined,
@@ -527,17 +478,20 @@ export function ReviewPage({
   const docTypes = useListDocumentTypes(docTypesParams);
 
   const myManager = useMemo(
-    () =>
-      findCurrentUserAsManager(
-        catalogManagers.data?.items,
-        profile.data,
-      ),
+    () => findCurrentUserAsManager(catalogManagers.data?.items, profile.data),
     [catalogManagers.data, profile.data],
   );
-  const isAllManagers = rawSearch.managerId === "all";
+  const isAllManagers =
+    rawSearch.managerId === "all" || filters.managerKeys !== undefined;
   const effectiveManagerId = isAllManagers
     ? undefined
-    : filters.managerId ?? (reviewGroup === "RU" ? myManager?.id : undefined);
+    : (filters.managerId ??
+      (reviewGroup === "RU" &&
+      !filters.managerCode1c &&
+      !filters.managerName &&
+      !filters.managerUnassigned
+        ? myManager?.id
+        : undefined));
 
   const queryParams = useMemo(
     () => ({
@@ -545,6 +499,16 @@ export function ReviewPage({
       status: filters.status,
       currentStatus: filters.currentStatus,
       statusId: filters.statusId,
+      candidateIds: filters.candidateIds,
+      statusIds: filters.statusIds,
+      documentTypeCodes: filters.documentTypeCodes,
+      citizenships: filters.citizenships,
+      positionCodes: filters.positionCodes,
+      projectCodes: filters.projectCodes,
+      mentorCodes1c: filters.mentorCodes1c,
+      managerKeys: filters.managerKeys,
+      hasMentorValues: filters.hasMentorValues,
+
       managerName: filters.managerName,
       managerUnassigned: filters.managerUnassigned,
       limit: PAGE_LIMIT,
@@ -569,13 +533,19 @@ export function ReviewPage({
     query: {
       queryKey: getListCandidateReviewQueueQueryKey(queryParams),
       enabled:
-        canReview && !dateRangeInvalid && (reviewGroup === "RU" || igView === "list"),
+        canReview &&
+        !dateRangeInvalid &&
+        (reviewGroup === "RU" || igView === "list"),
       refetchInterval: 30_000,
     },
   });
 
   const groups = list.data?.items ?? [];
-  const visibleSync = useVisibleRuDocumentSync(groups.map((group) => group.candidate.id), reviewGroup === "RU" && canReview && !dateRangeInvalid && !!list.data, () => list.refetch());
+  const visibleSync = useVisibleRuDocumentSync(
+    groups.map((group) => group.candidate.id),
+    reviewGroup === "RU" && canReview && !dateRangeInvalid && !!list.data,
+    () => list.refetch(),
+  );
 
   // Selector options. Facet entries without an exact code cannot feed an
   // exact backend filter, so they are not selectable.
@@ -624,7 +594,11 @@ export function ReviewPage({
               ),
             )
         : (facets.data?.managers ?? []).flatMap((person) =>
-            person.code1c ? [{ value: person.code1c, label: person.name }] : [],
+            person.code1c
+              ? [{ value: `code:${person.code1c}`, label: person.name }]
+              : person.name
+                ? [{ value: `name:${person.name}`, label: person.name }]
+                : [],
           ),
     [facets.data, catalogManagers.data, reviewGroup],
   );
@@ -643,45 +617,10 @@ export function ReviewPage({
     [facets.data],
   );
 
-  // Labels for values set via deep links when the current option window does
-  // not contain them yet (filtered candidate/position lists).
-  const candidateLabel = groups
-    .find((group) => group.candidate?.id === filters.candidateId)
-    ?.candidate?.fullName?.trim();
-  const managerLabel = facets.data?.managers.find(
-    (person) => person.code1c === filters.managerCode1c,
-  )?.name;
   const statusOptions: SearchSelectOption[] = useMemo(
     () => buildGroupedCandidateStatusOptions(statuses.data?.items ?? []),
     [statuses.data],
   );
-  const statusLabel =
-    statuses.data?.items.find((item) => item.id === filters.statusId)?.name ??
-    filters.statusId;
-  const managerSelectedLabel =
-    isAllManagers
-      ? undefined
-      : effectiveManagerId
-        ? catalogManagers.data?.items.find((p) => p.id === effectiveManagerId)
-            ?.name
-        : managerLabel;
-  const mentorLabel = facets.data?.mentors.find(
-    (person) => person.code1c === filters.mentorCode1c,
-  )?.name;
-  const positionLabel =
-    positions.data?.items.find((item) => item.code === filters.positionCode)
-      ?.name ??
-    groups.find(
-      (group) => group.candidate?.positionCode === filters.positionCode,
-    )?.candidate?.positionName ??
-    undefined;
-  const projectLabel = facets.data?.projects.find(
-    (project) => project.code === filters.projectCode,
-  )?.name;
-  const docType = docTypes.data?.items.find(
-    (type) => type.code === filters.documentTypeCode,
-  );
-  const docTypeLabel = docType?.title;
 
   const drawerGroup = groups.find(
     (group) => group.candidate.id === filters.candidate,
@@ -719,6 +658,7 @@ export function ReviewPage({
         </div>
       )}
       <PageHeader
+        className="flex-col items-stretch gap-3 sm:flex-row sm:items-center"
         title={reviewGroup === "IG" ? "Проверка документов ИГ" : "Кандидаты РУ"}
         subtitle="Документы кандидатов и сотрудников"
         actions={
@@ -758,350 +698,431 @@ export function ReviewPage({
       {reviewGroup === "IG" && igView === "arrivals" ? (
         <IgArrivalReviewQueue
           onSelectCandidate={(candidateId, context) => {
-            void navigate({ to: base, search: (prev: Record<string, unknown>) => ({ ...prev, candidate: candidateId, candidateStage: undefined, igParticipation: JSON.stringify(context) }) });
+            void navigate({
+              to: base,
+              search: (prev: Record<string, unknown>) => ({
+                ...prev,
+                candidate: candidateId,
+                candidateStage: undefined,
+                igParticipation: JSON.stringify(context),
+              }),
+            });
           }}
         />
       ) : (
         <>
           <div className="my-4 flex flex-wrap gap-2">
-        {TABS.filter((tab) => reviewGroup === "RU" || tab.value !== "ALL").map(
-          (tab) => (
-            <Button
-              key={tab.value}
-              size="sm"
-              variant={filters.status === tab.value ? "default" : "outline"}
-              onClick={() => pickTab(tab.value)}
-            >
-              {tab.label}
-            </Button>
-          ),
-        )}
-      </div>
-      {filters.status === "RETURNED" && (
-        <p className="mb-4 text-[13px] text-[var(--muted-foreground)]">
-          История возвращённых версий. После новой загрузки прежние возвраты
-          остаются в этом списке.
-        </p>
-      )}
-      <div>
-        <div>
-          <Card>
-            <CardContent>
-              <div
-                role="search"
-                aria-label="Фильтры очереди проверки"
-                className="grid grid-cols-1 items-center gap-2 pb-4 sm:grid-cols-2 lg:grid-cols-4"
+            {TABS.filter(
+              (tab) => reviewGroup === "RU" || tab.value !== "ALL",
+            ).map((tab) => (
+              <Button
+                key={tab.value}
+                size="sm"
+                variant={filters.status === tab.value ? "default" : "outline"}
+                onClick={() => pickTab(tab.value)}
               >
-                <SearchSelect
-                  label="ФИО кандидата"
-                  placeholder="ФИО кандидата…"
-                  value={filters.candidateId}
-                  selectedLabel={candidateLabel}
-                  options={candidateOptions}
-                  onSearchChange={setCandidateQuery}
-                  onChange={commit("candidateId")}
-                  isLoading={candidates.isLoading}
-                  isError={candidates.isError}
-                  onRetry={() => void candidates.refetch()}
-                  className="min-w-[180px]"
-                />
-                <StaticSearchSelect
-                  label="Тип документа"
-                  placeholder="Все типы"
-                  value={filters.documentTypeCode}
-                  selectedLabel={docTypeLabel}
-                  allOptions={docTypeOptions}
-                  onChange={commit("documentTypeCode")}
-                  className="min-w-[180px]"
-                  isLoading={docTypes.isLoading}
-                  isError={docTypes.isError}
-                  onRetry={() => void docTypes.refetch()}
-                />
-                <StaticSearchSelect
-                  label="Гражданство"
-                  placeholder="Все гражданства"
-                  value={filters.citizenship}
-                  allOptions={citizenshipOptions}
-                  isLoading={facets.isLoading}
-                  isError={facets.isError}
-                  onRetry={() => void facets.refetch()}
-                  onChange={commit("citizenship")}
-                  className="min-w-[140px]"
-                />
-                {reviewGroup === "RU" && (
-                  <StaticSearchSelect
-                    label="Статус кандидата"
-                    placeholder="Все статусы"
-                    value={filters.statusId}
-                    selectedLabel={statusLabel}
-                    allOptions={statusOptions}
-                    onChange={commit("statusId")}
-                    className="min-w-[160px]"
-                    isLoading={statuses.isLoading}
-                    isError={statuses.isError}
-                    onRetry={() => void statuses.refetch()}
-                  />
-                )}
-                <StaticSearchSelect
-                  label="Менеджер"
-                  placeholder="Все менеджеры"
-                  value={
-                    isAllManagers
-                      ? undefined
-                      : reviewGroup === "RU"
-                        ? effectiveManagerId
-                          ? `id:${effectiveManagerId}`
-                          : filters.managerCode1c
-                            ? `code:${filters.managerCode1c}`
-                            : undefined
-                        : filters.managerCode1c
-                  }
-                  selectedLabel={managerSelectedLabel}
-                  allOptions={managerOptions}
-                  isLoading={
-                    facets.isLoading ||
-                    (reviewGroup === "RU" && catalogManagers.isLoading)
-                  }
-                  isError={
-                    facets.isError ||
-                    (reviewGroup === "RU" && catalogManagers.isError)
-                  }
-                  onRetry={() => {
-                    void facets.refetch();
-                    if (reviewGroup === "RU") void catalogManagers.refetch();
-                  }}
-                  onChange={(value) => {
-                    if (!value) {
-                      setFilters({ managerId: "all", managerCode1c: undefined });
-                    } else if (reviewGroup === "RU") {
+                {tab.label}
+              </Button>
+            ))}
+          </div>
+          {filters.status === "RETURNED" && (
+            <p className="mb-4 text-[13px] text-[var(--muted-foreground)]">
+              История возвращённых версий. После новой загрузки прежние возвраты
+              остаются в этом списке.
+            </p>
+          )}
+          <div>
+            <div>
+              <FilterBar
+                label="Фильтры очереди проверки"
+                active={filtersActive}
+                onReset={resetFilters}
+                filters={[
+                  {
+                    label: "ФИО кандидата",
+                    placeholder: "Все кандидаты",
+                    value: filterValues(
+                      rawSearch,
+                      "candidateIds",
+                      "candidateId",
+                    ),
+                    options: candidateOptions,
+                    selectedLabels: Object.fromEntries(
+                      groups.map((group) => [
+                        group.candidate.id,
+                        group.candidate.fullName?.trim() ||
+                          "Без имени в профиле",
+                      ]),
+                    ),
+                    onSearchChange: setCandidateQuery,
+                    onChange: (values) =>
                       setFilters({
-                        managerId: value.startsWith("id:")
-                          ? value.slice(3)
-                          : undefined,
-                        managerCode1c: value.startsWith("code:")
-                          ? value.slice(5)
-                          : undefined,
-                      });
-                    } else {
-                      commit("managerCode1c")(value);
-                    }
-                  }}
-                  className="min-w-[160px]"
-                />
-                <StaticSearchSelect
-                  label="Наставник"
-                  placeholder="Все наставники"
-                  value={filters.mentorCode1c}
-                  selectedLabel={mentorLabel}
-                  allOptions={mentorOptions}
-                  isLoading={facets.isLoading}
-                  isError={facets.isError}
-                  onRetry={() => void facets.refetch()}
-                  onChange={commit("mentorCode1c")}
-                  className="min-w-[160px]"
-                />
-                <select
-                  aria-label="Наличие наставника"
-                  className={FILTER_CONTROL}
-                  value={
-                    filters.hasMentor === undefined
-                      ? ""
-                      : String(filters.hasMentor)
-                  }
-                  onChange={(event) =>
-                    setFilters({ hasMentor: event.target.value || undefined })
-                  }
-                >
-                  <option value="">Все (наставник)</option>
-                  <option value="true">Только с наставником</option>
-                  <option value="false">Только без наставника</option>
-                </select>
-                <SearchSelect
-                  label="Должность"
-                  placeholder="Все должности"
-                  value={filters.positionCode}
-                  selectedLabel={positionLabel}
-                  options={positionOptions}
-                  onSearchChange={setPositionQuery}
-                  onChange={commit("positionCode")}
-                  isLoading={positions.isLoading}
-                  isError={positions.isError}
-                  onRetry={() => void positions.refetch()}
-                  className="min-w-[160px]"
-                />
-                <StaticSearchSelect
-                  label="Объект"
-                  placeholder="Все объекты"
-                  value={filters.projectCode}
-                  selectedLabel={projectLabel}
-                  allOptions={projectOptions}
-                  isLoading={facets.isLoading}
-                  isError={facets.isError}
-                  onRetry={() => void facets.refetch()}
-                  onChange={commit("projectCode")}
-                  className="min-w-[160px]"
-                />
-                <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
-                  Рожд. с{" "}
-                  <DateFilter
-                    label="Дата рождения с"
-                    value={filters.birthDateFrom}
-                    onChange={commit("birthDateFrom")}
-                  />
-                </label>
-                <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
-                  по{" "}
-                  <DateFilter
-                    label="Дата рождения по"
-                    value={filters.birthDateTo}
-                    onChange={commit("birthDateTo")}
-                  />
-                </label>
+                        candidateIds: values,
+                        candidateId: undefined,
+                      }),
+                    isLoading: candidates.isLoading,
+                    isError: candidates.isError,
+                    onRetry: () => void candidates.refetch(),
+                  },
+                  {
+                    label: "Тип документа",
+                    placeholder: "Все типы",
+                    value: filterValues(
+                      rawSearch,
+                      "documentTypeCodes",
+                      "documentTypeCode",
+                    ),
+                    options: docTypeOptions,
+                    onChange: (values) =>
+                      setFilters({
+                        documentTypeCodes: values,
+                        documentTypeCode: undefined,
+                      }),
+                    isLoading: docTypes.isLoading,
+                    isError: docTypes.isError,
+                    onRetry: () => void docTypes.refetch(),
+                  },
+                  {
+                    label: "Гражданство",
+                    placeholder: "Все гражданства",
+                    value: filterValues(
+                      rawSearch,
+                      "citizenships",
+                      "citizenship",
+                    ),
+                    options: citizenshipOptions,
+                    onChange: (values) =>
+                      setFilters({
+                        citizenships: values,
+                        citizenship: undefined,
+                      }),
+                    isLoading: facets.isLoading,
+                    isError: facets.isError,
+                    onRetry: () => void facets.refetch(),
+                  },
+                  ...(reviewGroup === "RU"
+                    ? [
+                        {
+                          label: "Статус кандидата",
+                          placeholder: "Все статусы",
+                          value: filterValues(
+                            rawSearch,
+                            "statusIds",
+                            "statusId",
+                          ),
+                          options: statusOptions,
+                          onChange: (values: string[]) =>
+                            setFilters({
+                              statusIds: values,
+                              statusId: undefined,
+                            }),
+                          isLoading: statuses.isLoading,
+                          isError: statuses.isError,
+                          onRetry: () => void statuses.refetch(),
+                        },
+                      ]
+                    : []),
+                  {
+                    label: "Менеджер",
+                    placeholder: "Все менеджеры",
+                    value:
+                      filters.managerKeys ??
+                      (effectiveManagerId
+                        ? [`id:${effectiveManagerId}`]
+                        : filters.managerCode1c
+                          ? [`code:${filters.managerCode1c}`]
+                          : filters.managerName
+                            ? [`name:${filters.managerName}`]
+                            : filters.managerUnassigned
+                              ? ["unassigned"]
+                              : []),
+                    options: [
+                      ...new Map(
+                        [
+                          ...managerOptions,
+                          ...(facets.data?.managers ?? []).flatMap((person) =>
+                            !person.code1c && person.name
+                              ? [
+                                  {
+                                    value: `name:${person.name}`,
+                                    label: person.name,
+                                  },
+                                ]
+                              : [],
+                          ),
+                          { value: "unassigned", label: "Без менеджера" },
+                        ].map((option) => [option.value, option]),
+                      ).values(),
+                    ],
+                    onChange: (values) =>
+                      setFilters({
+                        managerKeys: values,
+                        managerId: "all",
+                        managerCode1c: undefined,
+                        managerName: undefined,
+                        managerUnassigned: undefined,
+                      }),
+                    isLoading:
+                      facets.isLoading ||
+                      (reviewGroup === "RU" && catalogManagers.isLoading),
+                    isError:
+                      facets.isError ||
+                      (reviewGroup === "RU" && catalogManagers.isError),
+                    onRetry: () => {
+                      void facets.refetch();
+                      if (reviewGroup === "RU") void catalogManagers.refetch();
+                    },
+                  },
+                  {
+                    label: "Наставник",
+                    placeholder: "Все наставники",
+                    value: filterValues(
+                      rawSearch,
+                      "mentorCodes1c",
+                      "mentorCode1c",
+                    ),
+                    options: mentorOptions,
+                    onChange: (values) =>
+                      setFilters({
+                        mentorCodes1c: values,
+                        mentorCode1c: undefined,
+                      }),
+                    isLoading: facets.isLoading,
+                    isError: facets.isError,
+                    onRetry: () => void facets.refetch(),
+                  },
+                  {
+                    label: "Наличие наставника",
+                    value:
+                      filters.hasMentorValues ??
+                      (filters.hasMentor === undefined
+                        ? []
+                        : [String(filters.hasMentor)]),
+                    options: [
+                      { value: "true", label: "С наставником" },
+                      { value: "false", label: "Без наставника" },
+                    ],
+                    onChange: (values) =>
+                      setFilters({
+                        hasMentorValues: values,
+                        hasMentor: undefined,
+                      }),
+                  },
+                  {
+                    label: "Должность",
+                    placeholder: "Все должности",
+                    value: filterValues(
+                      rawSearch,
+                      "positionCodes",
+                      "positionCode",
+                    ),
+                    options: positionOptions,
+                    onSearchChange: setPositionQuery,
+                    onChange: (values) =>
+                      setFilters({
+                        positionCodes: values,
+                        positionCode: undefined,
+                      }),
+                    isLoading: positions.isLoading,
+                    isError: positions.isError,
+                    onRetry: () => void positions.refetch(),
+                  },
+                  {
+                    label: "Объект",
+                    placeholder: "Все объекты",
+                    value: filterValues(
+                      rawSearch,
+                      "projectCodes",
+                      "projectCode",
+                    ),
+                    options: projectOptions,
+                    onChange: (values) =>
+                      setFilters({
+                        projectCodes: values,
+                        projectCode: undefined,
+                      }),
+                    isLoading: facets.isLoading,
+                    isError: facets.isError,
+                    onRetry: () => void facets.refetch(),
+                  },
+                ]}
+              >
+                <fieldset className="min-w-0 sm:col-span-2">
+                  <legend className="mb-1.5 text-xs font-medium text-[var(--muted-foreground)]">
+                    Дата рождения
+                  </legend>
+                  <div className="flex items-center gap-2">
+                    <DateFilter
+                      label="Дата рождения с"
+                      value={filters.birthDateFrom}
+                      onChange={commit("birthDateFrom")}
+                    />
+                    <span className="text-[var(--muted-foreground)]">—</span>
+                    <DateFilter
+                      label="Дата рождения по"
+                      value={filters.birthDateTo}
+                      onChange={commit("birthDateTo")}
+                    />
+                  </div>
+                </fieldset>
                 {reviewGroup === "RU" && (
-                  <>
-                    <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
-                      Добавлен в ЭДО с{" "}
+                  <fieldset className="min-w-0 sm:col-span-2">
+                    <legend className="mb-1.5 text-xs font-medium text-[var(--muted-foreground)]">
+                      Добавлен в ЭДО
+                    </legend>
+                    <div className="flex items-center gap-2">
                       <DateFilter
                         label="Дата добавления в ЭДО с"
                         value={filters.createdFrom}
                         onChange={commit("createdFrom")}
                       />
-                    </label>
-                    <label className="flex items-center gap-1 text-[13px] text-[var(--muted-foreground)]">
-                      по{" "}
+                      <span className="text-[var(--muted-foreground)]">—</span>
                       <DateFilter
                         label="Дата добавления в ЭДО по"
                         value={filters.createdTo}
                         onChange={commit("createdTo")}
                       />
-                    </label>
-                  </>
+                    </div>
+                  </fieldset>
                 )}
                 {dateRangeInvalid && (
                   <p role="alert" className="text-sm text-[var(--danger)]">
                     Начало периода не может быть позже окончания.
                   </p>
                 )}
-                {filtersActive && (
-                  <Button size="sm" variant="ghost" onClick={resetFilters}>
-                    Сбросить
+              </FilterBar>
+              {list.isLoading && <p role="status">Загрузка документов…</p>}
+              {list.isError && (
+                <div role="alert">
+                  Не удалось загрузить очередь.{" "}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void list.refetch()}
+                  >
+                    Повторить
                   </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-          {list.isLoading && <p role="status">Загрузка документов…</p>}
-          {list.isError && (
-            <div role="alert">
-              Не удалось загрузить очередь.{" "}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void list.refetch()}
-              >
-                Повторить
-              </Button>
-            </div>
-          )}
-          {list.data && groups.length === 0 && (
-            <EmptyState
-              title={
-                filtersActive
-                  ? "Ничего не найдено"
-                  : filters.status === "IN_REVIEW"
-                    ? "Все документы проверены."
-                    : filters.status === "RETURNED"
-                      ? "Возвращённых документов нет."
-                      : "Документов для ручной отправки нет."
-              }
-              description={
-                filtersActive
-                  ? "По заданным фильтрам кандидатов нет. Измените фильтры или сбросьте их."
-                  : undefined
-              }
-              action={
-                filtersActive ? (
-                  <Button size="sm" variant="outline" onClick={resetFilters}>
-                    Сбросить фильтры
-                  </Button>
-                ) : undefined
-              }
-            />
-          )}
-          {visibleSync.error && <p role="alert" className="text-sm text-[var(--muted-foreground)]">Не удалось запросить синхронизацию документов. <Button size="sm" variant="outline" onClick={visibleSync.retry}>Повторить</Button></p>}
-          {groups.length > 0 && (
-            <div className="mt-2 flex flex-col gap-2">
-              {groups.map((group) => (
-                <CandidateRow
-                  key={group.candidate.id}
-                  group={group}
-                  synchronizing={visibleSync.pendingIds.has(group.candidate.id)}
-                  returnedHistory={filters.status === "RETURNED"}
-                  onContract={
-                    reviewGroup === "IG" &&
-                    (Object.prototype.hasOwnProperty.call(
-                      profile.data?.permissions ?? {},
-                      "20003",
-                    ) ||
-                      Object.prototype.hasOwnProperty.call(
-                        profile.data?.permissions ?? {},
-                        "20009",
-                      ))
-                      ? () =>
-                          void navigate({
-                            to: "/signing",
-                            search: { candidateId: group.candidate.id },
-                          })
+                </div>
+              )}
+              {list.data && groups.length === 0 && (
+                <EmptyState
+                  title={
+                    filtersActive
+                      ? "Ничего не найдено"
+                      : filters.status === "IN_REVIEW"
+                        ? "Все документы проверены."
+                        : filters.status === "RETURNED"
+                          ? "Возвращённых документов нет."
+                          : "Документов для ручной отправки нет."
+                  }
+                  description={
+                    filtersActive
+                      ? "По заданным фильтрам кандидатов нет. Измените фильтры или сбросьте их."
                       : undefined
                   }
-                  opensChat={reviewGroup === "RU"}
-                  onOpen={() =>
-                    reviewGroup === "RU"
-                      ? void navigate({
-                          to: "/review/candidates/$candidateId",
-                          params: { candidateId: group.candidate.id },
-                        })
-                      : openCandidate(group.candidate.id)
-                  }
-                  onOpenStage={(stage) =>
-                    openCandidate(group.candidate.id, stage)
+                  action={
+                    filtersActive ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={resetFilters}
+                      >
+                        Сбросить фильтры
+                      </Button>
+                    ) : undefined
                   }
                 />
-              ))}
+              )}
+              {visibleSync.error && (
+                <p
+                  role="alert"
+                  className="text-sm text-[var(--muted-foreground)]"
+                >
+                  Не удалось запросить синхронизацию документов.{" "}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={visibleSync.retry}
+                  >
+                    Повторить
+                  </Button>
+                </p>
+              )}
+              {groups.length > 0 && (
+                <div className="mt-2 flex flex-col gap-2">
+                  {groups.map((group) => (
+                    <CandidateRow
+                      key={group.candidate.id}
+                      group={group}
+                      synchronizing={visibleSync.pendingIds.has(
+                        group.candidate.id,
+                      )}
+                      returnedHistory={filters.status === "RETURNED"}
+                      onContract={
+                        reviewGroup === "IG" &&
+                        (Object.prototype.hasOwnProperty.call(
+                          profile.data?.permissions ?? {},
+                          "20003",
+                        ) ||
+                          Object.prototype.hasOwnProperty.call(
+                            profile.data?.permissions ?? {},
+                            "20009",
+                          ))
+                          ? () =>
+                              void navigate({
+                                to: "/signing",
+                                search: { candidateId: group.candidate.id },
+                              })
+                          : undefined
+                      }
+                      opensChat={reviewGroup === "RU"}
+                      onOpen={() =>
+                        reviewGroup === "RU"
+                          ? void navigate({
+                              to: "/review/candidates/$candidateId",
+                              params: { candidateId: group.candidate.id },
+                            })
+                          : openCandidate(group.candidate.id)
+                      }
+                      onOpenStage={(stage) =>
+                        openCandidate(group.candidate.id, stage)
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+              {list.data?.nextCursor && (
+                <div className="flex gap-2 pt-4">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setFilters(
+                        { cursor: list.data!.nextCursor ?? undefined },
+                        { keepCursor: true },
+                      )
+                    }
+                  >
+                    Следующая страница
+                  </Button>
+                </div>
+              )}
+              {filters.cursor && (
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() =>
+                      setFilters({ cursor: undefined }, { keepCursor: true })
+                    }
+                  >
+                    В начало списка
+                  </Button>
+                </div>
+              )}
             </div>
-          )}
-          {list.data?.nextCursor && (
-            <div className="flex gap-2 pt-4">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  setFilters(
-                    { cursor: list.data!.nextCursor ?? undefined },
-                    { keepCursor: true },
-                  )
-                }
-              >
-                Следующая страница
-              </Button>
-            </div>
-          )}
-          {filters.cursor && (
-            <div className="flex gap-2 pt-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() =>
-                  setFilters({ cursor: undefined }, { keepCursor: true })
-                }
-              >
-                В начало списка
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-      </>
+          </div>
+        </>
       )}
       {drawerCandidateId && (
         <CandidateDrawer
@@ -1109,21 +1130,78 @@ export function ReviewPage({
           candidateId={drawerCandidateId}
           stage={filters.candidateStage}
           profile={drawerGroup?.candidate ?? null}
-          arrivalContext={typeof parseIgRegistrySearch(rawSearch).igParticipation === "string" ? JSON.parse(parseIgRegistrySearch(rawSearch).igParticipation as string) : undefined}
+          arrivalContext={
+            typeof parseIgRegistrySearch(rawSearch).igParticipation === "string"
+              ? JSON.parse(
+                  parseIgRegistrySearch(rawSearch).igParticipation as string,
+                )
+              : undefined
+          }
           returnedHistory={filters.status === "RETURNED"}
           onClose={closeCandidate}
         />
       )}
-      {typeof rawSearch.documentCandidate === "string" && Boolean(rawSearch.reviewerDocument || rawSearch.previousDocument || rawSearch.uploadDocument) && (
-        <DocumentReviewDialog candidateId={rawSearch.documentCandidate}
-          documentId={typeof rawSearch.reviewerDocument === "string" ? rawSearch.reviewerDocument : undefined}
-          previousDocumentId={typeof rawSearch.previousDocument === "string" ? rawSearch.previousDocument : undefined}
-          version={parseVersionParam(rawSearch.version)} uploading={rawSearch.uploadDocument === true}
-          onClose={() => void navigate({ to: base, search: (prev: Record<string, unknown>) => { const next = { ...prev }; for (const key of ["reviewerDocument", "previousDocument", "documentCandidate", "uploadDocument", "version"]) delete next[key]; return next; } })}
-          chooseVersion={(selected) => void navigate({ to: base, search: (prev: Record<string, unknown>) => ({ ...prev, version: selected }) })}
-          onUploaded={async (id, version) => { await list.refetch(); await navigate({ to: base, search: (prev: Record<string, unknown>) => ({ ...prev, reviewerDocument: id, version, previousDocument: undefined, uploadDocument: undefined }) }); }}
-        />
-      )}
+      {typeof rawSearch.documentCandidate === "string" &&
+        Boolean(
+          rawSearch.reviewerDocument ||
+          rawSearch.previousDocument ||
+          rawSearch.uploadDocument,
+        ) && (
+          <DocumentReviewDialog
+            candidateId={rawSearch.documentCandidate}
+            documentId={
+              typeof rawSearch.reviewerDocument === "string"
+                ? rawSearch.reviewerDocument
+                : undefined
+            }
+            previousDocumentId={
+              typeof rawSearch.previousDocument === "string"
+                ? rawSearch.previousDocument
+                : undefined
+            }
+            version={parseVersionParam(rawSearch.version)}
+            uploading={rawSearch.uploadDocument === true}
+            onClose={() =>
+              void navigate({
+                to: base,
+                search: (prev: Record<string, unknown>) => {
+                  const next = { ...prev };
+                  for (const key of [
+                    "reviewerDocument",
+                    "previousDocument",
+                    "documentCandidate",
+                    "uploadDocument",
+                    "version",
+                  ])
+                    delete next[key];
+                  return next;
+                },
+              })
+            }
+            chooseVersion={(selected) =>
+              void navigate({
+                to: base,
+                search: (prev: Record<string, unknown>) => ({
+                  ...prev,
+                  version: selected,
+                }),
+              })
+            }
+            onUploaded={async (id, version) => {
+              await list.refetch();
+              await navigate({
+                to: base,
+                search: (prev: Record<string, unknown>) => ({
+                  ...prev,
+                  reviewerDocument: id,
+                  version,
+                  previousDocument: undefined,
+                  uploadDocument: undefined,
+                }),
+              });
+            }}
+          />
+        )}
     </div>
   );
 }
@@ -1234,7 +1312,10 @@ export function ReviewDocumentPage({
     <div className="flex min-h-full min-w-0 flex-col overflow-y-auto p-3 sm:p-4">
       <Link
         to={readOnly ? "/history" : base}
-        search={{ ...parseReviewSearchParams(search), ...parseIgRegistrySearch(search) }}
+        search={{
+          ...parseReviewSearchParams(search),
+          ...parseIgRegistrySearch(search),
+        }}
         onClick={(event) => {
           if (!readOnly && !canNavigate()) event.preventDefault();
         }}

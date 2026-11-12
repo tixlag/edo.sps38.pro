@@ -16,7 +16,7 @@ export function DateFilter({
   useEffect(() => setText(value ? formatDateRu(value) : ""), [value]);
   const invalid = !!text && text.length === 10 && !parseDateRu(text);
   return (
-    <div className="relative min-w-0">
+    <div className="relative min-w-0 flex-1">
       <input
         type="text"
         aria-label={label}
@@ -37,7 +37,7 @@ export function DateFilter({
           if (text && !parseDateRu(text))
             setText(value ? formatDateRu(value) : "");
         }}
-        className="w-full rounded-[6px] border border-[var(--border)] bg-[var(--background)] py-1.5 pl-2 pr-9 text-[13px] text-[var(--foreground)]"
+        className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] pl-3 pr-9 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
       />
       <input
         ref={picker}

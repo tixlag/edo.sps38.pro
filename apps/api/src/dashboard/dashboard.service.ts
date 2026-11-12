@@ -1,3 +1,4 @@
+import { managerFilterSql } from "../documents/manager-filter";
 import {
   BadRequestException,
   ForbiddenException,
@@ -54,6 +55,7 @@ export class DashboardService {
       canReviewGroup(principal, group),
     );
     if (
+      query.reviewGroups === undefined &&
       query.reviewGroup &&
       query.reviewGroup !== "ALL" &&
       !groups.includes(query.reviewGroup)
@@ -66,12 +68,20 @@ export class DashboardService {
       query.managerName,
       query.managerUnassigned === true,
     ].filter(Boolean);
-    if (selectors.length > 1)
+    if (query.managerKeys === undefined && selectors.length > 1)
       throw new BadRequestException("Choose one manager selector");
     const selected =
-      query.reviewGroup && query.reviewGroup !== "ALL"
-        ? [query.reviewGroup]
-        : groups;
+      query.reviewGroups !== undefined && query.reviewGroups.length
+        ? [...new Set(query.reviewGroups)]
+        : query.reviewGroups !== undefined
+          ? groups
+          : query.reviewGroup && query.reviewGroup !== "ALL"
+            ? [query.reviewGroup]
+            : groups;
+    if (selected.some((group) => !groups.includes(group)))
+      throw new ForbiddenException(
+        "Missing required EDO review group access rule",
+      );
     const empty = {
       source: "database",
       kpis: [],
@@ -85,13 +95,16 @@ export class DashboardService {
       attention: [],
     };
     if (!selected.length) return empty;
-    const manager = query.managerCode1c
-      ? Prisma.sql`c.managerCode1c = ${query.managerCode1c}`
-      : query.managerName
-        ? Prisma.sql`(c.managerCode1c IS NULL OR c.managerCode1c = '') AND c.managerName = ${query.managerName}`
-        : query.managerUnassigned
-          ? Prisma.sql`(c.managerCode1c IS NULL OR c.managerCode1c = '') AND (c.managerName IS NULL OR TRIM(c.managerName) = '')`
-          : Prisma.sql`1=1`;
+    const manager =
+      query.managerKeys !== undefined
+        ? managerFilterSql(query.managerKeys)
+        : query.managerCode1c
+          ? Prisma.sql`c.managerCode1c = ${query.managerCode1c}`
+          : query.managerName
+            ? Prisma.sql`(c.managerCode1c IS NULL OR c.managerCode1c = '') AND c.managerName = ${query.managerName}`
+            : query.managerUnassigned
+              ? Prisma.sql`(c.managerCode1c IS NULL OR c.managerCode1c = '') AND (c.managerName IS NULL OR TRIM(c.managerName) = '')`
+              : Prisma.sql`1=1`;
     const group =
       selected.length === 2
         ? Prisma.sql`1=1`

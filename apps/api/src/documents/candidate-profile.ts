@@ -1,3 +1,5 @@
+import { selectedValues } from "../common/query-values";
+import { managerFilter } from "./manager-filter";
 import { BadRequestException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import type { CandidateSnapshot } from "./document-contract";
@@ -33,6 +35,14 @@ export function buildDefaultExcludedRuStatusWhere() {
 
 /** Review queue profile filters (all optional, combined with AND). */
 export interface ReviewProfileFilters {
+  candidateIds?: string[];
+  statusIds?: string[];
+  citizenships?: string[];
+  positionCodes?: string[];
+  projectCodes?: string[];
+  mentorCodes1c?: string[];
+  managerKeys?: string[];
+  hasMentorValues?: string[];
   q?: string;
   citizenship?: string;
   manager?: string;
@@ -151,7 +161,8 @@ export function snapshotUpdateInput(
   put("masterCode1c", snapshot.masterCode1c);
   put("supervisorName", snapshot.supervisorName);
   put("supervisorCode1c", snapshot.supervisorCode1c);
-  const rawPos = (snapshot as { position?: { code?: string; name?: string } }).position;
+  const rawPos = (snapshot as { position?: { code?: string; name?: string } })
+    .position;
   put("positionCode", rawPos?.code ?? snapshot.positionCode);
   put("positionName", rawPos?.name ?? snapshot.positionName);
   put("projectCode", snapshot.projectCode);
@@ -276,10 +287,22 @@ export function buildCandidateProfileWhere(
   };
   const q = text(filters.q);
   if (q) and.push({ fullName: { contains: q } });
-  const citizenship = text(filters.citizenship)?.toLowerCase();
-  if (citizenship) and.push({ citizenship });
+  const citizenships = selectedValues(
+    filters.citizenships,
+    text(filters.citizenship),
+  ).map((value) => value.toLowerCase());
+  if (citizenships.length)
+    and.push({
+      citizenship:
+        filters.citizenships === undefined
+          ? citizenships[0]
+          : { in: citizenships },
+    });
   const manager = text(filters.manager);
-  if (filters.managerId) and.push({ managerId: filters.managerId });
+  if (filters.managerKeys !== undefined) {
+    const where = managerFilter(filters.managerKeys);
+    if (where) and.push(where);
+  } else if (filters.managerId) and.push({ managerId: filters.managerId });
   if (manager)
     and.push({
       OR: [
@@ -295,9 +318,16 @@ export function buildCandidateProfileWhere(
         { mentorCode1c: { contains: mentor } },
       ],
     });
-  if (filters.hasMentor !== undefined)
+  const mentorPresence = selectedValues(filters.hasMentorValues);
+  const hasMentor =
+    filters.hasMentorValues !== undefined
+      ? mentorPresence.length === 1
+        ? mentorPresence[0] === "true"
+        : undefined
+      : filters.hasMentor;
+  if (hasMentor !== undefined)
     and.push(
-      filters.hasMentor
+      hasMentor
         ? {
             OR: [
               { mentorName: { not: null } },
@@ -315,31 +345,71 @@ export function buildCandidateProfileWhere(
         ...(to ? { lte: parseBirthDateBound(to, "birthDateTo") } : {}),
       },
     });
-  const positionCode = text(filters.positionCode);
-  if (positionCode) and.push({ positionCode });
-  const projectCode = text(filters.projectCode);
-  if (projectCode) and.push({ projectCode });
-  const candidateId = text(filters.candidateId);
-  if (candidateId) and.push({ id: candidateId });
-  if (filters.managerName !== undefined) {
+  const positionCodes = selectedValues(
+    filters.positionCodes,
+    text(filters.positionCode),
+  );
+  if (positionCodes.length)
+    and.push({
+      positionCode:
+        filters.positionCodes === undefined
+          ? positionCodes[0]
+          : { in: positionCodes },
+    });
+  const projectCodes = selectedValues(
+    filters.projectCodes,
+    text(filters.projectCode),
+  );
+  if (projectCodes.length)
+    and.push({
+      projectCode:
+        filters.projectCodes === undefined
+          ? projectCodes[0]
+          : { in: projectCodes },
+    });
+  const candidateIds = selectedValues(
+    filters.candidateIds,
+    text(filters.candidateId),
+  );
+  if (candidateIds.length)
+    and.push({
+      id:
+        filters.candidateIds === undefined
+          ? candidateIds[0]
+          : { in: candidateIds },
+    });
+  if (filters.managerKeys === undefined && filters.managerName !== undefined) {
     and.push(
       { OR: [{ managerCode1c: null }, { managerCode1c: "" }] },
       { managerName: filters.managerName },
     );
   }
-  if (filters.managerUnassigned === true) {
+  if (filters.managerKeys === undefined && filters.managerUnassigned === true) {
     and.push(
       { OR: [{ managerCode1c: null }, { managerCode1c: "" }] },
       { OR: [{ managerName: null }, { managerName: "" }] },
     );
   }
   const managerCode1c = text(filters.managerCode1c);
-  if (managerCode1c) and.push({ managerCode1c });
-  const mentorCode1c = text(filters.mentorCode1c);
-  if (mentorCode1c) and.push({ mentorCode1c });
-  const statusId = text(filters.statusId);
-  if (statusId) {
-    and.push({ statusId });
+  if (filters.managerKeys === undefined && managerCode1c)
+    and.push({ managerCode1c });
+  const mentorCodes1c = selectedValues(
+    filters.mentorCodes1c,
+    text(filters.mentorCode1c),
+  );
+  if (mentorCodes1c.length)
+    and.push({
+      mentorCode1c:
+        filters.mentorCodes1c === undefined
+          ? mentorCodes1c[0]
+          : { in: mentorCodes1c },
+    });
+  const statusIds = selectedValues(filters.statusIds, text(filters.statusId));
+  if (statusIds.length) {
+    and.push({
+      statusId:
+        filters.statusIds === undefined ? statusIds[0] : { in: statusIds },
+    });
   } else if (filters.reviewGroup === "RU") {
     and.push(buildDefaultExcludedRuStatusWhere());
   }

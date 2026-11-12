@@ -1,4 +1,10 @@
-vi.mock("../lib/use-visible-ru-document-sync", () => ({ useVisibleRuDocumentSync: () => ({ pendingIds: new Set(), error: false, retry: vi.fn() }) }));
+vi.mock("../lib/use-visible-ru-document-sync", () => ({
+  useVisibleRuDocumentSync: () => ({
+    pendingIds: new Set(),
+    error: false,
+    retry: vi.fn(),
+  }),
+}));
 import { afterEach, expect, it, vi } from "vitest";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -24,7 +30,10 @@ vi.mock("@edo/api-client", () => {
     useGetMe: () => ({ data: state.me }),
     useCreateCandidate: vi.fn(),
     getListCommunicationCandidatesQueryKey: vi.fn(),
-    useListCandidateManagers: () => ({ data: { items: state.managers }, refetch: vi.fn() }),
+    useListCandidateManagers: () => ({
+      data: { items: state.managers },
+      refetch: vi.fn(),
+    }),
     useListCandidateProjects: () => empty,
     useListCandidateStatuses: () => empty,
     useListPositions: () => ({
@@ -52,13 +61,21 @@ it("selects a position and mentor and resets pagination", async () => {
   const root = createRoot(container);
   await act(async () => root.render(<CandidatesPage />));
   for (const [label, text, expected] of [
-    ["Должность кандидата", "Сварщик", { positionCode: "P1" }],
-    ["Наставник кандидата", "Наставник", { mentorCode1c: "M1" }],
+    [
+      "Должность кандидата",
+      "Сварщик",
+      { positionCodes: ["P1"], positionCode: undefined },
+    ],
+    [
+      "Наставник кандидата",
+      "Наставник",
+      { mentorCodes1c: ["M1"], mentorCode1c: undefined },
+    ],
   ] as const) {
     const input = container.querySelector(
-      `input[aria-label="${label}"]`,
-    ) as HTMLInputElement;
-    await act(async () => input.focus());
+      `button[aria-label="${label}"]`,
+    ) as HTMLButtonElement;
+    await act(async () => input.click());
     const option = [...container.querySelectorAll('[role="option"]')].find(
       (node) => node.textContent === text,
     ) as HTMLElement;
