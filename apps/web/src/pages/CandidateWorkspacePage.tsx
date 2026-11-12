@@ -246,10 +246,10 @@ function CandidateWorkspace() {
     return false;
   };
 
-  const toggleStage = (stgNumber: number | null, _index: number) => {
+  const toggleStage = (stgNumber: number | null, index: number) => {
     const key = stgNumber === null ? "none" : String(stgNumber);
-    const currentlyActive = stage === key;
-    const willOpen = !currentlyActive;
+    const currentlyOpen = isStageOpen(stgNumber, index);
+    const willOpen = !currentlyOpen;
     setExpandedStages((prev) => ({ ...prev, [key]: willOpen }));
     void navigate({
       to: "/review/candidates/$candidateId",
