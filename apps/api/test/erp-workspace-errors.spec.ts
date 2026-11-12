@@ -53,12 +53,12 @@ describe("ERP workspace conflicts", () => {
   });
 
   describe("HTTP 500 photo upload failure", () => {
-    it("throws descriptive ServiceUnavailableException when 1C ERP returns PHOTO_UPLOAD_FAILED", async () => {
+    it("throws user-friendly ServiceUnavailableException without leaking internal trace when 1C ERP returns PHOTO_UPLOAD_FAILED", async () => {
       vi.stubGlobal(
         "fetch",
         vi.fn(async () =>
           Response.json(
-            { code: "PHOTO_UPLOAD_FAILED", description: "Поле не найдено" },
+            { code: "PHOTO_UPLOAD_FAILED" },
             { status: 500 },
           ),
         ),
@@ -74,7 +74,7 @@ describe("ERP workspace conflicts", () => {
           },
           Buffer.from("fake-image"),
         ),
-      ).rejects.toThrow("ERP_PHOTO_UPLOAD_FAILED: Поле не найдено");
+      ).rejects.toThrow("Не удалось сохранить фотографию в 1С. Попробуйте ещё раз");
     });
   });
 
