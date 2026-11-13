@@ -37,6 +37,7 @@ afterEach(() => {
   container?.remove();
   vi.clearAllMocks();
   state.managers = [];
+  vi.useRealTimers();
 });
 
 describe("CandidateForm", () => {
@@ -65,7 +66,7 @@ describe("CandidateForm", () => {
     expect(
       container.querySelector<HTMLButtonElement>('button[type="submit"]')
         ?.disabled,
-    ).toBe(false);
+    ).toBe(true);
     expect(candidateFormFields()).toEqual({
       fullName: "",
       phone: "",
@@ -139,6 +140,23 @@ async function renderCreation() {
   );
 }
 async function sendCreation() {
+  const inputs = container.querySelectorAll<HTMLInputElement>(
+    "fieldset > label > input",
+  );
+  for (const [index, value] of [
+    "Иванов Иван",
+    "+79000000000",
+    "1991-02-03",
+  ].entries()) {
+    act(() => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(inputs[index], value);
+      inputs[index].dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+  await act(async () => vi.advanceTimersByTime(500));
   await act(async () =>
     container
       .querySelector("form")!
@@ -147,6 +165,7 @@ async function sendCreation() {
   return state.submit.mock.calls.at(-1)![0];
 }
 it("applies the current manager when their directory arrives and sends managerId on creation", async () => {
+  vi.useFakeTimers();
   await renderCreation();
   expect(
     (container.querySelector('[aria-label="Менеджер"]') as HTMLInputElement)
@@ -161,6 +180,7 @@ it("applies the current manager when their directory arrives and sends managerId
   expect((await sendCreation()).managerId).toBe("self");
 });
 it("does not overwrite a manually selected or cleared manager when the directory refreshes", async () => {
+  vi.useFakeTimers();
   state.managers = [{ id: "other", name: "Другой менеджер" }];
   await renderCreation();
   await act(async () =>
