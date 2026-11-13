@@ -718,6 +718,8 @@ export interface ReviewStageProgressDto {
 
 export interface CandidateProfileDto {
   /** @nullable */
+  employed: boolean | null;
+  /** @nullable */
   sex: string | null;
   sexKnown: boolean;
   /** @nullable */
@@ -3735,6 +3737,10 @@ export type ListCandidateReviewQueueParams = {
    */
   cursor?: string;
   /**
+   * Include employed candidates
+   */
+  includeEmployed?: boolean;
+  /**
    * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
    */
   candidateIds?: string[];
@@ -3856,6 +3862,10 @@ export const ListCandidateReviewQueueStatus = {
 export type ListReviewDocumentsParams = {
   limit?: number;
   cursor?: string;
+  /**
+   * Include employed candidates
+   */
+  includeEmployed?: boolean;
   /**
    * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
    */
@@ -4146,6 +4156,10 @@ export const FindCandidatePersonMatchesScope = {
 export type ListCommunicationCandidatesParams = {
   cursor?: string;
   limit?: number;
+  /**
+   * Include employed candidates
+   */
+  includeEmployed?: boolean;
   /**
    * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
    */

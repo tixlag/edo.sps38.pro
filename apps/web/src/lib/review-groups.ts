@@ -109,6 +109,7 @@ export interface ReviewQueueFilters {
 
   status: ReviewTab;
   currentStatus?: DocumentStatus;
+  includeEmployed?: boolean;
   managerName?: string;
   managerUnassigned?: boolean;
   /** Exact candidate id (ФИО selector over review-candidates). */
@@ -195,6 +196,7 @@ export function parseReviewSearchParams(
     ].includes(String(raw.currentStatus))
       ? (String(raw.currentStatus) as DocumentStatus)
       : undefined,
+    includeEmployed: booleanParam(raw.includeEmployed) === true,
     managerName: textParam(raw.managerName),
     managerUnassigned: booleanParam(raw.managerUnassigned),
     candidateId: textParam(raw.candidateId),
@@ -224,6 +226,7 @@ export function parseReviewSearchParams(
 /** True when any server-side filter (besides status tab, cursor, drawer) is set. */
 export function hasActiveReviewFilters(filters: ReviewQueueFilters): boolean {
   return (
+    filters.includeEmployed === true ||
     Boolean(filters.candidateIds?.length) ||
     Boolean(filters.statusIds?.length) ||
     Boolean(filters.documentTypeCodes?.length) ||

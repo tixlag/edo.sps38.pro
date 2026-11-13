@@ -216,6 +216,7 @@ describe("snapshot persistence mapping", () => {
       }),
     ).toEqual({
       id: "c1",
+      employed: null,
       statusId: null,
       statusName: null,
       managerId: null,

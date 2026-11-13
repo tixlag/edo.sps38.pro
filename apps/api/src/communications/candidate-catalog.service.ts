@@ -23,6 +23,7 @@ import {
 } from "../documents/candidate-identity";
 import {
   buildDefaultExcludedRuStatusWhere,
+  buildExcludeEmployedWhere,
   toCandidateProfile,
 } from "../documents/candidate-profile";
 import type { AuthPrincipal } from "../auth/auth-principal";
@@ -123,6 +124,7 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
               const data = {
                 erpUid: row.erpUid,
                 erpDeleted: row.deleted,
+                employed: row.employed ?? null,
                 ...(row.statusId !== undefined
                   ? { statusId: row.statusId }
                   : {}),
@@ -163,7 +165,11 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
                   entityType: "CandidateCatalog",
                   entityId: candidate.id,
                   correlationId: owner,
-                  after: { erpUid: row.erpUid, deleted: row.deleted },
+                  after: {
+                    erpUid: row.erpUid,
+                    deleted: row.deleted,
+                    employed: row.employed ?? null,
+                  },
                 });
             });
           } catch (error) {
@@ -249,6 +255,7 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
           this.access.candidateWhere(principal),
           { erpDeleted: false },
           reviewGroupWhere("RU"),
+          ...(query.includeEmployed ? [] : [buildExcludeEmployedWhere()]),
           ...(selectedValues(query.statusIds, query.statusId).length
             ? [
                 {

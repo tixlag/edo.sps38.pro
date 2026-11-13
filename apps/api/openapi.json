@@ -7326,6 +7326,16 @@
             }
           },
           {
+            "name": "includeEmployed",
+            "required": false,
+            "in": "query",
+            "description": "Include employed candidates",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
             "name": "candidateIds",
             "required": false,
             "in": "query",
@@ -7780,6 +7790,16 @@
             "in": "query",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "includeEmployed",
+            "required": false,
+            "in": "query",
+            "description": "Include employed candidates",
+            "schema": {
+              "default": false,
+              "type": "boolean"
             }
           },
           {
@@ -17296,6 +17316,16 @@
             }
           },
           {
+            "name": "includeEmployed",
+            "required": false,
+            "in": "query",
+            "description": "Include employed candidates",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
             "name": "statusIds",
             "required": false,
             "in": "query",
@@ -20492,6 +20522,10 @@
       "CandidateProfileDto": {
         "type": "object",
         "properties": {
+          "employed": {
+            "type": "boolean",
+            "nullable": true
+          },
           "sex": {
             "type": "string",
             "nullable": true
@@ -20625,6 +20659,7 @@
           }
         },
         "required": [
+          "employed",
           "sex",
           "sexKnown",
           "photoPath",

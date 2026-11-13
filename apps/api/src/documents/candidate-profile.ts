@@ -33,8 +33,14 @@ export function buildDefaultExcludedRuStatusWhere() {
   };
 }
 
+/** Unknown facts remain visible until the catalog supplies a boolean. */
+export function buildExcludeEmployedWhere() {
+  return { OR: [{ employed: false }, { employed: null }] };
+}
+
 /** Review queue profile filters (all optional, combined with AND). */
 export interface ReviewProfileFilters {
+  includeEmployed?: boolean;
   candidateIds?: string[];
   statusIds?: string[];
   citizenships?: string[];
@@ -191,6 +197,7 @@ export function parseBirthDateBound(value: string, field: string): Date {
 }
 
 type ProfileRow = {
+  employed?: boolean | null;
   statusId?: string | null;
   statusName?: string | null;
   managerId?: string | null;
@@ -239,6 +246,7 @@ export function toCandidateProfile(
   if (!row) return null;
   return {
     id: row.id,
+    employed: row.employed ?? null,
     statusId: row.statusId ?? null,
     statusName: row.statusName ?? null,
     managerId: row.managerId ?? null,
@@ -281,6 +289,8 @@ export function buildCandidateProfileWhere(
   filters: ReviewProfileFilters,
 ): Prisma.CandidateWhereInput | undefined {
   const and: Prisma.CandidateWhereInput[] = [];
+  if (filters.reviewGroup === "RU" && !filters.includeEmployed)
+    and.push(buildExcludeEmployedWhere());
   const text = (value: string | undefined): string | undefined => {
     const trimmed = value?.trim();
     return trimmed ? trimmed : undefined;

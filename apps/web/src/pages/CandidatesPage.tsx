@@ -82,7 +82,10 @@ function CandidateCatalog() {
   const effectiveManagerId = isAllManagers
     ? undefined
     : (rawManagerId ?? myManager?.id);
+  const includeEmployed =
+    search.includeEmployed === true || search.includeEmployed === "true";
   const params = {
+    includeEmployed,
     q: value("q"),
     statusId: value("statusId"),
     statusIds:
@@ -146,11 +149,12 @@ function CandidateCatalog() {
       {create && <CreateCandidate onCancel={() => setCreate(false)} />}
       <FilterBar
         label="Фильтры кандидатов"
-        active={Boolean(query)}
+        active={Boolean(query) || includeEmployed}
         onReset={() => {
           setQuery("");
           commit({
             q: undefined,
+            includeEmployed: undefined,
             statusId: undefined,
             statusIds: undefined,
             managerId: "all",
@@ -259,6 +263,16 @@ function CandidateCatalog() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
+        </label>
+        <label className="flex h-10 items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={includeEmployed}
+            onChange={(event) =>
+              commit({ includeEmployed: event.target.checked || undefined })
+            }
+          />
+          Показывать трудоустроенных
         </label>
       </FilterBar>
       {candidates.isLoading && <p role="status">Загрузка кандидатов…</p>}

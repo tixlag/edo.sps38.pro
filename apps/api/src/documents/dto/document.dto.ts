@@ -333,6 +333,7 @@ export class ReviewStageProgressDto {
   additional!: ReviewStageCountsDto;
 }
 export class CandidateProfileDto {
+  @ApiProperty({ type: Boolean, nullable: true }) employed!: boolean | null;
   @ApiProperty({ type: String, nullable: true }) sex!: string | null;
   @ApiProperty() sexKnown!: boolean;
   @ApiProperty({ type: String, nullable: true }) photoPath!: string | null;
@@ -1027,6 +1028,17 @@ export class DocumentUploadGrantDto {
   @ApiProperty({ format: "date-time" }) expiresAt!: string;
 }
 export class ReviewDocumentsQueryDto extends CandidateQueryDto {
+  @ApiPropertyOptional({
+    default: false,
+    description: "Include employed candidates",
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === "true" ? true : value === "false" ? false : value,
+  )
+  @IsBoolean()
+  includeEmployed?: boolean;
+
   @QueryValues({ maxLength: 64 })
   candidateIds?: string[];
   @QueryValues({ maxLength: 128 })

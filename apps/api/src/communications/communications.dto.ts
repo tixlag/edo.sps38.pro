@@ -1,7 +1,8 @@
 import { QueryValues, MANAGER_KEY_PATTERN } from "../common/query-values";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
+  IsBoolean,
   ArrayMaxSize,
   ArrayUnique,
   IsArray,
@@ -43,6 +44,17 @@ export class CommunicationQueryDto {
   limit?: number;
 }
 export class CommunicationCandidatesQueryDto extends CommunicationQueryDto {
+  @ApiPropertyOptional({
+    default: false,
+    description: "Include employed candidates",
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === "true" ? true : value === "false" ? false : value,
+  )
+  @IsBoolean()
+  includeEmployed?: boolean;
+
   @QueryValues({ maxLength: 128 })
   statusIds?: string[];
   @QueryValues({ maxLength: 64 })
