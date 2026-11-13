@@ -362,6 +362,7 @@ export function ReviewPage({
   const resetFilters = () => {
     setFilters({
       currentStatus: undefined,
+      includeEmployed: undefined,
       candidateIds: undefined,
       statusIds: undefined,
       documentTypeCodes: undefined,
@@ -498,6 +499,7 @@ export function ReviewPage({
       reviewGroup,
       status: filters.status,
       currentStatus: filters.currentStatus,
+      includeEmployed: reviewGroup === "RU" ? filters.includeEmployed : undefined,
       statusId: filters.statusId,
       candidateIds: filters.candidateIds,
       statusIds: filters.statusIds,
@@ -984,6 +986,20 @@ export function ReviewPage({
                       />
                     </div>
                   </fieldset>
+                )}
+                {reviewGroup === "RU" && (
+                  <label className="flex h-10 items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={filters.includeEmployed === true}
+                      onChange={(event) =>
+                        setFilters({
+                          includeEmployed: event.target.checked || undefined,
+                        })
+                      }
+                    />
+                    Показывать трудоустроенных
+                  </label>
                 )}
                 {dateRangeInvalid && (
                   <p role="alert" className="text-sm text-[var(--danger)]">

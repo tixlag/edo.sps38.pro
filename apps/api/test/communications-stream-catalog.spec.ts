@@ -151,6 +151,64 @@ const catalogRow = {
   deleted: false,
 };
 describe("ERP candidate catalog projection", () => {
+  it("refreshes ERP employment facts in both directions and clears unavailable facts", async () => {
+    const s = catalogSetup();
+    const existing = {
+      ...catalogRow,
+      id: "existing",
+      reviewGroup: "RU",
+      employed: false,
+      catalogSyncedAt: new Date(),
+    };
+    s.prisma.candidate.findMany.mockResolvedValue([existing] as never[]);
+    s.prisma.candidate.findUniqueOrThrow.mockResolvedValue(existing);
+    for (const employed of [true, false, null, undefined]) {
+      s.erp.catalog.mockResolvedValue({
+        items: [{ ...catalogRow, employed }],
+        nextCursor: null,
+      });
+      await s.service.sync();
+      expect(s.prisma.candidate.update).toHaveBeenLastCalledWith({
+        where: { id: "existing" },
+        data: expect.objectContaining({ employed: employed ?? null }),
+      });
+      Object.assign(existing, { employed: employed ?? null });
+    }
+    expect(s.prisma.candidate.create).not.toHaveBeenCalled();
+    expect(s.audit.logInTransaction).toHaveBeenCalledTimes(4);
+  });
+
+  it.each([undefined, false, true])(
+    "applies includeEmployed=%s in SQL before paginating with the other catalog filters",
+    async (includeEmployed) => {
+      const s = catalogSetup();
+      await s.service.list(principal, {
+        includeEmployed,
+        statusId: "ПроверкаСБ",
+        managerId: "M1",
+        projectCode: "P1",
+        limit: 1,
+      });
+      for (const [args] of s.prisma.candidate.findMany.mock.calls) {
+        expect(args).toMatchObject({
+          take: 2,
+          where: {
+            AND: expect.arrayContaining([
+              { locationId: { in: [98] } },
+              { statusId: "ПроверкаСБ" },
+              { managerId: "M1" },
+              { projectCode: "P1" },
+            ]),
+          },
+        });
+        const employment = { OR: [{ employed: false }, { employed: null }] };
+        if (includeEmployed)
+          expect(args.where.AND).not.toContainEqual(employment);
+        else expect(args.where.AND).toContainEqual(employment);
+      }
+    },
+  );
+
   it("lists manager options from accessible RU candidates", async () => {
     const s = catalogSetup();
     s.prisma.candidate.findMany.mockResolvedValueOnce([
@@ -271,15 +329,23 @@ describe("ERP candidate catalog projection", () => {
   });
   it("uses the same ERP-aware document counters as the review queue for a visible catalog page", async () => {
     const s = catalogSetup();
-    s.prisma.candidate.findMany.mockResolvedValueOnce([{ ...catalogRow, id: "candidate", citizenship: "ru" }] as never[]);
-    s.documentReads.enrichReviewCandidates.mockImplementation(async (_principal, profiles) => {
-      profiles[0].approvedDocuments = 1;
-      profiles[0].requiredDocuments = 1;
-    });
+    s.prisma.candidate.findMany.mockResolvedValueOnce([
+      { ...catalogRow, id: "candidate", citizenship: "ru" },
+    ] as never[]);
+    s.documentReads.enrichReviewCandidates.mockImplementation(
+      async (_principal, profiles) => {
+        profiles[0].approvedDocuments = 1;
+        profiles[0].requiredDocuments = 1;
+      },
+    );
     const page = await s.service.list(principal, {});
-    expect(page.items[0]).toMatchObject({ approvedDocuments: 1, requiredDocuments: 1 });
+    expect(page.items[0]).toMatchObject({
+      approvedDocuments: 1,
+      requiredDocuments: 1,
+    });
     expect(s.documentReads.enrichReviewCandidates).toHaveBeenCalledTimes(1);
-    expect(s.documentReads.enrichReviewCandidates.mock.calls[0][0]).toBe(principal);
+    expect(s.documentReads.enrichReviewCandidates.mock.calls[0][0]).toBe(
+      principal,
+    );
   });
-
 });

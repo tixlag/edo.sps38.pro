@@ -115,6 +115,7 @@ describe("parseReviewSearchParams", () => {
       statusId: "Подбор",
       mentorCode1c: "N001",
       hasMentor: true,
+      includeEmployed: false,
       birthDateFrom: "1990-01-01",
       birthDateTo: undefined,
       positionCode: "POS1",
@@ -219,4 +220,18 @@ describe("canUploadCandidatePhoto", () => {
       ),
     ).toBe(true);
   });
+});
+
+
+it("enables employment inclusion only for an explicit true URL value", () => {
+  for (const value of [undefined, false, "false", "yes", 1]) {
+    const filters = parseReviewSearchParams({ includeEmployed: value });
+    expect(filters.includeEmployed).toBe(false);
+    expect(hasActiveReviewFilters(filters)).toBe(false);
+  }
+  for (const value of [true, "true"]) {
+    const filters = parseReviewSearchParams({ includeEmployed: value });
+    expect(filters.includeEmployed).toBe(true);
+    expect(hasActiveReviewFilters(filters)).toBe(true);
+  }
 });

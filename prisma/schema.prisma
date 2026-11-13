@@ -400,6 +400,8 @@ model Candidate {
   id         String     @id @default(cuid()) @db.VarChar(64)
   erpUid     String?    @unique @db.VarChar(36)
   erpDeleted Boolean    @default(false)
+  // NULL until ERP supplies a reliable employment fact.
+  employed Boolean?
   catalogSyncedAt DateTime? @db.DateTime(3)
   chatUuid   String?    @unique @db.VarChar(36)
   identityKey String @unique @db.VarChar(80)

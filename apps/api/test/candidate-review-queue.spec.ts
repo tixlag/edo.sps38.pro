@@ -1,3 +1,7 @@
+import {
+  buildDefaultExcludedRuStatusWhere,
+  buildExcludeEmployedWhere,
+} from "../src/documents/candidate-profile";
 import { reviewGroupWhere } from "../src/documents/review-group";
 import { describe, expect, it, vi } from "vitest";
 import { NotFoundException } from "@nestjs/common";
@@ -82,6 +86,57 @@ function setup() {
 }
 
 describe("candidate review queue", () => {
+  it.each([undefined, false, true])(
+    "applies includeEmployed=%s to the paginated RU query alongside profile and document filters",
+    async (includeEmployed) => {
+      const { reads, prisma } = setup();
+      await reads.candidateReviewQueue(principal, {
+        reviewGroup: "RU",
+        includeEmployed,
+        status: "ALL",
+        statusId: "ПроверкаСБ",
+        projectCode: "P1",
+        documentTypeCode: "PASSPORT",
+        limit: 1,
+      });
+      for (const [args] of prisma.candidate.findMany.mock.calls) {
+        expect(args.take).toBe(2);
+        const filters = args.where.AND.find(
+          (part: { AND?: unknown }) => part.AND,
+        ).AND;
+        expect(filters).toEqual(
+          expect.arrayContaining([
+            { statusId: "ПроверкаСБ" },
+            { projectCode: "P1" },
+          ]),
+        );
+        if (includeEmployed)
+          expect(filters).not.toContainEqual(buildExcludeEmployedWhere());
+        else expect(filters).toContainEqual(buildExcludeEmployedWhere());
+        expect(args.where.AND).toContainEqual({
+          erpDeleted: false,
+          documents: { some: args.include.documents.where },
+        });
+      }
+    },
+  );
+
+  it("keeps employed candidates accessible by direct links with their documents", async () => {
+    const { reads, prisma, access } = setup();
+    prisma.candidate.findFirst.mockResolvedValue({
+      ...owner("c1"),
+      employed: true,
+    });
+    prisma.document.findMany.mockResolvedValue([document("d1")]);
+    const result = await reads.candidateDetails("c1", principal);
+    expect(result.candidate).toMatchObject({ id: "c1", employed: true });
+    expect(result.documents).toHaveLength(1);
+    expect(prisma.candidate.findFirst.mock.calls[0][0].where).toEqual({
+      id: "c1",
+      ...access.candidateWhere(principal),
+    });
+  });
+
   it("includes newly admitted IG candidates before their first upload", async () => {
     const { reads, prisma } = setup();
     prisma.candidate.findMany.mockResolvedValue([
@@ -211,27 +266,9 @@ describe("candidate review queue", () => {
     });
     expect(prisma.candidate.findMany).toHaveBeenCalled();
     const where = prisma.candidate.findMany.mock.calls[0][0].where;
-    expect(where.AND).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          OR: [
-            { statusId: null },
-            {
-              NOT: {
-                OR: [
-                  { statusId: { in: ["Заезд", "Отказ", "ЗаездПодтвержден"] } },
-                  {
-                    statusName: {
-                      in: ["Заезд/выход", "Отказ", "Заезд подтвержден"],
-                    },
-                  },
-                ],
-              },
-            },
-          ],
-        }),
-      ]),
-    );
+    expect(where.AND).toContainEqual({
+      AND: [buildExcludeEmployedWhere(), buildDefaultExcludedRuStatusWhere()],
+    });
   });
   it("filters specific statusId when requested for RU candidates", async () => {
     const { reads, prisma } = setup();
@@ -243,9 +280,9 @@ describe("candidate review queue", () => {
     });
     expect(prisma.candidate.findMany).toHaveBeenCalled();
     const where = prisma.candidate.findMany.mock.calls[0][0].where;
-    expect(where.AND).toEqual(
-      expect.arrayContaining([{ statusId: "ЗаездПодтвержден" }]),
-    );
+    expect(where.AND).toContainEqual({
+      AND: [buildExcludeEmployedWhere(), { statusId: "ЗаездПодтвержден" }],
+    });
   });
   it("requires a matching uploaded document when filtering all candidates by document type", async () => {
     const { reads, prisma } = setup();

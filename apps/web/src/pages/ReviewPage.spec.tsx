@@ -750,3 +750,33 @@ describe("review document navigation", () => {
     expect(view.textContent).not.toContain("Документы сотрудника");
   });
 });
+
+
+it("keeps the RU employment toggle in URL and resets pagination and filters", async () => {
+  state.permissions = { "20002": [] };
+  const view = await render("RU");
+  const toggle = view.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  expect(toggle.checked).toBe(false);
+  expect(state.queue).toHaveBeenLastCalledWith(expect.objectContaining({ includeEmployed: false }), expect.anything());
+  await act(async () => toggle.click());
+  expect(state.navigate.mock.calls.at(-1)![0].search({ cursor: "old", statusId: "security" })).toEqual({
+    statusId: "security", includeEmployed: true,
+  });
+  state.search = { cursor: "old", includeEmployed: "true" };
+  await act(async () => root!.render(<ReviewPage reviewGroup="RU" />));
+  expect(toggle.checked).toBe(true);
+  expect(state.queue).toHaveBeenLastCalledWith(expect.objectContaining({ includeEmployed: true }), expect.anything());
+  await act(async () => toggle.click());
+  expect(state.navigate.mock.calls.at(-1)![0].search(state.search)).toEqual({});
+  const reset = [...view.querySelectorAll("button")].find(button => button.textContent === "Сбросить всё")!;
+  await act(async () => reset.click());
+  const cleared = state.navigate.mock.calls.at(-1)![0].search(state.search);
+  expect(cleared.includeEmployed).toBeUndefined();
+  expect(cleared.cursor).toBeUndefined();
+});
+
+it("keeps the employment toggle out of IG review", async () => {
+  const view = await render("IG");
+  expect(view.textContent).not.toContain("Показывать трудоустроенных");
+  expect(state.queue).toHaveBeenLastCalledWith(expect.objectContaining({ includeEmployed: undefined }), expect.anything());
+});
