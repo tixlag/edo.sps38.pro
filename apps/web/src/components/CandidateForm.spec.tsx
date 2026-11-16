@@ -226,7 +226,7 @@ it("saves a settlement absent from ERP suggestions", async () => {
   vi.useFakeTimers();
   await renderCreation();
   const input = container.querySelector<HTMLInputElement>(
-    'input[placeholder="Выберите из подсказок или введите свой вариант"]',
+    'input[aria-label="Населённый пункт"]',
   )!;
   act(() => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
@@ -254,6 +254,6 @@ it("shows a saved settlement when the card is reopened", async () => {
     />,
   ));
   expect(container.querySelector<HTMLInputElement>(
-    'input[placeholder="Выберите из подсказок или введите свой вариант"]',
+    'input[aria-label="Населённый пункт"]',
   )?.value).toBe("Новый посёлок");
 });

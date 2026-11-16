@@ -162,6 +162,7 @@ export function CandidateExpandedFields({
             <p>Населённый пункт</p>
             <input
               type="text"
+              aria-label="Населённый пункт"
               list={settlementListId}
               className={CANDIDATE_CONTROL}
               value={fields.settlement ?? ""}
