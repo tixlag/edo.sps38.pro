@@ -17,6 +17,7 @@ import { formatDateRu, formatLocalArrivalTime } from "../lib/date-format";
 import { LkLink } from "./LkLink";
 import { CandidateAvatar } from "./CandidateAvatar";
 import { CandidateStageAccordion } from "./CandidateStageAccordion";
+import { CandidateDocumentAbsences } from "./CandidateDocumentAbsences";
 import { CandidateDrawerHistorySection } from "./CandidateDrawerHistorySection";
 import { assembleCandidateStages } from "../lib/candidate-stages";
 import {
@@ -454,6 +455,8 @@ export function CandidateDrawer({
             )}
 
             {/* Stage Accordions */}
+            {!returnedHistory && !docs.synchronizing && profile?.reviewGroup === "RU" &&
+              <CandidateDocumentAbsences candidateId={candidateId} missing={Array.from(new Map(stages.flatMap((stage) => stage.required.missingDocuments).map((item) => [item.code, item])).values())} />}
             {!docs.synchronizing && stages.length > 0 && (
               <div className="space-y-3">
                 {stages.map((stg, index) => (

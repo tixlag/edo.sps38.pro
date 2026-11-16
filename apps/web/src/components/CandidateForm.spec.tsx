@@ -16,6 +16,18 @@ const state = vi.hoisted(() => ({
 vi.mock("@edo/api-client", () => {
   const empty = { data: { items: [] }, isLoading: false, isError: false };
   return {
+    useListCandidateSettlements: () => ({
+      data: { items: [] },
+      isLoading: false,
+      isError: false,
+    }),
+    useListCandidateCountries: () => empty,
+    useListCandidateOrganizations: () => empty,
+    useListCandidateSources: () => empty,
+    useListCandidateResponsibles: () => empty,
+    useListCandidateContactTypes: () => empty,
+    useListCandidateContactKinds: () => empty,
+    useListCandidateUniversities: () => empty,
     useGetMe: () => ({ data: { fullName: "Текущий менеджер" } }),
     useListCandidateManagers: () => ({
       ...empty,
@@ -41,7 +53,7 @@ afterEach(() => {
 });
 
 describe("CandidateForm", () => {
-  it("creates with only name, phone and DOB without inventing citizenship or requiring work fields", async () => {
+  it("offers expanded creation fields without inventing citizenship or requiring work fields", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -59,9 +71,13 @@ describe("CandidateForm", () => {
     expect(
       container.querySelector('input[aria-label="Менеджер"]'),
     ).not.toBeNull();
-    expect(container.querySelector('input[aria-label="Должность"]')).toBeNull();
     expect(
-      container.querySelector<HTMLInputElement>('input[type="date"]')?.required,
+      container.querySelector('input[aria-label="Должность"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector<HTMLInputElement>(
+        'input[aria-label="Дата рождения"]',
+      )?.required,
     ).toBe(true);
     expect(
       container.querySelector<HTMLButtonElement>('button[type="submit"]')
@@ -141,7 +157,7 @@ async function renderCreation() {
 }
 async function sendCreation() {
   const inputs = container.querySelectorAll<HTMLInputElement>(
-    "fieldset > label > input",
+    'fieldset > label > input, fieldset > div input[type="date"]',
   );
   for (const [index, value] of [
     "Иванов Иван",

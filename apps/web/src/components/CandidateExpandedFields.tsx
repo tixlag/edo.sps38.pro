@@ -7,6 +7,7 @@ import {
   useListCandidateContactTypes,
   useListCandidateContactKinds,
   useListCandidateUniversities,
+  useListCandidateSettlements,
   type CandidatePatchFieldsDto,
   type CandidateWorkspaceDto,
   type CandidateReferenceDto,
@@ -15,6 +16,7 @@ import { Button } from "@edo/ui";
 import { SearchSelect } from "./SearchSelect";
 import { CANDIDATE_CONTROL } from "./CandidateForm";
 import { candidateRelatedFieldValidation } from "../lib/candidate-related-fields";
+import { DateInput } from "./DateInput";
 
 export function CandidateExpandedFields({
   profile,
@@ -22,7 +24,7 @@ export function CandidateExpandedFields({
   onChange,
   disabled,
 }: {
-  profile: CandidateWorkspaceDto;
+  profile?: CandidateWorkspaceDto;
   fields: CandidatePatchFieldsDto;
   onChange: (fields: CandidatePatchFieldsDto) => void;
   disabled: boolean;
@@ -32,6 +34,10 @@ export function CandidateExpandedFields({
     ? "person"
     : (fields.sourceComment?.kind ??
       (fields.sourceId === "Другое" ? "text" : ""));
+  const [settlementQuery, setSettlementQuery] = useState("");
+  const settlements = useListCandidateSettlements({
+    q: settlementQuery || undefined,
+  });
   const [countryQuery, setCountryQuery] = useState("");
   const [organizationQuery, setOrganizationQuery] = useState("");
   const [sourceQuery, setSourceQuery] = useState("");
@@ -57,10 +63,10 @@ export function CandidateExpandedFields({
   const referenceOptions = (items?: CandidateReferenceDto[]) =>
     (items ?? []).map((item) => ({ value: item.id, label: item.name }));
   const responsibleOptions = (responsibles.data?.items ?? [])
-    .filter((item) => item.kind)
+    .filter((item) => item.kind === "user")
     .map((item) => ({
       value: `${item.kind}:${item.id}`,
-      label: `${item.name} · ${item.kind === "user" ? "пользователь" : "физлицо"}`,
+      label: item.name,
     }));
   const responsibleField = (
     key: "responsible" | "additionalResponsible",
@@ -108,7 +114,7 @@ export function CandidateExpandedFields({
             <SearchSelect
               label="Гражданство"
               value={fields.citizenship}
-              selectedLabel={profile.citizenship?.toUpperCase()}
+              selectedLabel={profile?.citizenship?.toUpperCase()}
               options={(countries.data?.items ?? []).map((item) => ({
                 value: item.code ?? item.id,
                 label: item.name,
@@ -142,17 +148,30 @@ export function CandidateExpandedFields({
               <option value="female">Женский</option>
             </select>
           </label>
-          <label className="space-y-1 text-sm sm:col-span-2">
-            Населённый пункт
-            <input
-              className={CANDIDATE_CONTROL}
-              maxLength={500}
-              value={fields.settlement ?? ""}
-              onChange={(event) =>
-                set("settlement", event.target.value || null)
+          <div className="space-y-1 text-sm sm:col-span-2">
+            <p>Населённый пункт</p>
+            <SearchSelect
+              label="Населённый пункт"
+              placeholder="Введите не менее 3 символов"
+              value={fields.settlement}
+              selectedLabel={fields.settlement ?? undefined}
+              options={(settlements.data?.items ?? []).map((item) => ({
+                value: item.name,
+                label: item.name,
+              }))}
+              onSearchChange={setSettlementQuery}
+              onChange={(value) => set("settlement", value ?? null)}
+              disabled={disabled}
+              isLoading={settlements.isLoading}
+              isError={settlements.isError}
+              onRetry={() => void settlements.refetch()}
+              emptyText={
+                settlementQuery.trim().length < 3
+                  ? "Введите не менее 3 символов"
+                  : "Ничего не найдено"
               }
             />
-          </label>
+          </div>
         </div>
       </section>
       <section
@@ -166,7 +185,7 @@ export function CandidateExpandedFields({
             <SearchSelect
               label="Организация"
               value={fields.organizationId}
-              selectedLabel={profile.organization?.name}
+              selectedLabel={profile?.organization?.name}
               options={referenceOptions(organizations.data?.items)}
               onSearchChange={setOrganizationQuery}
               onChange={(value) => set("organizationId", value ?? null)}
@@ -203,7 +222,7 @@ export function CandidateExpandedFields({
             <SearchSelect
               label="Источник"
               value={fields.sourceId}
-              selectedLabel={profile.source?.name}
+              selectedLabel={profile?.source?.name}
               options={referenceOptions(sources.data?.items)}
               onSearchChange={setSourceQuery}
               onChange={(value) => {
@@ -333,35 +352,29 @@ export function CandidateExpandedFields({
           ))}
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="space-y-1 text-sm">
-            Начало практики
-            <input
-              type="date"
-              className={CANDIDATE_CONTROL}
-              value={fields.internshipStartDate ?? ""}
-              onChange={(event) =>
-                set("internshipStartDate", event.target.value || null)
-              }
+          <div className="space-y-1 text-sm">
+            <p>Начало практики</p>
+            <DateInput
+              label="Начало практики"
+              value={fields.internshipStartDate}
+              onChange={(date) => set("internshipStartDate", date)}
             />
-          </label>
-          <label className="space-y-1 text-sm">
-            Окончание практики{fields.internship ? " · обязательно" : ""}
-            <input
-              type="date"
-              className={CANDIDATE_CONTROL}
+          </div>
+          <div className="space-y-1 text-sm">
+            <p>Окончание практики{fields.internship ? " · обязательно" : ""}</p>
+            <DateInput
+              label="Окончание практики"
               required={validation.practiceChanged && !!fields.internship}
-              value={fields.internshipEndDate ?? ""}
-              onChange={(event) =>
-                set("internshipEndDate", event.target.value || null)
-              }
+              value={fields.internshipEndDate}
+              onChange={(date) => set("internshipEndDate", date)}
             />
-          </label>
+          </div>
           <div className="space-y-1 text-sm sm:col-span-2">
             <p>Учебное заведение</p>
             <SearchSelect
               label="Учебное заведение"
               value={fields.universityId}
-              selectedLabel={profile.university?.name}
+              selectedLabel={profile?.university?.name}
               options={referenceOptions(universities.data?.items)}
               onSearchChange={setUniversityQuery}
               onChange={(value) => set("universityId", value ?? null)}

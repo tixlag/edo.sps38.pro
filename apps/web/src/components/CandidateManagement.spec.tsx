@@ -214,6 +214,11 @@ vi.mock("@edo/api-client", () => {
     useOpenExistingCandidate: () => mutation(state.open),
     useGetCandidateOperation: () => ({ refetch: state.operation }),
     getGetCandidateOperationQueryKey: (id: string) => ["operation", id],
+    useListCandidateSettlements: () => ({
+      data: { items: [] },
+      isLoading: false,
+      isError: false,
+    }),
     useListCandidateCountries: () => result([]),
     useListCandidateOrganizations: () => result([]),
     useListCandidateSources: () =>
@@ -405,7 +410,7 @@ describe("candidate manager flows", () => {
     await render(<CandidatesPage />);
     await click("Создать кандидата");
     const inputs = view.querySelectorAll<HTMLInputElement>(
-      "fieldset > label > input",
+      'fieldset > label > input, fieldset > div input[type="date"]',
     );
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");
@@ -444,7 +449,7 @@ describe("candidate manager flows", () => {
     await render(<CandidatesPage />);
     await click("Создать кандидата");
     const inputs = view.querySelectorAll<HTMLInputElement>(
-      "fieldset > label > input",
+      'fieldset > label > input, fieldset > div input[type="date"]',
     );
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");
@@ -479,7 +484,7 @@ describe("candidate manager flows", () => {
       await render(<CandidatesPage />);
       await click("Создать кандидата");
       const inputs = view.querySelectorAll<HTMLInputElement>(
-        "fieldset > label > input",
+        'fieldset > label > input, fieldset > div input[type="date"]',
       );
       type(inputs[0], "Иванов Иван");
       type(inputs[1], "+79000000000");
@@ -574,11 +579,11 @@ describe("candidate manager flows", () => {
     await submit("Редактирование кандидата");
     expect(state.update).not.toHaveBeenCalled();
     expect(view.textContent).toContain("Укажите дату окончания практики");
-    const end = [...view.querySelectorAll("label")]
-      .find((label) => label.textContent?.includes("Окончание практики"))!
-      .querySelector<HTMLInputElement>("input")!;
+    const end = view.querySelector<HTMLInputElement>(
+      'input[aria-label="Окончание практики"]',
+    )!;
     expect(end.required).toBe(true);
-    type(end, "2026-12-31");
+    type(end, "31.12.2026");
     await submit("Редактирование кандидата");
     expect(state.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -673,7 +678,7 @@ describe("candidate manager flows", () => {
     await click("Создать кандидата");
     const form = view.querySelector("form")!;
     const inputs = form.querySelectorAll<HTMLInputElement>(
-      "fieldset > label > input",
+      'fieldset > label > input, fieldset > div input[type="date"]',
     );
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");
@@ -716,7 +721,7 @@ describe("candidate manager flows", () => {
     await render(<CandidatesPage />);
     await click("Создать кандидата");
     const inputs = view.querySelectorAll<HTMLInputElement>(
-      "fieldset > label > input",
+      'fieldset > label > input, fieldset > div input[type="date"]',
     );
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");

@@ -2727,6 +2727,11 @@ export interface ConfirmContractDto {
   bank: ContractBank;
 }
 
+export interface CandidateNamedIdDto {
+  id: string;
+  name: string;
+}
+
 export type CandidateReferenceDtoKind =
   (typeof CandidateReferenceDtoKind)[keyof typeof CandidateReferenceDtoKind];
 
@@ -2735,6 +2740,11 @@ export const CandidateReferenceDtoKind = {
   user: "user",
   person: "person",
 } as const;
+
+/**
+ * @nullable
+ */
+export type CandidateReferenceDtoDepartment = CandidateNamedIdDto | null;
 
 export interface CandidateReferenceDto {
   /** Stable physical person identity for comparing choices; mutations require signed id */
@@ -2756,6 +2766,8 @@ export interface CandidateReferenceDto {
   editable?: boolean;
   requiresProject?: boolean;
   requiresPlannedArrivalDate?: boolean;
+  /** @nullable */
+  department?: CandidateReferenceDtoDepartment;
 }
 
 export interface CandidateReferencesDto {
@@ -2782,13 +2794,20 @@ export interface OpenExistingCandidateDto {
   erpUid: string;
 }
 
-export interface CandidateNamedCodeDto {
+/**
+ * @nullable
+ */
+export type CandidatePositionDtoDepartment = CandidateNamedIdDto | null;
+
+export interface CandidatePositionDto {
   code: string;
   name: string;
+  /** @nullable */
+  department: CandidatePositionDtoDepartment;
 }
 
-export interface CandidateNamedIdDto {
-  id: string;
+export interface CandidateNamedCodeDto {
+  code: string;
   name: string;
 }
 
@@ -2864,7 +2883,7 @@ export const CandidateWorkspaceDtoReviewGroup = {
 /**
  * @nullable
  */
-export type CandidateWorkspaceDtoPosition = CandidateNamedCodeDto | null;
+export type CandidateWorkspaceDtoPosition = CandidatePositionDto | null;
 
 /**
  * @nullable
@@ -4215,6 +4234,10 @@ export type ListCandidateCountriesParams = {
 };
 
 export type ListCandidateOrganizationsParams = {
+  q?: string;
+};
+
+export type ListCandidateSettlementsParams = {
   q?: string;
 };
 
@@ -14561,6 +14584,92 @@ export function useListCandidateOrganizations<
     params,
     options,
   );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary ERP settlement search
+ */
+export const listCandidateSettlements = (
+  params?: ListCandidateSettlementsParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateReferencesDto>({
+    url: `/api/v1/candidates/references/settlements`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getListCandidateSettlementsQueryKey = (
+  params?: ListCandidateSettlementsParams,
+) => {
+  return [
+    `/api/v1/candidates/references/settlements`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListCandidateSettlementsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCandidateSettlements>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCandidateSettlementsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateSettlements>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListCandidateSettlementsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCandidateSettlements>>
+  > = ({ signal }) => listCandidateSettlements(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCandidateSettlements>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCandidateSettlementsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCandidateSettlements>>
+>;
+export type ListCandidateSettlementsQueryError = ApiErrorDto;
+
+/**
+ * @summary ERP settlement search
+ */
+
+export function useListCandidateSettlements<
+  TData = Awaited<ReturnType<typeof listCandidateSettlements>>,
+  TError = ApiErrorDto,
+>(
+  params?: ListCandidateSettlementsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateSettlements>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCandidateSettlementsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

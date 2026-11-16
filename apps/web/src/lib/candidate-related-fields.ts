@@ -4,19 +4,19 @@ import type {
 } from "@edo/api-client";
 
 export function candidateRelatedFieldValidation(
-  profile: CandidateWorkspaceDto,
+  profile: CandidateWorkspaceDto | undefined,
   fields: CandidatePatchFieldsDto,
 ) {
   const sourceChanged =
-    (fields.sourceId ?? null) !== (profile.source?.id ?? null) ||
+    (fields.sourceId ?? null) !== (profile?.source?.id ?? null) ||
     JSON.stringify(fields.sourceComment ?? null) !==
-      JSON.stringify(profile.sourceComment ?? null);
+      JSON.stringify(profile?.sourceComment ?? null);
   const practiceChanged =
-    (fields.internship ?? false) !== (profile.internship ?? false) ||
+    (fields.internship ?? false) !== (profile?.internship ?? false) ||
     (fields.internshipStartDate ?? null) !==
-      (profile.internshipStartDate?.slice(0, 10) ?? null) ||
+      (profile?.internshipStartDate?.slice(0, 10) ?? null) ||
     (fields.internshipEndDate ?? null) !==
-      (profile.internshipEndDate?.slice(0, 10) ?? null);
+      (profile?.internshipEndDate?.slice(0, 10) ?? null);
   const isRecommendation = fields.sourceId === "ПоРекомендации";
   const sourceCommentRequired =
     isRecommendation || fields.sourceId === "Другое";

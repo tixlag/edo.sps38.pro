@@ -10,6 +10,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
   ServiceUnavailableException,
@@ -49,9 +50,15 @@ import {
 } from "./candidate-workspace.dto";
 import { ErpCandidateClient } from "../documents/erp-candidate.client";
 import type { Candidate, Prisma } from "@prisma/client";
+import {
+  normalizeCandidateNameForSearch,
+  normalizeCandidatePhone,
+} from "./candidate-phone";
+import { EmploymentNotificationService } from "../documents/employment-notification.service";
 
 @Injectable()
 export class CandidateWorkspaceService {
+  private readonly logger = new Logger(CandidateWorkspaceService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly erp: ErpWorkspaceClient,
@@ -62,6 +69,7 @@ export class CandidateWorkspaceService {
     private readonly previousDocsSync: CandidatePreviousDocumentsSyncService,
     @Optional() private readonly ownHistory?: OwnDocumentHistoryService,
     @Optional() private readonly candidates?: ErpCandidateClient,
+    @Optional() private readonly employmentNotifications?: EmploymentNotificationService,
   ) {}
   private actor(p: AuthPrincipal) {
     requireReviewGroup(p, "RU");
@@ -321,13 +329,14 @@ export class CandidateWorkspaceService {
       | "responsibles"
       | "contact-types"
       | "contact-kinds"
-      | "universities",
+      | "universities"
+      | "settlements",
     p: AuthPrincipal,
     q?: string,
   ) {
     requireReviewGroup(p, "RU");
     if (
-      ["persons", "responsibles"].includes(kind) &&
+      ["persons", "responsibles", "settlements"].includes(kind) &&
       (q?.trim().length ?? 0) < 3
     )
       return { items: [] };
@@ -375,8 +384,8 @@ export class CandidateWorkspaceService {
           : {}),
         ...(query.birthDate ? { birthDate: query.birthDate } : {}),
         ...(query.scope ? { scope: query.scope } : {}),
-        ...(query.fullName?.trim() ? { fullName: query.fullName.trim() } : {}),
-        ...(query.phone?.trim() ? { phone: query.phone.trim() } : {}),
+        ...(query.fullName?.trim() ? { fullName: normalizeCandidateNameForSearch(query.fullName) } : {}),
+        ...(query.phone?.trim() ? { phone: normalizeCandidatePhone(query.phone) } : {}),
         ...(query.middleName?.trim()
           ? { middleName: query.middleName.trim() }
           : {}),
@@ -398,7 +407,7 @@ export class CandidateWorkspaceService {
     };
   }
   private async project(card: ErpCard, p: AuthPrincipal, expectedId?: string) {
-    return candidateIdentityTransaction(this.prisma, async (tx) => {
+    const projected = await candidateIdentityTransaction(this.prisma, async (tx) => {
       const owner = await resolveCandidateIdentity(tx, {
         identityKey: `erp:${card.erpUid}`,
         erpUid: card.erpUid,
@@ -490,6 +499,15 @@ export class CandidateWorkspaceService {
         hasChat: !!(card.chatUuid || owner.chatUuid),
       };
     });
+    if (this.employmentNotifications) {
+      try {
+        await this.employmentNotifications.observe(projected.id, card);
+      } catch {
+        // The ERP candidate card remains readable when a notification is delayed.
+        this.logger.warn(`Employment notification could not be queued for ${projected.id}`);
+      }
+    }
+    return projected;
   }
   async open(p: AuthPrincipal, erpUid: string) {
     requireReviewGroup(p, "RU");
@@ -591,7 +609,10 @@ export class CandidateWorkspaceService {
       {
         actor,
         requestId: body.requestId,
-        fields: body.fields,
+        fields: {
+          ...body.fields,
+          phone: normalizeCandidatePhone(body.fields.phone),
+        },
         ...(selected ? { personUid: selected.id } : {}),
         ...(ignored.length ? { ignoredDuplicates } : {}),
       },
@@ -607,7 +628,17 @@ export class CandidateWorkspaceService {
       "update",
       erpCardSchema,
       {},
-      { actor, candidate: row.erpUid, ...body },
+      {
+        actor,
+        candidate: row.erpUid,
+        ...body,
+        fields: {
+          ...body.fields,
+          ...(body.fields.phone !== undefined
+            ? { phone: normalizeCandidatePhone(body.fields.phone ?? "") }
+            : {}),
+        },
+      },
     );
     return this.project(card, p, id);
   }

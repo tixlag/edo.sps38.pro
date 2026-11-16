@@ -11,6 +11,7 @@ import {
   getFindCandidatePersonMatchesQueryKey,
   type CandidatePatchFieldsDto,
   type CandidateWorkspaceDto,
+  type CandidateReferenceDto,
 } from "@edo/api-client";
 import { Button } from "@edo/ui";
 import { SearchSelect } from "./SearchSelect";
@@ -18,6 +19,8 @@ import { CandidateExpandedFields } from "./CandidateExpandedFields";
 import { formatBirthDateRu } from "../lib/review-groups";
 import { candidateRelatedFieldValidation } from "../lib/candidate-related-fields";
 import { candidateError } from "../lib/use-candidate-request";
+import { normalizeRussianPhone } from "../lib/phone";
+import { DateInput } from "./DateInput";
 export {
   candidateError,
   useCandidateRequest,
@@ -172,6 +175,23 @@ export function CandidateForm({
   const positions = useListCandidatePositions({
     q: positionQuery || undefined,
   });
+  const selectedPosition = positions.data?.items.find(
+    (item) => (item.code ?? item.id) === fields.positionCode,
+  );
+  const rememberedPosition = useRef<CandidateReferenceDto>();
+  if (selectedPosition) rememberedPosition.current = selectedPosition;
+  const department =
+    (
+      selectedPosition ??
+      (rememberedPosition.current &&
+      (rememberedPosition.current.code ?? rememberedPosition.current.id) ===
+        fields.positionCode
+        ? rememberedPosition.current
+        : undefined)
+    )?.department ??
+    (fields.positionCode === profile?.position?.code
+      ? profile?.position?.department
+      : undefined);
   const projects = useListCandidateProjects({ q: projectQuery || undefined });
   const matchName = (fields.fullName ?? "").trim().replace(/\s+/g, " ");
   const identity = JSON.stringify([matchName, fields.phone, fields.birthDate]);
@@ -274,9 +294,7 @@ export function CandidateForm({
       (!selectedPersonUid || person.personUid !== selectedPersonUid) &&
       !ignoredSelections.includes(person.id),
   );
-  const relatedErrors = profile
-    ? candidateRelatedFieldValidation(profile, fields).errors
-    : [];
+  const relatedErrors = candidateRelatedFieldValidation(profile, fields).errors;
   const sourcePersonMissing =
     fields.sourceComment?.kind === "person" && !fields.sourceComment.id;
   const submit = (event: FormEvent) => {
@@ -322,18 +340,20 @@ export function CandidateForm({
             className={CANDIDATE_CONTROL}
             value={fields.phone ?? ""}
             onChange={(event) => set("phone", event.target.value)}
+            onBlur={() =>
+              set("phone", normalizeRussianPhone(fields.phone ?? ""))
+            }
           />
         </label>
-        <label className="space-y-1 text-sm">
-          Дата рождения{profile ? " · необязательно" : ""}
-          <input
+        <div className="space-y-1 text-sm">
+          <p>Дата рождения{profile ? " · необязательно" : ""}</p>
+          <DateInput
+            label="Дата рождения"
             required={!profile}
-            type="date"
-            className={CANDIDATE_CONTROL}
-            value={fields.birthDate ?? ""}
-            onChange={(event) => set("birthDate", event.target.value || null)}
+            value={fields.birthDate}
+            onChange={(date) => set("birthDate", date)}
           />
-        </label>
+        </div>
         <div className="space-y-1 text-sm">
           <p>Ведущий менеджер</p>
           <SearchSelect
@@ -386,55 +406,60 @@ export function CandidateForm({
             </p>
           )}
         </div>
-        {profile && (
-          <>
-            <div className="space-y-1 text-sm">
-              <p>Должность</p>
-              <SearchSelect
-                label="Должность"
-                value={fields.positionCode}
-                selectedLabel={profile.position?.name}
-                options={(positions.data?.items ?? []).map((item) => ({
-                  value: item.code ?? item.id,
-                  label: item.name,
-                }))}
-                onSearchChange={setPositionQuery}
-                onChange={(value) => set("positionCode", value ?? null)}
-                isLoading={positions.isLoading}
-                isError={positions.isError}
-                onRetry={() => void positions.refetch()}
-                disabled={pending || locked}
-              />
-            </div>
-            <div className="space-y-1 text-sm">
-              <p>Объект</p>
-              <SearchSelect
-                label="Объект"
-                value={fields.projectCode}
-                selectedLabel={profile.project?.name}
-                options={(projects.data?.items ?? []).map((item) => ({
-                  value: item.code ?? item.id,
-                  label: item.name,
-                }))}
-                onSearchChange={setProjectQuery}
-                onChange={(value) => set("projectCode", value ?? null)}
-                isLoading={projects.isLoading}
-                isError={projects.isError}
-                onRetry={() => void projects.refetch()}
-                disabled={pending || locked}
-              />
-            </div>
-          </>
-        )}
+        <>
+          <div className="space-y-1 text-sm">
+            <p>Должность</p>
+            <SearchSelect
+              label="Должность"
+              value={fields.positionCode}
+              selectedLabel={profile?.position?.name}
+              options={(positions.data?.items ?? []).map((item) => ({
+                value: item.code ?? item.id,
+                label: item.name,
+              }))}
+              onSearchChange={setPositionQuery}
+              onChange={(value) => set("positionCode", value ?? null)}
+              isLoading={positions.isLoading}
+              isError={positions.isError}
+              onRetry={() => void positions.refetch()}
+              disabled={pending || locked}
+            />
+          </div>
+          <div className="space-y-1 text-sm">
+            <p>Подразделение</p>
+            <output
+              aria-label="Подразделение"
+              className={`${CANDIDATE_CONTROL} block text-[var(--muted-foreground)]`}
+            >
+              {department?.name ?? "Определяется по должности"}
+            </output>
+          </div>
+          <div className="space-y-1 text-sm">
+            <p>Объект</p>
+            <SearchSelect
+              label="Объект"
+              value={fields.projectCode}
+              selectedLabel={profile?.project?.name}
+              options={(projects.data?.items ?? []).map((item) => ({
+                value: item.code ?? item.id,
+                label: item.name,
+              }))}
+              onSearchChange={setProjectQuery}
+              onChange={(value) => set("projectCode", value ?? null)}
+              isLoading={projects.isLoading}
+              isError={projects.isError}
+              onRetry={() => void projects.refetch()}
+              disabled={pending || locked}
+            />
+          </div>
+        </>
       </fieldset>
-      {profile && (
-        <CandidateExpandedFields
-          profile={profile}
-          fields={fields}
-          onChange={setFields}
-          disabled={pending || locked}
-        />
-      )}
+      <CandidateExpandedFields
+        profile={profile}
+        fields={fields}
+        onChange={setFields}
+        disabled={pending || locked}
+      />
       {!profile && (
         <section
           className="space-y-3 border-t border-[var(--border)] pt-4"

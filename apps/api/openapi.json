@@ -15747,6 +15747,112 @@
         ]
       }
     },
+    "/api/v1/candidates/references/settlements": {
+      "get": {
+        "operationId": "listCandidateSettlements",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateReferencesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "ERP settlement search",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
     "/api/v1/candidates/references/sources": {
       "get": {
         "operationId": "listCandidateSources",
@@ -25505,6 +25611,21 @@
           "bank"
         ]
       },
+      "CandidateNamedIdDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
       "CandidateReferenceDto": {
         "type": "object",
         "properties": {
@@ -25567,6 +25688,14 @@
           },
           "requiresPlannedArrivalDate": {
             "type": "boolean"
+          },
+          "department": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateNamedIdDto"
+              }
+            ]
           }
         },
         "required": [
@@ -25658,6 +25787,30 @@
           "erpUid"
         ]
       },
+      "CandidatePositionDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "department": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateNamedIdDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "department"
+        ]
+      },
       "CandidateNamedCodeDto": {
         "type": "object",
         "properties": {
@@ -25670,21 +25823,6 @@
         },
         "required": [
           "code",
-          "name"
-        ]
-      },
-      "CandidateNamedIdDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
           "name"
         ]
       },
@@ -25855,7 +25993,7 @@
             "nullable": true,
             "allOf": [
               {
-                "$ref": "#/components/schemas/CandidateNamedCodeDto"
+                "$ref": "#/components/schemas/CandidatePositionDto"
               }
             ]
           },

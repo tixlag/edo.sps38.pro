@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { CandidateManagement } from "../components/CandidateManagement";
 import { CandidateStageAccordion } from "../components/CandidateStageAccordion";
+import { CandidateDocumentAbsences } from "../components/CandidateDocumentAbsences";
 import { hasAccessRule } from "../lib/audit-types";
 import { CandidateChat } from "../components/CandidateChat";
 import { LkLink } from "../components/LkLink";
@@ -702,6 +703,9 @@ function CandidateWorkspace() {
               >
                 Не удалось загрузить документы.
               </div>
+            )}
+            {details.data && !details.synchronizing && profile?.reviewGroup === "RU" && (
+              <CandidateDocumentAbsences candidateId={candidateId} missing={Array.from(new Map(stages.flatMap((stage) => stage.required.missingDocuments).map((item) => [item.code, item])).values())} />
             )}
             {details.data && !details.synchronizing && stages.length > 0 && (
               <div className="space-y-3">

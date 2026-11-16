@@ -17,6 +17,8 @@ import { CandidateCatalogService } from "./candidate-catalog.service";
 import { CommunicationEventsService } from "./communication-events.service";
 import { ErpCommunicationsClient } from "./erp-communications.client";
 import { LkChatClient } from "./lk-chat.client";
+import { LkModule } from "../lk/lk.module";
+import { EmploymentNotificationService } from "../documents/employment-notification.service";
 @Module({
   imports: [
     PrismaModule,
@@ -24,6 +26,7 @@ import { LkChatClient } from "./lk-chat.client";
     StorageModule,
     RedisModule,
     DocumentsModule,
+    LkModule,
   ],
   controllers: [
     CandidateWorkspaceController,
@@ -38,6 +41,7 @@ import { LkChatClient } from "./lk-chat.client";
     CommunicationEventsService,
     ErpCommunicationsClient,
     LkChatClient,
+    EmploymentNotificationService,
     DocumentAccessService,
   ],
 })

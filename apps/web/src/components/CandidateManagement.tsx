@@ -1,3 +1,4 @@
+import { formatPhoneForDisplay } from "../lib/phone";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -49,21 +50,6 @@ import { groupCandidateStatuses } from "../lib/candidate-status-groups";
 import { CandidatePreviousDocuments } from "./CandidatePreviousDocuments";
 import { CandidatePersonPicker } from "./CandidatePersonPicker";
 import { LkLink } from "./LkLink";
-
-function formatPhoneRu(phone?: string | null): string {
-  if (!phone) return "";
-  const cleaned = phone.replace(/\D/g, "");
-  if (
-    cleaned.length === 11 &&
-    (cleaned.startsWith("7") || cleaned.startsWith("8"))
-  ) {
-    return `+7 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7, 9)}-${cleaned.slice(9, 11)}`;
-  }
-  if (cleaned.length === 10) {
-    return `+7 (${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6, 8)}-${cleaned.slice(8, 10)}`;
-  }
-  return phone;
-}
 
 function CopyPhoneButton({ phone }: { phone: string }) {
   const [copied, setCopied] = useState(false);
@@ -644,7 +630,7 @@ export function CandidateManagement({
                           href={`tel:${profile.phone}`}
                           className="transition-colors hover:text-[var(--primary)] hover:underline"
                         >
-                          {formatPhoneRu(profile.phone)}
+                          {formatPhoneForDisplay(profile.phone)}
                         </a>
                         <CopyPhoneButton phone={profile.phone} />
                       </div>
@@ -771,8 +757,8 @@ export function CandidateManagement({
               </dl>
               {profile.linkedPerson && (
                 <p className="text-xs text-[var(--muted-foreground)]">
-                  Если связь с физлицом неверна, обратитесь к администратору
-                  1С для её исправления.
+                  Если связь с физлицом неверна, обратитесь к администратору 1С
+                  для её исправления.
                 </p>
               )}
             </div>
