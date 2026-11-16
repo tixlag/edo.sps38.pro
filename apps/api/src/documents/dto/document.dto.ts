@@ -431,6 +431,12 @@ export class CandidateDocumentSummaryDto extends DocumentReviewMetadataDto {
   @ApiProperty({ enum: DocumentStatus, enumName: "DocumentStatus" })
   status!: DocumentStatus;
   @ApiProperty() currentVersion!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: "Previously accepted version retained while a newer version is reviewed",
+  })
+  acceptedVersion!: number | null;
   @ApiProperty() revision!: number;
   @ApiProperty() title!: string;
   @ApiProperty({ type: String, nullable: true }) documentUid!: string | null;

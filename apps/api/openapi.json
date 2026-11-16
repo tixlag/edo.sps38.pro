@@ -21631,6 +21631,11 @@
           "currentVersion": {
             "type": "number"
           },
+          "acceptedVersion": {
+            "type": "number",
+            "nullable": true,
+            "description": "Previously accepted version retained while a newer version is reviewed"
+          },
           "revision": {
             "type": "number"
           },
@@ -21696,6 +21701,7 @@
           "documentTypeCode",
           "status",
           "currentVersion",
+          "acceptedVersion",
           "revision",
           "title",
           "documentUid",
@@ -22662,6 +22668,11 @@
           "currentVersion": {
             "type": "number"
           },
+          "acceptedVersion": {
+            "type": "number",
+            "nullable": true,
+            "description": "Previously accepted version retained while a newer version is reviewed"
+          },
           "revision": {
             "type": "number"
           },
@@ -22698,6 +22709,7 @@
           "documentTypeCode",
           "status",
           "currentVersion",
+          "acceptedVersion",
           "revision",
           "title",
           "documentUid",

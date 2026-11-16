@@ -895,6 +895,11 @@ export interface DocumentDto {
   documentTypeCode: string | null;
   status: DocumentStatus;
   currentVersion: number;
+  /**
+   * Previously accepted version retained while a newer version is reviewed
+   * @nullable
+   */
+  acceptedVersion: number | null;
   revision: number;
   title: string;
   /** @nullable */
@@ -1409,6 +1414,11 @@ export interface CandidateDocumentSummaryDto {
   documentTypeCode: string | null;
   status: DocumentStatus;
   currentVersion: number;
+  /**
+   * Previously accepted version retained while a newer version is reviewed
+   * @nullable
+   */
+  acceptedVersion: number | null;
   revision: number;
   title: string;
   /** @nullable */

@@ -281,6 +281,7 @@ export class DocumentReadService {
       documentTypeCode: d.documentType?.code ?? null,
       status: d.status,
       currentVersion: d.currentVersion,
+      acceptedVersion: d.acceptedVersion,
       revision: current?.revision ?? 0,
       submittedAt: current?.submittedAt?.toISOString() ?? null,
       reviewedAt: current?.reviewedAt?.toISOString() ?? null,

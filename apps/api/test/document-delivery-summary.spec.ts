@@ -13,6 +13,7 @@ describe("document delivery summaries", () => {
             id: "doc",
             status: "APPROVED",
             currentVersion: 2,
+            acceptedVersion: 1,
             documentType: { code: "INN", title: "ИНН", erpUid: "uid" },
             versions: [
               {
@@ -37,6 +38,7 @@ describe("document delivery summaries", () => {
             id: "previous",
             status: "APPROVED",
             currentVersion: 1,
+            acceptedVersion: null,
             documentType: { code: "SNILS", title: "СНИЛС", erpUid: "snils" },
             versions: [{
               version: 1,
@@ -57,11 +59,12 @@ describe("document delivery summaries", () => {
     const { items } = await reads.documents({ id: "doc" });
     expect(items[0]).toMatchObject({
       status: "APPROVED",
+      acceptedVersion: 1,
       deliveryStatus: "REQUIRES_MANUAL",
       deliveryErrorReason: "1С отклонила файл",
       deliveredHistorically: false,
     });
-    expect(items[1]).toMatchObject({ deliveryStatus: null, deliveryErrorReason: null, deliveredHistorically: true });
+    expect(items[1]).toMatchObject({ acceptedVersion: null, deliveryStatus: null, deliveryErrorReason: null, deliveredHistorically: true });
     expect(JSON.stringify(items[0])).not.toContain("PRIVATE_ERROR");
     expect(JSON.stringify(items[0])).not.toContain("ERP_HTTP_422");
   });
@@ -140,6 +143,9 @@ describe("document delivery summaries", () => {
             expiresAt: null,
           },
         ]),
+      },
+      candidateDocumentAbsence: {
+        findMany: vi.fn().mockResolvedValue([]),
       },
     };
     const scope = { candidate: { citizenship: "ru" } };
