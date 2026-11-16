@@ -68,6 +68,7 @@ function setup() {
         },
       ]),
     },
+    candidateDocumentAbsence: { findMany: vi.fn(async () => []) },
     documentType: {
       findMany: vi.fn().mockResolvedValue([
         {

@@ -16,12 +16,16 @@ import { applyPreviousDocumentEdits } from "./previous-document-edits";
 import { tryCompleteIgEmployment } from "./ig-completion";
 import type { PreviousDocumentDetailsDto } from "./dto/reviewer-document.dto";
 import type { EditDocumentFieldsDto } from "./dto/document.dto";
+import { randomUUID } from "node:crypto";
+import { ErpWorkspaceClient } from "./erp-workspace.client";
+import { z } from "zod";
 
 @Injectable()
 export class ReviewerDocumentsService {
   constructor(private readonly prisma: PrismaService, private readonly access: DocumentAccessService,
     private readonly uploads: DocumentUploadService, private readonly manual: ManualDocumentService,
-    private readonly catalog: DocumentCatalogService, private readonly audit: AuditService) {}
+    private readonly catalog: DocumentCatalogService, private readonly audit: AuditService,
+    private readonly erp: ErpWorkspaceClient) {}
 
   private async owner(id: string, principal: AuthPrincipal) {
     const owner = await this.access.candidate(id, principal);
@@ -50,6 +54,8 @@ export class ReviewerDocumentsService {
       if (!type?.erpUid) throw new BadRequestException("Unknown document type");
       upload.metadata = { documentUid: type.erpUid, position_code_1c: owner.positionCode!,
         citizenship: owner.citizenship!, project_code_1c: owner.projectCode ?? undefined,
+        ...(upload.mode ? { mode: upload.mode } : {}),
+        ...(upload.documentId ? { documentId: upload.documentId } : {}),
         documentFields: {} };
       return await this.manual.upload(upload, key ?? upload.idempotencyKey, correlationId, { candidateId: id, principal });
     } finally { await this.uploads.dispose(upload); }
@@ -80,6 +86,8 @@ export class ReviewerDocumentsService {
     if (!document) throw new ConflictException("PREVIOUS_DOCUMENT_TYPE_REQUIRED");
     const values = row.fields as Record<string, unknown>;
     return { document, revision: row.localRevision, hasLocalEdits: row.fieldEdits.length > 0,
+      erpEditSyncStatus: row.erpEditSyncStatus as PreviousDocumentDetailsDto["erpEditSyncStatus"],
+      erpEditSyncError: row.erpEditSyncError,
       fields: definitions.map((field) => ({ id: `${id}:${field.name}`, name: field.name,
         label: FIELD_LABELS[field.name] ?? field.name, kind: field.kind, required: field.required,
         value: textValue(values[field.name] as string | boolean | null),
@@ -90,6 +98,7 @@ export class ReviewerDocumentsService {
   }
   async edit(candidateId: string, id: string, body: EditDocumentFieldsDto, principal: AuthPrincipal, correlationId: string) {
     await this.owner(candidateId, principal);
+    const requestId = randomUUID();
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM candidates WHERE id=${candidateId} FOR UPDATE`;
       const owner = await tx.candidate.findFirst({ where: { id: candidateId, ...candidateGroupAccessWhere(principal, true) } });
@@ -116,6 +125,9 @@ export class ReviewerDocumentsService {
       await tx.candidatePreviousDocument.update({ where: { id }, data: {
         erpFields: erp as Prisma.InputJsonObject, fields: effective as Prisma.InputJsonObject, expiresAt,
         localRevision: { increment: 1 },
+        erpEditRequestId: requestId,
+        erpEditSyncStatus: "PENDING",
+        erpEditSyncError: null,
       } });
       if (candidateReviewGroup(owner) === "IG") {
         await tx.candidate.updateMany({ where: { id: candidateId }, data: { igCompletionVerified: false } });
@@ -123,8 +135,57 @@ export class ReviewerDocumentsService {
       }
       await this.audit.logInTransaction(tx, { actorId: principal.uuid, action: "DOCUMENT_FIELDS_UPDATED",
         entityType: "CandidatePreviousDocument", entityId: id, correlationId,
-        before: row.fields, after: { fields: effective, localOnly: true } });
+        before: row.fields, after: { fields: effective, erpSyncStatus: "PENDING" } });
     });
+    await this.syncErpEdit(candidateId, id, principal, requestId);
     return this.details(candidateId, id, principal);
+  }
+
+  async retryErpEdit(candidateId: string, id: string, principal: AuthPrincipal) {
+    await this.owner(candidateId, principal);
+    const row = await this.prisma.candidatePreviousDocument.findFirst({ where: { id, candidateId } });
+    if (!row?.erpEditRequestId || row.erpEditSyncStatus === "CONFIRMED")
+      throw new ConflictException("ERP_DOCUMENT_EDIT_NOT_PENDING");
+    await this.syncErpEdit(candidateId, id, principal, row.erpEditRequestId);
+    return this.details(candidateId, id, principal);
+  }
+
+  private async syncErpEdit(candidateId: string, id: string, principal: AuthPrincipal, requestId: string) {
+    const row = await this.prisma.candidatePreviousDocument.findFirst({
+      where: { id, candidateId, erpEditRequestId: requestId },
+      include: { candidate: true, fieldEdits: true },
+    });
+    if (!row || row.erpEditSyncStatus === "CONFIRMED") return;
+    const candidate = row.candidate;
+    const ruIdentity = candidateReviewGroup(candidate) === "RU" && !!candidate.erpUid;
+    const igIdentity = candidateReviewGroup(candidate) === "IG" && !!candidate.personUid && !!candidate.code1c;
+    if ((!ruIdentity && !igIdentity) || !principal.code1c) {
+      await this.prisma.candidatePreviousDocument.updateMany({
+        where: { id, erpEditRequestId: requestId },
+        data: { erpEditSyncStatus: "FAILED", erpEditSyncError: "ERP_CANDIDATE_IDENTITY_REQUIRED" },
+      });
+      return;
+    }
+    try {
+      const fields = Object.fromEntries(row.fieldEdits.map((edit) => [edit.name,
+        edit.kind === "boolean" ? edit.value === "true" : edit.value]));
+      const result = await this.erp.request("update-person-document-fields",
+        z.object({ id: z.string(), fields: z.record(z.unknown()) }), {},
+        { actor: principal.code1c, requestId,
+          ...(ruIdentity ? { candidate: candidate.erpUid } : { personUid: candidate.personUid, code1c: candidate.code1c }),
+          sourceId: row.sourceId, fields });
+      if (result.id !== row.sourceId) throw new ConflictException("ERP_DOCUMENT_IDENTITY_MISMATCH");
+      await this.prisma.candidatePreviousDocument.updateMany({
+        where: { id, erpEditRequestId: requestId },
+        data: { erpFields: result.fields as Prisma.InputJsonObject,
+          erpEditSyncStatus: "CONFIRMED", erpEditSyncError: null },
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "ERP_DOCUMENT_EDIT_FAILED";
+      await this.prisma.candidatePreviousDocument.updateMany({
+        where: { id, erpEditRequestId: requestId },
+        data: { erpEditSyncStatus: "FAILED", erpEditSyncError: code.slice(0, 128) },
+      });
+    }
   }
 }

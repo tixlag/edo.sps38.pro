@@ -69,6 +69,8 @@ enum AuditAction {
   CONTRACT_CONFIRMED
   CONTRACT_DECLINED
   CONTRACT_PREPARATION_FAILED
+  DOCUMENT_ABSENCE_REPORTED
+  DOCUMENT_ABSENCE_DECIDED
 }
 
 model Employee {
@@ -103,6 +105,7 @@ model DocumentType {
   title     String   @db.VarChar(255)
   createdAt DateTime @default(now()) @db.DateTime(3)
   erpUid String? @unique @db.VarChar(36)
+  multipleInstancesAllowed Boolean @default(false)
   allRu Boolean @default(false)
   allForeign Boolean @default(false)
   requiredForAll Boolean @default(false)
@@ -113,6 +116,7 @@ model DocumentType {
   stageRules DocumentTypeStageRule[]
 
   documents Document[]
+  absences CandidateDocumentAbsence[]
 
   @@map("document_types")
 }
@@ -123,6 +127,7 @@ enum ReviewGroup {
 }
 
 model Document {
+  acceptedVersion Int?
   reviewGroup ReviewGroup?
   id             String         @id @default(cuid()) @db.VarChar(64)
   employeeId     String?        @db.VarChar(64)
@@ -141,11 +146,38 @@ model Document {
   expirationAlerts DocumentExpirationAlert[]
   auditLogs        AuditLog[]                @relation("AuditEntityDocument")
 
-  @@unique([candidateId, documentTypeId])
+  @@index([candidateId, documentTypeId])
   @@index([employeeId])
   @@index([status])
   @@index([expiresAt])
   @@map("documents")
+}
+
+enum CandidateDocumentAbsenceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model CandidateDocumentAbsence {
+  id             String                         @id @default(cuid()) @db.VarChar(64)
+  candidateId    String                         @db.VarChar(64)
+  documentTypeId String                         @db.VarChar(64)
+  reason         String                         @db.Text
+  status         CandidateDocumentAbsenceStatus @default(PENDING)
+  requestedBy    String                         @db.VarChar(64)
+  decidedBy      String?                        @db.VarChar(64)
+  decisionComment String?                       @db.Text
+  decidedAt      DateTime?                      @db.DateTime(3)
+  createdAt      DateTime                       @default(now()) @db.DateTime(3)
+  updatedAt      DateTime                       @updatedAt @db.DateTime(3)
+
+  candidate      Candidate                      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  documentType   DocumentType                   @relation(fields: [documentTypeId], references: [id])
+
+  @@unique([candidateId, documentTypeId])
+  @@index([status])
+  @@map("candidate_document_absences")
 }
 
 model DocumentVersion {
@@ -383,7 +415,32 @@ model LkSyncState {
   @@map("lk_sync_state")
 }
 
+model CandidateEmploymentNotification {
+  id String @id @default(cuid()) @db.VarChar(64)
+  candidateId String @db.VarChar(64)
+  confirmationKey String @db.VarChar(128)
+  recipientCodes1c Json
+  title String @db.VarChar(256)
+  content String @db.Text
+  targetUrl String @db.VarChar(1024)
+  status String @default("PENDING") @db.VarChar(16)
+  attempts Int @default(0)
+  leaseUntil DateTime? @db.DateTime(3)
+  nextAttemptAt DateTime @default(now()) @db.DateTime(3)
+  sentAt DateTime? @db.DateTime(3)
+  lastError String? @db.VarChar(128)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, confirmationKey], map: "employment_notifications_candidate_confirmation_key")
+  @@index([status, nextAttemptAt])
+  @@map("candidate_employment_notifications")
+}
+
 model Candidate {
+  employmentObservationPending Boolean @default(false)
+  employmentNotifications CandidateEmploymentNotification[]
   enrichmentJob IgEnrichmentJob?
   igArrivalPerson IgArrivalPerson?
   igCompletedAt DateTime? @db.DateTime(3)
@@ -397,6 +454,7 @@ model Candidate {
   statusId String? @db.VarChar(128)
   statusName String? @db.VarChar(256)
   previousDocuments CandidatePreviousDocument[]
+  documentAbsences CandidateDocumentAbsence[]
   id         String     @id @default(cuid()) @db.VarChar(64)
   erpUid     String?    @unique @db.VarChar(36)
   erpDeleted Boolean    @default(false)
@@ -1105,6 +1163,9 @@ enum CandidateRecheckStatus {
 }
 
 model CandidatePreviousDocument {
+  erpEditRequestId String? @db.VarChar(36)
+  erpEditSyncStatus String? @db.VarChar(16)
+  erpEditSyncError String? @db.VarChar(128)
   erpFields Json?
   localRevision Int @default(0)
   fieldEdits CandidatePreviousDocumentFieldEdit[]

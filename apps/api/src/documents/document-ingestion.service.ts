@@ -1,3 +1,4 @@
+import { reserveDocumentInstance } from "./document-instance";
 import {
   BadRequestException,
   ConflictException,
@@ -136,6 +137,7 @@ export class DocumentIngestionService {
           data: {
             currentVersion: reserved.accepted.version,
             status: "OCR_PENDING",
+            acceptedVersion: null,
           },
         });
         if (currentVersionChanged.count)
@@ -228,21 +230,13 @@ export class DocumentIngestionService {
               data: { locationId: upload.locationId },
             });
           }
-          const doc = await tx.document.upsert({
-            where: {
-              candidateId_documentTypeId: {
-                candidateId: candidate.id,
-                documentTypeId: typeId,
-              },
-            },
-            update: {},
-            create: {
-              candidateId: candidate.id,
-              documentTypeId: typeId,
-              reviewGroup: "RU",
-              currentVersion: 0,
-            },
-          });
+          const doc = await reserveDocumentInstance(
+            tx,
+            candidate.id,
+            typeId,
+            {},
+            "RU",
+          );
           if (doc.reviewGroup && doc.reviewGroup !== "RU")
             throw new ConflictException("DOCUMENT_PROCESS_CONFLICT");
           if (!doc.reviewGroup)

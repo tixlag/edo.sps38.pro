@@ -25,7 +25,7 @@ const prior = () =>
 const fallbackPrior = () =>
   Prisma.sql`((d.id IS NULL OR d.status='DRAFT') AND ${prior()})`;
 const accepted = () =>
-  Prisma.sql`((d.status IN ('APPROVED','SIGNED') AND v.status IN ('APPROVED','SIGNED')) OR ${fallbackPrior()})`;
+  Prisma.sql`(((d.acceptedVersion IS NOT NULL OR d.status IN ('APPROVED','SIGNED')) AND v.status IN ('APPROVED','SIGNED')) OR ${fallbackPrior()})`;
 const reviewAvailable = Prisma.sql`(SELECT COUNT(*) FROM documents rd JOIN document_versions rv ON rv.documentId=rd.id AND rv.version=rd.currentVersion WHERE rd.candidateId=c.id AND rd.status='IN_REVIEW' AND rv.status='IN_REVIEW')`;
 export function requirementsJoin(filters: {
   dateFrom: string | null;
@@ -55,8 +55,10 @@ export function requirementsJoin(filters: {
  MAX(CASE WHEN LOWER(t.erpUid)=${EMPLOYMENT_PATENT_UID.toLowerCase()} THEN 1 ELSE 0 END) AS patentRequired
  FROM candidates c JOIN ig_arrival_persons rp ON rp.candidateId=c.id AND rp.igVerified=1 ${memberFilter} ${searchFilter}
  JOIN document_types t ON t.catalogSyncedAt IS NOT NULL AND ${requiredType}
- LEFT JOIN documents d ON d.candidateId=c.id AND d.documentTypeId=t.id
- LEFT JOIN document_versions v ON v.documentId=d.id AND v.version=d.currentVersion
+ LEFT JOIN documents d ON d.id=(SELECT picked.id FROM documents picked
+   WHERE picked.candidateId=c.id AND picked.documentTypeId=t.id
+   ORDER BY CASE WHEN picked.acceptedVersion IS NOT NULL THEN 0 ELSE 1 END, CASE picked.status WHEN 'APPROVED' THEN 0 WHEN 'SIGNED' THEN 0 WHEN 'IN_REVIEW' THEN 1 WHEN 'OCR_PENDING' THEN 2 WHEN 'UPLOADED' THEN 3 WHEN 'RETURNED' THEN 4 WHEN 'OCR_FAILED' THEN 5 WHEN 'EXPIRED' THEN 6 ELSE 7 END, picked.id LIMIT 1)
+ LEFT JOIN document_versions v ON v.documentId=d.id AND v.version=COALESCE(d.acceptedVersion,d.currentVersion)
  GROUP BY c.id
  ) req ON req.candidateId=c.id`;
 }

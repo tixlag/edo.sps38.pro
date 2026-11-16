@@ -9,7 +9,15 @@ import { PDFDocument } from "pdf-lib";
 import sharp from "sharp";
 import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, readdir, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  readdir,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { isHeic, normalizeHeic } from "./heic-normalization";
 import { isJpegContainer, jpegImageEnd } from "./container-normalization";
 import { join, basename } from "node:path";
@@ -48,6 +56,8 @@ export interface StagedFile {
 export interface StagedUpload {
   directory: string;
   idempotencyKey?: string;
+  mode?: "new" | "replace" | "append";
+  documentId?: string;
   documentTypeCode: string;
   locationId?: number;
   metadata?: DocumentMetadata;
@@ -83,9 +93,12 @@ export class DocumentUploadService {
           if (
             (context
               ? part.fieldname !== "metadata"
-              : !["documentTypeCode", "locationId", "metadata", ...(reviewer ? ["idempotencyKey"] : [])].includes(
-                  part.fieldname,
-                )) ||
+              : ![
+                  "documentTypeCode",
+                  "locationId",
+                  "metadata",
+                  ...(reviewer ? ["idempotencyKey", "mode", "documentId"] : []),
+                ].includes(part.fieldname)) ||
             fields.has(part.fieldname) ||
             typeof part.value !== "string" ||
             part.valueTruncated
@@ -221,6 +234,12 @@ export class DocumentUploadService {
           throw new BadRequestException("Invalid document metadata");
         }
       }
+      const mode = fields.get("mode");
+      if (mode && !["new", "replace", "append"].includes(mode))
+        throw new BadRequestException("Invalid upload mode");
+      const documentId = fields.get("documentId");
+      if (documentId && documentId.length > 64)
+        throw new BadRequestException("Invalid documentId");
       const documentTypeCode = fields.get("documentTypeCode") ?? "";
       if (
         (!documentTypeCode && !metadata) ||
@@ -247,6 +266,8 @@ export class DocumentUploadService {
         ...(reviewer ? { idempotencyKey: fields.get("idempotencyKey") } : {}),
         documentTypeCode,
         metadata,
+        mode: mode as StagedUpload["mode"],
+        documentId,
         ...(loc !== undefined ? { locationId: Number(loc) } : {}),
         files,
       };

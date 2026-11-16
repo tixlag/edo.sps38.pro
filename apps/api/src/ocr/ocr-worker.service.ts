@@ -679,7 +679,10 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
       for (const file of job.version.files) {
         if (file.deletedAt) continue;
         // Originals are never deleted before the rejection/failure transaction committed.
-        await this.storage.delete(file.storageKey);
+        const activeRefs = await this.prisma.documentVersionFile.count({
+          where: { storageKey: file.storageKey, id: { not: file.id }, deletedAt: null },
+        });
+        if (!activeRefs) await this.storage.delete(file.storageKey);
         await this.prisma.documentVersionFile.update({
           where: { id: file.id },
           data: { deletedAt: new Date() },

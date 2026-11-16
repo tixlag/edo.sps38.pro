@@ -13,6 +13,7 @@ import {
 } from "./review-group";
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -335,6 +336,15 @@ export class DocumentReadService {
           })
         : [];
     const isIg = candidateReviewGroup(owner) === "IG";
+    const approvedAbsences = !isIg
+      ? await this.prisma.candidateDocumentAbsence.findMany({
+          where: { candidateId: id, status: "APPROVED" },
+          include: { documentType: true },
+        })
+      : [];
+    const waivedTypes = new Set(
+      approvedAbsences.map((absence) => absence.documentTypeId),
+    );
     const previousUids = new Set(
       usablePreviousUids(
         previous.filter(
@@ -378,13 +388,16 @@ export class DocumentReadService {
             const category = classifyStageType(type, selectedStage, profile);
             if (!category) continue;
             applicableTypes.push({ ...type, category });
-            const doc = rows.find((row) => row.documentTypeId === type.id);
-            if (doc)
-              stageDocuments[category].documents.push(
-                this.documentSummary(doc),
-              );
+            const matching = rows.filter(
+              (row) => row.documentTypeId === type.id,
+            );
+            const doc = matching[0];
+            stageDocuments[category].documents.push(
+              ...matching.map((row) => this.documentSummary(row)),
+            );
             if (
               !doc &&
+              !waivedTypes.has(type.id) &&
               !(type.erpUid && previousUids.has(type.erpUid.toLowerCase()))
             )
               stageDocuments[category].missingDocuments.push({
@@ -513,11 +526,16 @@ export class DocumentReadService {
             const category = classifyStageType(type, stg, profile);
             if (!category) continue;
             stageApplicableTypes.push({ ...type, category });
-            const doc = rows.find((row) => row.documentTypeId === type.id);
-            if (doc)
-              stageItem[category].documents.push(this.documentSummary(doc));
+            const matching = rows.filter(
+              (row) => row.documentTypeId === type.id,
+            );
+            const doc = matching[0];
+            stageItem[category].documents.push(
+              ...matching.map((row) => this.documentSummary(row)),
+            );
             if (
               !doc &&
+              !waivedTypes.has(type.id) &&
               !(type.erpUid && previousUids.has(type.erpUid.toLowerCase()))
             ) {
               stageItem[category].missingDocuments.push({
@@ -547,7 +565,10 @@ export class DocumentReadService {
       ),
       missingDocuments: await this.missingDocumentTypes(
         owner,
-        rows.map((row) => row.documentType?.code),
+        [
+          ...rows.map((row) => row.documentType?.code),
+          ...approvedAbsences.map((absence) => absence.documentType.code),
+        ],
         previousUids,
       ),
       ...(stage !== undefined ? { stageDocuments } : { documentGroups }),
@@ -1421,14 +1442,17 @@ export class DocumentReadService {
   async internalDraft(
     scope: { candidateId?: string; chat_uuid?: string; code_1c?: string },
     documentUid: string,
+    documentId?: string,
   ): Promise<CandidateDocumentDraftDto> {
-    const document = await this.prisma.document.findFirst({
+    const documents = await this.prisma.document.findMany({
       where: {
         ...(await this.currentScopeWhere(scope)),
+        ...(documentId ? { id: documentId } : {}),
         documentType: { erpUid: documentUid },
         status: "RETURNED",
         currentVersion: { gt: 0 },
       },
+      take: documentId ? 1 : 2,
       select: {
         currentVersion: true,
         versions: {
@@ -1442,6 +1466,9 @@ export class DocumentReadService {
         },
       },
     });
+    if (!documentId && documents.length > 1)
+      throw new ConflictException("DOCUMENT_INSTANCE_REQUIRED");
+    const document = documents[0];
     const version = document?.versions.find(
       (v) => v.version === document.currentVersion,
     );
@@ -1559,7 +1586,12 @@ export class DocumentReadService {
     );
     const candidateEligibility: Prisma.CandidateWhereInput =
       reviewGroup === "RU" && status === "ALL"
-        ? { erpDeleted: false, ...(hasDocumentFilter ? { documents: { some: documentsWhere } } : {}) }
+        ? {
+            erpDeleted: false,
+            ...(hasDocumentFilter
+              ? { documents: { some: documentsWhere } }
+              : {}),
+          }
         : reviewGroup === "IG" &&
             (!status || status === "IN_REVIEW" || status === "ALL") &&
             !hasDocumentFilter
@@ -1685,9 +1717,9 @@ export class DocumentReadService {
     // A stale snapshot stays available while the catalog service refreshes it.
     // A catalog outage must not block the review queue.
     void this.catalog?.ensure().catch(() => undefined);
-    const [grouped, catalog, deliveryDocuments] = await Promise.all([
+    const [grouped, catalog, deliveryDocuments, absences] = await Promise.all([
       this.prisma.document.groupBy({
-        by: ["candidateId", "status", "documentTypeId"],
+        by: ["candidateId", "status", "documentTypeId", "acceptedVersion"],
         where: {
           candidateId: { in: candidateIds },
           ...this.access.documentWhere(principal),
@@ -1727,6 +1759,19 @@ export class DocumentReadService {
               ocrSource: true,
               ocrRaw: true,
             },
+          },
+        },
+      }),
+      this.prisma.candidateDocumentAbsence.findMany({
+        where: {
+          candidateId: { in: candidateIds },
+          status: "APPROVED",
+          candidate: {
+            OR: [
+              { reviewGroup: "RU" },
+              { chatUuid: { not: null } },
+              { citizenship: "ru" },
+            ],
           },
         },
       }),
@@ -1793,7 +1838,7 @@ export class DocumentReadService {
       (row) =>
         !authoritativeErpTypes.get(row.candidateId!)?.has(row.documentTypeId!),
     );
-    const approved = new Map<string, number>();
+    const approved = new Map<string, Set<string>>();
     const profileById = new Map(
       profiles.map((profile) => [profile.id, profile]),
     );
@@ -1822,11 +1867,19 @@ export class DocumentReadService {
               : null,
             profile.projectCode,
           ));
-      if (row.candidateId && row.status === "APPROVED" && !excluded && required)
-        approved.set(
-          row.candidateId,
-          (approved.get(row.candidateId) ?? 0) + row._count._all,
-        );
+      if (
+        row.candidateId &&
+        (row.status === "APPROVED" ||
+          row.status === "SIGNED" ||
+          row.acceptedVersion) &&
+        !excluded &&
+        required
+      ) {
+        const ids = approved.get(row.candidateId) ?? new Set<string>();
+        if (row.documentTypeId) ids.add(row.documentTypeId);
+        else for (let i = 0; i < row._count._all; i++) ids.add(`unknown:${i}`);
+        approved.set(row.candidateId, ids);
+      }
     }
     for (const profile of profiles) {
       const previousUids = usablePreviousUids(
@@ -1851,7 +1904,17 @@ export class DocumentReadService {
         hasProfile && catalog.some((type) => type.catalogSyncedAt !== null)
           ? reviewStageProgress(
               catalog.filter((type) => type.catalogSyncedAt !== null),
-              effectiveGrouped.filter((row) => row.candidateId === profile.id),
+              [
+                ...effectiveGrouped.filter(
+                  (row) => row.candidateId === profile.id,
+                ),
+                ...absences
+                  .filter((a) => a.candidateId === profile.id)
+                  .map((a) => ({
+                    documentTypeId: a.documentTypeId,
+                    status: "APPROVED",
+                  })),
+              ],
               {
                 positionCode,
                 projectCode: profile.projectCode,
@@ -1863,21 +1926,40 @@ export class DocumentReadService {
               [...(deliveryProblems.get(profile.id) ?? [])],
             )
           : null;
+      const creditedIds = approved.get(profile.id) ?? new Set<string>();
+      for (const absence of absences.filter(
+        (a) => a.candidateId === profile.id,
+      )) {
+        const type = typeById.get(absence.documentTypeId);
+        if (
+          type &&
+          requiredApplicable(
+            type,
+            positionCode,
+            citizenship,
+            profile.sexKnown ? (profile.sex as "male" | "female" | null) : null,
+            profile.projectCode,
+          )
+        )
+          creditedIds.add(type.id);
+      }
+      approved.set(profile.id, creditedIds);
       profile.approvedDocuments =
-        (approved.get(profile.id) ?? 0) +
+        (approved.get(profile.id)?.size ?? 0) +
         reusedTypes.filter(
           (type) =>
-            !profile.citizenship ||
-            requiredApplicable(
-              type,
-              profile.positionCode ?? "",
-              profile.citizenship ?? "",
-              profile.sexKnown &&
-                (profile.sex === "female" || profile.sex === "male")
-                ? profile.sex
-                : null,
-              profile.projectCode,
-            ),
+            !creditedIds.has(type.id) &&
+            (!profile.citizenship ||
+              requiredApplicable(
+                type,
+                profile.positionCode ?? "",
+                profile.citizenship ?? "",
+                profile.sexKnown &&
+                  (profile.sex === "female" || profile.sex === "male")
+                  ? profile.sex
+                  : null,
+                profile.projectCode,
+              )),
         ).length;
       profile.requiredDocuments =
         profile.positionCode && profile.citizenship

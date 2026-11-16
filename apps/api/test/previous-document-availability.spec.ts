@@ -27,6 +27,19 @@ const types = [
 ];
 
 describe("previous employment document availability", () => {
+  it("retains distinct ERP instances for allowlisted diploma and child document types", () => {
+    const uid = "3f164241-8c5b-11eb-ba8b-00259002db81";
+    const catalog = [{ ...types[0], erpUid: uid }];
+    const originals = [
+      previous({ id: "child-one", sourceId: "erp-one", documentUid: uid }),
+      previous({ id: "child-two", sourceId: "erp-two", documentUid: uid }),
+    ];
+    expect(
+      previousDocumentAvailability(catalog, originals, [], false).map(
+        (row) => row.id,
+      ),
+    ).toEqual(["child-one", "child-two"]);
+  });
   it("presents a confirmed former original as reused without creating a current document", () => {
     expect(previousDocumentAvailability(types, [previous()], [], true)).toEqual(
       [
@@ -71,7 +84,9 @@ describe("previous employment document availability", () => {
   it("does not count a manual confirmation as accepted while its original is unchecked", () => {
     const doc = previous({ originalVerified: false });
     expect(previousDocumentState(doc, true)).toBe("ORIGINAL_UNAVAILABLE");
-    expect(previousDocumentAvailability(types, [doc], [], true)[0].originalAvailable).toBe(false);
+    expect(
+      previousDocumentAvailability(types, [doc], [], true)[0].originalAvailable,
+    ).toBe(false);
     expect(doc.status).toBe("CONFIRMED");
     expect(previousDocumentState(doc, false)).toBe("REUSED");
   });

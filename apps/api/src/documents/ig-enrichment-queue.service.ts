@@ -18,6 +18,8 @@ import {
 } from "./review-group";
 import { IgProfileEnrichmentService } from "./ig-profile-enrichment.service";
 import { CandidateEnrichmentDto } from "./dto/candidate-enrichment.dto";
+import { ErpWorkspaceClient } from "./erp-workspace.client";
+import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
 
 const LEASE_MS = 120_000;
 const igEligible: Prisma.CandidateWhereInput = {
@@ -59,6 +61,8 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
     private readonly enrichment: IgProfileEnrichmentService,
     private readonly access: DocumentAccessService,
     private readonly config: ConfigService,
+    private readonly erp: ErpWorkspaceClient,
+    private readonly previousDocs: CandidatePreviousDocumentsSyncService,
   ) {}
   private get backgroundEnabled(): boolean {
     return this.config.get<string>("EDO_ARRIVAL_SYNC_ENABLED") === "true";
@@ -154,7 +158,7 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
   }
   async requestBatch(ids: string[], principal: AuthPrincipal) {
     requireReviewGroup(principal, "RU");
-    // One scoped read for the visible page; never fan out to ERP in an HTTP request.
+    // One scoped read for the visible page; batch ERP refresh stays bounded to it.
     const candidates = await this.prisma.candidate.findMany({
       where: {
         AND: [
@@ -167,16 +171,44 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
           },
         ],
       },
-      select: { id: true, previousDocumentsSyncedAt: true },
+      select: { id: true, erpUid: true, previousDocumentsSyncedAt: true },
     });
     const cutoff = Date.now() - 5 * 60_000;
-    const staleIds = candidates
+    let staleIds = candidates
       .filter(
         (c) =>
           !c.previousDocumentsSyncedAt ||
           c.previousDocumentsSyncedAt.getTime() < cutoff,
       )
       .map((c) => c.id);
+    // The visible page is refreshed with at most two ERP requests (50 UUIDs each).
+    // A missing batch route or a failed element keeps the established single-item queue.
+    if (staleIds.length && typeof this.erp.personDocumentsBatch === "function") {
+      const fallback = new Set<string>();
+      const byErpUid = new Map(candidates.filter((c) => c.erpUid).map((c) => [c.erpUid!.toLowerCase(), c.id]));
+      const stale = candidates.filter((c) => staleIds.includes(c.id) && c.erpUid);
+      for (let offset = 0; offset < stale.length; offset += 50) {
+        const group = stale.slice(offset, offset + 50);
+        try {
+          const result = await this.erp.personDocumentsBatch(group.map((c) => c.erpUid!), AbortSignal.timeout(20_000));
+          const seen = new Set<string>();
+          for (const item of result.items) {
+            const candidateId = byErpUid.get(item.candidateUid.toLowerCase());
+            if (!candidateId || !group.some((c) => c.id === candidateId) || seen.has(candidateId)) continue;
+            seen.add(candidateId);
+            if ("error" in item) { fallback.add(candidateId); continue; }
+            try {
+              await this.previousDocs.syncPreviousDocuments(candidateId, "system:batch-enrichment", "", undefined, principal,
+                { preloadedDocuments: item.documents });
+            } catch { fallback.add(candidateId); }
+          }
+          for (const c of group) if (!seen.has(c.id)) fallback.add(c.id);
+        } catch {
+          for (const c of group) fallback.add(c.id);
+        }
+      }
+      staleIds = [...fallback];
+    }
     if (staleIds.length) {
       await this.prisma.$transaction(async (tx) => {
         await tx.igEnrichmentJob.createMany({

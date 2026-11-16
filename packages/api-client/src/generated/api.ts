@@ -54,6 +54,8 @@ export const AuditAction = {
   CONTRACT_CONFIRMED: "CONTRACT_CONFIRMED",
   CONTRACT_DECLINED: "CONTRACT_DECLINED",
   CONTRACT_PREPARATION_FAILED: "CONTRACT_PREPARATION_FAILED",
+  DOCUMENT_ABSENCE_REPORTED: "DOCUMENT_ABSENCE_REPORTED",
+  DOCUMENT_ABSENCE_DECIDED: "DOCUMENT_ABSENCE_DECIDED",
 } as const;
 
 export interface AuditLogItemDto {
@@ -404,6 +406,53 @@ export interface ApiErrorDto {
   path: string | null;
 }
 
+export type AbsenceDtoStatus =
+  (typeof AbsenceDtoStatus)[keyof typeof AbsenceDtoStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const AbsenceDtoStatus = {
+  PENDING: "PENDING",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+} as const;
+
+export interface AbsenceDto {
+  id: string;
+  candidateId: string;
+  documentTypeId: string;
+  documentTypeCode: string;
+  documentTypeTitle: string;
+  reason: string;
+  status: AbsenceDtoStatus;
+  requestedBy: string;
+  /** @nullable */
+  decidedBy: string | null;
+  /** @nullable */
+  decisionComment: string | null;
+  /** @nullable */
+  decidedAt: string | null;
+}
+
+export interface ReportAbsenceDto {
+  documentTypeId?: string;
+  documentTypeCode?: string;
+  reason: string;
+}
+
+export type DecideAbsenceDtoStatus =
+  (typeof DecideAbsenceDtoStatus)[keyof typeof DecideAbsenceDtoStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DecideAbsenceDtoStatus = {
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+} as const;
+
+export interface DecideAbsenceDto {
+  status: DecideAbsenceDtoStatus;
+  comment?: string;
+}
+
 export interface CandidatePhotoUploadResponseDto {
   success: boolean;
   photoPath: string;
@@ -636,6 +685,7 @@ export interface DocumentDefinitionDto {
 export interface CatalogDocumentTypeDto {
   code: string;
   title: string;
+  multipleInstancesAllowed: boolean;
   documentUid: string;
   /** Applicable stage numbers; null denotes a document without a stage */
   stages: (number | null)[];
@@ -898,7 +948,19 @@ export interface DocumentStreamGrantDto {
   expiresAt: string;
 }
 
+export type CandidateDocumentUploadRequestDtoMode =
+  (typeof CandidateDocumentUploadRequestDtoMode)[keyof typeof CandidateDocumentUploadRequestDtoMode];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateDocumentUploadRequestDtoMode = {
+  new: "new",
+  replace: "replace",
+  append: "append",
+} as const;
+
 export interface CandidateDocumentUploadRequestDto {
+  mode?: CandidateDocumentUploadRequestDtoMode;
+  documentId?: string;
   documentUid: string;
   /** @maxLength 128 */
   idempotencyKey: string;
@@ -1525,6 +1587,16 @@ export interface DocumentScopeDto {
   code_1c?: string;
 }
 
+export type DocumentUploadGrantRequestDtoMode =
+  (typeof DocumentUploadGrantRequestDtoMode)[keyof typeof DocumentUploadGrantRequestDtoMode];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DocumentUploadGrantRequestDtoMode = {
+  replace: "replace",
+  new: "new",
+  append: "append",
+} as const;
+
 export type DocumentUploadGrantRequestDtoCitizenship = {
   [key: string]: unknown;
 };
@@ -1532,6 +1604,8 @@ export type DocumentUploadGrantRequestDtoCitizenship = {
 export interface DocumentUploadGrantRequestDto {
   chat_uuid?: string;
   code_1c?: string;
+  mode?: DocumentUploadGrantRequestDtoMode;
+  documentId?: string;
   documentUid: string;
   /** @maxLength 128 */
   idempotencyKey: string;
@@ -1919,6 +1993,25 @@ export interface RejectDocumentDto {
   reason: string;
 }
 
+export type SendStatus = (typeof SendStatus)[keyof typeof SendStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const SendStatus = {
+  PENDING: "PENDING",
+  SENT: "SENT",
+  FAILED: "FAILED",
+  UNKNOWN: "UNKNOWN",
+} as const;
+
+export interface CommunicationOperationDto {
+  id: string;
+  status: SendStatus;
+  /** @nullable */
+  providerId: string | null;
+  /** @nullable */
+  errorCode: string | null;
+}
+
 export interface AdaptationGrantItemDto {
   /** UUID операции для подтверждения и идемпотентности */
   operationId: string;
@@ -1961,11 +2054,29 @@ export interface AdaptationGrantsResultDto {
   items: AdaptationGrantResultItemDto[];
 }
 
+/**
+ * @nullable
+ */
+export type PreviousDocumentDetailsDtoErpEditSyncStatus =
+  | (typeof PreviousDocumentDetailsDtoErpEditSyncStatus)[keyof typeof PreviousDocumentDetailsDtoErpEditSyncStatus]
+  | null;
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const PreviousDocumentDetailsDtoErpEditSyncStatus = {
+  PENDING: "PENDING",
+  CONFIRMED: "CONFIRMED",
+  FAILED: "FAILED",
+} as const;
+
 export interface PreviousDocumentDetailsDto {
   document: PreviousDocumentAvailabilityDto;
   revision: number;
   fields: DocumentFieldDto[];
   hasLocalEdits: boolean;
+  /** @nullable */
+  erpEditSyncStatus: PreviousDocumentDetailsDtoErpEditSyncStatus;
+  /** @nullable */
+  erpEditSyncError: string | null;
 }
 
 export interface ExpirationSummaryResponseDto {
@@ -3236,25 +3347,6 @@ export interface SendCommunicationDto {
   attachmentIds?: string[];
 }
 
-export type SendStatus = (typeof SendStatus)[keyof typeof SendStatus];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const SendStatus = {
-  PENDING: "PENDING",
-  SENT: "SENT",
-  FAILED: "FAILED",
-  UNKNOWN: "UNKNOWN",
-} as const;
-
-export interface CommunicationOperationDto {
-  id: string;
-  status: SendStatus;
-  /** @nullable */
-  providerId: string | null;
-  /** @nullable */
-  errorCode: string | null;
-}
-
 export interface ChatDownloadDto {
   url: string;
 }
@@ -3331,6 +3423,8 @@ export const ListAuditLogsActionsItem = {
   CONTRACT_CONFIRMED: "CONTRACT_CONFIRMED",
   CONTRACT_DECLINED: "CONTRACT_DECLINED",
   CONTRACT_PREPARATION_FAILED: "CONTRACT_PREPARATION_FAILED",
+  DOCUMENT_ABSENCE_REPORTED: "DOCUMENT_ABSENCE_REPORTED",
+  DOCUMENT_ABSENCE_DECIDED: "DOCUMENT_ABSENCE_DECIDED",
 } as const;
 
 export type GetDashboardParams = {
@@ -3417,6 +3511,20 @@ export type UploadCandidatePhotoBody = {
   file: Blob;
 };
 
+export type GetBrowserCandidateDocumentDraftParams = {
+  /**
+   * Exact returned document instance
+   */
+  documentId?: string;
+};
+
+export type GetMyCandidateDocumentDraftParams = {
+  /**
+   * Exact returned document instance
+   */
+  documentId?: string;
+};
+
 /**
  * Provide metadata for manual review or documentTypeCode for legacy OCR; at least one is required.
  */
@@ -3454,6 +3562,16 @@ export type GetCandidateDetailsParams = {
   stage?: string;
 };
 
+export type UploadReviewerCandidateDocumentBodyMode =
+  (typeof UploadReviewerCandidateDocumentBodyMode)[keyof typeof UploadReviewerCandidateDocumentBodyMode];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const UploadReviewerCandidateDocumentBodyMode = {
+  new: "new",
+  replace: "replace",
+  append: "append",
+} as const;
+
 export type UploadReviewerCandidateDocumentBody = {
   /**
    * @minLength 1
@@ -3461,6 +3579,8 @@ export type UploadReviewerCandidateDocumentBody = {
    */
   idempotencyKey: string;
   documentTypeCode: string;
+  mode?: UploadReviewerCandidateDocumentBodyMode;
+  documentId?: string;
   /**
    * @minItems 1
    * @maxItems 10
@@ -5011,6 +5131,268 @@ export function useGetMe<
 }
 
 /**
+ * @summary Document absence requests and reviewer decisions
+ */
+export const listCandidateDocumentAbsences = (
+  candidateId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AbsenceDto[]>({
+    url: `/api/v1/candidates/${candidateId}/document-absences`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListCandidateDocumentAbsencesQueryKey = (
+  candidateId: string,
+) => {
+  return [`/api/v1/candidates/${candidateId}/document-absences`] as const;
+};
+
+export const getListCandidateDocumentAbsencesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCandidateDocumentAbsences>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateDocumentAbsences>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListCandidateDocumentAbsencesQueryKey(candidateId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCandidateDocumentAbsences>>
+  > = ({ signal }) => listCandidateDocumentAbsences(candidateId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCandidateDocumentAbsences>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCandidateDocumentAbsencesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCandidateDocumentAbsences>>
+>;
+export type ListCandidateDocumentAbsencesQueryError = ApiErrorDto;
+
+/**
+ * @summary Document absence requests and reviewer decisions
+ */
+
+export function useListCandidateDocumentAbsences<
+  TData = Awaited<ReturnType<typeof listCandidateDocumentAbsences>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCandidateDocumentAbsences>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCandidateDocumentAbsencesQueryOptions(
+    candidateId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Report a missing RU candidate document
+ */
+export const reportCandidateDocumentAbsence = (
+  candidateId: string,
+  reportAbsenceDto: ReportAbsenceDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AbsenceDto>({
+    url: `/api/v1/candidates/${candidateId}/document-absences`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: reportAbsenceDto,
+    signal,
+  });
+};
+
+export const getReportCandidateDocumentAbsenceMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reportCandidateDocumentAbsence>>,
+    TError,
+    { candidateId: string; data: ReportAbsenceDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof reportCandidateDocumentAbsence>>,
+  TError,
+  { candidateId: string; data: ReportAbsenceDto },
+  TContext
+> => {
+  const mutationKey = ["reportCandidateDocumentAbsence"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof reportCandidateDocumentAbsence>>,
+    { candidateId: string; data: ReportAbsenceDto }
+  > = (props) => {
+    const { candidateId, data } = props ?? {};
+
+    return reportCandidateDocumentAbsence(candidateId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReportCandidateDocumentAbsenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof reportCandidateDocumentAbsence>>
+>;
+export type ReportCandidateDocumentAbsenceMutationBody = ReportAbsenceDto;
+export type ReportCandidateDocumentAbsenceMutationError = ApiErrorDto;
+
+/**
+ * @summary Report a missing RU candidate document
+ */
+export const useReportCandidateDocumentAbsence = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reportCandidateDocumentAbsence>>,
+    TError,
+    { candidateId: string; data: ReportAbsenceDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof reportCandidateDocumentAbsence>>,
+  TError,
+  { candidateId: string; data: ReportAbsenceDto },
+  TContext
+> => {
+  const mutationOptions =
+    getReportCandidateDocumentAbsenceMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Approve or reject a RU document waiver
+ */
+export const decideCandidateDocumentAbsence = (
+  candidateId: string,
+  absenceId: string,
+  decideAbsenceDto: DecideAbsenceDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AbsenceDto>({
+    url: `/api/v1/candidates/${candidateId}/document-absences/${absenceId}/decision`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: decideAbsenceDto,
+    signal,
+  });
+};
+
+export const getDecideCandidateDocumentAbsenceMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof decideCandidateDocumentAbsence>>,
+    TError,
+    { candidateId: string; absenceId: string; data: DecideAbsenceDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof decideCandidateDocumentAbsence>>,
+  TError,
+  { candidateId: string; absenceId: string; data: DecideAbsenceDto },
+  TContext
+> => {
+  const mutationKey = ["decideCandidateDocumentAbsence"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof decideCandidateDocumentAbsence>>,
+    { candidateId: string; absenceId: string; data: DecideAbsenceDto }
+  > = (props) => {
+    const { candidateId, absenceId, data } = props ?? {};
+
+    return decideCandidateDocumentAbsence(candidateId, absenceId, data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DecideCandidateDocumentAbsenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof decideCandidateDocumentAbsence>>
+>;
+export type DecideCandidateDocumentAbsenceMutationBody = DecideAbsenceDto;
+export type DecideCandidateDocumentAbsenceMutationError = ApiErrorDto;
+
+/**
+ * @summary Approve or reject a RU document waiver
+ */
+export const useDecideCandidateDocumentAbsence = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof decideCandidateDocumentAbsence>>,
+    TError,
+    { candidateId: string; absenceId: string; data: DecideAbsenceDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof decideCandidateDocumentAbsence>>,
+  TError,
+  { candidateId: string; absenceId: string; data: DecideAbsenceDto },
+  TContext
+> => {
+  const mutationOptions =
+    getDecideCandidateDocumentAbsenceMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
  * @summary Get candidate profile photo in WebP format (publicly cached)
  */
 export const getCandidatePhoto = (
@@ -5630,11 +6012,13 @@ export function useGetCandidateDocuments<
 export const getBrowserCandidateDocumentDraft = (
   chatUuid: string,
   documentUid: string,
+  params?: GetBrowserCandidateDocumentDraftParams,
   signal?: AbortSignal,
 ) => {
   return customInstance<CandidateDocumentDraftDto>({
     url: `/api/candidate-documents/by-chat/${chatUuid}/documents/${documentUid}/draft`,
     method: "GET",
+    params,
     signal,
   });
 };
@@ -5642,9 +6026,11 @@ export const getBrowserCandidateDocumentDraft = (
 export const getGetBrowserCandidateDocumentDraftQueryKey = (
   chatUuid: string,
   documentUid: string,
+  params?: GetBrowserCandidateDocumentDraftParams,
 ) => {
   return [
     `/api/candidate-documents/by-chat/${chatUuid}/documents/${documentUid}/draft`,
+    ...(params ? [params] : []),
   ] as const;
 };
 
@@ -5654,6 +6040,7 @@ export const getGetBrowserCandidateDocumentDraftQueryOptions = <
 >(
   chatUuid: string,
   documentUid: string,
+  params?: GetBrowserCandidateDocumentDraftParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
@@ -5666,12 +6053,12 @@ export const getGetBrowserCandidateDocumentDraftQueryOptions = <
 
   const queryKey =
     queryOptions?.queryKey ??
-    getGetBrowserCandidateDocumentDraftQueryKey(chatUuid, documentUid);
+    getGetBrowserCandidateDocumentDraftQueryKey(chatUuid, documentUid, params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>
   > = ({ signal }) =>
-    getBrowserCandidateDocumentDraft(chatUuid, documentUid, signal);
+    getBrowserCandidateDocumentDraft(chatUuid, documentUid, params, signal);
 
   return {
     queryKey,
@@ -5701,6 +6088,7 @@ export function useGetBrowserCandidateDocumentDraft<
 >(
   chatUuid: string,
   documentUid: string,
+  params?: GetBrowserCandidateDocumentDraftParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof getBrowserCandidateDocumentDraft>>,
@@ -5712,6 +6100,7 @@ export function useGetBrowserCandidateDocumentDraft<
   const queryOptions = getGetBrowserCandidateDocumentDraftQueryOptions(
     chatUuid,
     documentUid,
+    params,
     options,
   );
 
@@ -6114,18 +6503,24 @@ export function useGetMyCandidateDocuments<
  */
 export const getMyCandidateDocumentDraft = (
   documentUid: string,
+  params?: GetMyCandidateDocumentDraftParams,
   signal?: AbortSignal,
 ) => {
   return customInstance<CandidateDocumentDraftDto>({
     url: `/api/candidate-documents/my/documents/${documentUid}/draft`,
     method: "GET",
+    params,
     signal,
   });
 };
 
-export const getGetMyCandidateDocumentDraftQueryKey = (documentUid: string) => {
+export const getGetMyCandidateDocumentDraftQueryKey = (
+  documentUid: string,
+  params?: GetMyCandidateDocumentDraftParams,
+) => {
   return [
     `/api/candidate-documents/my/documents/${documentUid}/draft`,
+    ...(params ? [params] : []),
   ] as const;
 };
 
@@ -6134,6 +6529,7 @@ export const getGetMyCandidateDocumentDraftQueryOptions = <
   TError = CandidateDocumentErrorDto,
 >(
   documentUid: string,
+  params?: GetMyCandidateDocumentDraftParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>,
@@ -6146,11 +6542,11 @@ export const getGetMyCandidateDocumentDraftQueryOptions = <
 
   const queryKey =
     queryOptions?.queryKey ??
-    getGetMyCandidateDocumentDraftQueryKey(documentUid);
+    getGetMyCandidateDocumentDraftQueryKey(documentUid, params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>
-  > = ({ signal }) => getMyCandidateDocumentDraft(documentUid, signal);
+  > = ({ signal }) => getMyCandidateDocumentDraft(documentUid, params, signal);
 
   return {
     queryKey,
@@ -6178,6 +6574,7 @@ export function useGetMyCandidateDocumentDraft<
   TError = CandidateDocumentErrorDto,
 >(
   documentUid: string,
+  params?: GetMyCandidateDocumentDraftParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof getMyCandidateDocumentDraft>>,
@@ -6188,6 +6585,7 @@ export function useGetMyCandidateDocumentDraft<
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetMyCandidateDocumentDraftQueryOptions(
     documentUid,
+    params,
     options,
   );
 
@@ -7533,6 +7931,15 @@ export const uploadReviewerCandidateDocument = (
     "documentTypeCode",
     uploadReviewerCandidateDocumentBody.documentTypeCode,
   );
+  if (uploadReviewerCandidateDocumentBody.mode !== undefined) {
+    formData.append("mode", uploadReviewerCandidateDocumentBody.mode);
+  }
+  if (uploadReviewerCandidateDocumentBody.documentId !== undefined) {
+    formData.append(
+      "documentId",
+      uploadReviewerCandidateDocumentBody.documentId,
+    );
+  }
   uploadReviewerCandidateDocumentBody["files[]"].forEach((value) =>
     formData.append("files[]", value),
   );
@@ -9837,6 +10244,180 @@ export const useRejectDocument = <
 };
 
 /**
+ * @summary Delivery status of document return messages
+ */
+export const listDocumentReturnNotifications = (
+  documentId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CommunicationOperationDto[]>({
+    url: `/api/v1/documents/${documentId}/return-notifications`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getListDocumentReturnNotificationsQueryKey = (
+  documentId: string,
+) => {
+  return [`/api/v1/documents/${documentId}/return-notifications`] as const;
+};
+
+export const getListDocumentReturnNotificationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listDocumentReturnNotifications>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listDocumentReturnNotifications>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListDocumentReturnNotificationsQueryKey(documentId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listDocumentReturnNotifications>>
+  > = ({ signal }) => listDocumentReturnNotifications(documentId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!documentId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listDocumentReturnNotifications>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListDocumentReturnNotificationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listDocumentReturnNotifications>>
+>;
+export type ListDocumentReturnNotificationsQueryError = ApiErrorDto;
+
+/**
+ * @summary Delivery status of document return messages
+ */
+
+export function useListDocumentReturnNotifications<
+  TData = Awaited<ReturnType<typeof listDocumentReturnNotifications>>,
+  TError = ApiErrorDto,
+>(
+  documentId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listDocumentReturnNotifications>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListDocumentReturnNotificationsQueryOptions(
+    documentId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Retry a return message that failed before delivery
+ */
+export const retryDocumentReturnNotification = (
+  documentId: string,
+  operationId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CommunicationOperationDto>({
+    url: `/api/v1/documents/${documentId}/return-notifications/${operationId}/retry`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getRetryDocumentReturnNotificationMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryDocumentReturnNotification>>,
+    TError,
+    { documentId: string; operationId: string },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof retryDocumentReturnNotification>>,
+  TError,
+  { documentId: string; operationId: string },
+  TContext
+> => {
+  const mutationKey = ["retryDocumentReturnNotification"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof retryDocumentReturnNotification>>,
+    { documentId: string; operationId: string }
+  > = (props) => {
+    const { documentId, operationId } = props ?? {};
+
+    return retryDocumentReturnNotification(documentId, operationId);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RetryDocumentReturnNotificationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof retryDocumentReturnNotification>>
+>;
+
+export type RetryDocumentReturnNotificationMutationError = ApiErrorDto;
+
+/**
+ * @summary Retry a return message that failed before delivery
+ */
+export const useRetryDocumentReturnNotification = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryDocumentReturnNotification>>,
+    TError,
+    { documentId: string; operationId: string },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof retryDocumentReturnNotification>>,
+  TError,
+  { documentId: string; operationId: string },
+  TContext
+> => {
+  const mutationOptions =
+    getRetryDocumentReturnNotificationMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
  * @summary Manually send an approved document to ERP; no automatic retry
  */
 export const sendDocumentToErp = (
@@ -10423,7 +11004,7 @@ export function useGetPreviousDocumentDetails<
 }
 
 /**
- * @summary Save local-only corrections without modifying ERP
+ * @summary Save corrections and request ERP update of the existing document
  */
 export const editPreviousDocumentFields = (
   candidateId: string,
@@ -10482,7 +11063,7 @@ export type EditPreviousDocumentFieldsMutationBody = EditDocumentFieldsDto;
 export type EditPreviousDocumentFieldsMutationError = ApiErrorDto;
 
 /**
- * @summary Save local-only corrections without modifying ERP
+ * @summary Save corrections and request ERP update of the existing document
  */
 export const useEditPreviousDocumentFields = <
   TError = ApiErrorDto,
@@ -10501,6 +11082,89 @@ export const useEditPreviousDocumentFields = <
   TContext
 > => {
   const mutationOptions = getEditPreviousDocumentFieldsMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+
+/**
+ * @summary Retry ERP save for corrected requisites using the original request ID
+ */
+export const retryPreviousDocumentErpEdit = (
+  candidateId: string,
+  documentId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<PreviousDocumentDetailsDto>({
+    url: `/api/v1/candidates/${candidateId}/previous-documents/${documentId}/fields/erp-retry`,
+    method: "POST",
+    signal,
+  });
+};
+
+export const getRetryPreviousDocumentErpEditMutationOptions = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryPreviousDocumentErpEdit>>,
+    TError,
+    { candidateId: string; documentId: string },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof retryPreviousDocumentErpEdit>>,
+  TError,
+  { candidateId: string; documentId: string },
+  TContext
+> => {
+  const mutationKey = ["retryPreviousDocumentErpEdit"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof retryPreviousDocumentErpEdit>>,
+    { candidateId: string; documentId: string }
+  > = (props) => {
+    const { candidateId, documentId } = props ?? {};
+
+    return retryPreviousDocumentErpEdit(candidateId, documentId);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RetryPreviousDocumentErpEditMutationResult = NonNullable<
+  Awaited<ReturnType<typeof retryPreviousDocumentErpEdit>>
+>;
+
+export type RetryPreviousDocumentErpEditMutationError = ApiErrorDto;
+
+/**
+ * @summary Retry ERP save for corrected requisites using the original request ID
+ */
+export const useRetryPreviousDocumentErpEdit = <
+  TError = ApiErrorDto,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryPreviousDocumentErpEdit>>,
+    TError,
+    { candidateId: string; documentId: string },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof retryPreviousDocumentErpEdit>>,
+  TError,
+  { candidateId: string; documentId: string },
+  TContext
+> => {
+  const mutationOptions =
+    getRetryPreviousDocumentErpEditMutationOptions(options);
 
   return useMutation(mutationOptions);
 };

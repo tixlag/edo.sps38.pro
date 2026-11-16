@@ -447,6 +447,7 @@ describe("reviewDocuments with profile filters", () => {
           groupBy: extra.groupBy ?? vi.fn(async () => []),
         },
         candidatePreviousDocument: { findMany: vi.fn(async () => []) },
+        candidateDocumentAbsence: { findMany: vi.fn(async () => []) },
         documentType: { findMany: extra.catalog ?? vi.fn(async () => []) },
       } as never,
       access,
@@ -599,6 +600,7 @@ describe("reviewDocuments candidate progress", () => {
     const service = new DocumentReadService(
       {
         document: { findMany, groupBy },
+        candidateDocumentAbsence: { findMany: vi.fn(async () => []) },
         documentType: { findMany: catalog },
         candidatePreviousDocument: { findMany: vi.fn(async () => []) },
       } as never,
@@ -695,9 +697,9 @@ describe("reviewDocuments candidate progress", () => {
     const byId = new Map(
       page.items.map((d) => [d.candidate!.id, d.candidate!]),
     );
-    // c1 (ru + POS1): allRu T1 + position T2.
+    // c1: two approved instances of T1 satisfy one of the two required types.
     expect(byId.get("c1")).toMatchObject({
-      approvedDocuments: 2,
+      approvedDocuments: 1,
       requiredDocuments: 2,
     });
     // c2 without positionCode: approved still counts, required is null.

@@ -115,6 +115,9 @@ const receiptSchema = z.object({
   mimeType: z.string(),
   fileSha256: z.string().regex(/^[0-9a-f]{64}$/),
   fileSize: z.number().int().positive().max(MAX_APPROVED_BYTES),
+  documentInstanceId: z.string().max(64).optional(),
+  documentVersion: z.number().int().positive().optional(),
+  sourceId: z.string().max(256).optional(),
 });
 export function validateErpReceipt(
   value: unknown,
@@ -148,7 +151,11 @@ export function validateErpReceipt(
     r.fileSize === artifact.sizeBytes &&
     r.mimeType === artifact.mimeType &&
     r.fileName === artifact.filename &&
-    r.duplicate === (status === 200)
+    r.duplicate === (status === 200) &&
+    (!recipient?.documentInstanceId ||
+      (r.documentInstanceId === recipient.documentInstanceId &&
+        r.documentVersion === recipient.documentVersion &&
+        r.sourceId === `edo:${recipient.documentInstanceId}`))
   );
 }
 
@@ -158,6 +165,8 @@ export type ErpDocumentRecipient = {
   chatUid?: string;
   personUid?: string;
   code1c?: string;
+  documentInstanceId?: string;
+  documentVersion?: number;
 };
 
 /**

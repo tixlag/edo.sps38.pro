@@ -74,16 +74,22 @@ export function classifyStageType(
   profile: Profile,
 ): "required" | "additional" | null {
   if (excludedForSex(type.code, profile.sex)) return null;
-  const rule = (type.stageRules?.length ? type.stageRules : [type]).find(
+  const rules = (type.stageRules?.length ? type.stageRules : [type]).filter(
     (item) => (item.stage ?? null) === stage,
   );
-  if (!rule) return null;
-  const category = classifyRule(
-    rule,
-    profile.positionCode,
-    profile.citizenship,
-    profile.projectCode,
+  const categories = rules.map((rule) =>
+    classifyRule(
+      rule,
+      profile.positionCode,
+      profile.citizenship,
+      profile.projectCode,
+    ),
   );
+  const category = categories.includes("required")
+    ? "required"
+    : categories.includes("additional")
+      ? "additional"
+      : null;
   return category === "required" &&
     isPatentExempt(type.erpUid, profile.citizenship)
     ? "additional"
@@ -92,25 +98,51 @@ export function classifyStageType(
 
 export function reviewStageProgress(
   types: Type[],
-  documents: { documentTypeId: string | null; status: string }[],
+  documents: {
+    documentTypeId: string | null;
+    status: string;
+    acceptedVersion?: number | null;
+  }[],
   profile: Profile,
   previousUids: string[] = [],
   isIg = true,
   deliveryProblemTypeIds: readonly string[] = [],
 ): StageProgress[] {
   const deliveryProblems = new Set(deliveryProblemTypeIds);
+  // Count required types once; a valid approved instance retains credit when
+  // an additional instance is being collected or checked.
+  const rank = [
+    "APPROVED",
+    "SIGNED",
+    "IN_REVIEW",
+    "OCR_PENDING",
+    "UPLOADED",
+    "RETURNED",
+    "OCR_FAILED",
+    "EXPIRED",
+    "DRAFT",
+  ];
+  const allStates = new Map<string | null, string>();
+  for (const source of documents) {
+    const doc = source.acceptedVersion
+      ? { ...source, status: "APPROVED" }
+      : source;
+    const previous = allStates.get(doc.documentTypeId);
+    if (!previous || rank.indexOf(doc.status) < rank.indexOf(previous))
+      allStates.set(doc.documentTypeId, doc.status);
+  }
   const nonDraftStates = new Map(
-    documents
-      .filter((d) => d.status !== "DRAFT")
-      .map((d) => [d.documentTypeId, d.status]),
+    [...allStates].filter(([, status]) => status !== "DRAFT"),
   );
-  const allStates = new Map(documents.map((d) => [d.documentTypeId, d.status]));
   const reused = new Set(previousUids.map((uid) => uid.toLowerCase()));
   const stages = new Map<number | null, StageProgress>();
   for (const type of types) {
     if (excludedForSex(type.code, profile.sex)) continue;
-    for (const rule of type.stageRules?.length ? type.stageRules : [type]) {
-      const stage = rule.stage ?? null;
+    for (const stage of new Set(
+      (type.stageRules?.length ? type.stageRules : [type]).map(
+        (rule) => rule.stage ?? null,
+      ),
+    )) {
       const category = classifyStageType(type, stage, profile);
       if (!category) continue;
       let entry = stages.get(stage);

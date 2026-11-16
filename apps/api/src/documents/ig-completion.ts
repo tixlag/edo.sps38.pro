@@ -37,6 +37,7 @@ type CompletionDocument = {
   documentTypeId: string | null;
   status: string;
   currentVersion: number;
+  acceptedVersion?: number | null;
   versions: {
     version: number;
     status: string;
@@ -63,14 +64,31 @@ export function igRequiredDocumentsComplete(
   return (
     required.length > 0 &&
     required.every((type) => {
-      const current = documents.find((doc) => doc.documentTypeId === type.id);
+      const instances = documents.filter(
+        (doc) => doc.documentTypeId === type.id,
+      );
+      const current =
+        instances.find(
+          (doc) =>
+            (["APPROVED", "SIGNED"].includes(doc.status) ||
+              !!doc.acceptedVersion) &&
+            doc.versions.some(
+              (v) =>
+                v.version === (doc.acceptedVersion ?? doc.currentVersion) &&
+                ["APPROVED", "SIGNED"].includes(v.status),
+            ),
+        ) ??
+        instances.find((doc) => doc.status !== "DRAFT") ??
+        instances[0];
       if (current && current.status !== "DRAFT") {
         const version = current.versions.find(
-          (v) => v.version === current.currentVersion,
+          (v) =>
+            v.version === (current.acceptedVersion ?? current.currentVersion),
         );
         if (
           !version ||
-          !["APPROVED", "SIGNED"].includes(current.status) ||
+          (!current.acceptedVersion &&
+            !["APPROVED", "SIGNED"].includes(current.status)) ||
           !["APPROVED", "SIGNED"].includes(version.status)
         ) {
           return false;
@@ -78,8 +96,10 @@ export function igRequiredDocumentsComplete(
 
         const isConfirmedReused =
           version.ocrSource === "PREVIOUS_LINK" &&
-          ((version.ocrRaw as Record<string, unknown> | null)?.source === "ERP" ||
-            (version.ocrRaw as Record<string, unknown> | null)?.deliveredHistorically === true);
+          ((version.ocrRaw as Record<string, unknown> | null)?.source ===
+            "ERP" ||
+            (version.ocrRaw as Record<string, unknown> | null)
+              ?.deliveredHistorically === true);
         if (isConfirmedReused) {
           return true;
         }

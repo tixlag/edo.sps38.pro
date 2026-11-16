@@ -17,6 +17,9 @@ const uuid = z
   .uuid()
   .transform((v) => v.toLowerCase());
 const named = z.object({ code: z.string(), name: z.string() });
+const positionNamed = named.extend({
+  department: z.object({ id: z.string(), name: z.string() }).nullable().default(null),
+});
 const safeConflictCodes = new Set([
   "CANDIDATE_DUPLICATE_REQUIRES_REVIEW",
   "EXISTING_PERSON_REQUIRES_EXPLICIT_SELECTION",
@@ -117,6 +120,9 @@ export const erpIdentitySchema = z
   });
 export type ErpIdentity = z.infer<typeof erpIdentitySchema>;
 export const erpCardSchema = z.object({
+  employmentConfirmed: z.boolean().default(false),
+  employmentConfirmationId: z.string().max(128).regex(/^hire:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:\d{8}$/i).nullable().default(null),
+  employmentNotificationRecipientCodes1c: z.array(z.string().trim().min(1).max(64)).max(100).default([]),
   erpUid: uuid,
   chatUuid: uuid.nullable(),
   code1C: z.string().nullable(),
@@ -132,7 +138,7 @@ export const erpCardSchema = z.object({
     .string()
     .regex(/^[a-zA-Z]{2}$/)
     .nullable(),
-  position: named.nullable(),
+  position: positionNamed.nullable(),
   project: named.nullable(),
   manager: z.object({ id: z.string(), name: z.string() }).nullable(),
   mentor: z
@@ -256,6 +262,12 @@ export const previousDocumentsSchema = z.object({
     }),
   ),
 });
+export const previousDocumentsBatchSchema = z.object({
+  items: z.array(z.union([
+    z.object({ candidateUid: uuid, documents: previousDocumentsSchema }),
+    z.object({ candidateUid: uuid, error: z.object({ code: z.string().max(64) }) }),
+  ])).max(50),
+});
 export const erpEmploymentHistorySchema = z.object({
   items: z
     .array(
@@ -280,6 +292,7 @@ export const referencesSchema = z.object({
       editable: z.boolean().optional(),
       requiresProject: z.boolean().optional(),
       requiresPlannedArrivalDate: z.boolean().optional(),
+      department: z.object({ id: z.string(), name: z.string() }).nullable().optional(),
     }),
   ),
 });
@@ -336,6 +349,14 @@ export function safeOperationRejection(code: string | undefined) {
 export class ErpWorkspaceClient {
   private readonly responseSignals = new WeakMap<Response, AbortSignal>();
   constructor(private readonly config: ConfigService) {}
+  personDocumentsBatch(candidateUids: string[], signal?: AbortSignal) {
+    if (!candidateUids.length || candidateUids.length > 50 ||
+      new Set(candidateUids).size !== candidateUids.length ||
+      candidateUids.some((id) => !uuid.safeParse(id).success))
+      throw new BadRequestException("INVALID_CANDIDATE_BATCH");
+    return this.request("person-documents-batch", previousDocumentsBatchSchema,
+      {}, { candidateUids }, signal);
+  }
   private async response(
     action: string,
     query: Record<string, string>,
