@@ -27,6 +27,7 @@ const current = (
   title: "СНИЛС",
   status: "APPROVED",
   currentVersion: 2,
+  acceptedVersion: 2,
   revision: 1,
   deliveryStatus: "SENT",
   pendingDeliveryVersions: [],

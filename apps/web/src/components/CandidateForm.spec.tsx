@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
 vi.mock("@edo/api-client", () => {
   const empty = { data: { items: [] }, isLoading: false, isError: false };
   return {
+    getListCandidateSettlementsQueryKey: () => ["settlements"],
     useListCandidateSettlements: () => ({
       data: { items: [] },
       isLoading: false,
@@ -219,4 +220,40 @@ it("does not overwrite a manually selected or cleared manager when the directory
   await act(async () => clear.click());
   await renderCreation();
   expect((await sendCreation()).managerId).toBeNull();
+});
+
+it("saves a settlement absent from ERP suggestions", async () => {
+  vi.useFakeTimers();
+  await renderCreation();
+  const input = container.querySelector<HTMLInputElement>(
+    'input[placeholder="Выберите из подсказок или введите свой вариант"]',
+  )!;
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+      input,
+      "Новый посёлок",
+    );
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(input.value).toBe("Новый посёлок");
+  expect((await sendCreation()).settlement).toBe("Новый посёлок");
+});
+
+it("shows a saved settlement when the card is reopened", async () => {
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root.render(
+    <CandidateForm
+      profile={{ settlement: "Новый посёлок" } as CandidateWorkspaceDto}
+      pending={false}
+      locked={false}
+      error=""
+      onSubmit={state.submit}
+      onCancel={vi.fn()}
+    />,
+  ));
+  expect(container.querySelector<HTMLInputElement>(
+    'input[placeholder="Выберите из подсказок или введите свой вариант"]',
+  )?.value).toBe("Новый посёлок");
 });

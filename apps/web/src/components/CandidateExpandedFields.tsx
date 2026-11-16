@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   useListCandidateCountries,
   useListCandidateOrganizations,
@@ -8,6 +8,7 @@ import {
   useListCandidateContactKinds,
   useListCandidateUniversities,
   useListCandidateSettlements,
+  getListCandidateSettlementsQueryKey,
   type CandidatePatchFieldsDto,
   type CandidateWorkspaceDto,
   type CandidateReferenceDto,
@@ -34,10 +35,19 @@ export function CandidateExpandedFields({
     ? "person"
     : (fields.sourceComment?.kind ??
       (fields.sourceId === "Другое" ? "text" : ""));
+  const settlementListId = useId();
   const [settlementQuery, setSettlementQuery] = useState("");
+  const [settlementSearch, setSettlementSearch] = useState("");
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettlementSearch(settlementQuery.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [settlementQuery]);
   const settlements = useListCandidateSettlements({
-    q: settlementQuery || undefined,
-  });
+    q: settlementSearch || undefined,
+  }, { query: {
+    queryKey: getListCandidateSettlementsQueryKey({ q: settlementSearch || undefined }),
+    enabled: settlementSearch.length >= 3 && settlementSearch.length <= 100,
+  } });
   const [countryQuery, setCountryQuery] = useState("");
   const [organizationQuery, setOrganizationQuery] = useState("");
   const [sourceQuery, setSourceQuery] = useState("");
@@ -150,27 +160,32 @@ export function CandidateExpandedFields({
           </label>
           <div className="space-y-1 text-sm sm:col-span-2">
             <p>Населённый пункт</p>
-            <SearchSelect
-              label="Населённый пункт"
-              placeholder="Введите не менее 3 символов"
-              value={fields.settlement}
-              selectedLabel={fields.settlement ?? undefined}
-              options={(settlements.data?.items ?? []).map((item) => ({
-                value: item.name,
-                label: item.name,
-              }))}
-              onSearchChange={setSettlementQuery}
-              onChange={(value) => set("settlement", value ?? null)}
-              disabled={disabled}
-              isLoading={settlements.isLoading}
-              isError={settlements.isError}
-              onRetry={() => void settlements.refetch()}
-              emptyText={
-                settlementQuery.trim().length < 3
-                  ? "Введите не менее 3 символов"
-                  : "Ничего не найдено"
-              }
+            <input
+              type="text"
+              list={settlementListId}
+              className={CANDIDATE_CONTROL}
+              value={fields.settlement ?? ""}
+              maxLength={500}
+              placeholder="Выберите из подсказок или введите свой вариант"
+              onChange={(event) => {
+                set("settlement", event.target.value || null);
+                setSettlementQuery(event.target.value);
+              }}
+              onBlur={() => {
+                const trimmed = fields.settlement?.trim() || null;
+                if (trimmed !== fields.settlement) set("settlement", trimmed);
+              }}
             />
+            <datalist id={settlementListId}>
+              {(settlements.data?.items ?? []).map((item) => (
+                <option key={item.id} value={item.name} />
+              ))}
+            </datalist>
+            {settlementSearch.length >= 3 && settlements.isError && (
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Подсказки недоступны. Населённый пункт можно ввести вручную.
+              </p>
+            )}
           </div>
         </div>
       </section>
