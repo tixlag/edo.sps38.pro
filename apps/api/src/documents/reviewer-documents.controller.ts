@@ -33,7 +33,9 @@ export class ReviewerDocumentsController {
   @ApiConsumes("multipart/form-data")
   @ApiHeader({ name: "Idempotency-Key", required: false, description: "May also be supplied as the idempotencyKey multipart field" })
   @ApiBody({ schema: { type: "object", required: ["documentTypeCode", "files[]", "idempotencyKey"], properties: {
-    idempotencyKey: { type: "string", minLength: 1, maxLength: 128 }, documentTypeCode: { type: "string" }, "files[]": { type: "array", minItems: 1, maxItems: 10, items: { type: "string", format: "binary" } },
+    idempotencyKey: { type: "string", minLength: 1, maxLength: 128 }, documentTypeCode: { type: "string" },
+    mode: { type: "string", enum: ["new", "replace", "append"] }, documentId: { type: "string" },
+    "files[]": { type: "array", minItems: 1, maxItems: 10, items: { type: "string", format: "binary" } },
   } } })
   @ApiResponse({ status: 202, type: UploadAcceptedDto })
   upload(@Param("candidateId") id: string, @CurrentPrincipal() principal: AuthPrincipal,
@@ -47,11 +49,18 @@ export class ReviewerDocumentsController {
     return this.documents.details(id, documentId, principal);
   }
   @Patch("previous-documents/:documentId/fields")
-  @ApiOperation({ operationId: "editPreviousDocumentFields", summary: "Save local-only corrections without modifying ERP" })
+  @ApiOperation({ operationId: "editPreviousDocumentFields", summary: "Save corrections and request ERP update of the existing document" })
   @ApiResponse({ status: 200, type: PreviousDocumentDetailsDto })
   edit(@Param("candidateId") id: string, @Param("documentId") documentId: string, @Body() body: EditDocumentFieldsDto,
     @CurrentPrincipal() principal: AuthPrincipal, @Req() req: { correlationId?: string }) {
     return this.documents.edit(id, documentId, body, principal, req.correlationId ?? "");
+  }
+  @Post("previous-documents/:documentId/fields/erp-retry")
+  @ApiOperation({ operationId: "retryPreviousDocumentErpEdit", summary: "Retry ERP save for corrected requisites using the original request ID" })
+  @ApiResponse({ status: 200, type: PreviousDocumentDetailsDto })
+  retryPreviousEdit(@Param("candidateId") id: string, @Param("documentId") documentId: string,
+    @CurrentPrincipal() principal: AuthPrincipal) {
+    return this.documents.retryErpEdit(id, documentId, principal);
   }
   @Post("documents/:documentId/versions/:version/delivery")
   @HttpCode(200)

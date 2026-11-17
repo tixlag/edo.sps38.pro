@@ -122,7 +122,7 @@ describe("document catalog cached snapshot", () => {
   const settle = async (count: number) => {
     await vi.waitFor(() => expect(commits).toBe(count));
   };
-  it("returns single ERP stage and category for each applicable document", async () => {
+  it("returns all applicable ERP stages and strongest category per stage", async () => {
     syncedAt = new Date();
     const base = (await prisma.documentType.findMany())[0];
     const rule = {
@@ -179,8 +179,11 @@ describe("document catalog cached snapshot", () => {
     ).toEqual([
       {
         code: "PASSPORT",
-        stages: [3],
-        stageDetails: [{ stage: 3, category: "required" }],
+        stages: [3, null],
+        stageDetails: [
+          { stage: 3, category: "required" },
+          { stage: null, category: "required" },
+        ],
       },
       {
         code: "OPTIONAL",

@@ -615,6 +615,7 @@ export class CatalogDocumentStageCategoryDto {
 }
 
 export class CatalogDocumentTypeDto extends DocumentTypeDto {
+  @ApiProperty() multipleInstancesAllowed!: boolean;
   @ApiProperty({ format: "uuid" }) documentUid!: string;
   @ApiProperty({
     type: "array",
@@ -978,6 +979,15 @@ export class CandidateSnapshotDto {
 }
 
 export class DocumentUploadGrantRequestDto extends DocumentScopeDto {
+  @ApiPropertyOptional({ enum: ["replace", "new", "append"] })
+  @IsOptional()
+  @IsIn(["replace", "new", "append"])
+  mode?: "replace" | "new" | "append";
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  documentId?: string;
   @ApiProperty({ format: "uuid" }) @IsUUID() documentUid!: string;
   @ApiProperty({ maxLength: 128 })
   @IsString()

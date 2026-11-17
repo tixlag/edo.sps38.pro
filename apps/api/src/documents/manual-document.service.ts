@@ -1,5 +1,10 @@
+import { reserveDocumentInstance } from "./document-instance";
 import type { AuthPrincipal } from "../auth/auth-principal";
-import { candidateGroupAccessWhere, candidateReviewGroup, requireReviewGroup } from "./review-group";
+import {
+  candidateGroupAccessWhere,
+  candidateReviewGroup,
+  requireReviewGroup,
+} from "./review-group";
 import {
   BadRequestException,
   ConflictException,
@@ -30,6 +35,8 @@ import { resolveCandidateIdentity } from "./candidate-identity";
 import { DocumentNotificationService } from "./document-notification.service";
 import { ErpCandidateClient } from "./erp-candidate.client";
 import type { ReviewGroup } from "./review-group";
+import { CandidateDocumentError } from "./candidate-document.error";
+import { CandidateDocumentErrorCode } from "./dto/candidate-error.dto";
 
 @Injectable()
 export class ManualDocumentService {
@@ -53,9 +60,11 @@ export class ManualDocumentService {
     if (!metadata) throw new BadRequestException("metadata is required");
     if (!key || !/^[\x21-\x7e]{1,128}$/.test(key))
       throw new BadRequestException("Idempotency-Key is required");
-    const identityKey = reviewer ? `reviewer:${reviewer.candidateId}` : metadata.chat_uuid
-      ? `chat:${metadata.chat_uuid}`
-      : `employee:${metadata.code_1c}`;
+    const identityKey = reviewer
+      ? `reviewer:${reviewer.candidateId}`
+      : metadata.chat_uuid
+        ? `chat:${metadata.chat_uuid}`
+        : `employee:${metadata.code_1c}`;
     const fingerprint = createHash("sha256")
       .update(
         JSON.stringify({
@@ -151,7 +160,8 @@ export class ManualDocumentService {
     const signal = AbortSignal.timeout(120000);
     try {
       for (const file of reserved.submission.version.files) {
-        const staged = upload.files[file.ordinal];
+        const staged = upload.files.find((entry) => entry.id === file.id);
+        if (!staged) continue;
         await this.storage.upload(
           file.storageKey,
           staged.path,
@@ -202,6 +212,21 @@ export class ManualDocumentService {
           });
           queuedJobId = job.id;
         }
+        let acceptedVersion = reserved.acceptedVersion;
+        if (metadata.mode === "append" && reserved.appendedFromVersion) {
+          // Approval may complete while the appended files are uploaded to storage.
+          const base = await tx.documentVersion.findUnique({
+            where: {
+              documentId_version: {
+                documentId: reserved.submission.version.documentId,
+                version: reserved.appendedFromVersion,
+              },
+            },
+            select: { status: true },
+          });
+          if (base && ["APPROVED", "SIGNED"].includes(base.status))
+            acceptedVersion = reserved.appendedFromVersion;
+        }
         const currentVersionChanged = await tx.document.updateMany({
           where: {
             id: reserved.submission.version.documentId,
@@ -210,6 +235,7 @@ export class ManualDocumentService {
           data: {
             currentVersion: reserved.submission.version.version,
             status: acceptedStatus,
+            acceptedVersion,
           },
         });
         if (candidateId && currentVersionChanged.count)
@@ -303,10 +329,15 @@ export class ManualDocumentService {
             }
 
             const owner = reviewer
-              ? await tx.candidate.findFirstOrThrow({ where: { id: reviewer.candidateId, ...candidateGroupAccessWhere(reviewer.principal, true) } })
+              ? await tx.candidate.findFirstOrThrow({
+                  where: {
+                    id: reviewer.candidateId,
+                    ...candidateGroupAccessWhere(reviewer.principal, true),
+                  },
+                })
               : !metadata.chat_uuid &&
-              metadata.code_1c &&
-              metadata.citizenship.toLowerCase() !== "ru"
+                  metadata.code_1c &&
+                  metadata.citizenship.toLowerCase() !== "ru"
                 ? await igUploadOwner(
                     tx,
                     metadata.code_1c,
@@ -325,7 +356,11 @@ export class ManualDocumentService {
             const current = await tx.candidate.findUniqueOrThrow({
               where: { id: owner.id },
             });
-            if (reviewer) requireReviewGroup(reviewer.principal, candidateReviewGroup(current));
+            if (reviewer)
+              requireReviewGroup(
+                reviewer.principal,
+                candidateReviewGroup(current),
+              );
             if (erpUid && !current.erpUid) {
               await tx.candidate.update({
                 where: { id: owner.id },
@@ -417,35 +452,80 @@ export class ManualDocumentService {
                 },
               },
             });
-            if (previous) return { reused: true, submission: previous };
+            if (previous)
+              return {
+                reused: true,
+                submission: previous,
+                acceptedVersion: null,
+                appendedFromVersion: null,
+              };
             if (locationId !== undefined && current.locationId !== locationId)
               await tx.candidate.update({
                 where: { id: owner.id },
                 data: { locationId },
               });
-            const doc = await tx.document.upsert({
-              where: {
-                candidateId_documentTypeId: {
-                  candidateId: owner.id,
-                  documentTypeId: typeId,
-                },
-              },
-              update: {},
-              create: {
-                candidateId: owner.id,
-                documentTypeId: typeId,
-                currentVersion: 0,
-              },
-            });
+            const doc = await reserveDocumentInstance(
+              tx,
+              owner.id,
+              typeId,
+              metadata,
+            );
             await assertDocumentUploadAllowed(tx, doc, !!reviewer);
             const last = await tx.documentVersion.aggregate({
               where: { documentId: doc.id },
               _max: { version: true },
             });
             const number = (last._max.version ?? 0) + 1;
+            const prior =
+              metadata.mode === "append"
+                ? await tx.documentVersion.findFirst({
+                    where: { documentId: doc.id, version: doc.currentVersion },
+                    include: {
+                      files: {
+                        where: { deletedAt: null },
+                        orderBy: { ordinal: "asc" },
+                      },
+                      fields: true,
+                    },
+                  })
+                : null;
+            if (metadata.mode === "append" && !prior)
+              throw new ConflictException("DOCUMENT_VERSION_REQUIRED");
+            if (prior) {
+              if (prior.files.length + upload.files.length > 10)
+                throw new CandidateDocumentError(
+                  CandidateDocumentErrorCode.DOCUMENT_REQUEST_INVALID,
+                  undefined,
+                  undefined,
+                  "В документе может быть не больше 10 файлов. Удалите лишние страницы или замените документ.",
+                );
+              if (
+                [...prior.files, ...upload.files].reduce(
+                  (count, file) => count + file.pageCount,
+                  0,
+                ) > 100
+              )
+                throw new CandidateDocumentError(
+                  CandidateDocumentErrorCode.DOCUMENT_REQUEST_INVALID,
+                  undefined,
+                  undefined,
+                  "В документе может быть не больше 100 страниц. Удалите лишние страницы или замените документ.",
+                );
+            }
+            const preserved = (prior?.files ?? []).map(
+              (
+                {
+                  id: _id,
+                  versionId: _versionId,
+                  deletedAt: _deletedAt,
+                  ...file
+                },
+                ordinal,
+              ) => ({ ...file, id: randomUUID(), ordinal }),
+            );
             const files = upload.files.map((f) => ({
               id: f.id,
-              ordinal: f.ordinal,
+              ordinal: f.ordinal + preserved.length,
               storageKey: this.storage.keyFor(doc.id, number, f.id),
               filename: f.filename,
               mimeType: f.mimeType,
@@ -466,11 +546,11 @@ export class ManualDocumentService {
               data: {
                 documentId: doc.id,
                 version: number,
-                storageKey: files[0].storageKey,
+                storageKey: preserved[0]?.storageKey ?? files[0].storageKey,
                 status: "UPLOADED",
                 positionCode1c: metadata.position_code_1c,
                 citizenship: metadata.citizenship,
-                files: { create: files },
+                files: { create: [...preserved, ...files] },
                 fields: {
                   create: definitions.map(
                     ({ name, kind, required, ordinal }) => ({
@@ -478,8 +558,13 @@ export class ManualDocumentService {
                       kind,
                       required,
                       ordinal,
-                      submittedValue: textValue(fields[name]),
-                      value: textValue(fields[name]),
+                      submittedValue:
+                        textValue(fields[name]) ??
+                        prior?.fields.find((f) => f.name === name)
+                          ?.submittedValue,
+                      value:
+                        textValue(fields[name]) ??
+                        prior?.fields.find((f) => f.name === name)?.value,
                     }),
                   ),
                 },
@@ -510,7 +595,17 @@ export class ManualDocumentService {
               correlationId,
               after: { version: number, submissionId: submission.id },
             });
-            return { reused: false, submission };
+            return {
+              reused: false,
+              submission,
+              appendedFromVersion: prior?.version ?? null,
+              acceptedVersion:
+                metadata.mode === "append"
+                  ? prior && ["APPROVED", "SIGNED"].includes(prior.status)
+                    ? prior.version
+                    : doc.acceptedVersion
+                  : null,
+            };
           },
           { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
         );

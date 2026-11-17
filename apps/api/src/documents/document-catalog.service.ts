@@ -16,6 +16,13 @@ import { CandidateDocumentError } from "./candidate-document.error";
 import { CandidateDocumentErrorCode as Code } from "./dto/candidate-error.dto";
 import { erpDocumentHeaders } from "./erp-document-auth";
 
+export const MULTIPLE_DOCUMENT_UIDS = new Set([
+  "3f164241-8c5b-11eb-ba8b-00259002db81",
+  "10fa3e03-751b-11ec-80cd-002590854e7f",
+  "a18522de-8341-11eb-ba8b-00259002db81",
+  "402ec3c2-3cf6-11f0-89f3-00505601221a",
+  "bdf50265-5469-11ef-89df-00505601221a",
+]);
 export const CATALOG_TTL_MS = 24 * 60 * 60_000;
 const RETRY_MS = 90_000;
 const REFRESH_LOCK_KEY = "edo:document-catalog:refresh";
@@ -168,6 +175,9 @@ export class DocumentCatalogService {
                   LEGACY_CODES[item.УИНДокумента] ?? `ERP_${item.УИНДокумента}`,
                 title: item.НаименованиеДокумента,
                 erpUid: item.УИНДокумента,
+                multipleInstancesAllowed: MULTIPLE_DOCUMENT_UIDS.has(
+                  item.УИНДокумента.toLowerCase(),
+                ),
                 allRu: item.ВсемРФ,
                 allForeign: item.ВсемИГ,
                 requiredForAll: item.ОбязательныйДляВсех,
@@ -177,6 +187,9 @@ export class DocumentCatalogService {
               update: {
                 title: item.НаименованиеДокумента,
                 erpUid: item.УИНДокумента,
+                multipleInstancesAllowed: MULTIPLE_DOCUMENT_UIDS.has(
+                  item.УИНДокумента.toLowerCase(),
+                ),
                 allRu: item.ВсемРФ,
                 allForeign: item.ВсемИГ,
                 requiredForAll: item.ОбязательныйДляВсех,
@@ -302,26 +315,39 @@ export class DocumentCatalogService {
       items: types
         .filter((t) => applicable(t, position, citizenship, sex, project))
         .map((t) => {
-          const stage = t.stage ?? null;
           const rules = t.stageRules?.length ? t.stageRules : [t];
-          const categories = rules
-            .map((rule) =>
-              classifyRule(rule, position, citizenship, project),
-            )
-            .filter(
-              (cat): cat is "required" | "additional" => cat !== null,
-            );
-          const category: "required" | "additional" =
-            categories.includes("required") && !isPatentExempt(t.erpUid, citizenship)
-            ? "required"
-            : "additional";
-
+          const rawDetails = rules.flatMap((rule) => {
+            const category = classifyRule(rule, position, citizenship, project);
+            return category
+              ? [
+                  {
+                    stage: rule.stage ?? null,
+                    category:
+                      category === "required" &&
+                      isPatentExempt(t.erpUid, citizenship)
+                        ? ("additional" as const)
+                        : category,
+                  },
+                ]
+              : [];
+          });
+          const byStage = new Map<number | null, "required" | "additional">();
+          for (const detail of rawDetails)
+            if (byStage.get(detail.stage) !== "required")
+              byStage.set(detail.stage, detail.category);
+          const stageDetails = [...byStage].map(([stage, category]) => ({
+            stage,
+            category,
+          }));
           return {
             code: t.code,
             title: t.title,
             documentUid: t.erpUid!,
-            stages: [stage],
-            stageDetails: [{ stage, category }],
+            stages: stageDetails.map((item) => item.stage),
+            stageDetails,
+            multipleInstancesAllowed: MULTIPLE_DOCUMENT_UIDS.has(
+              t.erpUid!.toLowerCase(),
+            ),
             fields: t.definitions.map((f) => ({
               name: f.name,
               label: FIELD_LABELS[f.name],

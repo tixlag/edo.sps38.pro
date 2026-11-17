@@ -26,6 +26,8 @@ import {
   validateFields,
 } from "./document-contract";
 import { tryCompleteIgEmployment } from "./ig-completion";
+import { createHash } from "node:crypto";
+import { DocumentReturnNotificationService } from "./document-return-notification.service";
 
 const editsSchema = z
   .record(
@@ -48,6 +50,7 @@ export class DocumentReviewService {
     private readonly pdf: DocumentPdfService,
     @Optional() private readonly erp?: ErpWorkspaceClient,
     @Optional() private readonly expiration?: DocumentExpirationService,
+    @Optional() private readonly returnNotifications?: DocumentReturnNotificationService,
   ) {}
 
   async edit(
@@ -173,7 +176,7 @@ export class DocumentReviewService {
     identity?: ErpIdentity,
   ) {
     const approvedKey = artifact?.key;
-    await this.prisma.$transaction(
+    const notificationId = await this.prisma.$transaction(
       async (tx) => {
         // Lock candidate first, matching ingestion's lock order. Recheck scope inside the transaction.
         const initial = await tx.document.findUnique({
@@ -338,7 +341,10 @@ export class DocumentReviewService {
           }
           await tx.document.update({
             where: { id: documentId },
-            data: { status: rejectionReason ? "RETURNED" : "APPROVED" },
+            data: {
+              status: rejectionReason ? "RETURNED" : "APPROVED",
+              ...(!rejectionReason ? { acceptedVersion: number } : {}),
+            },
           });
           if (!rejectionReason) {
             const allFields = Object.fromEntries(
@@ -464,9 +470,33 @@ export class DocumentReviewService {
                 }),
           },
         });
+        if (rejectionReason && version.document?.candidateId) {
+          const message = `Документ «${version.document.documentType?.title ?? "Документ"}» возвращён на исправление. Причина: ${rejectionReason}`;
+          const operation = await tx.communicationOperation.create({
+            data: {
+              candidateId: version.document.candidateId,
+              actorId: principal.uuid,
+              actorCode1c: principal.code1c ?? "",
+              requestKey: `document-return:${documentId}:${number}`,
+              fingerprint: createHash("sha256").update(message).digest("hex"),
+              channel: "",
+              recipientId: "",
+              text: message,
+            },
+          });
+          return operation.id;
+        }
+        return null;
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
+    if (notificationId) {
+      try {
+        await this.returnNotifications?.send(notificationId);
+      } catch {
+        // The document remains returned even when its notification cannot be sent.
+      }
+    }
     return this.reads.version(documentId, number);
   }
 }

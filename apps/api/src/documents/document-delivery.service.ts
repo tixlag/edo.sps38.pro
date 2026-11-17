@@ -25,6 +25,7 @@ import {
   nextDeliveryAttempt,
 } from "./erp-multipart";
 import { erpDocumentHeaders } from "./erp-document-auth";
+import { erpDocumentInstanceUid } from "./erp-document-instance";
 import { isInvalidFileContent } from "./erp-retry-selection";
 import { tryCompleteIgEmployment } from "./ig-completion";
 import { isIgRecipient, matchesIgRecipient } from "./ig-recipient";
@@ -212,7 +213,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
     const attempt = await this.prisma.$transaction(async (tx) => {
       const row = await tx.erpDocumentDelivery.findUniqueOrThrow({
         where: { id },
-        include: { version: { include: { fields: true, submission: true } } },
+        include: { version: { include: { fields: true, submission: true, document: { include: { documentType: true } } } } },
       });
       if (principal) {
         const doc = await tx.document.findUniqueOrThrow({
@@ -311,6 +312,9 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
                 }
               : {}),
             documentFields: payload.documentFields as object,
+            ...(version.document.documentType?.multipleInstancesAllowed
+              ? { documentInstanceId: erpDocumentInstanceUid(version.documentId), documentVersion: version.version }
+              : {}),
           },
           deliveryId: id,
           url: new URL(

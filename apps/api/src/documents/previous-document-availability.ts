@@ -1,3 +1,4 @@
+import { MULTIPLE_DOCUMENT_UIDS } from "./document-catalog.service";
 import type { CandidatePreviousDocument } from "@prisma/client";
 import type { PreviousDocumentAvailabilityDto } from "./dto/document.dto";
 import {
@@ -42,7 +43,11 @@ export function previousDocumentState(
     ["REPLACE", "MISSING"].includes(doc.status)
   )
     return "REPLACE_REQUIRED";
-  if (!doc.originalAvailable || (isIg && !doc.originalVerified) || doc.status === "ORIGINAL_UNAVAILABLE")
+  if (
+    !doc.originalAvailable ||
+    (isIg && !doc.originalVerified) ||
+    doc.status === "ORIGINAL_UNAVAILABLE"
+  )
     return "ORIGINAL_UNAVAILABLE";
   return doc.status === "CONFIRMED" ? "REUSED" : "REQUIRES_REVIEW";
 }
@@ -50,7 +55,10 @@ export function previousDocumentState(
 export function previousDocumentAvailability(
   types: CatalogType[],
   previous: Previous[],
-  _current: { documentType: { erpUid: string | null } | null; status: string }[] = [],
+  _current: {
+    documentType: { erpUid: string | null } | null;
+    status: string;
+  }[] = [],
   isIg: boolean = true,
 ): PreviousDocumentAvailabilityDto[] {
   return types.flatMap((type) => {
@@ -65,35 +73,38 @@ export function previousDocumentAvailability(
           (b.reviewedAt?.getTime() ?? 0) - (a.reviewedAt?.getTime() ?? 0) ||
           a.id.localeCompare(b.id),
       );
-    const doc = candidates[0];
-    if (!doc) return [];
-    const fields =
-      doc.fields && typeof doc.fields === "object" && !Array.isArray(doc.fields)
-        ? (doc.fields as Record<string, unknown>)
-        : {};
-    const date = fields.recordDate;
-    const recordedAt =
-      typeof date === "string" &&
-      /^\d{4}-\d{2}-\d{2}$/.test(date) &&
-      Number.isFinite(Date.parse(date)) &&
-      new Date(date).toISOString().slice(0, 10) === date
-        ? date
-        : null;
-    const isEdo = Boolean(doc.sourceId?.startsWith("edo:"));
-    const cleanFields = Object.fromEntries(
-      Object.entries(fields).filter(
-        ([k, v]) =>
-          !/(?:uuid|uid|code_?1c|code1c|erp|^id$|^sourceId$)/i.test(k) &&
-          (typeof v === "string" ||
-            typeof v === "number" ||
-            typeof v === "boolean"),
-      ),
-    );
-    const versionMatch = doc.sourceId?.match(/^edo:[^:]+:(\d+)$/);
-    const versionNumber = versionMatch ? Number(versionMatch[1]) : null;
+    const selected = MULTIPLE_DOCUMENT_UIDS.has(uid)
+      ? candidates
+      : candidates.slice(0, 1);
+    return selected.map((doc) => {
+      const fields =
+        doc.fields &&
+        typeof doc.fields === "object" &&
+        !Array.isArray(doc.fields)
+          ? (doc.fields as Record<string, unknown>)
+          : {};
+      const date = fields.recordDate;
+      const recordedAt =
+        typeof date === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+        Number.isFinite(Date.parse(date)) &&
+        new Date(date).toISOString().slice(0, 10) === date
+          ? date
+          : null;
+      const isEdo = Boolean(doc.sourceId?.startsWith("edo:"));
+      const cleanFields = Object.fromEntries(
+        Object.entries(fields).filter(
+          ([k, v]) =>
+            !/(?:uuid|uid|code_?1c|code1c|erp|^id$|^sourceId$)/i.test(k) &&
+            (typeof v === "string" ||
+              typeof v === "number" ||
+              typeof v === "boolean"),
+        ),
+      );
+      const versionMatch = doc.sourceId?.match(/^edo:[^:]+:(\d+)$/);
+      const versionNumber = versionMatch ? Number(versionMatch[1]) : null;
 
-    return [
-      {
+      return {
         id: doc.id,
         documentUid: type.erpUid!,
         documentTypeCode: type.code,
@@ -102,15 +113,14 @@ export function previousDocumentAvailability(
         state: previousDocumentState(doc, isIg),
         expiresAt: doc.expiresAt?.toISOString().slice(0, 10) ?? null,
         recordedAt,
-        originalAvailable: doc.originalAvailable && (!isIg || doc.originalVerified),
+        originalAvailable:
+          doc.originalAvailable && (!isIg || doc.originalVerified),
         source: isEdo ? ("EDO" as const) : ("ERP" as const),
-        sourceDescription: isEdo
-          ? "Из прошлого оформления в ЭДО"
-          : "Из ERP",
+        sourceDescription: isEdo ? "Из прошлого оформления в ЭДО" : "Из ERP",
         fields: cleanFields,
         version: versionNumber,
         reviewedAt: doc.reviewedAt?.toISOString() ?? null,
-      },
-    ];
+      };
+    });
   });
 }

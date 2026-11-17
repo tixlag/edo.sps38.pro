@@ -179,9 +179,9 @@ export class CandidateDocumentsService {
       this.reads.internalDocuments(this.ownScope(identity)),
     );
   }
-  ownDraft(code1c: string | null, documentUid: string) {
+  ownDraft(code1c: string | null, documentUid: string, documentId?: string) {
     return this.ownOperation(code1c, (identity) =>
-      this.reads.internalDraft(this.ownScope(identity), documentUid),
+      this.reads.internalDraft(this.ownScope(identity), documentUid, documentId),
     );
   }
   ownStreamGrant(code1c: string | null) {
@@ -219,9 +219,9 @@ export class CandidateDocumentsService {
       signal,
     );
   }
-  async draft(uuid: string, documentUid: string) {
+  async draft(uuid: string, documentUid: string, documentId?: string) {
     const chat = await this.identity.byUuid(uuid);
-    return this.reads.internalDraft({ chat_uuid: chat.chatUuid }, documentUid);
+    return this.reads.internalDraft({ chat_uuid: chat.chatUuid }, documentUid, documentId);
   }
   async streamGrant(uuid: string) {
     const chat = await this.identity.byUuid(uuid);
@@ -237,6 +237,8 @@ export class CandidateDocumentsService {
   ) {
     return this.grants.grant({
       documentUid: data.documentUid,
+      mode: data.mode,
+      documentId: data.documentId,
       idempotencyKey: data.idempotencyKey,
       ...(context.chatUuid ? { chat_uuid: context.chatUuid } : {}),
       ...(context.code1c ? { code_1c: context.code1c } : {}),

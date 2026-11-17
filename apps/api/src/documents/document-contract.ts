@@ -271,6 +271,8 @@ export const documentMetadataSchema = z.preprocess(
       locationId: z.number().int().positive().optional(),
       candidateSnapshot: candidateSnapshotSchema.optional(),
       documentFields: values,
+      mode: z.enum(["replace", "new", "append"]).optional(),
+      documentId: z.string().min(1).max(64).optional(),
     })
     .strict()
     .refine((v) => !!(v.chat_uuid || v.code_1c), "Document owner is required"),
@@ -612,7 +614,10 @@ export function requiredApplicable(
   sex?: "male" | "female" | null,
   project?: string | null,
 ): boolean {
-  if (excludedForSex(type.code, sex) || isPatentExempt(type.erpUid, citizenship))
+  if (
+    excludedForSex(type.code, sex) ||
+    isPatentExempt(type.erpUid, citizenship)
+  )
     return false;
   return (type.stageRules?.length ? type.stageRules : [type]).some(
     (rule) => classifyRule(rule, position, citizenship, project) === "required",

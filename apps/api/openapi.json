@@ -49,7 +49,9 @@
                   "CONTRACT_SENT",
                   "CONTRACT_CONFIRMED",
                   "CONTRACT_DECLINED",
-                  "CONTRACT_PREPARATION_FAILED"
+                  "CONTRACT_PREPARATION_FAILED",
+                  "DOCUMENT_ABSENCE_REPORTED",
+                  "DOCUMENT_ABSENCE_DECIDED"
                 ]
               }
             }
@@ -564,6 +566,263 @@
         "summary": "Current LK profile, permissions and location scope",
         "tags": [
           "me"
+        ]
+      }
+    },
+    "/api/v1/candidates/{candidateId}/document-absences": {
+      "get": {
+        "operationId": "listCandidateDocumentAbsences",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AbsenceDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Document absence requests and reviewer decisions",
+        "tags": [
+          "documents"
+        ]
+      },
+      "post": {
+        "operationId": "reportCandidateDocumentAbsence",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportAbsenceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AbsenceDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Report a missing RU candidate document",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/candidates/{candidateId}/document-absences/{absenceId}/decision": {
+      "post": {
+        "operationId": "decideCandidateDocumentAbsence",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "absenceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideAbsenceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AbsenceDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Approve or reject a RU document waiver",
+        "tags": [
+          "documents"
         ]
       }
     },
@@ -1330,6 +1589,15 @@
             "name": "documentUid",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": false,
+            "in": "query",
+            "description": "Exact returned document instance",
             "schema": {
               "type": "string"
             }
@@ -2115,6 +2383,15 @@
             "name": "documentUid",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": false,
+            "in": "query",
+            "description": "Exact returned document instance",
             "schema": {
               "type": "string"
             }
@@ -4294,6 +4571,17 @@
                     "maxLength": 128
                   },
                   "documentTypeCode": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "new",
+                      "replace",
+                      "append"
+                    ]
+                  },
+                  "documentId": {
                     "type": "string"
                   },
                   "files[]": {
@@ -8905,6 +9193,269 @@
         ]
       }
     },
+    "/api/v1/documents/{documentId}/return-notifications": {
+      "get": {
+        "operationId": "listDocumentReturnNotifications",
+        "parameters": [
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CommunicationOperationDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Delivery status of document return messages",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/documents/{documentId}/return-notifications/{operationId}/retry": {
+      "post": {
+        "operationId": "retryDocumentReturnNotification",
+        "parameters": [
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunicationOperationDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Retry a return message that failed before delivery",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/v1/documents/{documentId}/versions/{version}/send-to-erp": {
       "post": {
         "operationId": "sendDocumentToErp",
@@ -9820,7 +10371,121 @@
             "access-jwt": []
           }
         ],
-        "summary": "Save local-only corrections without modifying ERP",
+        "summary": "Save corrections and request ERP update of the existing document",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/candidates/{candidateId}/previous-documents/{documentId}/fields/erp-retry": {
+      "post": {
+        "operationId": "retryPreviousDocumentErpEdit",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviousDocumentDetailsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Retry ERP save for corrected requisites using the original request ID",
         "tags": [
           "documents"
         ]
@@ -19029,7 +19694,9 @@
           "CONTRACT_SENT",
           "CONTRACT_CONFIRMED",
           "CONTRACT_DECLINED",
-          "CONTRACT_PREPARATION_FAILED"
+          "CONTRACT_PREPARATION_FAILED",
+          "DOCUMENT_ABSENCE_REPORTED",
+          "DOCUMENT_ABSENCE_DECIDED"
         ]
       },
       "AuditLogItemDto": {
@@ -19895,6 +20562,101 @@
           "path"
         ]
       },
+      "AbsenceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string"
+          },
+          "documentTypeId": {
+            "type": "string"
+          },
+          "documentTypeCode": {
+            "type": "string"
+          },
+          "documentTypeTitle": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED"
+            ]
+          },
+          "requestedBy": {
+            "type": "string"
+          },
+          "decidedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "decisionComment": {
+            "type": "string",
+            "nullable": true
+          },
+          "decidedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "candidateId",
+          "documentTypeId",
+          "documentTypeCode",
+          "documentTypeTitle",
+          "reason",
+          "status",
+          "requestedBy",
+          "decidedBy",
+          "decisionComment",
+          "decidedAt"
+        ]
+      },
+      "ReportAbsenceDto": {
+        "type": "object",
+        "properties": {
+          "documentTypeId": {
+            "type": "string"
+          },
+          "documentTypeCode": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "DecideAbsenceDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "APPROVED",
+              "REJECTED"
+            ]
+          },
+          "comment": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
       "CandidatePhotoUploadResponseDto": {
         "type": "object",
         "properties": {
@@ -20332,6 +21094,9 @@
           "title": {
             "type": "string"
           },
+          "multipleInstancesAllowed": {
+            "type": "boolean"
+          },
           "documentUid": {
             "type": "string",
             "format": "uuid"
@@ -20361,6 +21126,7 @@
         "required": [
           "code",
           "title",
+          "multipleInstancesAllowed",
           "documentUid",
           "stages",
           "fields"
@@ -20926,6 +21692,17 @@
       "CandidateDocumentUploadRequestDto": {
         "type": "object",
         "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "new",
+              "replace",
+              "append"
+            ]
+          },
+          "documentId": {
+            "type": "string"
+          },
           "documentUid": {
             "type": "string",
             "format": "uuid"
@@ -22190,6 +22967,17 @@
           "code_1c": {
             "type": "string"
           },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "replace",
+              "new",
+              "append"
+            ]
+          },
+          "documentId": {
+            "type": "string"
+          },
           "documentUid": {
             "type": "string",
             "format": "uuid"
@@ -22987,6 +23775,45 @@
           "reason"
         ]
       },
+      "SendStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "SENT",
+          "FAILED",
+          "UNKNOWN"
+        ]
+      },
+      "CommunicationOperationDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SendStatus"
+              }
+            ]
+          },
+          "providerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "errorCode": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "providerId",
+          "errorCode"
+        ]
+      },
       "AdaptationGrantItemDto": {
         "type": "object",
         "properties": {
@@ -23112,13 +23939,28 @@
           },
           "hasLocalEdits": {
             "type": "boolean"
+          },
+          "erpEditSyncStatus": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "CONFIRMED",
+              "FAILED"
+            ],
+            "nullable": true
+          },
+          "erpEditSyncError": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
           "document",
           "revision",
           "fields",
-          "hasLocalEdits"
+          "hasLocalEdits",
+          "erpEditSyncStatus",
+          "erpEditSyncError"
         ]
       },
       "ExpirationSummaryResponseDto": {
@@ -26027,45 +26869,6 @@
           "channel",
           "recipientId",
           "text"
-        ]
-      },
-      "SendStatus": {
-        "type": "string",
-        "enum": [
-          "PENDING",
-          "SENT",
-          "FAILED",
-          "UNKNOWN"
-        ]
-      },
-      "CommunicationOperationDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "status": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/SendStatus"
-              }
-            ]
-          },
-          "providerId": {
-            "type": "string",
-            "nullable": true
-          },
-          "errorCode": {
-            "type": "string",
-            "nullable": true
-          }
-        },
-        "required": [
-          "id",
-          "status",
-          "providerId",
-          "errorCode"
         ]
       },
       "ChatDownloadDto": {

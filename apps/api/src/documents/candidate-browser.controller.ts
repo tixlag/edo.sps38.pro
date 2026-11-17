@@ -8,15 +8,18 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   ValidationPipe,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiBody,
   ApiOperation,
+  ApiPropertyOptional,
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
+import { IsOptional, IsString, MaxLength } from "class-validator";
 import { Public } from "../auth/public.decorator";
 import { CurrentPrincipal } from "../auth/current-principal.decorator";
 import type { AuthPrincipal } from "../auth/auth-principal";
@@ -35,6 +38,13 @@ import {
 } from "./dto/document.dto";
 import { CandidateDocumentErrorDto } from "./dto/candidate-error.dto";
 import { OwnDocumentListDto } from "./dto/own-document-history.dto";
+class DocumentDraftQueryDto {
+  @ApiPropertyOptional({ description: "Exact returned document instance" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  documentId?: string;
+}
 const Errors = () =>
   applyDecorators(
     ...[400, 401, 403, 404, 409, 422, 500, 502, 503, 504].map((status) =>
@@ -89,8 +99,9 @@ export class BrowserCandidateDocumentsController {
   draft(
     @Param("chatUuid", ParseUUIDPipe) uuid: string,
     @Param("documentUid", ParseUUIDPipe) uid: string,
+    @Query() query: DocumentDraftQueryDto = {},
   ) {
-    return this.documents.draft(uuid.toLowerCase(), uid.toLowerCase());
+    return this.documents.draft(uuid.toLowerCase(), uid.toLowerCase(), query.documentId);
   }
   @Post("stream-grant")
   @HttpCode(200)
@@ -177,8 +188,9 @@ export class MyCandidateDocumentsController {
   draft(
     @CurrentPrincipal() me: AuthPrincipal,
     @Param("documentUid", ParseUUIDPipe) uid: string,
+    @Query() query: DocumentDraftQueryDto = {},
   ) {
-    return this.documents.ownDraft(me.code1c, uid.toLowerCase());
+    return this.documents.ownDraft(me.code1c, uid.toLowerCase(), query.documentId);
   }
   @Post("stream-grant")
   @HttpCode(200)

@@ -48,6 +48,8 @@ import { DocumentUploadService } from "./document-upload.service";
 import { ManualDocumentService } from "./manual-document.service";
 import { DocumentReadService } from "./document-read.service";
 import { DocumentReviewService } from "./document-review.service";
+import { DocumentReturnNotificationService } from "./document-return-notification.service";
+import { CommunicationOperationDto } from "../communications/communications.dto";
 import { DocumentDeliveryService } from "./document-delivery.service";
 import { DocumentCatalogService } from "./document-catalog.service";
 import {
@@ -289,6 +291,7 @@ export class ManualDocumentReviewController {
     private readonly events: DocumentEventsService,
     private readonly arrivals: IgArrivalQueueService,
     private readonly arrivalRegistry: IgArrivalRegistryService,
+    private readonly returnNotifications: DocumentReturnNotificationService,
   ) {}
   @Get("candidate-review-queue/ig-arrivals/locations")
   @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_IG)
@@ -470,6 +473,21 @@ export class ManualDocumentReviewController {
       principal,
       req.correlationId ?? "",
     );
+  }
+  @Get("documents/:documentId/return-notifications")
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_RU, EdoAccessRule.DOCUMENT_REVIEW_IG)
+  @ApiOperation({ operationId: "listDocumentReturnNotifications", summary: "Delivery status of document return messages" })
+  @ApiResponse({ status: 200, type: CommunicationOperationDto, isArray: true })
+  returnNotificationsList(@Param("documentId") id: string, @CurrentPrincipal() principal: AuthPrincipal) {
+    return this.returnNotifications.list(id, principal);
+  }
+  @Post("documents/:documentId/return-notifications/:operationId/retry")
+  @HttpCode(200)
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_RU, EdoAccessRule.DOCUMENT_REVIEW_IG)
+  @ApiOperation({ operationId: "retryDocumentReturnNotification", summary: "Retry a return message that failed before delivery" })
+  @ApiResponse({ status: 200, type: CommunicationOperationDto })
+  retryReturnNotification(@Param("documentId") id: string, @Param("operationId") operationId: string, @CurrentPrincipal() principal: AuthPrincipal) {
+    return this.returnNotifications.retry(id, operationId, principal);
   }
   @Post("documents/:documentId/versions/:version/send-to-erp")
   @HttpCode(200)

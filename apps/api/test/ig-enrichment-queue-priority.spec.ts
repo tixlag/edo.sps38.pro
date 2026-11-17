@@ -46,6 +46,8 @@ describe("IgEnrichmentQueueService priority separation", () => {
       {} as any,
       access,
       { get: () => "false" } as any,
+      { personDocumentsBatch: vi.fn().mockRejectedValue(new Error("BATCH_UNAVAILABLE")) } as any,
+      {} as any,
     );
 
     const result = await queue.requestBatch(["cand-1", "cand-2"], principal);

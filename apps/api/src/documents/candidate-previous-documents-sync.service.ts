@@ -9,6 +9,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { erpDocumentInstanceUid } from "./erp-document-instance";
 import { AuditService } from "../audit/audit.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { DocumentAccessService } from "./document-access.service";
@@ -89,6 +90,7 @@ export class CandidatePreviousDocumentsSyncService {
     options: {
       signal?: AbortSignal;
       assertLease?: (tx?: Prisma.TransactionClient) => Promise<void>;
+      preloadedDocuments?: unknown;
     } = {},
   ) {
     const assertActive = async (tx?: Prisma.TransactionClient) => {
@@ -125,16 +127,27 @@ export class CandidatePreviousDocumentsSyncService {
           .then((history) => ({ available: true, items: history.items }))
           .catch(() => ({ available: false, items: [] }))
       : undefined;
-    const result = await this.erp.request(
-      isIg ? "person-documents-by-code" : "person-documents",
-      previousDocumentsSchema,
-      isIg
-        ? { code1c: row.code1c!, personUid: personUid! }
-        : { candidate: row.erpUid! },
-      undefined,
-      options.signal,
-    );
+    const result = options.preloadedDocuments !== undefined && !isIg
+      ? previousDocumentsSchema.parse(options.preloadedDocuments)
+      : await this.erp.request(
+          isIg ? "person-documents-by-code" : "person-documents",
+          previousDocumentsSchema,
+          isIg
+            ? { code1c: row.code1c!, personUid: personUid! }
+            : { candidate: row.erpUid! },
+          undefined,
+          options.signal,
+        );
     await assertActive();
+    // ERP echoes delivered EDO instances in its person-documents feed. The
+    // candidate already owns those live documents here; importing them as
+    // history would show a duplicate and could compete with the newer version.
+    const ownDocumentIds = new Set(
+      (await this.prisma.document.findMany({
+        where: { candidateId: id },
+        select: { id: true },
+      })).map((document) => document.id),
+    );
     const edoDocuments = isIg
       ? await this.prisma.document.findMany({
           where: {
@@ -219,8 +232,19 @@ export class CandidatePreviousDocumentsSyncService {
         },
       ];
     });
+    const edoSourceDocumentIds = new Set([
+      ...ownDocumentIds,
+      ...edoDocuments.map((document) => document.id),
+    ]);
+    const edoSourceInstanceUids = new Set(
+      [...edoSourceDocumentIds].map(erpDocumentInstanceUid),
+    );
     const rawCandidates = [
-      ...result.items.map((doc) => ({
+      ...result.items.filter((doc) =>
+        !doc.id.startsWith("edo:") ||
+        (!edoSourceDocumentIds.has(doc.id.slice(4).split(":", 1)[0]) &&
+          !edoSourceInstanceUids.has(doc.id.slice(4).split(":", 1)[0].toLowerCase())),
+      ).map((doc) => ({
         ...doc,
         originalErpId: doc.id,
         verifiedOwner: true,
@@ -311,21 +335,6 @@ export class CandidatePreviousDocumentsSyncService {
           if (seen.has(doc.id)) continue;
           seen.add(doc.id);
           const old = oldBySource.get(doc.id);
-          if (phase === "metadata") {
-            doc.previouslyConfirmed = old?.status === "CONFIRMED";
-            const age = old?.verificationCheckedAt
-              ? Date.now() - old.verificationCheckedAt.getTime()
-              : Number.POSITIVE_INFINITY;
-            doc.verifiedOriginal = !!(
-              old?.originalVerified &&
-              old.sourceFingerprint === doc.sourceFingerprint &&
-              age >= 0 &&
-              age < 24 * 60 * 60 * 1000
-            );
-            doc.verificationCheckedAt = doc.verifiedOriginal
-              ? old!.verificationCheckedAt
-              : null;
-          }
           if (
             old?.documentUid &&
             doc.documentUid &&
@@ -363,6 +372,28 @@ export class CandidatePreviousDocumentsSyncService {
               ? { isInvalid }
               : {}),
           } as Prisma.InputJsonObject;
+          if (phase === "metadata") {
+            doc.previouslyConfirmed = old?.status === "CONFIRMED";
+            const age = old?.verificationCheckedAt
+              ? Date.now() - old.verificationCheckedAt.getTime()
+              : Number.POSITIVE_INFINITY;
+            const confirmedCorrectionEcho =
+              old?.erpEditSyncStatus === "CONFIRMED" &&
+              old.documentUid === doc.documentUid &&
+              old.title === doc.title &&
+              old.originalAvailable === doc.originalAvailable &&
+              (old.expiresAt?.toISOString().slice(0, 10) ?? null) === doc.expiresAt &&
+              isDeepStrictEqual(old.erpFields, erpFields);
+            doc.verifiedOriginal = !!(
+              old?.originalVerified &&
+              (old.sourceFingerprint === doc.sourceFingerprint || confirmedCorrectionEcho) &&
+              age >= 0 &&
+              age < 24 * 60 * 60 * 1000
+            );
+            doc.verificationCheckedAt = doc.verifiedOriginal
+              ? old!.verificationCheckedAt
+              : null;
+          }
           const fields = applyPreviousDocumentEdits(
             erpFields,
             old?.fieldEdits ?? [],
@@ -404,13 +435,12 @@ export class CandidatePreviousDocumentsSyncService {
           ) {
             const prep = preparedLinkDocuments.get(doc.id)!;
             if ((tx as any).document && (tx as any).documentVersion) {
-              const existingDoc = await tx.document.findUnique({
+              const existingDoc = await tx.document.findFirst({
                 where: {
-                  candidateId_documentTypeId: {
-                    candidateId: id,
-                    documentTypeId: prep.docTypeId,
-                  },
+                  candidateId: id,
+                  documentTypeId: prep.docTypeId,
                 },
+                orderBy: { createdAt: "asc" },
                 include: {
                   versions: {
                     select: {
@@ -430,27 +460,20 @@ export class CandidatePreviousDocumentsSyncService {
                   (!existingDoc.versions || existingDoc.versions.length === 0))
               ) {
                 await assertActive(tx);
-                const targetDoc = await tx.document.upsert({
-                  where: {
-                    candidateId_documentTypeId: {
-                      candidateId: id,
-                      documentTypeId: prep.docTypeId,
-                    },
-                  },
-                  create: {
+                const targetDoc = existingDoc
+                  ? await tx.document.update({ where: { id: existingDoc.id }, data: {
+                    reviewGroup: "IG",
+                    currentVersion: 1,
+                    status: "IN_REVIEW",
+                  } })
+                  : await tx.document.create({ data: {
                     id: prep.targetDocId,
                     candidateId: id,
                     documentTypeId: prep.docTypeId,
                     reviewGroup: "IG",
                     currentVersion: 1,
                     status: "IN_REVIEW",
-                  },
-                  update: {
-                    reviewGroup: "IG",
-                    currentVersion: 1,
-                    status: "IN_REVIEW",
-                  },
-                });
+                  } });
 
                 await assertActive(tx);
                 await tx.documentVersion.upsert({
@@ -822,13 +845,12 @@ export class CandidatePreviousDocumentsSyncService {
             if (!docType) continue;
 
             const existingDoc = (this.prisma as any).document
-              ? await (this.prisma as any).document.findUnique({
+              ? await (this.prisma as any).document.findFirst({
                   where: {
-                    candidateId_documentTypeId: {
-                      candidateId: id,
-                      documentTypeId: docType.id,
-                    },
+                    candidateId: id,
+                    documentTypeId: docType.id,
                   },
+                  orderBy: { createdAt: "asc" },
                   include: {
                     versions: {
                       select: {

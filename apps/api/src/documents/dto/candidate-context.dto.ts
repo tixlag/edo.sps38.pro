@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsUUID, Matches } from "class-validator";
+import { IsUUID, Matches, IsOptional, IsIn, IsString, MaxLength } from "class-validator";
 import { CatalogDocumentTypesDto, CandidateSnapshotDto } from "./document.dto";
 
 export class CandidateDocumentContextDto {
@@ -14,6 +14,8 @@ export class CandidateDocumentContextDto {
   candidateSnapshot?: CandidateSnapshotDto;
 }
 export class CandidateDocumentUploadRequestDto {
+  @ApiPropertyOptional({ enum: ["new", "replace", "append"] }) @IsOptional() @IsIn(["new", "replace", "append"]) mode?: "new" | "replace" | "append";
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(64) documentId?: string;
   @ApiProperty({ format: "uuid" }) @IsUUID() documentUid!: string;
   @ApiProperty({ maxLength: 128 })
   @Matches(/^[\x21-\x7e]{1,128}$/)

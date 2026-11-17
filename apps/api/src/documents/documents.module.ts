@@ -1,3 +1,4 @@
+import { DocumentAbsenceController, DocumentAbsenceService } from "./document-absence.controller";
 import { ReviewerDocumentsController } from "./reviewer-documents.controller";
 import { ReviewerDocumentsService } from "./reviewer-documents.service";
 import { CandidateEnrichmentController } from "./candidate-enrichment.controller";
@@ -18,6 +19,9 @@ import {
 import { DocumentAccessService } from "./document-access.service";
 import { DocumentReadService } from "./document-read.service";
 import { DocumentReviewService } from "./document-review.service";
+import { DocumentReturnNotificationService } from "./document-return-notification.service";
+import { ErpCommunicationsClient } from "../communications/erp-communications.client";
+import { LkChatClient } from "../communications/lk-chat.client";
 import { DocumentOcrRetryService } from "./document-ocr-retry.service";
 import { DocumentIngestionService } from "./document-ingestion.service";
 import { DocumentUploadService } from "./document-upload.service";
@@ -77,6 +81,7 @@ import { LkModule } from "../lk/lk.module";
     LkModule,
   ],
   controllers: [
+    DocumentAbsenceController,
     CandidatePhotosController,
     CandidateEnrichmentController,
     BrowserCandidateDocumentsController,
@@ -103,6 +108,7 @@ import { LkModule } from "../lk/lk.module";
     ErpCandidateClient,
   ],
   providers: [
+    DocumentAbsenceService,
     CandidatePhotosService,
     ReviewerDocumentsService,
     IgEnrichmentQueueService,
@@ -124,6 +130,9 @@ import { LkModule } from "../lk/lk.module";
     DocumentAccessService,
     DocumentReadService,
     DocumentReviewService,
+    DocumentReturnNotificationService,
+    ErpCommunicationsClient,
+    LkChatClient,
     DocumentOcrRetryService,
     DocumentIngestionService,
     DocumentUploadService,
