@@ -411,6 +411,10 @@ describe("candidate manager flows", () => {
     expect(state.open).toHaveBeenCalledWith({
       data: { erpUid: "completed-erp-uid" },
     });
+    expect(state.upload).not.toHaveBeenCalled();
+    expect(state.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { candidateId: "current-cycle" } }),
+    );
     expect(state.create).not.toHaveBeenCalled();
     expect(state.status).not.toHaveBeenCalled();
   });
@@ -531,6 +535,69 @@ describe("candidate manager flows", () => {
       expect.objectContaining({ params: { candidateId: "current-cycle" } }),
     );
   });
+  it.each(["skip", "retry", "skip-after-error"] as const)(
+    "asks before replacing an existing candidate photo and supports %s",
+    async (choice) => {
+      vi.useFakeTimers();
+      URL.createObjectURL = vi.fn(() => "blob:preview");
+      URL.revokeObjectURL = vi.fn();
+      state.candidateMatches = [
+        {
+          id: "completed-erp-uid",
+          name: "Иванов Иван",
+          birthDate: null,
+          selection: "signed-candidate",
+          matchedPhone: true,
+        },
+      ];
+      await render(<CandidatesPage />);
+      await click("Создать кандидата");
+      const file = new File(["photo"], "candidate.webp", {
+        type: "image/webp",
+      });
+      const input = view.querySelector<HTMLInputElement>('input[type="file"]')!;
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [file],
+      });
+      await act(async () =>
+        input.dispatchEvent(new Event("change", { bubbles: true })),
+      );
+      type(view.querySelector('input[type="tel"]')!, "+79000000000");
+      await act(async () => vi.advanceTimersByTime(500));
+      await click("Открыть существующую карточку");
+      expect(state.open).toHaveBeenCalledTimes(1);
+      expect(state.upload).not.toHaveBeenCalled();
+      expect(state.navigate).not.toHaveBeenCalled();
+      expect(view.textContent).toContain("Применение заменит фотографию");
+
+      if (choice === "skip") {
+        await click("Открыть без замены фото");
+        expect(state.upload).not.toHaveBeenCalled();
+      } else {
+        state.upload.mockRejectedValueOnce(new Error("upload failed"));
+        await click("Применить выбранное фото");
+        expect(view.textContent).toContain("Не удалось заменить фотографию");
+        expect(state.navigate).not.toHaveBeenCalled();
+        if (choice === "retry") {
+          await click("Повторить загрузку фото");
+          expect(state.upload).toHaveBeenCalledTimes(2);
+          expect(state.upload).toHaveBeenLastCalledWith({
+            candidateId: "current-cycle",
+            data: { file },
+          });
+        } else {
+          await click("Открыть без замены фото");
+          expect(state.upload).toHaveBeenCalledTimes(1);
+        }
+      }
+      expect(state.create).not.toHaveBeenCalled();
+      expect(state.open).toHaveBeenCalledTimes(1);
+      expect(state.navigate).toHaveBeenCalledWith(
+        expect.objectContaining({ params: { candidateId: "current-cycle" } }),
+      );
+    },
+  );
   it.each(["loading", "refreshing", "error"] as const)(
     "blocks creation while automatic duplicate search is %s",
     async (status) => {

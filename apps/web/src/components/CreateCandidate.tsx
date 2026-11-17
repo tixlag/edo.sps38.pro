@@ -27,6 +27,7 @@ export function CreateCandidate({ onCancel }: { onCancel: () => void }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState("");
   const [created, setCreated] = useState<CandidateWorkspaceDto | null>(null);
+  const [existing, setExisting] = useState<CandidateWorkspaceDto | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const request = useCandidateRequest();
@@ -69,7 +70,10 @@ export function CreateCandidate({ onCancel }: { onCancel: () => void }) {
       search: { section: "profile" },
     });
   };
-  const uploadAndOpen = async (candidate: CandidateWorkspaceDto) => {
+  const uploadAndOpen = async (
+    candidate: CandidateWorkspaceDto,
+    isExisting = false,
+  ) => {
     if (photo) {
       setPhotoError("");
       try {
@@ -78,9 +82,12 @@ export function CreateCandidate({ onCancel }: { onCancel: () => void }) {
           data: { file: photo },
         });
       } catch {
-        setCreated(candidate);
+        if (isExisting) setExisting(candidate);
+        else setCreated(candidate);
         setPhotoError(
-          "Кандидат создан, но фотографию загрузить не удалось. Повторите загрузку или откройте карточку и добавьте фото позже.",
+          isExisting
+            ? "Не удалось заменить фотографию. Повторите загрузку или откройте карточку без замены фото."
+            : "Кандидат создан, но фотографию загрузить не удалось. Повторите загрузку или откройте карточку и добавьте фото позже.",
         );
         return;
       }
@@ -108,7 +115,11 @@ export function CreateCandidate({ onCancel }: { onCancel: () => void }) {
   const openCandidate = async (erpUid: string) => {
     setOpenError("");
     try {
-      await confirmed(await open.mutateAsync({ data: { erpUid } }));
+      const candidate = await open.mutateAsync({ data: { erpUid } });
+      if (photo) {
+        setPhotoError("");
+        setExisting(candidate);
+      } else await confirmed(candidate);
     } catch (cause) {
       setOpenError(candidateError(cause));
     }
@@ -150,7 +161,40 @@ export function CreateCandidate({ onCancel }: { onCancel: () => void }) {
         <h2 id="create-candidate-title" className="mb-2 text-lg font-semibold">
           Создать кандидата
         </h2>
-        {created ? (
+        {existing ? (
+          <div className="space-y-4 pt-4">
+            <p className="text-sm">
+              Открыть карточку «{existing.fullName}» с выбранной фотографией?
+              Применение заменит фотографию в карточке.
+            </p>
+            {photoError && (
+              <p role="alert" className="text-sm text-[var(--danger)]">
+                {photoError}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                disabled={upload.isPending}
+                onClick={() => void uploadAndOpen(existing, true)}
+              >
+                {upload.isPending
+                  ? "Загрузка…"
+                  : photoError
+                    ? "Повторить загрузку фото"
+                    : "Применить выбранное фото"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={upload.isPending}
+                onClick={() => void confirmed(existing)}
+              >
+                Открыть без замены фото
+              </Button>
+            </div>
+          </div>
+        ) : created ? (
           <div className="space-y-4 pt-4">
             <p role="alert" className="text-sm text-[var(--danger)]">
               {photoError}
