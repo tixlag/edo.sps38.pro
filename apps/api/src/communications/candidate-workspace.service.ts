@@ -39,6 +39,7 @@ import {
   personMatchesSchema,
   erpOperationSchema,
   safeOperationRejection,
+  searchReferences,
   type ErpCard,
 } from "../documents/erp-workspace.client";
 import {
@@ -335,15 +336,18 @@ export class CandidateWorkspaceService {
     q?: string,
   ) {
     requireReviewGroup(p, "RU");
+    const term = q?.trim().replace(/\s+/g, " ") ?? "";
     if (
       ["persons", "responsibles", "settlements"].includes(kind) &&
-      (q?.trim().length ?? 0) < 3
+      term.length < 3
     )
       return { items: [] };
-    const result = await this.erp.request(
-      kind,
-      referencesSchema,
-      q?.trim() ? { q: q.trim() } : {},
+    // ERP matches a single word per query, so phrases are split and merged by
+    // searchReferences(); a bare term reaches ERP exactly as the caller sent it.
+    const result = await searchReferences(
+      (search) =>
+        this.erp.request(kind, referencesSchema, search ? { q: search } : {}),
+      term,
     );
     return kind === "persons"
       ? {
