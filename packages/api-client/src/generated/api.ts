@@ -3384,7 +3384,8 @@ export interface ChatDownloadDto {
 
 export interface ChatLinkDto {
   url: string;
-  text: string;
+  /** @nullable */
+  text: string | null;
 }
 
 export interface ChatStreamGrantDto {

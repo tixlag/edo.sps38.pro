@@ -162,6 +162,18 @@ describe("candidate chat composer", () => {
       "Полный текст приглашения",
     );
   });
+  it("inserts the link and explains when the ERP invitation is unavailable", async () => {
+    mocks.link.mockImplementation((_request, options) =>
+      options.onSuccess({ url: "https://example.test/chat", text: null }),
+    );
+    await mount();
+    await act(async () => button("Ссылка ЛК").click());
+    expect((host.querySelector("textarea") as HTMLTextAreaElement).value).toBe(
+      "https://example.test/chat",
+    );
+    expect(host.textContent).toContain("Шаблон приглашения недоступен");
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
   it("does not suggest an unchecked retry when LK link creation is uncertain", async () => {
     mocks.link.mockImplementation((_request, options) => options.onError());
     await mount();

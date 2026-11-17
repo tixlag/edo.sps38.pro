@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ConfigService } from "@nestjs/config";
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import type { AuthPrincipal } from "../src/auth/auth-principal";
+import * as identity from "../src/documents/candidate-identity";
 import { CommunicationsService } from "../src/communications/communications.service";
 import {
   ChatChannel,
@@ -47,7 +48,13 @@ function setup() {
   const prisma = {
     communicationOperation: {
       findUnique: vi.fn(async () => saved),
-      findFirst: vi.fn(async () => saved),
+      findFirst: vi.fn(async (query?: { where?: { status?: string } }) =>
+        query?.where?.status
+          ? saved?.status === query.where.status
+            ? saved
+            : null
+          : saved,
+      ),
       create: vi.fn(
         async ({ data }: { data: Record<string, unknown> }) =>
           (saved = {
@@ -223,6 +230,41 @@ describe("candidate communications", () => {
     );
     expect(s.erp.invitation).toHaveBeenCalledWith(candidate.erpUid);
   });
+  it("keeps a newly created link when the invitation fails and does not create it twice", async () => {
+    const s = setup();
+    const save = vi
+      .spyOn(identity, "candidateIdentityTransaction")
+      .mockResolvedValue(undefined as never);
+    try {
+      s.access.candidate.mockResolvedValue({
+        ...candidate,
+        chatUuid: null,
+      } as never);
+      s.erp.link.mockResolvedValue({
+        chatUuid,
+        url: "https://example.test",
+      } as never);
+      s.erp.invitation.mockRejectedValue(
+        new CommunicationSourceError("ERP_CHAT_UNAVAILABLE"),
+      );
+      await expect(
+        s.service.link(candidateId, principal),
+      ).resolves.toMatchObject({
+        url: expect.stringContaining(chatUuid),
+        text: null,
+      });
+      s.access.candidate.mockResolvedValue(candidate as never);
+      await expect(
+        s.service.link(candidateId, principal),
+      ).resolves.toMatchObject({
+        url: expect.stringContaining(chatUuid),
+        text: null,
+      });
+      expect(s.erp.link).toHaveBeenCalledOnce();
+    } finally {
+      save.mockRestore();
+    }
+  });
   it("rejects an invitation when the ERP link points to a different chat", async () => {
     const s = setup();
     s.erp.invitation.mockResolvedValue({
@@ -251,7 +293,7 @@ describe("candidate communications", () => {
   it("allows LK after a message exists in another channel", async () => {
     const s = setup();
     s.erp.history.mockResolvedValue({
-      items: [{ id: "1" }],
+      items: [{ id: "1", outgoing: true }],
       nextCursor: null,
     } as never);
     const context = await s.service.context(candidateId, principal);
@@ -259,12 +301,175 @@ describe("candidate communications", () => {
       true,
     );
   });
-  it("does not permit LK when empty history cannot be verified", async () => {
+  it("reports unavailable history without claiming it is the first message", async () => {
     const s = setup();
     s.erp.history.mockRejectedValue(new Error("unavailable"));
     const context = await s.service.context(candidateId, principal);
+    expect(context.unavailableSources).toContain("history");
     expect(context.recipients.some((r) => r.channel === ChatChannel.LK)).toBe(
-      false,
+      true,
+    );
+  });
+  it("does not treat incoming messages as previous outgoing", async () => {
+    const s = setup();
+    s.erp.history.mockResolvedValue({
+      items: [{ outgoing: false }],
+      nextCursor: null,
+    } as never);
+    s.lk.history.mockResolvedValue({
+      items: [{ outgoing: false }],
+      hasMore: false,
+    } as never);
+    expect(
+      (await s.service.context(candidateId, principal)).recipients.some(
+        (r) => r.channel === ChatChannel.LK,
+      ),
+    ).toBe(false);
+  });
+  it("finds earlier outgoing messages behind an incoming page", async () => {
+    const s = setup();
+    s.erp.history
+      .mockResolvedValueOnce({
+        items: [{ outgoing: false }],
+        nextCursor: "older",
+      } as never)
+      .mockResolvedValueOnce({
+        items: [{ outgoing: true }],
+        nextCursor: null,
+      } as never);
+    expect(
+      (await s.service.context(candidateId, principal)).recipients.some(
+        (r) => r.channel === ChatChannel.LK,
+      ),
+    ).toBe(true);
+  });
+  it("uses saved SENT operations without looking up histories", async () => {
+    const s = setup();
+    s.prisma.communicationOperation.findFirst.mockResolvedValue({
+      status: "SENT",
+    } as never);
+    expect(
+      (await s.service.context(candidateId, principal)).recipients.some(
+        (r) => r.channel === ChatChannel.LK,
+      ),
+    ).toBe(true);
+    expect(s.lk.history).not.toHaveBeenCalled();
+    expect(s.erp.history).not.toHaveBeenCalled();
+  });
+  it("does not treat an UNKNOWN operation as a confirmed outgoing message", async () => {
+    const s = setup();
+    s.erp.send.mockResolvedValue({
+      status: "UNKNOWN",
+      providerId: null,
+      errorCode: "UNKNOWN",
+    } as never);
+    await s.service.send(candidateId, principal, input);
+    expect(
+      (await s.service.context(candidateId, principal)).recipients.some(
+        (r) => r.channel === ChatChannel.LK,
+      ),
+    ).toBe(false);
+  });
+  it("sends external messages without requesting LK history", async () => {
+    const s = setup();
+    s.lk.history.mockImplementation(() => new Promise(() => {}));
+    await expect(
+      s.service.send(candidateId, principal, input),
+    ).resolves.toMatchObject({ status: "SENT" });
+    expect(s.lk.history).not.toHaveBeenCalled();
+  });
+  it.each(["sms", "wa", "tg"])(
+    "permits LK after an ERP %s outgoing message",
+    async (channel) => {
+      const s = setup();
+      s.erp.history.mockResolvedValue({
+        items: [{ outgoing: true, channel }],
+        nextCursor: null,
+      } as never);
+      await expect(
+        s.service.send(candidateId, principal, {
+          ...input,
+          channel: ChatChannel.LK,
+          recipientId: chatUuid,
+        }),
+      ).resolves.toMatchObject({ status: "SENT" });
+    },
+  );
+  it("permits LK after an earlier LK outgoing message", async () => {
+    const s = setup();
+    s.lk.history.mockResolvedValue({
+      items: [{ outgoing: true }],
+      hasMore: false,
+    } as never);
+    await expect(
+      s.service.send(candidateId, principal, {
+        ...input,
+        channel: ChatChannel.LK,
+        recipientId: chatUuid,
+      }),
+    ).resolves.toMatchObject({ status: "SENT" });
+  });
+  it("rejects LK as unverifiable when both sources fail and there is no SENT operation", async () => {
+    const s = setup();
+    s.erp.history.mockRejectedValue(new Error("down"));
+    s.lk.history.mockRejectedValue(new Error("down"));
+    await expect(
+      s.service.send(candidateId, principal, {
+        ...input,
+        channel: ChatChannel.LK,
+        recipientId: chatUuid,
+      }),
+    ).rejects.toThrow("проверить историю");
+    expect(s.prisma.communicationOperation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { candidateId, status: "SENT" } }),
+    );
+  });
+  it("sends to LK from a saved successful operation even when LK history is unavailable", async () => {
+    const s = setup();
+    s.prisma.communicationOperation.findFirst.mockResolvedValue({
+      status: "SENT",
+    } as never);
+    s.lk.history.mockRejectedValue(new Error("unavailable"));
+    await expect(
+      s.service.send(candidateId, principal, {
+        ...input,
+        channel: ChatChannel.LK,
+        recipientId: chatUuid,
+      }),
+    ).resolves.toMatchObject({ status: "SENT" });
+    expect(s.lk.history).not.toHaveBeenCalled();
+  });
+  it("sends WhatsApp without querying LK history", async () => {
+    const s = setup();
+    s.erp.context.mockResolvedValue({
+      recipients: [
+        {
+          ...input,
+          id: "wa-id",
+          channel: "wa",
+          label: "WhatsApp",
+          supportsFiles: true,
+        },
+      ],
+      templates: [],
+    } as never);
+    s.lk.history.mockImplementation(() => new Promise(() => {}));
+    await expect(
+      s.service.send(candidateId, principal, {
+        ...input,
+        channel: ChatChannel.WHATSAPP,
+        recipientId: "wa-id",
+      }),
+    ).resolves.toMatchObject({ status: "SENT" });
+    expect(s.lk.history).not.toHaveBeenCalled();
+  });
+  it("returns the existing link when invitation is unavailable", async () => {
+    const s = setup();
+    s.erp.invitation.mockRejectedValue(
+      new CommunicationSourceError("ERP_CHAT_UNAVAILABLE"),
+    );
+    await expect(s.service.link(candidateId, principal)).resolves.toMatchObject(
+      { url: expect.stringContaining(chatUuid), text: null },
     );
   });
   it("rejects arbitrary recipients and files sent via SMS", async () => {

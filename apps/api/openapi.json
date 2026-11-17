@@ -27047,7 +27047,8 @@
             "type": "string"
           },
           "text": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [

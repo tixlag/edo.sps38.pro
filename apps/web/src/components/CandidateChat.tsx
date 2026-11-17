@@ -253,14 +253,23 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
       },
       {
         onSuccess: (result) => applyReceipt(result, targetKey, sentDraft),
-        onError: () => {
+        onError: (error) => {
           // Keep the same request ID after a transport failure. An explicit retry
           // reads the original receipt instead of dispatching another SMS.
           const retained = { ...sentDraft, locked: false };
           writeChatDraft(targetKey, retained);
           if (targetKey === key) setDraft(retained);
+          const response = (
+            error as
+              | { response?: { status?: number; data?: { message?: string } } }
+              | undefined
+          )?.response;
           setNotice(
-            "Не удалось получить ответ. Повторите запрос: повторное сообщение не будет отправлено.",
+            recipient.channel === "lk" &&
+              [400, 503].includes(response?.status ?? 0) &&
+              response?.data?.message
+              ? response.data.message
+              : "Не удалось получить ответ. Повторите запрос: повторное сообщение не будет отправлено.",
           );
         },
       },
@@ -664,9 +673,13 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
                     { candidateId },
                     {
                       onSuccess: (result) => {
+                        if (!result.text)
+                          setNotice(
+                            "Шаблон приглашения недоступен. Ссылка добавлена в сообщение.",
+                          );
                         change({
                           ...draft,
-                          text: [draft.text, result.text]
+                          text: [draft.text, result.text ?? result.url]
                             .filter(Boolean)
                             .join("\n")
                             .slice(0, 16000),

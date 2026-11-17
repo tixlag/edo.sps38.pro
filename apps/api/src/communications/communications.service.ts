@@ -81,6 +81,7 @@ export class CommunicationsService {
   async context(
     candidateId: string,
     principal: AuthPrincipal,
+    checkLk = true,
   ): Promise<CommunicationContextDto> {
     const candidate = await this.access.candidate(candidateId, principal);
     const unavailableSources: string[] = [];
@@ -107,29 +108,34 @@ export class CommunicationsService {
             recipient.channel !== ChatChannel.SMS && recipient.supportsFiles,
         })),
     ];
-    // The initial invitation must reach the candidate through an external channel.
-    // If neither history can confirm a prior message, fail closed for LK.
-    let hasPreviousMessage = false;
-    if (candidate.chatUuid && this.lk.configured()) {
-      const histories = await Promise.allSettled([
-        candidate.erpUid && !candidate.erpDeleted
-          ? this.erp.history(candidate.erpUid, 1)
-          : Promise.resolve({ items: [] }),
-        this.lk.history(candidateId, candidate.chatUuid, 1, 0),
-      ]);
-      hasPreviousMessage = histories.some(
-        (history) =>
-          history.status === "fulfilled" && history.value.items.length > 0,
-      );
-    }
-    if (candidate.chatUuid && this.lk.configured() && hasPreviousMessage)
-      recipients.unshift({
-        id: candidate.chatUuid,
-        channel: ChatChannel.LK,
-        label: "Чат ЛК",
-        supportsFiles: true,
+    if (candidate.chatUuid && this.lk.configured() && checkLk) {
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const state = await Promise.race([
+        this.outgoingState(
+          candidateId,
+          candidate.erpUid,
+          candidate.chatUuid,
+          controller.signal,
+        ),
+        new Promise<"unknown">((resolve) => {
+          timer = setTimeout(() => {
+            controller.abort();
+            resolve("unknown");
+          }, 1000);
+        }),
+      ]).finally(() => {
+        if (timer) clearTimeout(timer);
       });
-    else if (candidate.chatUuid && !this.lk.configured())
+      if (state !== "first")
+        recipients.unshift({
+          id: candidate.chatUuid,
+          channel: ChatChannel.LK,
+          label: "Чат ЛК",
+          supportsFiles: true,
+        });
+      if (state === "unknown") unavailableSources.push("history");
+    } else if (candidate.chatUuid && !this.lk.configured())
       unavailableSources.push("lk");
     const lkUrl = candidate.chatUuid ? this.lkLink(candidate.chatUuid) : null;
     return {
@@ -139,6 +145,73 @@ export class CommunicationsService {
       lkUrl,
       unavailableSources,
     };
+  }
+  private async outgoingState(
+    candidateId: string,
+    erpUid: string | null,
+    chatUuid: string,
+    signal?: AbortSignal,
+  ): Promise<"sent" | "first" | "unknown"> {
+    const saved = await this.prisma.communicationOperation.findFirst({
+      where: { candidateId, status: "SENT" },
+      select: { id: true },
+    });
+    if (saved) return "sent";
+    const searchErp = async (): Promise<"sent" | "first" | "unknown"> => {
+      if (!erpUid) return "first";
+      let cursor: string | undefined;
+      const seen = new Set<string>();
+      try {
+        for (let page = 0; page < 20; page++) {
+          if (signal?.aborted) return "unknown";
+          const result = await this.erp.history(erpUid, 100, cursor);
+          if (result.items.some((message) => message.outgoing)) return "sent";
+          if (!result.nextCursor) return "first";
+          if (seen.has(result.nextCursor)) return "unknown";
+          seen.add(result.nextCursor);
+          cursor = result.nextCursor;
+        }
+      } catch {
+        return "unknown";
+      }
+      return "unknown";
+    };
+    const searchLk = async (): Promise<"sent" | "first" | "unknown"> => {
+      try {
+        for (let page = 0; page < 20; page++) {
+          if (signal?.aborted) return "unknown";
+          const result = await this.lk.history(
+            candidateId,
+            chatUuid,
+            100,
+            page * 100,
+          );
+          if (result.items.some((message) => message.outgoing)) return "sent";
+          if (!result.hasMore) return "first";
+          if (!result.items.length) return "unknown";
+        }
+      } catch {
+        return "unknown";
+      }
+      return "unknown";
+    };
+    const erp = searchErp(),
+      lk = searchLk();
+    const sent = (p: Promise<"sent" | "first" | "unknown">) =>
+      p.then((state) =>
+        state === "sent" ? ("sent" as const) : new Promise<"sent">(() => {}),
+      );
+    return Promise.race([
+      sent(erp),
+      sent(lk),
+      Promise.all([erp, lk]).then(([a, b]) =>
+        a === "sent" || b === "sent"
+          ? ("sent" as const)
+          : a === "first" && b === "first"
+            ? ("first" as const)
+            : ("unknown" as const),
+      ),
+    ]);
   }
   private lkLink(chatUuid: string) {
     const url = new URL(
@@ -326,15 +399,38 @@ export class CommunicationsService {
         );
       return operationDto(previous);
     }
-    const context = await this.context(candidateId, principal);
+    const context = await this.context(candidateId, principal, false);
+    if (input.channel === ChatChannel.LK) {
+      if (
+        !candidate.chatUuid ||
+        !this.lk.configured() ||
+        input.recipientId !== candidate.chatUuid ||
+        candidate.erpDeleted
+      )
+        throw new BadRequestException("Канал или получатель недоступен");
+      const state = await this.outgoingState(
+        candidateId,
+        candidate.erpUid,
+        candidate.chatUuid,
+      );
+      if (state === "unknown")
+        throw new ServiceUnavailableException(
+          "Не удалось проверить историю отправлений. Повторите попытку.",
+        );
+      if (state === "first")
+        throw new BadRequestException(
+          "Первое сообщение отправьте через SMS, WhatsApp или Telegram",
+        );
+    }
     if (
       !context.canSend ||
-      !context.recipients.some(
-        (r) =>
-          r.channel === input.channel &&
-          r.id === input.recipientId &&
-          (!ids.length || r.supportsFiles),
-      )
+      (input.channel !== ChatChannel.LK &&
+        !context.recipients.some(
+          (r) =>
+            r.channel === input.channel &&
+            r.id === input.recipientId &&
+            (!ids.length || r.supportsFiles),
+        ))
     )
       throw new BadRequestException("Канал или получатель недоступен");
     const files = await this.prisma.communicationAttachment.findMany({
@@ -517,10 +613,10 @@ export class CommunicationsService {
   async link(candidateId: string, principal: AuthPrincipal) {
     this.assertSend(principal);
     const candidate = await this.access.candidate(candidateId, principal);
-    if (!candidate.erpUid)
-      throw new ServiceUnavailableException("ERP_CANDIDATE_MISSING");
     if (candidate.chatUuid)
       return this.invitation(candidate.erpUid, candidate.chatUuid);
+    if (!candidate.erpUid)
+      throw new ServiceUnavailableException("ERP_CANDIDATE_MISSING");
     const lock = `edo:candidate-link:${candidateId}`,
       owner = randomUUID();
     if (!(await this.redis.setNxPxStrict(lock, owner, 60000)))
@@ -561,13 +657,20 @@ export class CommunicationsService {
       await this.redis.compareAndDelStrict(lock, owner);
     }
   }
-  private async invitation(erpUid: string, chatUuid: string) {
-    const result = await this.erp.invitation(erpUid);
+  private async invitation(erpUid: string | null, chatUuid: string) {
+    const url = this.lkLink(chatUuid);
+    if (!erpUid) return { url, text: null };
+    let result;
+    try {
+      result = await this.erp.invitation(erpUid);
+    } catch {
+      return { url, text: null };
+    }
     if (result.chatUuid.toLowerCase() !== chatUuid.toLowerCase())
       throw new ConflictException(
         "Связь чата в 1С изменилась; обновите карточку кандидата",
       );
-    return { url: this.lkLink(chatUuid), text: result.text };
+    return { url, text: result.text };
   }
   async download(candidateId: string, principal: AuthPrincipal, token: string) {
     const candidate = await this.access.candidate(candidateId, principal);
