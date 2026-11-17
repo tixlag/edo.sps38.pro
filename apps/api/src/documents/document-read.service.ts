@@ -281,6 +281,7 @@ export class DocumentReadService {
       documentTypeCode: d.documentType?.code ?? null,
       status: d.status,
       currentVersion: d.currentVersion,
+      acceptedVersion: d.acceptedVersion,
       revision: current?.revision ?? 0,
       submittedAt: current?.submittedAt?.toISOString() ?? null,
       reviewedAt: current?.reviewedAt?.toISOString() ?? null,
@@ -466,6 +467,7 @@ export class DocumentReadService {
             if (category) applicableTypes.push({ ...type, category });
             if (
               uploaded.has(type.id) ||
+              waivedTypes.has(type.id) ||
               (type.erpUid && previousUids.has(type.erpUid.toLowerCase()))
             )
               continue;
@@ -1407,7 +1409,10 @@ export class DocumentReadService {
     const chatCandidate =
       !state?.currentCandidateId && scope.chat_uuid
         ? await this.prisma.candidate.findFirst({
-            where: { chatUuid: scope.chat_uuid, erpDeleted: false },
+            where: {
+              chatUuid: scope.chat_uuid.toLowerCase(),
+              erpDeleted: false,
+            },
             select: {
               id: true,
               reviewGroup: true,
@@ -1417,7 +1422,49 @@ export class DocumentReadService {
           })
         : null;
     const previousCandidateId = state?.currentCandidateId ?? chatCandidate?.id;
-    if (!previousCandidateId) return { ...result, reusedDocumentUids: [] };
+    const candidateSelect = {
+      id: true,
+      reviewGroup: true,
+      citizenship: true,
+      chatUuid: true,
+    } as const;
+    let candidate = scope.candidateId
+      ? await this.prisma.candidate.findFirst({
+          where: { id: scope.candidateId, erpDeleted: false },
+          select: candidateSelect,
+        })
+      : chatCandidate;
+    if (!scope.candidateId && state?.currentCandidateId) {
+      candidate = await this.prisma.candidate.findFirst({
+        where: { id: state.currentCandidateId, erpDeleted: false },
+        select: candidateSelect,
+      });
+    } else if (
+      !scope.candidateId &&
+      !scope.chat_uuid &&
+      !state?.currentCandidateId
+    ) {
+      // code1c identifies a person, not an admission cycle. Never select a
+      // waiver from an arbitrary historical card when multiple cards match.
+      const candidates = await this.prisma.candidate.findMany({
+        where: { code1c: scope.code_1c, erpDeleted: false },
+        select: candidateSelect,
+        take: 2,
+      });
+      candidate = candidates.length === 1 ? candidates[0] : null;
+    }
+    const absences =
+      candidate && candidateReviewGroup(candidate) === "RU"
+        ? await this.prisma.candidateDocumentAbsence.findMany({
+            where: { candidateId: candidate.id, status: "APPROVED" },
+            select: { documentType: { select: { erpUid: true } } },
+          })
+        : [];
+    const waivedDocumentUids = absences.flatMap(({ documentType }) =>
+      documentType.erpUid ? [documentType.erpUid] : [],
+    );
+    if (!previousCandidateId)
+      return { ...result, reusedDocumentUids: [], waivedDocumentUids };
     const isIg = state?.currentCandidateId
       ? true
       : candidateReviewGroup(chatCandidate!) === "IG";
@@ -1434,6 +1481,7 @@ export class DocumentReadService {
     );
     return {
       ...result,
+      waivedDocumentUids,
       reusedDocumentUids: usablePreviousUids(previous, isIg).filter(
         (uid) => !current.has(uid),
       ),

@@ -149,11 +149,38 @@ afterEach(async () => {
 });
 
 describe("candidate chat composer", () => {
+  it("inserts the invitation provided by ERP", async () => {
+    mocks.link.mockImplementation((_request, options) =>
+      options.onSuccess({
+        url: "https://example.test",
+        text: "Полный текст приглашения",
+      }),
+    );
+    await mount();
+    await act(async () => button("Ссылка ЛК").click());
+    expect((host.querySelector("textarea") as HTMLTextAreaElement).value).toBe(
+      "Полный текст приглашения",
+    );
+  });
+  it("inserts the link and explains when the ERP invitation is unavailable", async () => {
+    mocks.link.mockImplementation((_request, options) =>
+      options.onSuccess({ url: "https://example.test/chat", text: null }),
+    );
+    await mount();
+    await act(async () => button("Ссылка ЛК").click());
+    expect((host.querySelector("textarea") as HTMLTextAreaElement).value).toBe(
+      "https://example.test/chat",
+    );
+    expect(host.textContent).toContain("Шаблон приглашения недоступен");
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
   it("does not suggest an unchecked retry when LK link creation is uncertain", async () => {
     mocks.link.mockImplementation((_request, options) => options.onError());
     await mount();
     await act(async () => button("Ссылка ЛК").click());
-    expect(host.textContent).toContain("Проверьте связь кандидата перед повтором");
+    expect(host.textContent).toContain(
+      "Проверьте связь кандидата перед повтором",
+    );
   });
   it("clears the visible draft when the authenticated session changes", async () => {
     await mount();

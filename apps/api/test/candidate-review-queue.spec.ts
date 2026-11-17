@@ -87,6 +87,42 @@ function setup() {
 }
 
 describe("candidate review queue", () => {
+  it.each(["PENDING", "APPROVED", "REJECTED"])(
+    "counts only %s absence decisions in all document views",
+    async (status) => {
+      const { reads, prisma } = setup();
+      prisma.candidate.findFirst.mockResolvedValue(owner("c1"));
+      const type = {
+        id: "waiver",
+        code: "WAIVER",
+        title: "Документ",
+        erpUid: "uid",
+        stage: 1,
+        requiredForAll: true,
+        allRu: false,
+        allForeign: false,
+        positions: [],
+        stageRules: [],
+        catalogSyncedAt: new Date(),
+      };
+      prisma.documentType.findMany.mockResolvedValue([type]);
+      prisma.candidateDocumentAbsence.findMany.mockImplementation(
+        async ({ where }) =>
+          status === where.status
+            ? [{ documentTypeId: type.id, documentType: type }]
+            : [],
+      );
+      const all = await reads.candidateDetails("c1", principal);
+      const selected = await reads.candidateDetails("c1", principal, "1");
+      const expected =
+        status === "APPROVED" ? [] : [{ code: "WAIVER", title: "Документ" }];
+      expect(all.documentGroups?.required.missingDocuments).toEqual(expected);
+      expect(all.stages?.[0].required.missingDocuments).toEqual(expected);
+      expect(selected.stageDocuments?.required.missingDocuments).toEqual(
+        expected,
+      );
+    },
+  );
   it.each([undefined, false, true])(
     "applies includeEmployed=%s to the paginated RU query alongside profile and document filters",
     async (includeEmployed) => {

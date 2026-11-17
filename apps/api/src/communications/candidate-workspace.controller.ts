@@ -86,6 +86,15 @@ export class CandidateWorkspaceController {
   ) {
     return this.workspace.references("organizations", p, q.q);
   }
+  @Get("references/settlements")
+  @ApiOperation({ operationId: "listCandidateSettlements", summary: "ERP settlement search" })
+  @ApiResponse({ status: 200, type: CandidateReferencesDto })
+  refsSettlements(
+    @CurrentPrincipal() p: AuthPrincipal,
+    @Query() q: CandidateReferenceQueryDto,
+  ) {
+    return this.workspace.references("settlements", p, q.q);
+  }
   @Get("references/sources")
   @ApiOperation({ operationId: "listCandidateSources", summary: "ERP sources" })
   @ApiResponse({ status: 200, type: CandidateReferencesDto })

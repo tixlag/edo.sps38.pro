@@ -399,6 +399,9 @@ export function CandidateStageAccordion({
                     candidateId={candidateId}
                     reviewGroup={reviewGroup}
                     title={card.title}
+                    instanceIndex={card.currentDocument
+                      ? [...required.documents, ...additional.documents].filter((item) => item.documentTypeCode === card.currentDocument?.documentTypeCode).findIndex((item) => item.id === card.currentDocument?.id)
+                      : previousDocuments.filter((item) => item.documentTypeCode === card.previousDocument?.documentTypeCode).findIndex((item) => item.id === card.previousDocument?.id)}
                     status={card.status}
                     currentDocument={card.currentDocument}
                     previousDocument={card.previousDocument}
@@ -433,6 +436,9 @@ export function CandidateStageAccordion({
                     candidateId={candidateId}
                     reviewGroup={reviewGroup}
                     title={card.title}
+                    instanceIndex={card.currentDocument
+                      ? [...required.documents, ...additional.documents].filter((item) => item.documentTypeCode === card.currentDocument?.documentTypeCode).findIndex((item) => item.id === card.currentDocument?.id)
+                      : previousDocuments.filter((item) => item.documentTypeCode === card.previousDocument?.documentTypeCode).findIndex((item) => item.id === card.previousDocument?.id)}
                     status={card.status}
                     currentDocument={card.currentDocument}
                     previousDocument={card.previousDocument}

@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { CandidateDocumentThumbnail } from "./CandidateDocumentThumbnail";
 import { documentDeliveryPresentation } from "../lib/document-delivery-presentation";
+import { DocumentInstanceCaption } from "./DocumentInstanceCaption";
+import { previousDocumentInstanceLabel } from "../lib/document-instance-label";
 import { formatDateRu } from "../lib/date-format";
 
 export interface CandidatePreviousDocumentCardProps {
@@ -35,43 +37,7 @@ export interface CandidatePreviousDocumentCardProps {
   onReviewCurrent?: (docId: string, version?: number) => void;
   mode?: "compact" | "expanded";
   className?: string;
-}
-
-function formatRequisites(fields?: Record<string, unknown>): string[] {
-  if (!fields) return [];
-  const parts: string[] = [];
-
-  const series = fields.series ?? fields.doc_series;
-  const number = fields.number ?? fields.doc_number;
-  const issuedAt = fields.issuedAt ?? fields.issueDate ?? fields.issue_date;
-
-  if (series && number) {
-    parts.push(`Серия/номер: ${series} ${number}`);
-  } else if (number) {
-    parts.push(`Номер: ${number}`);
-  } else if (series) {
-    parts.push(`Серия: ${series}`);
-  }
-
-  if (issuedAt && typeof issuedAt === "string") {
-    parts.push(`Выдан: ${formatDateRu(issuedAt)}`);
-  }
-
-  if (parts.length === 0) {
-    // Fallback: pick any primitive key-value pairs (excluding internal ids)
-    for (const [k, v] of Object.entries(fields)) {
-      if (
-        !/(?:uuid|uid|code_?1c|code1c|erp|^id$)/i.test(k) &&
-        (typeof v === "string" || typeof v === "number") &&
-        v
-      ) {
-        parts.push(`${k}: ${v}`);
-        if (parts.length >= 2) break;
-      }
-    }
-  }
-
-  return parts;
+  instanceIndex?: number;
 }
 
 export function CandidatePreviousDocumentCard({
@@ -87,6 +53,7 @@ export function CandidatePreviousDocumentCard({
   onOpenPrevious,
   mode,
   className,
+  instanceIndex = 0,
 }: CandidatePreviousDocumentCardProps) {
   const [openingOriginal, setOpeningOriginal] = useState(false);
   // EDO always wins when present, regardless of delivery or preview availability.
@@ -225,7 +192,6 @@ export function CandidatePreviousDocumentCard({
           new Date(),
         ),
     );
-  const requisites = formatRequisites(previousDocument?.fields);
   const actionClassName =
     "h-8 max-w-full whitespace-normal px-2.5 text-xs leading-tight";
   const edoAction = currentDocument && (
@@ -235,6 +201,7 @@ export function CandidatePreviousDocumentCard({
       className={actionClassName}
       onClick={openEdoDocument}
       aria-label={`${title}, версия ${displayedVersion ?? returnedVersion?.version ?? 1}`}
+      aria-describedby={`card-instance-${currentDocument.id}-${displayedVersion}`}
     >
       <ExternalLink size={13} className="shrink-0" aria-hidden />
       {edoActionLabel}
@@ -292,10 +259,15 @@ export function CandidatePreviousDocumentCard({
           <h3 className="break-words text-[13px] font-semibold leading-5 text-[var(--foreground)]">
             {title}
           </h3>
+          {currentDocument ? (
+            <DocumentInstanceCaption id={`card-instance-${currentDocument.id}-${displayedVersion}`} document={currentDocument} index={instanceIndex} version={displayedVersion} />
+          ) : previousDocument ? (
+            <p className="break-words text-sm leading-5 text-[var(--muted-foreground)]">{previousDocumentInstanceLabel(previousDocument, instanceIndex)}</p>
+          ) : null}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {renderBadge()}
             {primary !== "NONE" && (
-              <span className="text-[11px] text-[var(--muted-foreground)]">
+              <span className="text-xs text-[var(--muted-foreground)]">
                 {sourceText}
                 {currentDocument ? ` · версия ${displayedVersion}` : ""}
               </span>
@@ -346,15 +318,7 @@ export function CandidatePreviousDocumentCard({
               <span>Срок действия истёк. Нужно загрузить снова</span>
             </div>
           )}
-          {requisites.length > 0 && (
-            <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px]">
-              {requisites.map((item) => (
-                <span key={item} className="break-words">
-                  {item}
-                </span>
-              ))}
-            </div>
-          )}
+
         </div>
       )}
     </article>

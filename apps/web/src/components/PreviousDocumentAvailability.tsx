@@ -5,6 +5,7 @@ import {
 } from "@edo/api-client";
 import { Badge, Button } from "@edo/ui";
 import { CheckCircle2, History as HistoryIcon } from "lucide-react";
+import { previousDocumentInstanceLabel } from "../lib/document-instance-label";
 import { formatDateRu } from "../lib/date-format";
 import { candidateError } from "./CandidateForm";
 
@@ -42,9 +43,11 @@ const presentation = {
 export function PreviousDocumentAvailability({
   candidateId,
   document,
+  instanceIndex = 0,
 }: {
   candidateId: string;
   document: PreviousDocumentAvailabilityDto;
+  instanceIndex?: number;
 }) {
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState("");
@@ -72,6 +75,7 @@ export function PreviousDocumentAvailability({
         </span>
         <Badge tone={view.tone}>{view.label}</Badge>
       </div>
+      <p className="break-words text-sm text-[var(--muted-foreground)]">{previousDocumentInstanceLabel(document, instanceIndex)}</p>
       <p className="flex items-start gap-1.5 text-xs text-[var(--muted-foreground)]">
         <Icon size={14} aria-hidden className="mt-0.5 shrink-0" />
         <span>{view.explanation}</span>

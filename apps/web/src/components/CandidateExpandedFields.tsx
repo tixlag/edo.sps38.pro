@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   useListCandidateCountries,
   useListCandidateOrganizations,
@@ -7,6 +7,8 @@ import {
   useListCandidateContactTypes,
   useListCandidateContactKinds,
   useListCandidateUniversities,
+  useListCandidateSettlements,
+  getListCandidateSettlementsQueryKey,
   type CandidatePatchFieldsDto,
   type CandidateWorkspaceDto,
   type CandidateReferenceDto,
@@ -15,6 +17,7 @@ import { Button } from "@edo/ui";
 import { SearchSelect } from "./SearchSelect";
 import { CANDIDATE_CONTROL } from "./CandidateForm";
 import { candidateRelatedFieldValidation } from "../lib/candidate-related-fields";
+import { DateInput } from "./DateInput";
 
 export function CandidateExpandedFields({
   profile,
@@ -22,7 +25,7 @@ export function CandidateExpandedFields({
   onChange,
   disabled,
 }: {
-  profile: CandidateWorkspaceDto;
+  profile?: CandidateWorkspaceDto;
   fields: CandidatePatchFieldsDto;
   onChange: (fields: CandidatePatchFieldsDto) => void;
   disabled: boolean;
@@ -32,6 +35,29 @@ export function CandidateExpandedFields({
     ? "person"
     : (fields.sourceComment?.kind ??
       (fields.sourceId === "Другое" ? "text" : ""));
+  const settlementListId = useId();
+  const [settlementQuery, setSettlementQuery] = useState("");
+  const [settlementSearch, setSettlementSearch] = useState("");
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setSettlementSearch(settlementQuery.trim()),
+      300,
+    );
+    return () => window.clearTimeout(timer);
+  }, [settlementQuery]);
+  const settlements = useListCandidateSettlements(
+    {
+      q: settlementSearch || undefined,
+    },
+    {
+      query: {
+        queryKey: getListCandidateSettlementsQueryKey({
+          q: settlementSearch || undefined,
+        }),
+        enabled: settlementSearch.length >= 3 && settlementSearch.length <= 100,
+      },
+    },
+  );
   const [countryQuery, setCountryQuery] = useState("");
   const [organizationQuery, setOrganizationQuery] = useState("");
   const [sourceQuery, setSourceQuery] = useState("");
@@ -57,10 +83,10 @@ export function CandidateExpandedFields({
   const referenceOptions = (items?: CandidateReferenceDto[]) =>
     (items ?? []).map((item) => ({ value: item.id, label: item.name }));
   const responsibleOptions = (responsibles.data?.items ?? [])
-    .filter((item) => item.kind)
+    .filter((item) => item.kind === "person")
     .map((item) => ({
       value: `${item.kind}:${item.id}`,
-      label: `${item.name} · ${item.kind === "user" ? "пользователь" : "физлицо"}`,
+      label: item.name,
     }));
   const responsibleField = (
     key: "responsible" | "additionalResponsible",
@@ -78,12 +104,13 @@ export function CandidateExpandedFields({
           onSearchChange={setResponsibleQuery}
           onChange={(choice) => {
             const option = responsibles.data?.items.find(
-              (item) => `${item.kind}:${item.id}` === choice,
+              (item) =>
+                item.kind === "person" && `${item.kind}:${item.id}` === choice,
             );
             set(
               key,
-              option?.kind
-                ? { kind: option.kind, id: option.id, name: option.name }
+              option
+                ? { kind: "person", id: option.id, name: option.name }
                 : null,
             );
           }}
@@ -97,18 +124,20 @@ export function CandidateExpandedFields({
   };
   return (
     <fieldset disabled={disabled} className="space-y-6">
-      <section
+      <details
         className="space-y-3 border-t border-[var(--border)] pt-4"
-        aria-label="Личные данные"
+        data-candidate-section="personal"
       >
-        <h3 className="font-medium">Личные данные</h3>
+        <summary className="cursor-pointer text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]">
+          Личные данные
+        </summary>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1 text-sm">
             <p>Гражданство</p>
             <SearchSelect
               label="Гражданство"
               value={fields.citizenship}
-              selectedLabel={profile.citizenship?.toUpperCase()}
+              selectedLabel={profile?.citizenship?.toUpperCase()}
               options={(countries.data?.items ?? []).map((item) => ({
                 value: item.code ?? item.id,
                 label: item.name,
@@ -142,31 +171,60 @@ export function CandidateExpandedFields({
               <option value="female">Женский</option>
             </select>
           </label>
-          <label className="space-y-1 text-sm sm:col-span-2">
-            Населённый пункт
+          <div className="space-y-1 text-sm sm:col-span-2">
+            <p>Населённый пункт</p>
             <input
+              type="text"
+              aria-label="Населённый пункт"
+              list={settlementListId}
               className={CANDIDATE_CONTROL}
-              maxLength={500}
               value={fields.settlement ?? ""}
-              onChange={(event) =>
-                set("settlement", event.target.value || null)
-              }
+              maxLength={500}
+              placeholder="Выберите из подсказок или введите свой вариант"
+              onChange={(event) => {
+                set("settlement", event.target.value || null);
+                setSettlementQuery(event.target.value);
+              }}
+              onBlur={() => {
+                const trimmed = fields.settlement?.trim() || null;
+                if (trimmed !== fields.settlement) set("settlement", trimmed);
+              }}
             />
-          </label>
+            <datalist id={settlementListId}>
+              {(settlements.data?.items ?? []).map((item) => (
+                <option key={item.id} value={item.name} />
+              ))}
+            </datalist>
+            {settlementSearch.length >= 3 && settlements.isError && (
+              <p className="text-sm text-[var(--muted-foreground)]">
+                Подсказки недоступны. Населённый пункт можно ввести вручную.
+              </p>
+            )}
+          </div>
         </div>
-      </section>
-      <section
+      </details>
+      <details
         className="space-y-3 border-t border-[var(--border)] pt-4"
-        aria-label="Работа и оформление"
+        data-candidate-section="work"
       >
-        <h3 className="font-medium">Работа и оформление</h3>
+        <summary className="cursor-pointer text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]">
+          Работа и оформление
+          {(validation.errors.length > 0 ||
+            (fields.sourceComment?.kind === "person" &&
+              !fields.sourceComment.id)) && (
+            <span className="text-[var(--danger)]">
+              {" "}
+              · проверьте обязательные поля
+            </span>
+          )}
+        </summary>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1 text-sm">
             <p>Организация</p>
             <SearchSelect
               label="Организация"
               value={fields.organizationId}
-              selectedLabel={profile.organization?.name}
+              selectedLabel={profile?.organization?.name}
               options={referenceOptions(organizations.data?.items)}
               onSearchChange={setOrganizationQuery}
               onChange={(value) => set("organizationId", value ?? null)}
@@ -203,7 +261,7 @@ export function CandidateExpandedFields({
             <SearchSelect
               label="Источник"
               value={fields.sourceId}
-              selectedLabel={profile.source?.name}
+              selectedLabel={profile?.source?.name}
               options={referenceOptions(sources.data?.items)}
               onSearchChange={setSourceQuery}
               onChange={(value) => {
@@ -333,35 +391,29 @@ export function CandidateExpandedFields({
           ))}
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="space-y-1 text-sm">
-            Начало практики
-            <input
-              type="date"
-              className={CANDIDATE_CONTROL}
-              value={fields.internshipStartDate ?? ""}
-              onChange={(event) =>
-                set("internshipStartDate", event.target.value || null)
-              }
+          <div className="space-y-1 text-sm">
+            <p>Начало практики</p>
+            <DateInput
+              label="Начало практики"
+              value={fields.internshipStartDate}
+              onChange={(date) => set("internshipStartDate", date)}
             />
-          </label>
-          <label className="space-y-1 text-sm">
-            Окончание практики{fields.internship ? " · обязательно" : ""}
-            <input
-              type="date"
-              className={CANDIDATE_CONTROL}
+          </div>
+          <div className="space-y-1 text-sm">
+            <p>Окончание практики{fields.internship ? " · обязательно" : ""}</p>
+            <DateInput
+              label="Окончание практики"
               required={validation.practiceChanged && !!fields.internship}
-              value={fields.internshipEndDate ?? ""}
-              onChange={(event) =>
-                set("internshipEndDate", event.target.value || null)
-              }
+              value={fields.internshipEndDate}
+              onChange={(date) => set("internshipEndDate", date)}
             />
-          </label>
+          </div>
           <div className="space-y-1 text-sm sm:col-span-2">
             <p>Учебное заведение</p>
             <SearchSelect
               label="Учебное заведение"
               value={fields.universityId}
-              selectedLabel={profile.university?.name}
+              selectedLabel={profile?.university?.name}
               options={referenceOptions(universities.data?.items)}
               onSearchChange={setUniversityQuery}
               onChange={(value) => set("universityId", value ?? null)}
@@ -391,12 +443,24 @@ export function CandidateExpandedFields({
             onChange={(event) => set("comment", event.target.value)}
           />
         </label>
-      </section>
-      <section
+      </details>
+      <details
         className="space-y-3 border-t border-[var(--border)] pt-4"
-        aria-label="Контактная информация"
+        data-candidate-section="contacts"
       >
-        <h3 className="font-medium">Контактная информация</h3>
+        <summary className="cursor-pointer text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]">
+          Контакты
+          {(fields.contacts ?? []).some(
+            (contact) =>
+              contact.rowNumber == null &&
+              (!contact.typeId || !contact.presentation),
+          ) && (
+            <span className="text-[var(--danger)]">
+              {" "}
+              · проверьте обязательные поля
+            </span>
+          )}
+        </summary>
         <p className="text-sm text-[var(--muted-foreground)]">
           Сохраняются только изменённые строки. Остальные контакты останутся в
           ERP.
@@ -432,6 +496,9 @@ export function CandidateExpandedFields({
             >
               <label className="space-y-1 text-sm">
                 Тип
+                {contact.rowNumber == null && (
+                  <span className="font-medium"> · обязательно</span>
+                )}
                 <select
                   className={CANDIDATE_CONTROL}
                   value={contact.typeId}
@@ -483,6 +550,9 @@ export function CandidateExpandedFields({
               </label>
               <label className="space-y-1 text-sm">
                 Значение
+                {contact.rowNumber == null && (
+                  <span className="font-medium"> · обязательно</span>
+                )}
                 <input
                   required={contact.rowNumber == null}
                   className={CANDIDATE_CONTROL}
@@ -535,7 +605,7 @@ export function CandidateExpandedFields({
         >
           Добавить контакт
         </Button>
-      </section>
+      </details>
     </fieldset>
   );
 }

@@ -296,6 +296,51 @@ export const referencesSchema = z.object({
     }),
   ),
 });
+export type References = z.infer<typeof referencesSchema>;
+/** ERP returns at most this many rows per reference query. */
+export const ERP_REFERENCE_LIMIT = 50;
+const mentions = (item: References["items"][number], word: string) =>
+  item.name.toLocaleLowerCase("ru").includes(word) ||
+  Boolean(item.code?.toLocaleLowerCase("ru").includes(word));
+/**
+ * Narrow per-word ERP results to the rows mentioning every word of the phrase.
+ * A word whose result hits ERP's row cap may be missing rows, so only uncapped
+ * results may drive the merge; if every word is capped the narrowest result is
+ * the least lossy base.
+ */
+export function mergeReferenceMatches(
+  words: string[],
+  results: References[],
+): References {
+  const complete = results.filter(
+    (result) => result.items.length < ERP_REFERENCE_LIMIT,
+  );
+  const base = [...(complete.length ? complete : results)].sort(
+    (a, b) => a.items.length - b.items.length,
+  )[0];
+  return {
+    items: (base ?? { items: [] }).items.filter((item) =>
+      words.every((word) => mentions(item, word)),
+    ),
+  };
+}
+/**
+ * ERP matches a reference query against a single word only: "Инженер" finds 37
+ * positions while "Инженер по комплектации" finds none, so a phrase has to be
+ * searched word by word and merged here. Single-word and unfiltered queries go
+ * straight through unchanged.
+ */
+export async function searchReferences(
+  request: (term: string) => Promise<References>,
+  term: string,
+): Promise<References> {
+  const normalized = term.trim().replace(/\s+/g, " ");
+  const parts = normalized.split(" ").filter(Boolean);
+  if (parts.length <= 1) return request(normalized);
+  const words = [...new Set(parts.map((word) => word.toLocaleLowerCase("ru")))];
+  const results = await Promise.all(words.map((word) => request(word)));
+  return mergeReferenceMatches(words, results);
+}
 export const personMatchesSchema = z.object({
   items: z
     .array(

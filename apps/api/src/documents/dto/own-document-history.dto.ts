@@ -7,6 +7,12 @@ export class OwnDocumentListDto extends DocumentListDto {
     description: "Confirmed reusable previous document types",
   })
   reusedDocumentUids!: string[];
+
+  @ApiProperty({
+    type: [String],
+    description: "Document types with approved absence",
+  })
+  waivedDocumentUids!: string[];
 }
 
 export class OwnHistoricalFileDto {

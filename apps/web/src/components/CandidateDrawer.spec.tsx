@@ -52,6 +52,9 @@ vi.mock("@edo/api-client", () => ({
     return { data: mock.data };
   },
 }));
+vi.mock("./CandidateDocumentAbsences", () => ({
+  CandidateDocumentAbsences: () => <section aria-label="Отсутствующие документы">Отсутствующие документы</section>,
+}));
 vi.mock("./CandidateDrawerHistorySection", () => ({
   CandidateDrawerHistorySection: ({ candidateId }: { candidateId: string }) => (
     <div>История ERP: {candidateId}</div>
@@ -452,4 +455,20 @@ describe("priority document loading", () => {
       expect.anything(),
     );
   });
+});
+
+it("keeps absence exceptions below stage documents in the RU drawer", async () => {
+  mock.data = {
+    candidate: { id: "c1", fullName: "Кандидат", reviewGroup: "RU" },
+    stageDocuments: {
+      required: { documents: [doc("a", "Паспорт")], missingDocuments: [] },
+      additional: { documents: [], missingDocuments: [] },
+    },
+  };
+  const view = await render();
+  const stage = [...view.querySelectorAll("button")].find((button) => button.querySelector("h3"))!;
+  const absence = view.querySelector('section[aria-label="Отсутствующие документы"]')!;
+  expect(stage).toBeTruthy();
+  expect(absence).toBeTruthy();
+  expect(stage.compareDocumentPosition(absence) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

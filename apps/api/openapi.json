@@ -15747,6 +15747,112 @@
         ]
       }
     },
+    "/api/v1/candidates/references/settlements": {
+      "get": {
+        "operationId": "listCandidateSettlements",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateReferencesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "ERP settlement search",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
     "/api/v1/candidates/references/sources": {
       "get": {
         "operationId": "listCandidateSources",
@@ -21525,6 +21631,11 @@
           "currentVersion": {
             "type": "number"
           },
+          "acceptedVersion": {
+            "type": "number",
+            "nullable": true,
+            "description": "Previously accepted version retained while a newer version is reviewed"
+          },
           "revision": {
             "type": "number"
           },
@@ -21590,6 +21701,7 @@
           "documentTypeCode",
           "status",
           "currentVersion",
+          "acceptedVersion",
           "revision",
           "title",
           "documentUid",
@@ -21616,11 +21728,19 @@
             "items": {
               "type": "string"
             }
+          },
+          "waivedDocumentUids": {
+            "description": "Document types with approved absence",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
           "items",
-          "reusedDocumentUids"
+          "reusedDocumentUids",
+          "waivedDocumentUids"
         ]
       },
       "CandidateDocumentDraftFieldDto": {
@@ -22556,6 +22676,11 @@
           "currentVersion": {
             "type": "number"
           },
+          "acceptedVersion": {
+            "type": "number",
+            "nullable": true,
+            "description": "Previously accepted version retained while a newer version is reviewed"
+          },
           "revision": {
             "type": "number"
           },
@@ -22592,6 +22717,7 @@
           "documentTypeCode",
           "status",
           "currentVersion",
+          "acceptedVersion",
           "revision",
           "title",
           "documentUid",
@@ -25505,6 +25631,21 @@
           "bank"
         ]
       },
+      "CandidateNamedIdDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
       "CandidateReferenceDto": {
         "type": "object",
         "properties": {
@@ -25567,6 +25708,14 @@
           },
           "requiresPlannedArrivalDate": {
             "type": "boolean"
+          },
+          "department": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateNamedIdDto"
+              }
+            ]
           }
         },
         "required": [
@@ -25658,6 +25807,30 @@
           "erpUid"
         ]
       },
+      "CandidatePositionDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "department": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateNamedIdDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "department"
+        ]
+      },
       "CandidateNamedCodeDto": {
         "type": "object",
         "properties": {
@@ -25670,21 +25843,6 @@
         },
         "required": [
           "code",
-          "name"
-        ]
-      },
-      "CandidateNamedIdDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
           "name"
         ]
       },
@@ -25855,7 +26013,7 @@
             "nullable": true,
             "allOf": [
               {
-                "$ref": "#/components/schemas/CandidateNamedCodeDto"
+                "$ref": "#/components/schemas/CandidatePositionDto"
               }
             ]
           },
@@ -26887,10 +27045,15 @@
         "properties": {
           "url": {
             "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
-          "url"
+          "url",
+          "text"
         ]
       },
       "ChatStreamGrantDto": {

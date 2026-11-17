@@ -1,9 +1,13 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { CandidateDocumentSummaryDto } from "@edo/api-client";
 import { CandidateDocumentList } from "./CandidateDocumentList";
 import type { PreviousDocumentAvailabilityDto } from "@edo/api-client";
+vi.mock("../../../../packages/api-client/src/mutator/custom-instance", () => ({
+  customInstance: () => Promise.resolve({ fields: [] }),
+}));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 it("opens current, returned and ERP-pending versions from the grouped list", async () => {
   const onOpen = vi.fn();
@@ -27,19 +31,20 @@ it("opens current, returned and ERP-pending versions from the grouped list", asy
   const root = createRoot(node);
   await act(async () =>
     root.render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <CandidateDocumentList
         candidateId="candidate"
         groups={groups}
         documents={[doc]}
         onOpen={onOpen}
-      />,
+      /></QueryClientProvider>,
     ),
   );
   expect(node.textContent).toContain("Обязательные");
   expect(node.textContent).toContain("Документ принят");
   expect(node.textContent).toContain("Не загружен");
   const current = node.querySelector(
-    'button[aria-label="Паспорт, версия 3"]',
+    'button[aria-describedby="list-instance-d1"]',
   ) as HTMLButtonElement;
   await act(async () => current.click());
   expect(onOpen).toHaveBeenLastCalledWith(doc);
@@ -107,6 +112,7 @@ it("shows former documents inside their stage group without contradictory missin
   const root = createRoot(node);
   await act(async () =>
     root.render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <CandidateDocumentList
         candidateId="cycle"
         groups={{
@@ -119,7 +125,7 @@ it("shows former documents inside their stage group without contradictory missin
         documents={[]}
         previousDocuments={previous}
         onOpen={() => {}}
-      />,
+      /></QueryClientProvider>,
     ),
   );
   const required = node.querySelector('section[aria-label="Обязательные"]')!;

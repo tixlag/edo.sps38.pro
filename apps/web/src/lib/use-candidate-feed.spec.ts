@@ -62,6 +62,7 @@ describe("buildCandidateFeed", () => {
       title: "Паспорт РФ",
       status: "APPROVED",
       currentVersion: 2,
+      acceptedVersion: 2,
       revision: 2,
       submittedAt: "2026-10-20T09:00:00Z",
       reviewedAt: "2026-10-20T13:00:00Z",

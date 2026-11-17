@@ -295,6 +295,10 @@ export class CandidatePersonMatchQueryDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   birthDate?: string;
 }
+export class CandidateNamedIdDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() name!: string;
+}
 export class CandidateReferenceDto {
   @ApiPropertyOptional({
     format: "uuid",
@@ -320,6 +324,8 @@ export class CandidateReferenceDto {
   @ApiPropertyOptional() editable?: boolean;
   @ApiPropertyOptional() requiresProject?: boolean;
   @ApiPropertyOptional() requiresPlannedArrivalDate?: boolean;
+  @ApiPropertyOptional({ type: () => CandidateNamedIdDto, nullable: true })
+  department?: CandidateNamedIdDto | null;
 }
 export class CandidateReferencesDto {
   @ApiProperty({ type: [CandidateReferenceDto] })
@@ -346,9 +352,9 @@ export class CandidateNamedCodeDto {
   @ApiProperty() code!: string;
   @ApiProperty() name!: string;
 }
-export class CandidateNamedIdDto {
-  @ApiProperty() id!: string;
-  @ApiProperty() name!: string;
+export class CandidatePositionDto extends CandidateNamedCodeDto {
+  @ApiProperty({ type: () => CandidateNamedIdDto, nullable: true })
+  department!: CandidateNamedIdDto | null;
 }
 export class CandidateMentorDto {
   @ApiProperty() name!: string;
@@ -376,8 +382,8 @@ export class CandidateWorkspaceDto {
     | string
     | null;
   @ApiProperty({ type: String, nullable: true }) citizenship!: string | null;
-  @ApiProperty({ type: CandidateNamedCodeDto, nullable: true })
-  position!: CandidateNamedCodeDto | null;
+  @ApiProperty({ type: CandidatePositionDto, nullable: true })
+  position!: CandidatePositionDto | null;
   @ApiProperty({ type: CandidateNamedCodeDto, nullable: true })
   project!: CandidateNamedCodeDto | null;
   @ApiProperty({ type: CandidateNamedIdDto, nullable: true })

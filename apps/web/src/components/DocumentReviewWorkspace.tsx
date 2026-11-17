@@ -1,3 +1,4 @@
+import { DocumentReturnNotifications } from "./DocumentReturnNotifications";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -1032,6 +1033,7 @@ export function DocumentReviewWorkspace({
                 )}
               </div>
             )}
+            {hasReviewPermission && data.status === "RETURNED" && <DocumentReturnNotifications documentId={data.documentId} />}
             {data.rejectionReason && (
               <p role="status" className="py-2 text-xs text-[var(--primary)]">
                 Причина возврата: {data.rejectionReason}

@@ -80,6 +80,33 @@ function setup() {
 }
 afterEach(() => vi.unstubAllGlobals());
 describe("candidate card creation and recovery", () => {
+  it("sends one canonical Russian phone to duplicate search and creation without changing foreign numbers", async () => {
+    const { service } = setup();
+    const calls: { action: string | null; url: URL; body?: any }[] = [];
+    vi.stubGlobal("fetch", async (input: URL, init: any) => {
+      const url = new URL(String(input));
+      const action = url.searchParams.get("action");
+      calls.push({ action, url, body: init.body ? JSON.parse(init.body) : undefined });
+      return Response.json(action === "person-matches" ? { items: [], candidates: [] } : sparseCard);
+    });
+    await service.personMatches(actor, {
+      scope: "creation",
+      fullName: "  Иван   Иванов  ",
+      phone: "8 (999) 123-45-67",
+    });
+    await service.create(actor, {
+      requestId: randomUUID(),
+      fields: { fullName: "Иван Иванов", phone: "89991234567", birthDate: "1990-01-01" },
+    });
+    expect(calls[0].url.searchParams.get("fullName")).toBe("Иван Иванов");
+    expect(calls[0].url.searchParams.get("phone")).toBe("+79991234567");
+    expect(calls[1].body.fields.phone).toBe("+79991234567");
+    await service.create(actor, {
+      requestId: randomUUID(),
+      fields: { fullName: "Foreign Person", phone: "+998901234567", birthDate: "1990-01-01" },
+    });
+    expect(calls[2].body.fields.phone).toBe("+998901234567");
+  });
   it.each([
     "SOURCE_COMMENT_REQUIRED",
     "SOURCE_REFERRER_REQUIRED",

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { formatPhoneForDisplay } from "../lib/phone";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetCandidateDetailsQueryKey,
@@ -21,7 +22,6 @@ import {
   Button,
   EmptyState,
   StatusBadge,
-  FullScreenDialog,
 } from "@edo/ui";
 import {
   Briefcase,
@@ -49,21 +49,6 @@ import { groupCandidateStatuses } from "../lib/candidate-status-groups";
 import { CandidatePreviousDocuments } from "./CandidatePreviousDocuments";
 import { CandidatePersonPicker } from "./CandidatePersonPicker";
 import { LkLink } from "./LkLink";
-
-function formatPhoneRu(phone?: string | null): string {
-  if (!phone) return "";
-  const cleaned = phone.replace(/\D/g, "");
-  if (
-    cleaned.length === 11 &&
-    (cleaned.startsWith("7") || cleaned.startsWith("8"))
-  ) {
-    return `+7 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7, 9)}-${cleaned.slice(9, 11)}`;
-  }
-  if (cleaned.length === 10) {
-    return `+7 (${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6, 8)}-${cleaned.slice(8, 10)}`;
-  }
-  return phone;
-}
 
 function CopyPhoneButton({ phone }: { phone: string }) {
   const [copied, setCopied] = useState(false);
@@ -181,6 +166,19 @@ function EditCandidate({
   const mutation = useUpdateCandidateWorkspace();
   const request = useCandidateRequest();
   const confirmed = useConfirmedCandidate(profile.id);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    return () => {
+      if (dialog.open && typeof dialog.close === "function") dialog.close();
+    };
+  }, []);
+  const close = () => {
+    if (!request.locked && !mutation.isPending) onClose();
+  };
   const submit = async (fields: CandidatePatchFieldsDto) => {
     const changed = candidateChangedFields(initial, fields);
     if (!Object.keys(changed).length) {
@@ -197,14 +195,23 @@ function EditCandidate({
     );
   };
   return (
-    <FullScreenDialog
-      title={`Редактирование · ${profile.fullName}`}
-      closeLabel="Закрыть редактирование"
-      onClose={() => {
-        if (!request.locked && !mutation.isPending) onClose();
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="edit-candidate-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        close();
       }}
+      className="fixed inset-0 m-auto max-h-[90vh] w-[min(920px,calc(100vw-2rem))] max-w-none overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--card)] p-0 text-[var(--foreground)] shadow-2xl backdrop:bg-black/50"
     >
-      <div className="mx-auto w-full max-w-5xl py-4 sm:px-6">
+      <div className="p-6">
+        <h2 id="edit-candidate-title" className="mb-2 text-lg font-semibold">
+          Редактировать кандидата
+        </h2>
+        <p className="mb-4 text-sm text-[var(--muted-foreground)]">
+          {profile.fullName}. Внесите изменения и сохраните их — не тронутые
+          поля останутся без изменений.
+        </p>
         <CandidateForm
           profile={profile}
           pending={mutation.isPending || request.checking}
@@ -212,10 +219,10 @@ function EditCandidate({
           retryBlocked={request.blocked}
           error={request.error}
           onSubmit={(fields) => void submit(fields)}
-          onCancel={onClose}
+          onCancel={close}
         />
       </div>
-    </FullScreenDialog>
+    </dialog>
   );
 }
 
@@ -644,7 +651,7 @@ export function CandidateManagement({
                           href={`tel:${profile.phone}`}
                           className="transition-colors hover:text-[var(--primary)] hover:underline"
                         >
-                          {formatPhoneRu(profile.phone)}
+                          {formatPhoneForDisplay(profile.phone)}
                         </a>
                         <CopyPhoneButton phone={profile.phone} />
                       </div>
@@ -771,8 +778,8 @@ export function CandidateManagement({
               </dl>
               {profile.linkedPerson && (
                 <p className="text-xs text-[var(--muted-foreground)]">
-                  Если связь с физлицом неверна, обратитесь к администратору
-                  1С для её исправления.
+                  Если связь с физлицом неверна, обратитесь к администратору 1С
+                  для её исправления.
                 </p>
               )}
             </div>

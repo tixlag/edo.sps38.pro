@@ -1,5 +1,11 @@
 import { findCurrentUserAsManager } from "../lib/manager-default";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   useGetMe,
   useListCandidateManagers,
@@ -11,6 +17,7 @@ import {
   getFindCandidatePersonMatchesQueryKey,
   type CandidatePatchFieldsDto,
   type CandidateWorkspaceDto,
+  type CandidateReferenceDto,
 } from "@edo/api-client";
 import { Button } from "@edo/ui";
 import { SearchSelect } from "./SearchSelect";
@@ -18,6 +25,8 @@ import { CandidateExpandedFields } from "./CandidateExpandedFields";
 import { formatBirthDateRu } from "../lib/review-groups";
 import { candidateRelatedFieldValidation } from "../lib/candidate-related-fields";
 import { candidateError } from "../lib/use-candidate-request";
+import { normalizeRussianPhone } from "../lib/phone";
+import { DateInput } from "./DateInput";
 export {
   candidateError,
   useCandidateRequest,
@@ -38,7 +47,16 @@ export function candidateFormFields(
     managerId: profile?.manager?.id ?? null,
     projectCode: profile?.project?.code ?? null,
   };
-  if (!profile) return { fullName: "", phone: "", birthDate: null };
+  // Creation defaults: Russian citizenship and male sex, so a typical new
+  // candidate starts filled; the manager default is applied by the form effect.
+  if (!profile)
+    return {
+      fullName: "",
+      phone: "",
+      birthDate: null,
+      citizenship: "ru",
+      sex: "male",
+    };
   return {
     ...basic,
     sex: profile.sex ?? null,
@@ -106,6 +124,7 @@ export function CandidateForm({
   onCancel,
   onOpenCandidate,
   compact = false,
+  creationPhoto,
 }: {
   profile?: CandidateWorkspaceDto;
   pending: boolean;
@@ -120,8 +139,17 @@ export function CandidateForm({
   onCancel: () => void;
   onOpenCandidate?: (erpUid: string) => void;
   compact?: boolean;
+  creationPhoto?: ReactNode;
 }) {
   const me = useGetMe();
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (error) {
+      formRef.current?.querySelectorAll("details").forEach((section) => {
+        section.open = true;
+      });
+    }
+  }, [error]);
   const managerTouched = useRef(false);
   const [fields, setFields] = useState(() => candidateFormFields(profile));
   const [personSelection, setPersonSelection] = useState<string>();
@@ -136,8 +164,14 @@ export function CandidateForm({
     q: managerFallback ? undefined : managerQuery || undefined,
   });
   const useFallback = managerFallback || (managers.isError && !managers.data);
+  // The creation default is resolved from data already at hand: the local
+  // candidate catalog (EDO DB, synced from ERP every few minutes) first, then
+  // the managers page the dropdown has already fetched — no extra ERP request.
   const knownManagers = useListCatalogManagers({
-    query: { queryKey: getListCatalogManagersQueryKey(), enabled: useFallback },
+    query: {
+      queryKey: getListCatalogManagersQueryKey(),
+      enabled: useFallback || (!profile && Boolean(me.data?.fullName)),
+    },
   });
   useEffect(() => {
     if (managers.isError && !managers.data) setManagerFallback(true);
@@ -149,11 +183,9 @@ export function CandidateForm({
           .includes(managerQuery.trim().toLocaleLowerCase("ru")),
       )
     : (managers.data?.items ?? []);
-  const defaultManagers = useListCandidateManagers();
-  const currentManager = findCurrentUserAsManager(
-    defaultManagers.data?.items ?? knownManagers.data?.items,
-    me.data,
-  );
+  const currentManager =
+    findCurrentUserAsManager(knownManagers.data?.items, me.data) ??
+    findCurrentUserAsManager(managers.data?.items, me.data);
   useEffect(() => {
     if (
       profile ||
@@ -172,6 +204,23 @@ export function CandidateForm({
   const positions = useListCandidatePositions({
     q: positionQuery || undefined,
   });
+  const selectedPosition = positions.data?.items.find(
+    (item) => (item.code ?? item.id) === fields.positionCode,
+  );
+  const rememberedPosition = useRef<CandidateReferenceDto>();
+  if (selectedPosition) rememberedPosition.current = selectedPosition;
+  const department =
+    (
+      selectedPosition ??
+      (rememberedPosition.current &&
+      (rememberedPosition.current.code ?? rememberedPosition.current.id) ===
+        fields.positionCode
+        ? rememberedPosition.current
+        : undefined)
+    )?.department ??
+    (fields.positionCode === profile?.position?.code
+      ? profile?.position?.department
+      : undefined);
   const projects = useListCandidateProjects({ q: projectQuery || undefined });
   const matchName = (fields.fullName ?? "").trim().replace(/\s+/g, " ");
   const identity = JSON.stringify([matchName, fields.phone, fields.birthDate]);
@@ -274,14 +323,21 @@ export function CandidateForm({
       (!selectedPersonUid || person.personUid !== selectedPersonUid) &&
       !ignoredSelections.includes(person.id),
   );
-  const relatedErrors = profile
-    ? candidateRelatedFieldValidation(profile, fields).errors
-    : [];
+  const relatedErrors = candidateRelatedFieldValidation(profile, fields).errors;
   const sourcePersonMissing =
     fields.sourceComment?.kind === "person" && !fields.sourceComment.id;
-  const submit = (event: FormEvent) => {
+  const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if ((sourcePersonMissing || relatedErrors.length > 0) && !locked) return;
+    if ((sourcePersonMissing || relatedErrors.length > 0) && !locked) {
+      const section = event.currentTarget.querySelector<HTMLDetailsElement>(
+        'details[data-candidate-section="work"]',
+      );
+      if (section) {
+        section.open = true;
+        section.querySelector("summary")?.focus();
+      }
+      return;
+    }
     if (
       !profile &&
       !locked &&
@@ -292,10 +348,16 @@ export function CandidateForm({
   };
   return (
     <form
+      ref={formRef}
       onSubmit={submit}
+      onInvalidCapture={(event) => {
+        const section = (event.target as HTMLElement).closest("details");
+        if (section) section.open = true;
+      }}
       className="space-y-5"
       aria-label={profile ? "Редактирование кандидата" : "Создание кандидата"}
     >
+      {creationPhoto}
       <fieldset
         disabled={pending || locked}
         className={`grid min-w-0 gap-4 ${compact ? "grid-cols-1" : "sm:grid-cols-2"}`}
@@ -303,7 +365,7 @@ export function CandidateForm({
         <label
           className={`space-y-1 text-sm ${compact ? "" : "sm:col-span-2"}`}
         >
-          ФИО
+          ФИО{!profile && <span className="font-medium"> · обязательно</span>}
           <input
             autoFocus
             required={!profile}
@@ -315,6 +377,7 @@ export function CandidateForm({
         </label>
         <label className="space-y-1 text-sm">
           Телефон
+          {!profile && <span className="font-medium"> · обязательно</span>}
           <input
             required={!profile}
             type="tel"
@@ -322,124 +385,30 @@ export function CandidateForm({
             className={CANDIDATE_CONTROL}
             value={fields.phone ?? ""}
             onChange={(event) => set("phone", event.target.value)}
-          />
-        </label>
-        <label className="space-y-1 text-sm">
-          Дата рождения{profile ? " · необязательно" : ""}
-          <input
-            required={!profile}
-            type="date"
-            className={CANDIDATE_CONTROL}
-            value={fields.birthDate ?? ""}
-            onChange={(event) => set("birthDate", event.target.value || null)}
+            onBlur={() =>
+              set("phone", normalizeRussianPhone(fields.phone ?? ""))
+            }
           />
         </label>
         <div className="space-y-1 text-sm">
-          <p>Ведущий менеджер</p>
-          <SearchSelect
-            label="Менеджер"
-            value={fields.managerId}
-            selectedLabel={
-              profile?.manager?.name ??
-              (fields.managerId === currentManager?.id
-                ? currentManager?.name
-                : undefined)
-            }
-            options={managerOptions.map((item) => ({
-              value: item.id,
-              label: item.name,
-            }))}
-            onSearchChange={setManagerQuery}
-            onChange={(value) => {
-              managerTouched.current = true;
-              set("managerId", value ?? null);
-            }}
-            isLoading={
-              useFallback ? knownManagers.isLoading : managers.isLoading
-            }
-            isError={
-              useFallback
-                ? knownManagers.isError
-                : managers.isError && !managers.data
-            }
-            onRetry={() => {
-              if (useFallback) void knownManagers.refetch();
-              else void managers.refetch();
-            }}
-            disabled={pending || locked}
+          <p>
+            Дата рождения
+            {!profile && <span className="font-medium"> · обязательно</span>}
+          </p>
+          <DateInput
+            label="Дата рождения"
+            required={!profile}
+            value={fields.birthDate}
+            onChange={(date) => set("birthDate", date)}
           />
-          {useFallback && !knownManagers.isError && (
-            <p className="text-xs text-[var(--muted-foreground)]">
-              Менеджеры из ранее загруженных кандидатов: справочник 1С
-              недоступен, список может быть неполным.{" "}
-              <button
-                type="button"
-                className="text-[var(--primary)] underline"
-                onClick={() =>
-                  void managers.refetch().then((result) => {
-                    if (!result.isError) setManagerFallback(false);
-                  })
-                }
-              >
-                Повторить загрузку справочника
-              </button>
-            </p>
-          )}
         </div>
-        {profile && (
-          <>
-            <div className="space-y-1 text-sm">
-              <p>Должность</p>
-              <SearchSelect
-                label="Должность"
-                value={fields.positionCode}
-                selectedLabel={profile.position?.name}
-                options={(positions.data?.items ?? []).map((item) => ({
-                  value: item.code ?? item.id,
-                  label: item.name,
-                }))}
-                onSearchChange={setPositionQuery}
-                onChange={(value) => set("positionCode", value ?? null)}
-                isLoading={positions.isLoading}
-                isError={positions.isError}
-                onRetry={() => void positions.refetch()}
-                disabled={pending || locked}
-              />
-            </div>
-            <div className="space-y-1 text-sm">
-              <p>Объект</p>
-              <SearchSelect
-                label="Объект"
-                value={fields.projectCode}
-                selectedLabel={profile.project?.name}
-                options={(projects.data?.items ?? []).map((item) => ({
-                  value: item.code ?? item.id,
-                  label: item.name,
-                }))}
-                onSearchChange={setProjectQuery}
-                onChange={(value) => set("projectCode", value ?? null)}
-                isLoading={projects.isLoading}
-                isError={projects.isError}
-                onRetry={() => void projects.refetch()}
-                disabled={pending || locked}
-              />
-            </div>
-          </>
-        )}
       </fieldset>
-      {profile && (
-        <CandidateExpandedFields
-          profile={profile}
-          fields={fields}
-          onChange={setFields}
-          disabled={pending || locked}
-        />
-      )}
       {!profile && (
         <section
           className="space-y-3 border-t border-[var(--border)] pt-4"
           aria-label="Совпадения в ERP"
         >
+          <h3 className="text-sm font-medium">Проверка совпадений</h3>
           <p className="text-sm text-[var(--muted-foreground)]">
             Проверяем ФИО и телефон. Если кандидат уже есть в ERP, откройте его
             карточку. Статус сохранится; вернуть в «Подбор» можно вручную.
@@ -596,6 +565,116 @@ export function CandidateForm({
           )}
         </section>
       )}
+      <fieldset
+        disabled={pending || locked}
+        className={`grid min-w-0 gap-4 ${compact ? "grid-cols-1" : "sm:grid-cols-2"}`}
+      >
+        <div className="space-y-1 text-sm">
+          <p>Ведущий менеджер</p>
+          <SearchSelect
+            label="Менеджер"
+            value={fields.managerId}
+            selectedLabel={
+              profile?.manager?.name ??
+              (fields.managerId === currentManager?.id
+                ? currentManager?.name
+                : undefined)
+            }
+            options={managerOptions.map((item) => ({
+              value: item.id,
+              label: item.name,
+            }))}
+            onSearchChange={setManagerQuery}
+            onChange={(value) => {
+              managerTouched.current = true;
+              set("managerId", value ?? null);
+            }}
+            isLoading={
+              useFallback ? knownManagers.isLoading : managers.isLoading
+            }
+            isError={
+              useFallback
+                ? knownManagers.isError
+                : managers.isError && !managers.data
+            }
+            onRetry={() => {
+              if (useFallback) void knownManagers.refetch();
+              else void managers.refetch();
+            }}
+            disabled={pending || locked}
+          />
+          {useFallback && !knownManagers.isError && (
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Менеджеры из ранее загруженных кандидатов: справочник 1С
+              недоступен, список может быть неполным.{" "}
+              <button
+                type="button"
+                className="text-[var(--primary)] underline"
+                onClick={() =>
+                  void managers.refetch().then((result) => {
+                    if (!result.isError) setManagerFallback(false);
+                  })
+                }
+              >
+                Повторить загрузку справочника
+              </button>
+            </p>
+          )}
+        </div>
+        <>
+          <div className="space-y-1 text-sm">
+            <p>Должность</p>
+            <SearchSelect
+              label="Должность"
+              value={fields.positionCode}
+              selectedLabel={profile?.position?.name}
+              options={(positions.data?.items ?? []).map((item) => ({
+                value: item.code ?? item.id,
+                label: item.name,
+              }))}
+              onSearchChange={setPositionQuery}
+              onChange={(value) => set("positionCode", value ?? null)}
+              isLoading={positions.isLoading}
+              isError={positions.isError}
+              onRetry={() => void positions.refetch()}
+              disabled={pending || locked}
+            />
+          </div>
+          <div className="space-y-1 text-sm">
+            <p>Подразделение</p>
+            <output
+              aria-label="Подразделение"
+              className={`${CANDIDATE_CONTROL} block text-[var(--muted-foreground)]`}
+            >
+              {department?.name ?? "Определяется по должности"}
+            </output>
+          </div>
+          <div className="space-y-1 text-sm">
+            <p>Объект</p>
+            <SearchSelect
+              label="Объект"
+              value={fields.projectCode}
+              selectedLabel={profile?.project?.name}
+              options={(projects.data?.items ?? []).map((item) => ({
+                value: item.code ?? item.id,
+                label: item.name,
+              }))}
+              onSearchChange={setProjectQuery}
+              onChange={(value) => set("projectCode", value ?? null)}
+              isLoading={projects.isLoading}
+              isError={projects.isError}
+              onRetry={() => void projects.refetch()}
+              disabled={pending || locked}
+            />
+          </div>
+        </>
+      </fieldset>
+      <CandidateExpandedFields
+        profile={profile}
+        fields={fields}
+        onChange={setFields}
+        disabled={pending || locked}
+      />
       {profile?.mentor && (
         <p className="text-sm text-[var(--muted-foreground)]">
           Наставник: {profile.mentor.name}
@@ -609,7 +688,9 @@ export function CandidateForm({
           {locked && " Данные и номер операции сохранены."}
         </p>
       )}
-      <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-4">
+      <div
+        className={`flex flex-wrap gap-2 border-t border-[var(--border)] pt-4 ${!profile ? "sticky bottom-0 bg-[var(--card)] pb-2" : ""}`}
+      >
         <Button
           type="submit"
           size="sm"
@@ -617,7 +698,6 @@ export function CandidateForm({
           disabled={
             pending ||
             retryBlocked ||
-            (!locked && (sourcePersonMissing || relatedErrors.length > 0)) ||
             (!profile &&
               !locked &&
               (!duplicateCheckComplete ||

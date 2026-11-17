@@ -29,6 +29,11 @@ vi.mock("@edo/api-client", () => ({
     isError: false,
   })),
   getGetDocumentOcrDetailsQueryKey: () => ["ocr-details"],
+  useListDocumentReturnNotifications: () => ({ data: [], isError: false }),
+  useRetryDocumentReturnNotification: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
   useApproveDocument: () => ({ mutate: vi.fn(), isPending: false }),
   useRejectDocument: () => ({ mutate: vi.fn(), isPending: false }),
   useSendDocumentToErp: () => ({ mutate: vi.fn(), isPending: false }),

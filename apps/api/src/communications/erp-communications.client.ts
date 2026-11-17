@@ -157,6 +157,16 @@ export class ErpCommunicationsClient {
   }) {
     return this.request("send", erpSendResultSchema, {}, body);
   }
+  invitation(erpUid: string) {
+    return this.request(
+      "invitation",
+      z.object({
+        text: z.string().min(1).max(16000),
+        chatUuid: z.string().uuid(),
+      }),
+      { candidate: erpUid },
+    );
+  }
   link(erpUid: string, actor: string) {
     return this.request(
       "link",

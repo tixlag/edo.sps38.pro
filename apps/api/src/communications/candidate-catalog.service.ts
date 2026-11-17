@@ -28,6 +28,8 @@ import {
 } from "../documents/candidate-profile";
 import type { AuthPrincipal } from "../auth/auth-principal";
 import { ErpCommunicationsClient } from "./erp-communications.client";
+import { ErpWorkspaceClient } from "../documents/erp-workspace.client";
+import { EmploymentNotificationService } from "../documents/employment-notification.service";
 import type { CommunicationCandidatesQueryDto } from "./communications.dto";
 
 @Injectable()
@@ -44,6 +46,8 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
     private readonly access: DocumentAccessService,
     private readonly config: ConfigService,
     @Optional() private readonly documentReads?: DocumentReadService,
+    @Optional() private readonly workspaceErp?: ErpWorkspaceClient,
+    @Optional() private readonly employmentNotifications?: EmploymentNotificationService,
   ) {}
   onModuleInit() {
     if (
@@ -107,7 +111,7 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
           if (!(await this.redis.compareAndExpire(lock, owner, 60000)))
             throw new Error("CATALOG_LOCK_LOST");
           try {
-            await candidateIdentityTransaction(this.prisma, async (tx) => {
+            const pendingObservation = await candidateIdentityTransaction(this.prisma, async (tx) => {
               const existing = await resolveCandidateIdentity(tx, {
                 erpUid: row.erpUid,
                 reviewGroup: "RU",
@@ -125,6 +129,9 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
                 erpUid: row.erpUid,
                 erpDeleted: row.deleted,
                 employed: row.employed ?? null,
+                employmentObservationPending: row.employed === true
+                  ? existing.employed !== true || existing.employmentObservationPending
+                  : row.employed === false ? false : existing.employmentObservationPending,
                 ...(row.statusId !== undefined
                   ? { statusId: row.statusId }
                   : {}),
@@ -171,7 +178,22 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
                     employed: row.employed ?? null,
                   },
                 });
+              return data.employmentObservationPending && row.employed === true
+                ? candidate.id : null;
             });
+            if (pendingObservation && this.workspaceErp && this.employmentNotifications) {
+              try {
+                const card = await this.workspaceErp.card(row.erpUid);
+                if (card.erpUid === row.erpUid &&
+                  await this.employmentNotifications.observe(pendingObservation, card))
+                  await this.prisma.candidate.updateMany({
+                    where: { id: pendingObservation, employed: true, employmentObservationPending: true },
+                    data: { employmentObservationPending: false },
+                  });
+              } catch {
+                this.logger.warn(`Employment notification could not be queued for ${pendingObservation}`);
+              }
+            }
           } catch (error) {
             if (!(error instanceof ConflictException)) throw error;
             this.logger.warn(

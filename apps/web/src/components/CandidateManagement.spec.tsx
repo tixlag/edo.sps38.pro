@@ -47,6 +47,7 @@ const state = vi.hoisted(() => ({
     ],
   },
   create: vi.fn(),
+  upload: vi.fn(),
   open: vi.fn(),
   operation: vi.fn(),
   candidateMatches: [] as Array<{
@@ -97,7 +98,11 @@ vi.mock("@edo/api-client", () => {
     isPending: false,
   });
   return {
-    useUploadCandidatePhoto: () => ({ mutate: vi.fn(), isPending: false }),
+    useUploadCandidatePhoto: () => ({
+      mutate: vi.fn(),
+      mutateAsync: state.upload,
+      isPending: false,
+    }),
     useGetMe: () => ({ data: { permissions: state.permissions } }),
     useGetCandidateWorkspace: () =>
       state.workspaceError
@@ -214,6 +219,12 @@ vi.mock("@edo/api-client", () => {
     useOpenExistingCandidate: () => mutation(state.open),
     useGetCandidateOperation: () => ({ refetch: state.operation }),
     getGetCandidateOperationQueryKey: (id: string) => ["operation", id],
+    getListCandidateSettlementsQueryKey: () => ["settlements"],
+    useListCandidateSettlements: () => ({
+      data: { items: [] },
+      isLoading: false,
+      isError: false,
+    }),
     useListCandidateCountries: () => result([]),
     useListCandidateOrganizations: () => result([]),
     useListCandidateSources: () =>
@@ -224,6 +235,8 @@ vi.mock("@edo/api-client", () => {
     useListCandidateResponsibles: () =>
       result([
         { kind: "person", id: "referrer-person", name: "Ирина Рекомендатель" },
+        { kind: "person", id: "person-two", name: "Ирина Рекомендатель" },
+        { kind: "user", id: "user-one", name: "Пользователь 1С" },
       ]),
     useListCandidateContactTypes: () => result([]),
     useListCandidateContactKinds: () => result([]),
@@ -311,6 +324,7 @@ beforeEach(() => {
   state.candidateMatches = [];
   state.operation.mockResolvedValue({ data: { state: "NOT_FOUND" } });
   state.open.mockResolvedValue(state.profile);
+  state.upload.mockResolvedValue({ photoPath: "photo" });
   state.profile.history = [
     {
       date: "2026-10-26T01:00:00Z",
@@ -397,6 +411,10 @@ describe("candidate manager flows", () => {
     expect(state.open).toHaveBeenCalledWith({
       data: { erpUid: "completed-erp-uid" },
     });
+    expect(state.upload).not.toHaveBeenCalled();
+    expect(state.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { candidateId: "current-cycle" } }),
+    );
     expect(state.create).not.toHaveBeenCalled();
     expect(state.status).not.toHaveBeenCalled();
   });
@@ -405,7 +423,7 @@ describe("candidate manager flows", () => {
     await render(<CandidatesPage />);
     await click("Создать кандидата");
     const inputs = view.querySelectorAll<HTMLInputElement>(
-      "fieldset > label > input",
+      'fieldset > label > input, fieldset > div input[type="date"]',
     );
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");
@@ -433,6 +451,8 @@ describe("candidate manager flows", () => {
           fullName: "Иванов Иван",
           phone: "+79000000001",
           birthDate: "1990-02-03",
+          citizenship: "ru",
+          sex: "male",
         },
         personSelection: "signed-opaque-person",
       },
@@ -444,7 +464,7 @@ describe("candidate manager flows", () => {
     await render(<CandidatesPage />);
     await click("Создать кандидата");
     const inputs = view.querySelectorAll<HTMLInputElement>(
-      "fieldset > label > input",
+      'fieldset > label > input, fieldset > div input[type="date"]',
     );
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");
@@ -466,11 +486,122 @@ describe("candidate manager flows", () => {
           fullName: "Иванов Иван",
           phone: "+79000000000",
           birthDate: "1991-02-03",
+          citizenship: "ru",
+          sex: "male",
         },
       },
     });
     expect(state.persons).not.toHaveBeenCalled();
   });
+  it("uploads a selected photo after creation and retries a failed upload without recreating", async () => {
+    vi.useFakeTimers();
+    URL.createObjectURL = vi.fn(() => "blob:preview");
+    URL.revokeObjectURL = vi.fn();
+    state.upload.mockRejectedValueOnce(new Error("upload failed"));
+    await render(<CandidatesPage />);
+    await click("Создать кандидата");
+    expect(view.querySelector("dialog[open]")).not.toBeNull();
+    const file = new File(["photo"], "candidate.webp", { type: "image/webp" });
+    const input = view.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [file],
+    });
+    await act(async () =>
+      input.dispatchEvent(new Event("change", { bubbles: true })),
+    );
+    expect(
+      view
+        .querySelector('img[alt="Предпросмотр фотографии кандидата"]')
+        ?.getAttribute("src"),
+    ).toBe("blob:preview");
+    const fields = view.querySelectorAll<HTMLInputElement>(
+      'fieldset > label > input, fieldset > div input[type="date"]',
+    );
+    type(fields[0], "Иванов Иван");
+    type(fields[1], "+79000000000");
+    type(fields[2], "1991-02-03");
+    await act(async () => vi.advanceTimersByTime(500));
+    await submit("Создание кандидата");
+    expect(state.create).toHaveBeenCalledTimes(1);
+    expect(state.upload).toHaveBeenCalledWith({
+      candidateId: "current-cycle",
+      data: { file },
+    });
+    expect(view.textContent).toContain(
+      "Кандидат создан, но фотографию загрузить не удалось",
+    );
+    expect(state.navigate).not.toHaveBeenCalled();
+    await click("Повторить загрузку фото");
+    expect(state.create).toHaveBeenCalledTimes(1);
+    expect(state.upload).toHaveBeenCalledTimes(2);
+    expect(state.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { candidateId: "current-cycle" } }),
+    );
+  });
+  it.each(["skip", "retry", "skip-after-error"] as const)(
+    "asks before replacing an existing candidate photo and supports %s",
+    async (choice) => {
+      vi.useFakeTimers();
+      URL.createObjectURL = vi.fn(() => "blob:preview");
+      URL.revokeObjectURL = vi.fn();
+      state.candidateMatches = [
+        {
+          id: "completed-erp-uid",
+          name: "Иванов Иван",
+          birthDate: null,
+          selection: "signed-candidate",
+          matchedPhone: true,
+        },
+      ];
+      await render(<CandidatesPage />);
+      await click("Создать кандидата");
+      const file = new File(["photo"], "candidate.webp", {
+        type: "image/webp",
+      });
+      const input = view.querySelector<HTMLInputElement>('input[type="file"]')!;
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [file],
+      });
+      await act(async () =>
+        input.dispatchEvent(new Event("change", { bubbles: true })),
+      );
+      type(view.querySelector('input[type="tel"]')!, "+79000000000");
+      await act(async () => vi.advanceTimersByTime(500));
+      await click("Открыть существующую карточку");
+      expect(state.open).toHaveBeenCalledTimes(1);
+      expect(state.upload).not.toHaveBeenCalled();
+      expect(state.navigate).not.toHaveBeenCalled();
+      expect(view.textContent).toContain("Применение заменит фотографию");
+
+      if (choice === "skip") {
+        await click("Открыть без замены фото");
+        expect(state.upload).not.toHaveBeenCalled();
+      } else {
+        state.upload.mockRejectedValueOnce(new Error("upload failed"));
+        await click("Применить выбранное фото");
+        expect(view.textContent).toContain("Не удалось заменить фотографию");
+        expect(state.navigate).not.toHaveBeenCalled();
+        if (choice === "retry") {
+          await click("Повторить загрузку фото");
+          expect(state.upload).toHaveBeenCalledTimes(2);
+          expect(state.upload).toHaveBeenLastCalledWith({
+            candidateId: "current-cycle",
+            data: { file },
+          });
+        } else {
+          await click("Открыть без замены фото");
+          expect(state.upload).toHaveBeenCalledTimes(1);
+        }
+      }
+      expect(state.create).not.toHaveBeenCalled();
+      expect(state.open).toHaveBeenCalledTimes(1);
+      expect(state.navigate).toHaveBeenCalledWith(
+        expect.objectContaining({ params: { candidateId: "current-cycle" } }),
+      );
+    },
+  );
   it.each(["loading", "refreshing", "error"] as const)(
     "blocks creation while automatic duplicate search is %s",
     async (status) => {
@@ -479,7 +610,7 @@ describe("candidate manager flows", () => {
       await render(<CandidatesPage />);
       await click("Создать кандидата");
       const inputs = view.querySelectorAll<HTMLInputElement>(
-        "fieldset > label > input",
+        'fieldset > label > input, fieldset > div input[type="date"]',
       );
       type(inputs[0], "Иванов Иван");
       type(inputs[1], "+79000000000");
@@ -574,11 +705,11 @@ describe("candidate manager flows", () => {
     await submit("Редактирование кандидата");
     expect(state.update).not.toHaveBeenCalled();
     expect(view.textContent).toContain("Укажите дату окончания практики");
-    const end = [...view.querySelectorAll("label")]
-      .find((label) => label.textContent?.includes("Окончание практики"))!
-      .querySelector<HTMLInputElement>("input")!;
+    const end = view.querySelector<HTMLInputElement>(
+      'input[aria-label="Окончание практики"]',
+    )!;
     expect(end.required).toBe(true);
-    type(end, "2026-12-31");
+    type(end, "31.12.2026");
     await submit("Редактирование кандидата");
     expect(state.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -638,6 +769,43 @@ describe("candidate manager flows", () => {
       }),
     );
   });
+  it("replaces a legacy user responsible with the selected person UUID", async () => {
+    state.profile.responsible = {
+      kind: "user",
+      id: "user-one",
+      name: "Пользователь 1С",
+    };
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Редактировать данные");
+    const input = view.querySelector<HTMLInputElement>(
+      'input[aria-label="Ответственный"]',
+    )!;
+    await act(async () =>
+      input.dispatchEvent(new FocusEvent("focusin", { bubbles: true })),
+    );
+    const options = [...view.querySelectorAll('[role="option"]')];
+    expect(options.map((item) => item.textContent)).toEqual([
+      "Ирина Рекомендатель",
+      "Ирина Рекомендатель",
+    ]);
+    await act(async () =>
+      options[1].dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    await submit("Редактирование кандидата");
+    expect(state.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fields: {
+            responsible: {
+              kind: "person",
+              id: "person-two",
+              name: "Ирина Рекомендатель",
+            },
+          },
+        }),
+      }),
+    );
+  });
   it("keeps the manager fallback available in the expanded editor", async () => {
     state.managersUnavailable = true;
     await render(<CandidateManagement candidateId="current-cycle" />);
@@ -673,7 +841,7 @@ describe("candidate manager flows", () => {
     await click("Создать кандидата");
     const form = view.querySelector("form")!;
     const inputs = form.querySelectorAll<HTMLInputElement>(
-      "fieldset > label > input",
+      'fieldset > label > input, fieldset > div input[type="date"]',
     );
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");
@@ -687,6 +855,8 @@ describe("candidate manager flows", () => {
           fullName: "Иванов Иван",
           phone: "+79000000000",
           birthDate: "1991-02-03",
+          citizenship: "ru",
+          sex: "male",
         },
       },
     });
@@ -716,7 +886,7 @@ describe("candidate manager flows", () => {
     await render(<CandidatesPage />);
     await click("Создать кандидата");
     const inputs = view.querySelectorAll<HTMLInputElement>(
-      "fieldset > label > input",
+      'fieldset > label > input, fieldset > div input[type="date"]',
     );
     type(inputs[0], "Иванов Иван");
     type(inputs[1], "+79000000000");

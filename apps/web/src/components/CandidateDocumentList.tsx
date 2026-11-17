@@ -6,6 +6,7 @@ import type {
 } from "@edo/api-client";
 import { Badge, StatusBadge } from "@edo/ui";
 import { ChevronRight } from "lucide-react";
+import { DocumentInstanceCaption } from "./DocumentInstanceCaption";
 import { PreviousDocumentAvailability } from "./PreviousDocumentAvailability";
 
 export function CandidateDocumentList({
@@ -102,7 +103,7 @@ export function CandidateDocumentList({
                   >
                     <button
                       type="button"
-                      aria-label={`${document.title}, версия ${document.currentVersion}`}
+                      aria-describedby={`list-instance-${document.id}`}
                       aria-current={
                         selectedId === document.id ? "true" : undefined
                       }
@@ -113,6 +114,11 @@ export function CandidateDocumentList({
                         <span className="block break-words text-[13px] font-semibold">
                           {document.title}
                         </span>
+                        <DocumentInstanceCaption
+                          id={`list-instance-${document.id}`}
+                          document={document}
+                          index={section.documents.filter((item) => item.documentTypeCode === document.documentTypeCode).findIndex((item) => item.id === document.id)}
+                        />
                         <span className="flex flex-wrap items-center gap-1.5">
                           <StatusBadge status={document.status} document />
                           <span className="text-xs text-[var(--muted-foreground)]">
@@ -168,6 +174,7 @@ export function CandidateDocumentList({
                     key={`previous:${document.id}`}
                     candidateId={candidateId}
                     document={document}
+                    instanceIndex={previous.filter((item) => item.documentTypeCode === document.documentTypeCode).findIndex((item) => item.id === document.id)}
                   />
                 ))}
                 {missing.map((item) => (
