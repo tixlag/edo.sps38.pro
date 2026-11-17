@@ -297,9 +297,18 @@ export function CandidateForm({
   const relatedErrors = candidateRelatedFieldValidation(profile, fields).errors;
   const sourcePersonMissing =
     fields.sourceComment?.kind === "person" && !fields.sourceComment.id;
-  const submit = (event: FormEvent) => {
+  const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if ((sourcePersonMissing || relatedErrors.length > 0) && !locked) return;
+    if ((sourcePersonMissing || relatedErrors.length > 0) && !locked) {
+      const section = event.currentTarget.querySelector<HTMLDetailsElement>(
+        'details[data-candidate-section="work"]',
+      );
+      if (section) {
+        section.open = true;
+        section.querySelector("summary")?.focus();
+      }
+      return;
+    }
     if (
       !profile &&
       !locked &&
@@ -311,6 +320,10 @@ export function CandidateForm({
   return (
     <form
       onSubmit={submit}
+      onInvalidCapture={(event) => {
+        const section = (event.target as HTMLElement).closest("details");
+        if (section) section.open = true;
+      }}
       className="space-y-5"
       aria-label={profile ? "Редактирование кандидата" : "Создание кандидата"}
     >
@@ -321,7 +334,7 @@ export function CandidateForm({
         <label
           className={`space-y-1 text-sm ${compact ? "" : "sm:col-span-2"}`}
         >
-          ФИО
+          ФИО{!profile && <span className="font-medium"> · обязательно</span>}
           <input
             autoFocus
             required={!profile}
@@ -333,6 +346,7 @@ export function CandidateForm({
         </label>
         <label className="space-y-1 text-sm">
           Телефон
+          {!profile && <span className="font-medium"> · обязательно</span>}
           <input
             required={!profile}
             type="tel"
@@ -346,7 +360,10 @@ export function CandidateForm({
           />
         </label>
         <div className="space-y-1 text-sm">
-          <p>Дата рождения{profile ? " · необязательно" : ""}</p>
+          <p>
+            Дата рождения
+            {!profile && <span className="font-medium"> · обязательно</span>}
+          </p>
           <DateInput
             label="Дата рождения"
             required={!profile}
@@ -389,7 +406,7 @@ export function CandidateForm({
             disabled={pending || locked}
           />
           {useFallback && !knownManagers.isError && (
-            <p className="text-xs text-[var(--muted-foreground)]">
+            <p className="text-sm text-[var(--muted-foreground)]">
               Менеджеры из ранее загруженных кандидатов: справочник 1С
               недоступен, список может быть неполным.{" "}
               <button
@@ -454,17 +471,12 @@ export function CandidateForm({
           </div>
         </>
       </fieldset>
-      <CandidateExpandedFields
-        profile={profile}
-        fields={fields}
-        onChange={setFields}
-        disabled={pending || locked}
-      />
       {!profile && (
         <section
           className="space-y-3 border-t border-[var(--border)] pt-4"
           aria-label="Совпадения в ERP"
         >
+          <h3 className="text-sm font-medium">Проверка совпадений</h3>
           <p className="text-sm text-[var(--muted-foreground)]">
             Проверяем ФИО и телефон. Если кандидат уже есть в ERP, откройте его
             карточку. Статус сохранится; вернуть в «Подбор» можно вручную.
@@ -621,6 +633,12 @@ export function CandidateForm({
           )}
         </section>
       )}
+      <CandidateExpandedFields
+        profile={profile}
+        fields={fields}
+        onChange={setFields}
+        disabled={pending || locked}
+      />
       {profile?.mentor && (
         <p className="text-sm text-[var(--muted-foreground)]">
           Наставник: {profile.mentor.name}
@@ -642,7 +660,6 @@ export function CandidateForm({
           disabled={
             pending ||
             retryBlocked ||
-            (!locked && (sourcePersonMissing || relatedErrors.length > 0)) ||
             (!profile &&
               !locked &&
               (!duplicateCheckComplete ||

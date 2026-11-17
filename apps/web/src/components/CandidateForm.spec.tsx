@@ -12,6 +12,7 @@ import type { CandidateWorkspaceDto } from "@edo/api-client";
 const state = vi.hoisted(() => ({
   submit: vi.fn(),
   managers: [] as { id: string; name: string }[],
+  persons: [] as { id: string; name: string; personUid: string }[],
 }));
 vi.mock("@edo/api-client", () => {
   const empty = { data: { items: [] }, isLoading: false, isError: false };
@@ -38,7 +39,10 @@ vi.mock("@edo/api-client", () => {
     getListCatalogManagersQueryKey: () => ["catalog-managers"],
     useListCandidatePositions: () => empty,
     useListCandidateProjects: () => empty,
-    useFindCandidatePersonMatches: () => empty,
+    useFindCandidatePersonMatches: () => ({
+      ...empty,
+      data: { items: state.persons },
+    }),
     getFindCandidatePersonMatchesQueryKey: () => ["matches"],
   };
 });
@@ -50,6 +54,7 @@ afterEach(() => {
   container?.remove();
   vi.clearAllMocks();
   state.managers = [];
+  state.persons = [];
   vi.useRealTimers();
 });
 
@@ -156,7 +161,7 @@ async function renderCreation() {
     ),
   );
 }
-async function sendCreation() {
+async function fillCreation() {
   const inputs = container.querySelectorAll<HTMLInputElement>(
     'fieldset > label > input, fieldset > div input[type="date"]',
   );
@@ -174,6 +179,9 @@ async function sendCreation() {
     });
   }
   await act(async () => vi.advanceTimersByTime(500));
+}
+async function sendCreation() {
+  await fillCreation();
   await act(async () =>
     container
       .querySelector("form")!
@@ -229,10 +237,10 @@ it("saves a settlement absent from ERP suggestions", async () => {
     'input[aria-label="Населённый пункт"]',
   )!;
   act(() => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
-      input,
-      "Новый посёлок",
-    );
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(input, "Новый посёлок");
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   expect(input.value).toBe("Новый посёлок");
@@ -243,17 +251,138 @@ it("shows a saved settlement when the card is reopened", async () => {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  await act(async () => root.render(
-    <CandidateForm
-      profile={{ settlement: "Новый посёлок" } as CandidateWorkspaceDto}
-      pending={false}
-      locked={false}
-      error=""
-      onSubmit={state.submit}
-      onCancel={vi.fn()}
-    />,
-  ));
-  expect(container.querySelector<HTMLInputElement>(
-    'input[aria-label="Населённый пункт"]',
-  )?.value).toBe("Новый посёлок");
+  await act(async () =>
+    root.render(
+      <CandidateForm
+        profile={{ settlement: "Новый посёлок" } as CandidateWorkspaceDto}
+        pending={false}
+        locked={false}
+        error=""
+        onSubmit={state.submit}
+        onCancel={vi.fn()}
+      />,
+    ),
+  );
+  expect(
+    container.querySelector<HTMLInputElement>(
+      'input[aria-label="Населённый пункт"]',
+    )?.value,
+  ).toBe("Новый посёлок");
+});
+
+it("puts duplicate results before collapsed details and keeps every creation field available", async () => {
+  await renderCreation();
+  const matches = container.querySelector('[aria-label="Совпадения в ERP"]')!;
+  const sections = [
+    ...container.querySelectorAll("details[data-candidate-section]"),
+  ];
+  expect(sections).toHaveLength(3);
+  for (const section of sections) {
+    expect((section as HTMLDetailsElement).open).toBe(false);
+    expect(
+      matches.compareDocumentPosition(section) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  }
+  expect(container.querySelector('[aria-label="Гражданство"]')).not.toBeNull();
+  expect(container.querySelector('[aria-label="Организация"]')).not.toBeNull();
+  expect(container.textContent).toContain("Добавить контакт");
+  expect(container.textContent).toContain("ФИО · обязательно");
+});
+
+it("reveals the work section on a blocked save and preserves the validation rule", async () => {
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () =>
+    root.render(
+      <CandidateForm
+        profile={{ fullName: "Иванов Иван" } as CandidateWorkspaceDto}
+        pending={false}
+        locked={false}
+        error=""
+        onSubmit={state.submit}
+        onCancel={vi.fn()}
+      />,
+    ),
+  );
+  const section = container.querySelector<HTMLDetailsElement>(
+    'details[data-candidate-section="work"]',
+  )!;
+  section.open = true;
+  const flag = [...section.querySelectorAll("label")]
+    .find((label) => label.textContent?.includes("Студент на практике"))!
+    .querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  await act(async () => flag.click());
+  section.open = false;
+  await act(async () =>
+    container
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+  );
+  expect(section.open).toBe(true);
+  expect(state.submit).not.toHaveBeenCalled();
+  expect(section.textContent).toContain("Укажите дату окончания практики");
+  expect(document.activeElement).toBe(section.querySelector("summary"));
+});
+
+it("reveals collapsed contacts when browser validation finds an incomplete new contact", async () => {
+  await renderCreation();
+  const section = container.querySelector<HTMLDetailsElement>(
+    'details[data-candidate-section="contacts"]',
+  )!;
+  section.open = true;
+  const add = [...section.querySelectorAll("button")].find(
+    (button) => button.textContent === "Добавить контакт",
+  )!;
+  await act(async () => add.click());
+  section.open = false;
+  await act(async () =>
+    expect(
+      section
+        .querySelector<HTMLSelectElement>("select[required]")!
+        .checkValidity(),
+    ).toBe(false),
+  );
+  expect(section.open).toBe(true);
+  expect(state.submit).not.toHaveBeenCalled();
+});
+
+it("retains basic and expanded values when confirming a matching person", async () => {
+  vi.useFakeTimers();
+  state.persons = [
+    { id: "signed-selection", name: "Иванов Иван", personUid: "person-uid" },
+  ];
+  await renderCreation();
+  await fillCreation();
+  const settlement = container.querySelector<HTMLInputElement>(
+    '[aria-label="Населённый пункт"]',
+  )!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(settlement, "Иркутск");
+    settlement.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () =>
+    container
+      .querySelector<HTMLInputElement>('input[name="person-selection"]')!
+      .click(),
+  );
+  await act(async () =>
+    container
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+  );
+  expect(state.submit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      fullName: "Иванов Иван",
+      phone: "+79000000000",
+      birthDate: "1991-02-03",
+      settlement: "Иркутск",
+    }),
+    "signed-selection",
+    [],
+  );
 });

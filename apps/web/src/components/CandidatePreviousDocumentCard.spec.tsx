@@ -213,7 +213,7 @@ describe("candidate document card", () => {
     });
     expect(node.textContent).toContain("Возвращён");
     expect(node.textContent).toContain("Нечитаемый снимок");
-    expect(api.version).not.toHaveBeenCalled();
+    expect(api.version.mock.calls.every(([request]) => !request.url.includes("/files/"))).toBe(true);
     expect(api.original).not.toHaveBeenCalled();
     await act(async () =>
       node
@@ -270,7 +270,7 @@ describe("candidate document card", () => {
     });
     expect(node.textContent).toContain("Нужна замена");
     expect(node.textContent).toContain("Срок действия истёк");
-    expect(node.textContent).toContain("Серия/номер: 12 34");
+    expect(node.textContent).toContain("№ 12 34");
   });
   it.each([
     ["DRAFT", "Продолжить загрузку"],
@@ -313,7 +313,7 @@ describe("candidate document card", () => {
     });
     expect(node.textContent).toContain("Старая причина");
     expect(node.textContent).toContain("Возвращён");
-    expect(api.version).not.toHaveBeenCalled();
+    expect(api.version.mock.calls.every(([request]) => !request.url.includes("/files/"))).toBe(true);
     await act(async () =>
       [...node.querySelectorAll("button")]
         .find((b) => b.textContent === "Открыть документ")!

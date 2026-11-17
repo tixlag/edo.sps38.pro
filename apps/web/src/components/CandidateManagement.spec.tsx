@@ -214,6 +214,7 @@ vi.mock("@edo/api-client", () => {
     useOpenExistingCandidate: () => mutation(state.open),
     useGetCandidateOperation: () => ({ refetch: state.operation }),
     getGetCandidateOperationQueryKey: (id: string) => ["operation", id],
+    getListCandidateSettlementsQueryKey: () => ["settlements"],
     useListCandidateSettlements: () => ({
       data: { items: [] },
       isLoading: false,

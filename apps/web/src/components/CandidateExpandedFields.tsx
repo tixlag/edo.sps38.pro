@@ -39,15 +39,25 @@ export function CandidateExpandedFields({
   const [settlementQuery, setSettlementQuery] = useState("");
   const [settlementSearch, setSettlementSearch] = useState("");
   useEffect(() => {
-    const timer = window.setTimeout(() => setSettlementSearch(settlementQuery.trim()), 300);
+    const timer = window.setTimeout(
+      () => setSettlementSearch(settlementQuery.trim()),
+      300,
+    );
     return () => window.clearTimeout(timer);
   }, [settlementQuery]);
-  const settlements = useListCandidateSettlements({
-    q: settlementSearch || undefined,
-  }, { query: {
-    queryKey: getListCandidateSettlementsQueryKey({ q: settlementSearch || undefined }),
-    enabled: settlementSearch.length >= 3 && settlementSearch.length <= 100,
-  } });
+  const settlements = useListCandidateSettlements(
+    {
+      q: settlementSearch || undefined,
+    },
+    {
+      query: {
+        queryKey: getListCandidateSettlementsQueryKey({
+          q: settlementSearch || undefined,
+        }),
+        enabled: settlementSearch.length >= 3 && settlementSearch.length <= 100,
+      },
+    },
+  );
   const [countryQuery, setCountryQuery] = useState("");
   const [organizationQuery, setOrganizationQuery] = useState("");
   const [sourceQuery, setSourceQuery] = useState("");
@@ -113,11 +123,13 @@ export function CandidateExpandedFields({
   };
   return (
     <fieldset disabled={disabled} className="space-y-6">
-      <section
+      <details
         className="space-y-3 border-t border-[var(--border)] pt-4"
-        aria-label="Личные данные"
+        data-candidate-section="personal"
       >
-        <h3 className="font-medium">Личные данные</h3>
+        <summary className="cursor-pointer text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]">
+          Личные данные
+        </summary>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1 text-sm">
             <p>Гражданство</p>
@@ -183,18 +195,28 @@ export function CandidateExpandedFields({
               ))}
             </datalist>
             {settlementSearch.length >= 3 && settlements.isError && (
-              <p className="text-xs text-[var(--muted-foreground)]">
+              <p className="text-sm text-[var(--muted-foreground)]">
                 Подсказки недоступны. Населённый пункт можно ввести вручную.
               </p>
             )}
           </div>
         </div>
-      </section>
-      <section
+      </details>
+      <details
         className="space-y-3 border-t border-[var(--border)] pt-4"
-        aria-label="Работа и оформление"
+        data-candidate-section="work"
       >
-        <h3 className="font-medium">Работа и оформление</h3>
+        <summary className="cursor-pointer text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]">
+          Работа и оформление
+          {(validation.errors.length > 0 ||
+            (fields.sourceComment?.kind === "person" &&
+              !fields.sourceComment.id)) && (
+            <span className="text-[var(--danger)]">
+              {" "}
+              · проверьте обязательные поля
+            </span>
+          )}
+        </summary>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1 text-sm">
             <p>Организация</p>
@@ -420,12 +442,24 @@ export function CandidateExpandedFields({
             onChange={(event) => set("comment", event.target.value)}
           />
         </label>
-      </section>
-      <section
+      </details>
+      <details
         className="space-y-3 border-t border-[var(--border)] pt-4"
-        aria-label="Контактная информация"
+        data-candidate-section="contacts"
       >
-        <h3 className="font-medium">Контактная информация</h3>
+        <summary className="cursor-pointer text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]">
+          Контакты
+          {(fields.contacts ?? []).some(
+            (contact) =>
+              contact.rowNumber == null &&
+              (!contact.typeId || !contact.presentation),
+          ) && (
+            <span className="text-[var(--danger)]">
+              {" "}
+              · проверьте обязательные поля
+            </span>
+          )}
+        </summary>
         <p className="text-sm text-[var(--muted-foreground)]">
           Сохраняются только изменённые строки. Остальные контакты останутся в
           ERP.
@@ -461,6 +495,9 @@ export function CandidateExpandedFields({
             >
               <label className="space-y-1 text-sm">
                 Тип
+                {contact.rowNumber == null && (
+                  <span className="font-medium"> · обязательно</span>
+                )}
                 <select
                   className={CANDIDATE_CONTROL}
                   value={contact.typeId}
@@ -512,6 +549,9 @@ export function CandidateExpandedFields({
               </label>
               <label className="space-y-1 text-sm">
                 Значение
+                {contact.rowNumber == null && (
+                  <span className="font-medium"> · обязательно</span>
+                )}
                 <input
                   required={contact.rowNumber == null}
                   className={CANDIDATE_CONTROL}
@@ -564,7 +604,7 @@ export function CandidateExpandedFields({
         >
           Добавить контакт
         </Button>
-      </section>
+      </details>
     </fieldset>
   );
 }
