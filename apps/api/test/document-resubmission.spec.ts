@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { ManualDocumentService } from "../src/documents/manual-document.service";
+import { CandidateDocumentError } from "../src/documents/candidate-document.error";
+import { HttpErrorFilter } from "../src/common/http-error.filter";
+import type { ArgumentsHost } from "@nestjs/common";
 import { DocumentReadService } from "../src/documents/document-read.service";
 import type { DocumentStatus } from "@prisma/client";
 import type { PrismaService } from "../src/prisma/prisma.service";
@@ -31,13 +34,38 @@ const staged: StagedUpload = {
     documentFields: {},
   },
 };
-function fixture(status: DocumentStatus, externalOcr = false) {
+function fixture(
+  status: DocumentStatus,
+  externalOcr = false,
+  existingPages: number[] = [],
+) {
   const document = {
     id: "document",
     status,
     currentVersion: 1,
     candidateId: "owner",
+    acceptedVersion: ["APPROVED", "SIGNED"].includes(status) ? 1 : null,
   };
+  const prior = {
+    id: "previous-version",
+    version: 1,
+    status,
+    fields: [],
+    files: existingPages.map((pageCount, ordinal) => ({
+      id: `old-${ordinal}`,
+      versionId: "previous-version",
+      deletedAt: null,
+      ordinal,
+      storageKey: `old/${ordinal}`,
+      pageCount,
+      filename: `old-${ordinal}.pdf`,
+      mimeType: "application/pdf",
+      sizeBytes: 1,
+      sha256: "test",
+    })),
+  };
+  let createdFiles: Array<{ id: string; ordinal: number; storageKey: string }> =
+    [];
   let receipt: {
     id: string;
     status: string;
@@ -52,6 +80,7 @@ function fixture(status: DocumentStatus, externalOcr = false) {
     };
   } | null = null;
   const tx = {
+    documentType: { findUniqueOrThrow: vi.fn(async () => ({ erpUid: uid })) },
     ocrJob: { create: vi.fn(async () => ({ id: "check-job" })) },
     $queryRaw: vi.fn(async () => []),
     candidate: {
@@ -60,20 +89,27 @@ function fixture(status: DocumentStatus, externalOcr = false) {
       upsert: vi.fn(async () => ({ id: "owner" })),
       updateMany: vi.fn(async () => ({ count: 0 })),
       findUniqueOrThrow: vi.fn(async () => ({
+        id: "owner",
         code1c: null,
         locationId: null,
       })),
     },
     document: {
       upsert: vi.fn(async () => document),
-      updateMany: vi.fn(async () => {
-        document.status = "IN_REVIEW";
+      findFirst: vi.fn(async () => document),
+      updateMany: vi.fn(async ({ data }) => {
+        Object.assign(document, data);
         return { count: 1 };
       }),
     },
     documentVersion: {
       aggregate: vi.fn(async () => ({ _max: { version: 1 } })),
-      create: vi.fn(async () => ({ id: "version", version: 2 })),
+      findFirst: vi.fn(async () => prior),
+      findUnique: vi.fn(async () => prior),
+      create: vi.fn(async ({ data }) => {
+        createdFiles = data.files.create;
+        return { id: "version", version: 2 };
+      }),
       update: vi.fn(async () => {
         if (receipt) receipt.version.status = "IN_REVIEW";
       }),
@@ -101,7 +137,7 @@ function fixture(status: DocumentStatus, externalOcr = false) {
             documentId: document.id,
             version: 2,
             status: "UPLOADED",
-            files: [{ ordinal: 0, storageKey: "key" }],
+            files: createdFiles,
           },
         };
         return receipt;
@@ -155,7 +191,7 @@ function fixture(status: DocumentStatus, externalOcr = false) {
         })[key],
     } as never,
   );
-  return { service, tx, storage };
+  return { service, tx, storage, document, prior };
 }
 describe("candidate document resubmission", () => {
   it("rejects a new bundle under review before reserving a version or writing to S3", async () => {
@@ -239,39 +275,140 @@ describe("candidate document resubmission", () => {
     complete();
     await first;
   });
+  const appended = (pages = [1, 1]): StagedUpload => ({
+    ...staged,
+    metadata: { ...staged.metadata!, mode: "append", documentId: "document" },
+    files: pages.map((pageCount, ordinal) => ({
+      ...staged.files[0],
+      id: `new-${ordinal}`,
+      filename: `new-${ordinal}.pdf`,
+      pageCount,
+      ordinal,
+    })),
+  });
+  it("accepts two new files after eight originals and keeps the accepted version", async () => {
+    const { service, tx, storage, document, prior } = fixture(
+      "APPROVED",
+      false,
+      Array(8).fill(1),
+    );
+    const originals = structuredClone(prior);
+    await expect(
+      service.upload(appended(), "bundle", "append-ten"),
+    ).resolves.toMatchObject({ version: 2, status: "IN_REVIEW" });
+    const files = tx.documentVersion.create.mock.calls[0][0].data.files.create;
+    expect(files.map((file: { ordinal: number }) => file.ordinal)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+    ]);
+    expect(files.map((file: { filename: string }) => file.filename)).toEqual([
+      ...Array.from({ length: 8 }, (_, index) => `old-${index}.pdf`),
+      "new-0.pdf",
+      "new-1.pdf",
+    ]);
+    expect(storage.upload).toHaveBeenCalledTimes(2);
+    expect(document).toMatchObject({
+      currentVersion: 2,
+      status: "IN_REVIEW",
+      acceptedVersion: 1,
+    });
+    expect(prior).toEqual(originals);
+  });
+  it("rejects nine originals plus two new files before reserving any new version", async () => {
+    const { service, tx, storage, document, prior } = fixture(
+      "APPROVED",
+      false,
+      Array(9).fill(1),
+    );
+    const before = structuredClone({ document, prior });
+    const error = await service
+      .upload(appended(), "bundle", "too-many-files")
+      .catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(CandidateDocumentError);
+    expect((error as CandidateDocumentError).getStatus()).toBe(400);
+    expect((error as CandidateDocumentError).getResponse()).toMatchObject({
+      code: "DOCUMENT_REQUEST_INVALID",
+      retryable: false,
+      message:
+        "В документе может быть не больше 10 файлов. Удалите лишние страницы или замените документ.",
+    });
+    expect(tx.documentVersion.create).not.toHaveBeenCalled();
+    expect(tx.documentSubmission.create).not.toHaveBeenCalled();
+    expect(tx.document.updateMany).not.toHaveBeenCalled();
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect({ document, prior }).toEqual(before);
+
+    // Both candidate and reviewer UIs receive the existing safe error envelope.
+    const reply = { status: vi.fn().mockReturnThis(), send: vi.fn() };
+    for (const url of [
+      "/api/candidate-documents",
+      "/api/v1/review/candidates/id/documents",
+    ]) {
+      new HttpErrorFilter().catch(error, {
+        switchToHttp: () => ({
+          getResponse: () => reply,
+          getRequest: () => ({ url, correlationId: "limit" }),
+        }),
+      } as unknown as ArgumentsHost);
+      expect(reply.send).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          code: "DOCUMENT_REQUEST_INVALID",
+          message: (error as CandidateDocumentError).message,
+        }),
+      );
+    }
+  });
+  it("accepts a combined 100 pages but rejects 101 without changing the original", async () => {
+    const atLimit = fixture("APPROVED", false, [98]);
+    await expect(
+      atLimit.service.upload(appended(), "bundle", "hundred-pages"),
+    ).resolves.toMatchObject({ version: 2 });
+    const exceeded = fixture("APPROVED", false, [99]);
+    await expect(
+      exceeded.service.upload(appended(), "bundle", "too-many-pages"),
+    ).rejects.toThrow("В документе может быть не больше 100 страниц");
+    expect(exceeded.tx.documentVersion.create).not.toHaveBeenCalled();
+    expect(exceeded.storage.upload).not.toHaveBeenCalled();
+    expect(exceeded.document).toMatchObject({
+      currentVersion: 1,
+      status: "APPROVED",
+      acceptedVersion: 1,
+    });
+  });
 });
 describe("owner-scoped returned document fields", () => {
   const make = () => {
-    const findFirst = vi.fn().mockResolvedValue({
-      currentVersion: 2,
-      versions: [
-        {
-          version: 1,
-          fields: [{ name: "number", kind: "text", submittedValue: "old" }],
-        },
-        {
-          version: 2,
-          fields: [
-            { name: "number", kind: "text", submittedValue: "000123" },
-            { name: "isInvalid", kind: "boolean", submittedValue: "false" },
-            { name: "issueDate", kind: "date", submittedValue: "2026-10-01" },
-            { name: "comment", kind: "text", submittedValue: null },
-          ],
-        },
-      ],
-    });
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        currentVersion: 2,
+        versions: [
+          {
+            version: 1,
+            fields: [{ name: "number", kind: "text", submittedValue: "old" }],
+          },
+          {
+            version: 2,
+            fields: [
+              { name: "number", kind: "text", submittedValue: "000123" },
+              { name: "isInvalid", kind: "boolean", submittedValue: "false" },
+              { name: "issueDate", kind: "date", submittedValue: "2026-10-01" },
+              { name: "comment", kind: "text", submittedValue: null },
+            ],
+          },
+        ],
+      },
+    ]);
     const service = new DocumentReadService(
       {
-        document: { findFirst },
+        document: { findMany },
         igEmploymentState: { findUnique: vi.fn().mockResolvedValue(null) },
       } as unknown as PrismaService,
       {} as DocumentAccessService,
       {} as StorageService,
     );
-    return { service, findFirst };
+    return { service, findMany };
   };
   it("uses only the current returned version and preserves false, null, dates and leading zeros", async () => {
-    const { service, findFirst } = make();
+    const { service, findMany } = make();
     expect(
       await service.internalDraft({ chat_uuid: "CHAT-OWNER" }, uid),
     ).toEqual({
@@ -284,7 +421,7 @@ describe("owner-scoped returned document fields", () => {
         { name: "comment", value: null },
       ],
     });
-    expect(findFirst.mock.calls[0][0].where).toEqual({
+    expect(findMany.mock.calls[0][0].where).toEqual({
       candidate: { chatUuid: "chat-owner" },
       documentType: { erpUid: uid },
       status: "RETURNED",
@@ -292,19 +429,21 @@ describe("owner-scoped returned document fields", () => {
     });
   });
   it("requires an owner and does not fall back to a historical rejected version", async () => {
-    const { service, findFirst } = make();
+    const { service, findMany } = make();
     await expect(service.internalDraft({}, uid)).rejects.toThrow(
       "Document owner is required",
     );
-    expect(findFirst).not.toHaveBeenCalled();
-    findFirst.mockResolvedValue({
-      currentVersion: 3,
-      versions: [{ version: 2, fields: [] }],
-    });
+    expect(findMany).not.toHaveBeenCalled();
+    findMany.mockResolvedValue([
+      {
+        currentVersion: 3,
+        versions: [{ version: 2, fields: [] }],
+      },
+    ]);
     await expect(
       service.internalDraft({ code_1c: "001" }, uid),
     ).rejects.toThrow("Returned document not found");
-    findFirst.mockResolvedValue(null);
+    findMany.mockResolvedValue([]);
     await expect(
       service.internalDraft({ chat_uuid: "another-owner" }, uid),
     ).rejects.toThrow("Returned document not found");
