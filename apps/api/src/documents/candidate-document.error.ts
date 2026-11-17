@@ -117,14 +117,17 @@ export class CandidateDocumentError extends HttpException {
       upstreamStatus?: number;
       durationMs: number;
     },
+    userMessage?: string,
   ) {
     const [status, retryable, defaultMessage] = definitions[code];
     const labels = fields?.map((field) =>
       field === CandidateProfileField.CITIZENSHIP ? "гражданство" : "должность",
     );
-    const message = labels?.length
-      ? `В карточке 1С не заполнены: ${labels.join(", ")}. Обратитесь к ответственному за оформление.`
-      : defaultMessage;
+    const message =
+      userMessage ??
+      (labels?.length
+        ? `В карточке 1С не заполнены: ${labels.join(", ")}. Обратитесь к ответственному за оформление.`
+        : defaultMessage);
     super(
       { code, message, retryable, ...(fields?.length ? { fields } : {}) },
       status,

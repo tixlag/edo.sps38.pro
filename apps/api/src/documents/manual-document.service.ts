@@ -35,6 +35,8 @@ import { resolveCandidateIdentity } from "./candidate-identity";
 import { DocumentNotificationService } from "./document-notification.service";
 import { ErpCandidateClient } from "./erp-candidate.client";
 import type { ReviewGroup } from "./review-group";
+import { CandidateDocumentError } from "./candidate-document.error";
+import { CandidateDocumentErrorCode } from "./dto/candidate-error.dto";
 
 @Injectable()
 export class ManualDocumentService {
@@ -489,6 +491,27 @@ export class ManualDocumentService {
                 : null;
             if (metadata.mode === "append" && !prior)
               throw new ConflictException("DOCUMENT_VERSION_REQUIRED");
+            if (prior) {
+              if (prior.files.length + upload.files.length > 10)
+                throw new CandidateDocumentError(
+                  CandidateDocumentErrorCode.DOCUMENT_REQUEST_INVALID,
+                  undefined,
+                  undefined,
+                  "В документе может быть не больше 10 файлов. Удалите лишние страницы или замените документ.",
+                );
+              if (
+                [...prior.files, ...upload.files].reduce(
+                  (count, file) => count + file.pageCount,
+                  0,
+                ) > 100
+              )
+                throw new CandidateDocumentError(
+                  CandidateDocumentErrorCode.DOCUMENT_REQUEST_INVALID,
+                  undefined,
+                  undefined,
+                  "В документе может быть не больше 100 страниц. Удалите лишние страницы или замените документ.",
+                );
+            }
             const preserved = (prior?.files ?? []).map(
               (
                 {
