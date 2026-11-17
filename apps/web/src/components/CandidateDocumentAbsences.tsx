@@ -63,6 +63,11 @@ export function CandidateDocumentAbsences({ candidateId, missing }: {
   if (!canReport && !canDecide && !absences.data?.length) return null;
   return <section aria-label="Отсутствующие документы" className="space-y-3 rounded-lg border border-[var(--border)] p-3">
     <h3 className="text-sm font-semibold">Отсутствующие документы</h3>
+    <p className="text-sm text-[var(--muted-foreground)]">
+      Если обязательного документа нет, сохраните причину. Отсутствие документа
+      можно согласовать или отклонить здесь при наличии права проверки документов.
+      Сохранение причины само по себе не снимает требование документа.
+    </p>
     {absences.isLoading && <p role="status" className="text-xs">Загрузка решений…</p>}
     {absences.isError && <p role="alert" className="text-xs">Не удалось загрузить решения. <Button size="sm" variant="outline" onClick={() => void absences.refetch()}>Повторить</Button></p>}
     {absences.data?.map((item) => <div key={item.id} className="space-y-1 border-t border-[var(--border)] pt-2 text-sm">
@@ -81,7 +86,7 @@ export function CandidateDocumentAbsences({ candidateId, missing }: {
       <span>{item.title}</span>{" "}<Button size="sm" variant="outline" onClick={() => { setEditingCode(editingCode === item.code ? null : item.code); setReason(""); setError(null); }}>Документа нет</Button>
       {editingCode === item.code && <div className="space-y-2"><label className="block text-xs">Причина отсутствия
         <textarea required className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] p-2" value={reason} onChange={(event) => setReason(event.target.value)} />
-      </label><Button size="sm" disabled={report.isPending} onClick={() => void submit(item.code)}>Передать на решение</Button></div>}
+      </label><Button size="sm" disabled={report.isPending} onClick={() => void submit(item.code)}>Сохранить причину</Button></div>}
     </div>)}
     {error && <p role="alert" className="text-sm text-[var(--destructive)]">{error}</p>}
   </section>;

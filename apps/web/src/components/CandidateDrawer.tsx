@@ -455,8 +455,6 @@ export function CandidateDrawer({
             )}
 
             {/* Stage Accordions */}
-            {!returnedHistory && !docs.synchronizing && profile?.reviewGroup === "RU" &&
-              <CandidateDocumentAbsences candidateId={candidateId} missing={Array.from(new Map(stages.flatMap((stage) => stage.required.missingDocuments).map((item) => [item.code, item])).values())} />}
             {!docs.synchronizing && stages.length > 0 && (
               <div className="space-y-3">
                 {stages.map((stg, index) => (
@@ -481,6 +479,8 @@ export function CandidateDrawer({
               </div>
             )}
 
+            {!returnedHistory && !docs.synchronizing && profile?.reviewGroup === "RU" &&
+              <CandidateDocumentAbsences candidateId={candidateId} missing={Array.from(new Map(stages.flatMap((stage) => stage.required.missingDocuments).map((item) => [item.code, item])).values())} />}
             {/* Collapsible History Section at the bottom */}
             {!returnedHistory && (
               <CandidateDrawerHistorySection

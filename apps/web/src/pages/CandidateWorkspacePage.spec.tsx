@@ -38,6 +38,9 @@ vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({ candidateId: "c1" }),
   useSearch: () => state.search,
 }));
+vi.mock("../components/CandidateDocumentAbsences", () => ({
+  CandidateDocumentAbsences: () => <section aria-label="Отсутствующие документы">Отсутствующие документы</section>,
+}));
 vi.mock("@edo/api-client", () => ({
   useGetDocumentVersion: () => ({
     data: { status: "APPROVED", files: [] },
@@ -88,6 +91,7 @@ vi.mock("@edo/api-client", () => ({
       fields: [],
     },
   }),
+  useRetryPreviousDocumentErpEdit: () => ({ mutate: vi.fn(), isPending: false }),
   useEditPreviousDocumentFields: () => ({ mutate: vi.fn(), isPending: false }),
   getGetPreviousDocumentDetailsQueryKey: () => ["prev-doc"],
   getGetCandidateDetailsQueryKey: () => ["details", "c1"],
@@ -521,4 +525,25 @@ it("keeps a complete snapshot and the chat mounted during a background sync", as
   node.remove();
   state.enrichment = undefined;
   state.candidate = undefined;
+});
+
+it("keeps stage documents before absence exceptions in the RU workspace", async () => {
+  state.candidate = { reviewGroup: "RU" };
+  state.search = { section: "profile", stage: "2" };
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<CandidateWorkspacePage />));
+    const absence = host.querySelector('section[aria-label="Отсутствующие документы"]')!;
+    const stage = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Этап 2"))!;
+    expect(stage).toBeTruthy();
+    expect(absence).toBeTruthy();
+    expect(stage.compareDocumentPosition(absence) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    state.candidate = undefined;
+    state.search = {};
+  }
 });
