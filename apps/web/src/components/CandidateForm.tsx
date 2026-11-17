@@ -47,7 +47,16 @@ export function candidateFormFields(
     managerId: profile?.manager?.id ?? null,
     projectCode: profile?.project?.code ?? null,
   };
-  if (!profile) return { fullName: "", phone: "", birthDate: null };
+  // Creation defaults: Russian citizenship and male sex, so a typical new
+  // candidate starts filled; the manager default is applied by the form effect.
+  if (!profile)
+    return {
+      fullName: "",
+      phone: "",
+      birthDate: null,
+      citizenship: "ru",
+      sex: "male",
+    };
   return {
     ...basic,
     sex: profile.sex ?? null,
@@ -155,8 +164,14 @@ export function CandidateForm({
     q: managerFallback ? undefined : managerQuery || undefined,
   });
   const useFallback = managerFallback || (managers.isError && !managers.data);
+  // The creation default is resolved from data already at hand: the local
+  // candidate catalog (EDO DB, synced from ERP every few minutes) first, then
+  // the managers page the dropdown has already fetched — no extra ERP request.
   const knownManagers = useListCatalogManagers({
-    query: { queryKey: getListCatalogManagersQueryKey(), enabled: useFallback },
+    query: {
+      queryKey: getListCatalogManagersQueryKey(),
+      enabled: useFallback || (!profile && Boolean(me.data?.fullName)),
+    },
   });
   useEffect(() => {
     if (managers.isError && !managers.data) setManagerFallback(true);
@@ -168,11 +183,9 @@ export function CandidateForm({
           .includes(managerQuery.trim().toLocaleLowerCase("ru")),
       )
     : (managers.data?.items ?? []);
-  const defaultManagers = useListCandidateManagers();
-  const currentManager = findCurrentUserAsManager(
-    defaultManagers.data?.items ?? knownManagers.data?.items,
-    me.data,
-  );
+  const currentManager =
+    findCurrentUserAsManager(knownManagers.data?.items, me.data) ??
+    findCurrentUserAsManager(managers.data?.items, me.data);
   useEffect(() => {
     if (
       profile ||

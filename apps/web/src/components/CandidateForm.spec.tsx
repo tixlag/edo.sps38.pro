@@ -12,6 +12,8 @@ import type { CandidateWorkspaceDto } from "@edo/api-client";
 const state = vi.hoisted(() => ({
   submit: vi.fn(),
   managers: [] as { id: string; name: string }[],
+  catalogManagers: [] as { id: string; name: string }[],
+  managerQueries: [] as ({ q?: string } | undefined)[],
   persons: [] as { id: string; name: string; personUid: string }[],
 }));
 vi.mock("@edo/api-client", () => {
@@ -31,11 +33,25 @@ vi.mock("@edo/api-client", () => {
     useListCandidateContactKinds: () => empty,
     useListCandidateUniversities: () => empty,
     useGetMe: () => ({ data: { fullName: "Текущий менеджер" } }),
-    useListCandidateManagers: () => ({
+    useListCandidateManagers: (params?: { q?: string }) => {
+      state.managerQueries.push(params);
+      return {
+        ...empty,
+        data: {
+          items: state.managers.filter((item) =>
+            params?.q
+              ? item.name
+                  .toLocaleLowerCase("ru")
+                  .includes(params.q.toLocaleLowerCase("ru"))
+              : true,
+          ),
+        },
+      };
+    },
+    useListCatalogManagers: () => ({
       ...empty,
-      data: { items: state.managers },
+      data: { items: state.catalogManagers },
     }),
-    useListCatalogManagers: () => empty,
     getListCatalogManagersQueryKey: () => ["catalog-managers"],
     useListCandidatePositions: () => empty,
     useListCandidateProjects: () => empty,
@@ -54,6 +70,8 @@ afterEach(() => {
   container?.remove();
   vi.clearAllMocks();
   state.managers = [];
+  state.catalogManagers = [];
+  state.managerQueries = [];
   state.persons = [];
   vi.useRealTimers();
 });
@@ -93,6 +111,8 @@ describe("CandidateForm", () => {
       fullName: "",
       phone: "",
       birthDate: null,
+      citizenship: "ru",
+      sex: "male",
     });
   });
   it("preserves null birth date and unknown citizenship when computing a phone-only patch", () => {
@@ -203,6 +223,20 @@ it("applies the current manager when their directory arrives and sends managerId
       .value,
   ).toBe("Текущий менеджер");
   expect((await sendCreation()).managerId).toBe("self");
+});
+it("prefills the current manager from the local catalog without an ERP search", async () => {
+  vi.useFakeTimers();
+  state.catalogManagers = [{ id: "self", name: "Текущий менеджер" }];
+  await renderCreation();
+  expect(
+    (container.querySelector('[aria-label="Менеджер"]') as HTMLInputElement)
+      .value,
+  ).toBe("Текущий менеджер");
+  expect((await sendCreation()).managerId).toBe("self");
+  // The default must never trigger a filtered ERP managers request: only the
+  // plain dropdown page is allowed.
+  expect(state.managerQueries.length).toBeGreaterThan(0);
+  expect(state.managerQueries.every((params) => !params?.q)).toBe(true);
 });
 it("does not overwrite a manually selected or cleared manager when the directory refreshes", async () => {
   vi.useFakeTimers();

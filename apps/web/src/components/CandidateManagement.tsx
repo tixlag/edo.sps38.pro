@@ -1,5 +1,5 @@
 import { formatPhoneForDisplay } from "../lib/phone";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetCandidateDetailsQueryKey,
@@ -22,7 +22,6 @@ import {
   Button,
   EmptyState,
   StatusBadge,
-  FullScreenDialog,
 } from "@edo/ui";
 import {
   Briefcase,
@@ -167,6 +166,19 @@ function EditCandidate({
   const mutation = useUpdateCandidateWorkspace();
   const request = useCandidateRequest();
   const confirmed = useConfirmedCandidate(profile.id);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    return () => {
+      if (dialog.open && typeof dialog.close === "function") dialog.close();
+    };
+  }, []);
+  const close = () => {
+    if (!request.locked && !mutation.isPending) onClose();
+  };
   const submit = async (fields: CandidatePatchFieldsDto) => {
     const changed = candidateChangedFields(initial, fields);
     if (!Object.keys(changed).length) {
@@ -183,14 +195,23 @@ function EditCandidate({
     );
   };
   return (
-    <FullScreenDialog
-      title={`Редактирование · ${profile.fullName}`}
-      closeLabel="Закрыть редактирование"
-      onClose={() => {
-        if (!request.locked && !mutation.isPending) onClose();
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="edit-candidate-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        close();
       }}
+      className="fixed inset-0 m-auto max-h-[90vh] w-[min(920px,calc(100vw-2rem))] max-w-none overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--card)] p-0 text-[var(--foreground)] shadow-2xl backdrop:bg-black/50"
     >
-      <div className="mx-auto w-full max-w-5xl py-4 sm:px-6">
+      <div className="p-6">
+        <h2 id="edit-candidate-title" className="mb-2 text-lg font-semibold">
+          Редактировать кандидата
+        </h2>
+        <p className="mb-4 text-sm text-[var(--muted-foreground)]">
+          {profile.fullName}. Внесите изменения и сохраните их — не тронутые
+          поля останутся без изменений.
+        </p>
         <CandidateForm
           profile={profile}
           pending={mutation.isPending || request.checking}
@@ -198,10 +219,10 @@ function EditCandidate({
           retryBlocked={request.blocked}
           error={request.error}
           onSubmit={(fields) => void submit(fields)}
-          onCancel={onClose}
+          onCancel={close}
         />
       </div>
-    </FullScreenDialog>
+    </dialog>
   );
 }
 

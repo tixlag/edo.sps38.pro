@@ -451,6 +451,8 @@ describe("candidate manager flows", () => {
           fullName: "Иванов Иван",
           phone: "+79000000001",
           birthDate: "1990-02-03",
+          citizenship: "ru",
+          sex: "male",
         },
         personSelection: "signed-opaque-person",
       },
@@ -484,6 +486,8 @@ describe("candidate manager flows", () => {
           fullName: "Иванов Иван",
           phone: "+79000000000",
           birthDate: "1991-02-03",
+          citizenship: "ru",
+          sex: "male",
         },
       },
     });
@@ -851,6 +855,8 @@ describe("candidate manager flows", () => {
           fullName: "Иванов Иван",
           phone: "+79000000000",
           birthDate: "1991-02-03",
+          citizenship: "ru",
+          sex: "male",
         },
       },
     });
