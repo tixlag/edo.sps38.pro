@@ -94,7 +94,10 @@ describe("approved document absences in statuses", () => {
     async (scope, candidate, expected) => {
       const prisma = {
         igEmploymentState: { findUnique: vi.fn().mockResolvedValue(null) },
-        candidate: { findFirst: vi.fn().mockResolvedValue(candidate) },
+        candidate: {
+          findFirst: vi.fn().mockResolvedValue(candidate),
+          findMany: vi.fn().mockResolvedValue([candidate]),
+        },
         document: { findMany: vi.fn().mockResolvedValue([]) },
         candidatePreviousDocument: { findMany: vi.fn().mockResolvedValue([]) },
         candidateDocumentAbsence: {
