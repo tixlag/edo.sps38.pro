@@ -21728,11 +21728,19 @@
             "items": {
               "type": "string"
             }
+          },
+          "waivedDocumentUids": {
+            "description": "Document types with approved absence",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
           "items",
-          "reusedDocumentUids"
+          "reusedDocumentUids",
+          "waivedDocumentUids"
         ]
       },
       "CandidateDocumentDraftFieldDto": {

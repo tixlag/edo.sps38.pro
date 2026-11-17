@@ -932,6 +932,8 @@ export interface OwnDocumentListDto {
   items: DocumentDto[];
   /** Confirmed reusable previous document types */
   reusedDocumentUids: string[];
+  /** Document types with approved absence */
+  waivedDocumentUids: string[];
 }
 
 export type CandidateDocumentDraftFieldDtoValue = string | null | boolean;

@@ -10,6 +10,15 @@ describe("IG current-cycle document scope", () => {
           .mockResolvedValue({ currentCandidateId: "current" }),
       },
       document: { findMany: vi.fn().mockResolvedValue([]) },
+      candidate: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValue({
+            id: "current",
+            chatUuid: null,
+            citizenship: "uz",
+          }),
+      },
       candidatePreviousDocument: {
         findMany: vi
           .fn()

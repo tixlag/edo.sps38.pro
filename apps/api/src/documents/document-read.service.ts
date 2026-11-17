@@ -467,6 +467,7 @@ export class DocumentReadService {
             if (category) applicableTypes.push({ ...type, category });
             if (
               uploaded.has(type.id) ||
+              waivedTypes.has(type.id) ||
               (type.erpUid && previousUids.has(type.erpUid.toLowerCase()))
             )
               continue;
@@ -1418,7 +1419,36 @@ export class DocumentReadService {
           })
         : null;
     const previousCandidateId = state?.currentCandidateId ?? chatCandidate?.id;
-    if (!previousCandidateId) return { ...result, reusedDocumentUids: [] };
+    const candidate =
+      chatCandidate ??
+      (await this.prisma.candidate.findFirst({
+        where: {
+          ...(state?.currentCandidateId || scope.candidateId
+            ? { id: state?.currentCandidateId ?? scope.candidateId }
+            : scope.chat_uuid
+              ? { chatUuid: scope.chat_uuid.toLowerCase() }
+              : { code1c: scope.code_1c }),
+          erpDeleted: false,
+        },
+        select: {
+          id: true,
+          reviewGroup: true,
+          citizenship: true,
+          chatUuid: true,
+        },
+      }));
+    const absences =
+      candidate && candidateReviewGroup(candidate) === "RU"
+        ? await this.prisma.candidateDocumentAbsence.findMany({
+            where: { candidateId: candidate.id, status: "APPROVED" },
+            select: { documentType: { select: { erpUid: true } } },
+          })
+        : [];
+    const waivedDocumentUids = absences.flatMap(({ documentType }) =>
+      documentType.erpUid ? [documentType.erpUid] : [],
+    );
+    if (!previousCandidateId)
+      return { ...result, reusedDocumentUids: [], waivedDocumentUids };
     const isIg = state?.currentCandidateId
       ? true
       : candidateReviewGroup(chatCandidate!) === "IG";
@@ -1435,6 +1465,7 @@ export class DocumentReadService {
     );
     return {
       ...result,
+      waivedDocumentUids,
       reusedDocumentUids: usablePreviousUids(previous, isIg).filter(
         (uid) => !current.has(uid),
       ),
