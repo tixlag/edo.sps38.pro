@@ -1,5 +1,11 @@
 import { findCurrentUserAsManager } from "../lib/manager-default";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   useGetMe,
   useListCandidateManagers,
@@ -109,6 +115,7 @@ export function CandidateForm({
   onCancel,
   onOpenCandidate,
   compact = false,
+  creationPhoto,
 }: {
   profile?: CandidateWorkspaceDto;
   pending: boolean;
@@ -123,8 +130,17 @@ export function CandidateForm({
   onCancel: () => void;
   onOpenCandidate?: (erpUid: string) => void;
   compact?: boolean;
+  creationPhoto?: ReactNode;
 }) {
   const me = useGetMe();
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (error) {
+      formRef.current?.querySelectorAll("details").forEach((section) => {
+        section.open = true;
+      });
+    }
+  }, [error]);
   const managerTouched = useRef(false);
   const [fields, setFields] = useState(() => candidateFormFields(profile));
   const [personSelection, setPersonSelection] = useState<string>();
@@ -319,6 +335,7 @@ export function CandidateForm({
   };
   return (
     <form
+      ref={formRef}
       onSubmit={submit}
       onInvalidCapture={(event) => {
         const section = (event.target as HTMLElement).closest("details");
@@ -327,6 +344,7 @@ export function CandidateForm({
       className="space-y-5"
       aria-label={profile ? "Редактирование кандидата" : "Создание кандидата"}
     >
+      {creationPhoto}
       <fieldset
         disabled={pending || locked}
         className={`grid min-w-0 gap-4 ${compact ? "grid-cols-1" : "sm:grid-cols-2"}`}
@@ -371,105 +389,6 @@ export function CandidateForm({
             onChange={(date) => set("birthDate", date)}
           />
         </div>
-        <div className="space-y-1 text-sm">
-          <p>Ведущий менеджер</p>
-          <SearchSelect
-            label="Менеджер"
-            value={fields.managerId}
-            selectedLabel={
-              profile?.manager?.name ??
-              (fields.managerId === currentManager?.id
-                ? currentManager?.name
-                : undefined)
-            }
-            options={managerOptions.map((item) => ({
-              value: item.id,
-              label: item.name,
-            }))}
-            onSearchChange={setManagerQuery}
-            onChange={(value) => {
-              managerTouched.current = true;
-              set("managerId", value ?? null);
-            }}
-            isLoading={
-              useFallback ? knownManagers.isLoading : managers.isLoading
-            }
-            isError={
-              useFallback
-                ? knownManagers.isError
-                : managers.isError && !managers.data
-            }
-            onRetry={() => {
-              if (useFallback) void knownManagers.refetch();
-              else void managers.refetch();
-            }}
-            disabled={pending || locked}
-          />
-          {useFallback && !knownManagers.isError && (
-            <p className="text-sm text-[var(--muted-foreground)]">
-              Менеджеры из ранее загруженных кандидатов: справочник 1С
-              недоступен, список может быть неполным.{" "}
-              <button
-                type="button"
-                className="text-[var(--primary)] underline"
-                onClick={() =>
-                  void managers.refetch().then((result) => {
-                    if (!result.isError) setManagerFallback(false);
-                  })
-                }
-              >
-                Повторить загрузку справочника
-              </button>
-            </p>
-          )}
-        </div>
-        <>
-          <div className="space-y-1 text-sm">
-            <p>Должность</p>
-            <SearchSelect
-              label="Должность"
-              value={fields.positionCode}
-              selectedLabel={profile?.position?.name}
-              options={(positions.data?.items ?? []).map((item) => ({
-                value: item.code ?? item.id,
-                label: item.name,
-              }))}
-              onSearchChange={setPositionQuery}
-              onChange={(value) => set("positionCode", value ?? null)}
-              isLoading={positions.isLoading}
-              isError={positions.isError}
-              onRetry={() => void positions.refetch()}
-              disabled={pending || locked}
-            />
-          </div>
-          <div className="space-y-1 text-sm">
-            <p>Подразделение</p>
-            <output
-              aria-label="Подразделение"
-              className={`${CANDIDATE_CONTROL} block text-[var(--muted-foreground)]`}
-            >
-              {department?.name ?? "Определяется по должности"}
-            </output>
-          </div>
-          <div className="space-y-1 text-sm">
-            <p>Объект</p>
-            <SearchSelect
-              label="Объект"
-              value={fields.projectCode}
-              selectedLabel={profile?.project?.name}
-              options={(projects.data?.items ?? []).map((item) => ({
-                value: item.code ?? item.id,
-                label: item.name,
-              }))}
-              onSearchChange={setProjectQuery}
-              onChange={(value) => set("projectCode", value ?? null)}
-              isLoading={projects.isLoading}
-              isError={projects.isError}
-              onRetry={() => void projects.refetch()}
-              disabled={pending || locked}
-            />
-          </div>
-        </>
       </fieldset>
       {!profile && (
         <section
@@ -633,6 +552,110 @@ export function CandidateForm({
           )}
         </section>
       )}
+      <fieldset
+        disabled={pending || locked}
+        className={`grid min-w-0 gap-4 ${compact ? "grid-cols-1" : "sm:grid-cols-2"}`}
+      >
+        <div className="space-y-1 text-sm">
+          <p>Ведущий менеджер</p>
+          <SearchSelect
+            label="Менеджер"
+            value={fields.managerId}
+            selectedLabel={
+              profile?.manager?.name ??
+              (fields.managerId === currentManager?.id
+                ? currentManager?.name
+                : undefined)
+            }
+            options={managerOptions.map((item) => ({
+              value: item.id,
+              label: item.name,
+            }))}
+            onSearchChange={setManagerQuery}
+            onChange={(value) => {
+              managerTouched.current = true;
+              set("managerId", value ?? null);
+            }}
+            isLoading={
+              useFallback ? knownManagers.isLoading : managers.isLoading
+            }
+            isError={
+              useFallback
+                ? knownManagers.isError
+                : managers.isError && !managers.data
+            }
+            onRetry={() => {
+              if (useFallback) void knownManagers.refetch();
+              else void managers.refetch();
+            }}
+            disabled={pending || locked}
+          />
+          {useFallback && !knownManagers.isError && (
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Менеджеры из ранее загруженных кандидатов: справочник 1С
+              недоступен, список может быть неполным.{" "}
+              <button
+                type="button"
+                className="text-[var(--primary)] underline"
+                onClick={() =>
+                  void managers.refetch().then((result) => {
+                    if (!result.isError) setManagerFallback(false);
+                  })
+                }
+              >
+                Повторить загрузку справочника
+              </button>
+            </p>
+          )}
+        </div>
+        <>
+          <div className="space-y-1 text-sm">
+            <p>Должность</p>
+            <SearchSelect
+              label="Должность"
+              value={fields.positionCode}
+              selectedLabel={profile?.position?.name}
+              options={(positions.data?.items ?? []).map((item) => ({
+                value: item.code ?? item.id,
+                label: item.name,
+              }))}
+              onSearchChange={setPositionQuery}
+              onChange={(value) => set("positionCode", value ?? null)}
+              isLoading={positions.isLoading}
+              isError={positions.isError}
+              onRetry={() => void positions.refetch()}
+              disabled={pending || locked}
+            />
+          </div>
+          <div className="space-y-1 text-sm">
+            <p>Подразделение</p>
+            <output
+              aria-label="Подразделение"
+              className={`${CANDIDATE_CONTROL} block text-[var(--muted-foreground)]`}
+            >
+              {department?.name ?? "Определяется по должности"}
+            </output>
+          </div>
+          <div className="space-y-1 text-sm">
+            <p>Объект</p>
+            <SearchSelect
+              label="Объект"
+              value={fields.projectCode}
+              selectedLabel={profile?.project?.name}
+              options={(projects.data?.items ?? []).map((item) => ({
+                value: item.code ?? item.id,
+                label: item.name,
+              }))}
+              onSearchChange={setProjectQuery}
+              onChange={(value) => set("projectCode", value ?? null)}
+              isLoading={projects.isLoading}
+              isError={projects.isError}
+              onRetry={() => void projects.refetch()}
+              disabled={pending || locked}
+            />
+          </div>
+        </>
+      </fieldset>
       <CandidateExpandedFields
         profile={profile}
         fields={fields}
@@ -652,7 +675,9 @@ export function CandidateForm({
           {locked && " Данные и номер операции сохранены."}
         </p>
       )}
-      <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-4">
+      <div
+        className={`flex flex-wrap gap-2 border-t border-[var(--border)] pt-4 ${!profile ? "sticky bottom-0 bg-[var(--card)] pb-2" : ""}`}
+      >
         <Button
           type="submit"
           size="sm"

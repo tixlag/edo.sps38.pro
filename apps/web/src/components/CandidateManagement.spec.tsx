@@ -47,6 +47,7 @@ const state = vi.hoisted(() => ({
     ],
   },
   create: vi.fn(),
+  upload: vi.fn(),
   open: vi.fn(),
   operation: vi.fn(),
   candidateMatches: [] as Array<{
@@ -97,7 +98,11 @@ vi.mock("@edo/api-client", () => {
     isPending: false,
   });
   return {
-    useUploadCandidatePhoto: () => ({ mutate: vi.fn(), isPending: false }),
+    useUploadCandidatePhoto: () => ({
+      mutate: vi.fn(),
+      mutateAsync: state.upload,
+      isPending: false,
+    }),
     useGetMe: () => ({ data: { permissions: state.permissions } }),
     useGetCandidateWorkspace: () =>
       state.workspaceError
@@ -230,6 +235,8 @@ vi.mock("@edo/api-client", () => {
     useListCandidateResponsibles: () =>
       result([
         { kind: "person", id: "referrer-person", name: "Ирина Рекомендатель" },
+        { kind: "person", id: "person-two", name: "Ирина Рекомендатель" },
+        { kind: "user", id: "user-one", name: "Пользователь 1С" },
       ]),
     useListCandidateContactTypes: () => result([]),
     useListCandidateContactKinds: () => result([]),
@@ -317,6 +324,7 @@ beforeEach(() => {
   state.candidateMatches = [];
   state.operation.mockResolvedValue({ data: { state: "NOT_FOUND" } });
   state.open.mockResolvedValue(state.profile);
+  state.upload.mockResolvedValue({ photoPath: "photo" });
   state.profile.history = [
     {
       date: "2026-10-26T01:00:00Z",
@@ -476,6 +484,52 @@ describe("candidate manager flows", () => {
       },
     });
     expect(state.persons).not.toHaveBeenCalled();
+  });
+  it("uploads a selected photo after creation and retries a failed upload without recreating", async () => {
+    vi.useFakeTimers();
+    URL.createObjectURL = vi.fn(() => "blob:preview");
+    URL.revokeObjectURL = vi.fn();
+    state.upload.mockRejectedValueOnce(new Error("upload failed"));
+    await render(<CandidatesPage />);
+    await click("Создать кандидата");
+    expect(view.querySelector("dialog[open]")).not.toBeNull();
+    const file = new File(["photo"], "candidate.webp", { type: "image/webp" });
+    const input = view.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [file],
+    });
+    await act(async () =>
+      input.dispatchEvent(new Event("change", { bubbles: true })),
+    );
+    expect(
+      view
+        .querySelector('img[alt="Предпросмотр фотографии кандидата"]')
+        ?.getAttribute("src"),
+    ).toBe("blob:preview");
+    const fields = view.querySelectorAll<HTMLInputElement>(
+      'fieldset > label > input, fieldset > div input[type="date"]',
+    );
+    type(fields[0], "Иванов Иван");
+    type(fields[1], "+79000000000");
+    type(fields[2], "1991-02-03");
+    await act(async () => vi.advanceTimersByTime(500));
+    await submit("Создание кандидата");
+    expect(state.create).toHaveBeenCalledTimes(1);
+    expect(state.upload).toHaveBeenCalledWith({
+      candidateId: "current-cycle",
+      data: { file },
+    });
+    expect(view.textContent).toContain(
+      "Кандидат создан, но фотографию загрузить не удалось",
+    );
+    expect(state.navigate).not.toHaveBeenCalled();
+    await click("Повторить загрузку фото");
+    expect(state.create).toHaveBeenCalledTimes(1);
+    expect(state.upload).toHaveBeenCalledTimes(2);
+    expect(state.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { candidateId: "current-cycle" } }),
+    );
   });
   it.each(["loading", "refreshing", "error"] as const)(
     "blocks creation while automatic duplicate search is %s",
@@ -641,6 +695,43 @@ describe("candidate manager flows", () => {
     expect(state.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ fields: { phone: "+79001112233" } }),
+      }),
+    );
+  });
+  it("replaces a legacy user responsible with the selected person UUID", async () => {
+    state.profile.responsible = {
+      kind: "user",
+      id: "user-one",
+      name: "Пользователь 1С",
+    };
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Редактировать данные");
+    const input = view.querySelector<HTMLInputElement>(
+      'input[aria-label="Ответственный"]',
+    )!;
+    await act(async () =>
+      input.dispatchEvent(new FocusEvent("focusin", { bubbles: true })),
+    );
+    const options = [...view.querySelectorAll('[role="option"]')];
+    expect(options.map((item) => item.textContent)).toEqual([
+      "Ирина Рекомендатель",
+      "Ирина Рекомендатель",
+    ]);
+    await act(async () =>
+      options[1].dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    await submit("Редактирование кандидата");
+    expect(state.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fields: {
+            responsible: {
+              kind: "person",
+              id: "person-two",
+              name: "Ирина Рекомендатель",
+            },
+          },
+        }),
       }),
     );
   });

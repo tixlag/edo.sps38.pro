@@ -83,7 +83,7 @@ export function CandidateExpandedFields({
   const referenceOptions = (items?: CandidateReferenceDto[]) =>
     (items ?? []).map((item) => ({ value: item.id, label: item.name }));
   const responsibleOptions = (responsibles.data?.items ?? [])
-    .filter((item) => item.kind === "user")
+    .filter((item) => item.kind === "person")
     .map((item) => ({
       value: `${item.kind}:${item.id}`,
       label: item.name,
@@ -104,12 +104,13 @@ export function CandidateExpandedFields({
           onSearchChange={setResponsibleQuery}
           onChange={(choice) => {
             const option = responsibles.data?.items.find(
-              (item) => `${item.kind}:${item.id}` === choice,
+              (item) =>
+                item.kind === "person" && `${item.kind}:${item.id}` === choice,
             );
             set(
               key,
-              option?.kind
-                ? { kind: option.kind, id: option.id, name: option.name }
+              option
+                ? { kind: "person", id: option.id, name: option.name }
                 : null,
             );
           }}
