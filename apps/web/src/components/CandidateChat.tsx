@@ -142,6 +142,9 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
     void cache.invalidateQueries({
       queryKey: getListCommunicationMessagesQueryKey(candidateId),
     });
+    void cache.invalidateQueries({
+      queryKey: getGetCommunicationContextQueryKey(candidateId),
+    });
   };
   useEffect(() => {
     if (receipt.data && receipt.data.status !== "PENDING" && draft.operationId)
@@ -207,6 +210,9 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
       subscribeCommunicationUpdates({
         connect: () => createCommunicationStreamGrant(candidateId),
         onChange: () => {
+          void cache.invalidateQueries({
+            queryKey: getGetCommunicationContextQueryKey(candidateId),
+          });
           void cache.invalidateQueries({
             queryKey: getListCommunicationMessagesQueryKey(candidateId, {
               limit: 50,
@@ -292,7 +298,10 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
             counts={feed.counts}
           />
         </div>
-        <span role="status" className="inline-flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+        <span
+          role="status"
+          className="inline-flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]"
+        >
           {state === "connected" && (
             <span className="relative flex h-2 w-2" aria-hidden="true">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--success)] opacity-75" />
@@ -415,7 +424,9 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
                 >
                   <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]">
                     <Badge>{CHANNEL_LABEL[message.channel]}</Badge>
-                    <span className="font-medium text-[var(--foreground)]">{message.author}</span>
+                    <span className="font-medium text-[var(--foreground)]">
+                      {message.author}
+                    </span>
                     <time dateTime={message.createdAt} className="text-[11px]">
                       {new Date(message.createdAt).toLocaleString("ru-RU", {
                         day: "numeric",
@@ -437,8 +448,13 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
                       onClick={() => void download(attachment.id)}
                       className="mt-2 flex max-w-full items-center gap-2 rounded-md border border-[var(--border)]/70 bg-[var(--background)] px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-[var(--muted)]"
                     >
-                      <Download size={14} className="shrink-0 text-[var(--muted-foreground)]" />
-                      <span className="break-all font-medium">{attachment.filename}</span>
+                      <Download
+                        size={14}
+                        className="shrink-0 text-[var(--muted-foreground)]"
+                      />
+                      <span className="break-all font-medium">
+                        {attachment.filename}
+                      </span>
                     </button>
                   ))}
                 </li>
@@ -487,7 +503,9 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
           <>
             <div className="flex flex-wrap items-center gap-2">
               <label className="min-w-0 flex-1 text-xs">
-                <span className="font-medium text-[var(--muted-foreground)]">Канал и получатель</span>
+                <span className="font-medium text-[var(--muted-foreground)]">
+                  Канал и получатель
+                </span>
                 <select
                   aria-label="Канал и получатель"
                   className="mt-1 w-full rounded-lg border border-[var(--border)]/70 bg-[var(--background)] p-2 text-[13px] transition-colors focus:bg-[var(--card)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
@@ -515,7 +533,9 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
               </label>
               {!!context.data.templates.length && (
                 <label className="min-w-0 flex-1 text-xs">
-                  <span className="font-medium text-[var(--muted-foreground)]">Шаблон ответа</span>
+                  <span className="font-medium text-[var(--muted-foreground)]">
+                    Шаблон ответа
+                  </span>
                   <select
                     aria-label="Шаблон ответа"
                     className="mt-1 w-full rounded-lg border border-[var(--border)]/70 bg-[var(--background)] p-2 text-[13px] transition-colors focus:bg-[var(--card)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
@@ -546,6 +566,13 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
                 </label>
               )}
             </div>
+            {context.data.lkUrl &&
+              !recipients.some((item) => item.channel === "lk") && (
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  Первое сообщение отправьте через другой канал. ЛК станет
+                  доступен после обновления истории.
+                </p>
+              )}
             <label className="sr-only" htmlFor={`chat-message-${candidateId}`}>
               Сообщение кандидату
             </label>
@@ -639,7 +666,7 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
                       onSuccess: (result) => {
                         change({
                           ...draft,
-                          text: [draft.text, result.url]
+                          text: [draft.text, result.text]
                             .filter(Boolean)
                             .join("\n")
                             .slice(0, 16000),
@@ -652,7 +679,11 @@ export function CandidateChat({ candidateId }: { candidateId: string }) {
                       },
                       onError: (error) =>
                         setNotice(
-                          (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+                          (
+                            error as {
+                              response?: { data?: { message?: string } };
+                            }
+                          )?.response?.data?.message ||
                             "Не удалось получить ссылку ЛК. Проверьте связь кандидата перед повтором.",
                         ),
                     },

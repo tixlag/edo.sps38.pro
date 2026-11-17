@@ -94,6 +94,7 @@ function setup() {
     history: vi.fn(async () => ({ items: [], nextCursor: null })),
     attachment: vi.fn(),
     link: vi.fn(),
+    invitation: vi.fn(async () => ({ text: "Приглашение из ERP", chatUuid })),
   };
   const lk = {
     configured: () => true,
@@ -128,11 +129,17 @@ function setup() {
 describe("candidate communications", () => {
   it("reports an unconfirmed LK link result without hiding the failure as HTTP 500", async () => {
     const s = setup();
-    s.access.candidate.mockResolvedValue({ ...candidate, chatUuid: null } as never);
-    s.erp.link.mockRejectedValue(new CommunicationSourceError("ERP_CHAT_HTTP_500", true));
+    s.access.candidate.mockResolvedValue({
+      ...candidate,
+      chatUuid: null,
+    } as never);
+    s.erp.link.mockRejectedValue(
+      new CommunicationSourceError("ERP_CHAT_HTTP_500", true),
+    );
     await expect(s.service.link(candidateId, principal)).rejects.toMatchObject({
       status: 503,
-      message: "Не удалось подтвердить создание ссылки ЛК. Проверьте связь кандидата перед повтором.",
+      message:
+        "Не удалось подтвердить создание ссылки ЛК. Проверьте связь кандидата перед повтором.",
     });
     expect(s.redis.compareAndDelStrict).toHaveBeenCalledOnce();
     expect(s.audit.logInTransaction).not.toHaveBeenCalled();
@@ -208,6 +215,57 @@ describe("candidate communications", () => {
         })
       ).canSend,
     ).toBe(true);
+  });
+  it("returns the ERP invitation text with an existing LK link", async () => {
+    const s = setup();
+    await expect(s.service.link(candidateId, principal)).resolves.toMatchObject(
+      { text: "Приглашение из ERP" },
+    );
+    expect(s.erp.invitation).toHaveBeenCalledWith(candidate.erpUid);
+  });
+  it("rejects an invitation when the ERP link points to a different chat", async () => {
+    const s = setup();
+    s.erp.invitation.mockResolvedValue({
+      text: "Приглашение",
+      chatUuid: "019d0a2a-f080-762e-b2d0-c7bb7ddb1999",
+    });
+    await expect(s.service.link(candidateId, principal)).rejects.toThrow(
+      "Связь чата",
+    );
+  });
+  it("does not offer or allow LK for the first message", async () => {
+    const s = setup();
+    const context = await s.service.context(candidateId, principal);
+    expect(context.recipients.some((r) => r.channel === ChatChannel.LK)).toBe(
+      false,
+    );
+    await expect(
+      s.service.send(candidateId, principal, {
+        ...input,
+        channel: ChatChannel.LK,
+        recipientId: chatUuid,
+      }),
+    ).rejects.toThrow();
+    expect(s.lk.sendText).not.toHaveBeenCalled();
+  });
+  it("allows LK after a message exists in another channel", async () => {
+    const s = setup();
+    s.erp.history.mockResolvedValue({
+      items: [{ id: "1" }],
+      nextCursor: null,
+    } as never);
+    const context = await s.service.context(candidateId, principal);
+    expect(context.recipients.some((r) => r.channel === ChatChannel.LK)).toBe(
+      true,
+    );
+  });
+  it("does not permit LK when empty history cannot be verified", async () => {
+    const s = setup();
+    s.erp.history.mockRejectedValue(new Error("unavailable"));
+    const context = await s.service.context(candidateId, principal);
+    expect(context.recipients.some((r) => r.channel === ChatChannel.LK)).toBe(
+      false,
+    );
   });
   it("rejects arbitrary recipients and files sent via SMS", async () => {
     const s = setup();

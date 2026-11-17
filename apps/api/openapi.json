@@ -27045,10 +27045,14 @@
         "properties": {
           "url": {
             "type": "string"
+          },
+          "text": {
+            "type": "string"
           }
         },
         "required": [
-          "url"
+          "url",
+          "text"
         ]
       },
       "ChatStreamGrantDto": {

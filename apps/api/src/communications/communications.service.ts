@@ -107,14 +107,30 @@ export class CommunicationsService {
             recipient.channel !== ChatChannel.SMS && recipient.supportsFiles,
         })),
     ];
-    if (candidate.chatUuid && this.lk.configured())
+    // The initial invitation must reach the candidate through an external channel.
+    // If neither history can confirm a prior message, fail closed for LK.
+    let hasPreviousMessage = false;
+    if (candidate.chatUuid && this.lk.configured()) {
+      const histories = await Promise.allSettled([
+        candidate.erpUid && !candidate.erpDeleted
+          ? this.erp.history(candidate.erpUid, 1)
+          : Promise.resolve({ items: [] }),
+        this.lk.history(candidateId, candidate.chatUuid, 1, 0),
+      ]);
+      hasPreviousMessage = histories.some(
+        (history) =>
+          history.status === "fulfilled" && history.value.items.length > 0,
+      );
+    }
+    if (candidate.chatUuid && this.lk.configured() && hasPreviousMessage)
       recipients.unshift({
         id: candidate.chatUuid,
         channel: ChatChannel.LK,
         label: "Чат ЛК",
         supportsFiles: true,
       });
-    else if (candidate.chatUuid) unavailableSources.push("lk");
+    else if (candidate.chatUuid && !this.lk.configured())
+      unavailableSources.push("lk");
     const lkUrl = candidate.chatUuid ? this.lkLink(candidate.chatUuid) : null;
     return {
       recipients,
@@ -501,9 +517,10 @@ export class CommunicationsService {
   async link(candidateId: string, principal: AuthPrincipal) {
     this.assertSend(principal);
     const candidate = await this.access.candidate(candidateId, principal);
-    if (candidate.chatUuid) return { url: this.lkLink(candidate.chatUuid) };
     if (!candidate.erpUid)
       throw new ServiceUnavailableException("ERP_CANDIDATE_MISSING");
+    if (candidate.chatUuid)
+      return this.invitation(candidate.erpUid, candidate.chatUuid);
     const lock = `edo:candidate-link:${candidateId}`,
       owner = randomUUID();
     if (!(await this.redis.setNxPxStrict(lock, owner, 60000)))
@@ -525,10 +542,14 @@ export class CommunicationsService {
           after: { chatUuid: result.chatUuid },
         });
       });
-      return { url: this.lkLink(result.chatUuid) };
+      return await this.invitation(candidate.erpUid, result.chatUuid);
     } catch (error) {
       if (error instanceof CommunicationSourceError) {
-        this.logger.warn({ action: "lk-link", code: error.code, uncertain: error.uncertain });
+        this.logger.warn({
+          action: "lk-link",
+          code: error.code,
+          uncertain: error.uncertain,
+        });
         throw new ServiceUnavailableException(
           error.uncertain
             ? "Не удалось подтвердить создание ссылки ЛК. Проверьте связь кандидата перед повтором."
@@ -539,6 +560,14 @@ export class CommunicationsService {
     } finally {
       await this.redis.compareAndDelStrict(lock, owner);
     }
+  }
+  private async invitation(erpUid: string, chatUuid: string) {
+    const result = await this.erp.invitation(erpUid);
+    if (result.chatUuid.toLowerCase() !== chatUuid.toLowerCase())
+      throw new ConflictException(
+        "Связь чата в 1С изменилась; обновите карточку кандидата",
+      );
+    return { url: this.lkLink(chatUuid), text: result.text };
   }
   async download(candidateId: string, principal: AuthPrincipal, token: string) {
     const candidate = await this.access.candidate(candidateId, principal);

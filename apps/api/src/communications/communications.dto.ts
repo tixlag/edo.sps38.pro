@@ -196,6 +196,7 @@ export class ChatDownloadDto {
 }
 export class ChatLinkDto {
   @ApiProperty() url!: string;
+  @ApiProperty() text!: string;
 }
 export class ChatStreamGrantDto {
   @ApiProperty() token!: string;
