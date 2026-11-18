@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useRequestCandidateEnrichmentBatch,
   getCandidateEnrichmentBatchStatus,
@@ -7,7 +8,15 @@ import {
 import {
   subscribeRuEnrichmentEvents,
   subscribeDocumentStreamState,
+  invalidateRuEnrichmentCandidates,
 } from "./document-events";
+
+export type CandidateSyncStatus = "PENDING" | "RUNNING" | "RETRY" | "READY";
+
+export interface CandidateSyncState {
+  status: CandidateSyncStatus;
+  retryAt: string | null;
+}
 
 /**
  * Initiates candidate enrichment batch once per visible page / filter set,
@@ -19,6 +28,7 @@ export function useVisibleRuDocumentSync(
   enabled: boolean,
   refetch: () => Promise<unknown>,
 ) {
+  const queryClient = useQueryClient();
   const batch = useRequestCandidateEnrichmentBatch();
   const actions = useRef({ mutate: batch.mutate, refetch });
   actions.current = { mutate: batch.mutate, refetch };
@@ -29,15 +39,24 @@ export function useVisibleRuDocumentSync(
     pending: string[];
     error?: boolean;
   }>();
+  const [candidateStates, setCandidateStates] = useState<
+    Map<string, CandidateSyncState>
+  >(() => new Map());
 
   useEffect(() => {
     if (!enabled || !key) return;
     let active = true;
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     const candidateIds = key.split(",");
-    const completedDuringPost = new Set<string>();
-    let pendingSet = new Set<string>();
-    let postFinished = false;
+    const completedIds = new Set<string>();
+    const pendingSet = new Set<string>();
+    const statesMap = new Map<string, CandidateSyncState>();
+
+    const updateStates = () => {
+      if (!active) return;
+      setCandidateStates(new Map(statesMap));
+      setResult({ key, pending: Array.from(pendingSet) });
+    };
 
     // Fast status check for reconciling state if SSE missed an event or after reconnect
     const checkStatus = async () => {
@@ -47,16 +66,28 @@ export function useVisibleRuDocumentSync(
           candidateIds: Array.from(pendingSet),
         });
         if (!active) return;
-        let anyCompleted = false;
+        const newlyCompleted: string[] = [];
         for (const item of statusData.items) {
-          if (item.status === "READY" && pendingSet.has(item.candidateId)) {
-            pendingSet.delete(item.candidateId);
-            anyCompleted = true;
+          if (completedIds.has(item.candidateId)) {
+            // Monotonic: do not allow older responses to regress READY status
+            continue;
           }
+          if (item.status === "READY") {
+            completedIds.add(item.candidateId);
+            pendingSet.delete(item.candidateId);
+            newlyCompleted.push(item.candidateId);
+          }
+          statesMap.set(item.candidateId, {
+            status: item.status,
+            retryAt: item.retryAt,
+          });
         }
-        if (anyCompleted) {
-          setResult({ key, pending: Array.from(pendingSet) });
+        if (newlyCompleted.length > 0) {
+          updateStates();
+          await invalidateRuEnrichmentCandidates(queryClient, newlyCompleted);
           void actions.current.refetch();
+        } else if (statusData.items.length > 0) {
+          updateStates();
         }
       } catch {
         // Non-blocking fallback
@@ -67,21 +98,35 @@ export function useVisibleRuDocumentSync(
     const unsubscribeSse = subscribeRuEnrichmentEvents(
       (event: RuEnrichmentStreamEvent) => {
         if (!active) return;
-        let anyCompleted = false;
+        let anyChanged = false;
         for (const item of event.items) {
           if (item.status === "READY") {
-            if (!postFinished) {
-              completedDuringPost.add(item.candidateId);
-            }
+            completedIds.add(item.candidateId);
             if (pendingSet.has(item.candidateId)) {
               pendingSet.delete(item.candidateId);
-              anyCompleted = true;
+              anyChanged = true;
             }
+          } else if (completedIds.has(item.candidateId)) {
+            // Monotonic: do not revert a completed candidate to non-ready
+            continue;
+          }
+          const prev = statesMap.get(item.candidateId);
+          if (
+            !prev ||
+            prev.status !== item.status ||
+            prev.retryAt !== item.retryAt
+          ) {
+            statesMap.set(item.candidateId, {
+              status: item.status,
+              retryAt: item.retryAt,
+            });
+            anyChanged = true;
           }
         }
-        if (anyCompleted) {
-          setResult({ key, pending: Array.from(pendingSet) });
-          void actions.current.refetch();
+        if (anyChanged) {
+          updateStates();
+          // Do not call actions.current.refetch() here.
+          // subscribeDocumentQueryUpdates in document-events.ts handles query invalidation via React Query.
         }
       },
     );
@@ -127,16 +172,26 @@ export function useVisibleRuDocumentSync(
       {
         onSuccess: (data) => {
           if (!active) return;
-          postFinished = true;
-          // Exclude any candidates that completed via SSE while POST was in-flight
-          const actualPending = data.pendingCandidateIds.filter(
-            (id) => !completedDuringPost.has(id),
-          );
-          pendingSet = new Set(actualPending);
-          setResult({ key, pending: actualPending });
+          const returnedPending = new Set(data.pendingCandidateIds);
+          for (const id of candidateIds) {
+            if (completedIds.has(id)) {
+              // Completed via SSE while POST was in flight
+              statesMap.set(id, { status: "READY", retryAt: null });
+            } else if (returnedPending.has(id)) {
+              pendingSet.add(id);
+              if (!statesMap.has(id)) {
+                statesMap.set(id, { status: "PENDING", retryAt: null });
+              }
+            } else {
+              // Candidates not returned in pending are already READY
+              completedIds.add(id);
+              statesMap.set(id, { status: "READY", retryAt: null });
+            }
+          }
+          updateStates();
 
           // If there are pending jobs, schedule a one-time check after 1s to resolve race conditions
-          if (actualPending.length > 0) {
+          if (pendingSet.size > 0) {
             fallbackTimer = setTimeout(() => void checkStatus(), 1000);
           }
         },
@@ -156,12 +211,15 @@ export function useVisibleRuDocumentSync(
         document.removeEventListener("visibilitychange", onVisibilityChange);
       }
     };
-  }, [key, enabled, attempt]);
+  }, [key, enabled, attempt, queryClient]);
 
   return {
     pendingIds: new Set(
       enabled ? (result?.key === key ? result.pending : ids) : [],
     ),
+    candidateStates,
+    getSyncState: (id: string): CandidateSyncState | undefined =>
+      candidateStates.get(id),
     retry: () => setAttempt((value) => value + 1),
     error: enabled && result?.key === key && result.error,
   };

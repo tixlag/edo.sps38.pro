@@ -1,9 +1,12 @@
 vi.mock("../lib/use-visible-ru-document-sync", () => ({
-  useVisibleRuDocumentSync: () => ({
-    pendingIds: new Set(),
-    error: false,
-    retry: vi.fn(),
-  }),
+  useVisibleRuDocumentSync: () =>
+    state.syncReturn ?? {
+      pendingIds: new Set(),
+      candidateStates: new Map(),
+      getSyncState: () => undefined,
+      error: false,
+      retry: vi.fn(),
+    },
 }));
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, type ReactNode } from "react";
@@ -29,6 +32,7 @@ const state = vi.hoisted(() => ({
   meFullName: null as string | null,
   catalogManagers: [] as Array<{ id: string; name: string }>,
   statuses: [] as Array<{ id: string; name: string }>,
+  syncReturn: undefined as any,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -168,9 +172,66 @@ afterEach(async () => {
   state.meFullName = null;
   state.catalogManagers = [];
   state.statuses = [];
+  state.syncReturn = undefined;
 });
 
 describe("RU and IG review pages", () => {
+  it("renders candidate sync states (RETRY, PENDING, RUNNING) in CandidateRow without spinner on retry", async () => {
+    state.permissions = { "20002": [] };
+    const syncStateMock = new Map([
+      ["c-retry", { status: "RETRY" as const, retryAt: null }],
+      ["c-pending", { status: "PENDING" as const, retryAt: null }],
+      ["c-running", { status: "RUNNING" as const, retryAt: null }],
+    ]);
+    state.syncReturn = {
+      pendingIds: new Set(["c-retry", "c-pending", "c-running"]),
+      candidateStates: syncStateMock,
+      getSyncState: (id: string) => syncStateMock.get(id),
+      error: false,
+      retry: vi.fn(),
+    };
+    const stageProgressItem = {
+      stage: 1,
+      required: { approved: 0, inReview: 0, pending: 0, total: 1 },
+      additional: { approved: 0, inReview: 0, pending: 0, total: 0 },
+    };
+    state.queueItems = [
+      {
+        candidate: {
+          id: "c-retry",
+          fullName: "Кандидат Повтор",
+          stageProgress: [stageProgressItem],
+        },
+      },
+      {
+        candidate: {
+          id: "c-pending",
+          fullName: "Кандидат Ожидание",
+          stageProgress: [stageProgressItem],
+        },
+      },
+      {
+        candidate: {
+          id: "c-running",
+          fullName: "Кандидат Запуск",
+          stageProgress: [stageProgressItem],
+        },
+      },
+    ];
+
+    const view = await render("RU");
+    const sections = view.querySelectorAll('section[aria-label^="Кандидат"]');
+    expect(sections.length).toBe(3);
+
+    expect(sections[0].textContent).toContain("Повторим позже");
+    expect(sections[0].querySelector(".animate-spin")).toBeNull();
+
+    expect(sections[1].textContent).toContain("Ожидает синхронизации");
+    expect(sections[1].querySelector(".animate-spin")).toBeNull();
+
+    expect(sections[2].textContent).toContain("Обновляем…");
+    expect(sections[2].querySelector(".animate-spin")).not.toBeNull();
+  });
   it("shows the RU candidate title and opens the create form from the list", async () => {
     state.permissions = { "20002": [] };
     const view = await render("RU");

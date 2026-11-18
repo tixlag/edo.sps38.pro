@@ -176,21 +176,33 @@ export function CandidateDrawer({
       }}
     >
       <div className="candidate-drawer-panel absolute right-0 top-0 flex h-full w-full max-w-[760px] min-[640px]:w-[720px] lg:w-[760px] flex-col bg-[var(--card)] shadow-2xl">
-        {docs.updating && <p role="status" className="border-b border-[var(--border)] px-4 py-2 text-xs text-[var(--muted-foreground)]">
-          {docs.syncError || enrichment?.status === "RETRY" ? "Не удалось обновить данные. Показан последний полный снимок." : "Обновляем данные…"}
-          {docs.syncError && <Button variant="outline" size="sm" onClick={docs.requestSync}>Повторить</Button>}
-        </p>}
+        {docs.updating && (
+          <p
+            role="status"
+            className="border-b border-[var(--border)] px-4 py-2 text-xs text-[var(--muted-foreground)]"
+          >
+            {docs.syncError || enrichment?.status === "RETRY"
+              ? "Не удалось обновить данные. Показан последний полный снимок."
+              : enrichment?.status === "PENDING"
+                ? "Ожидает синхронизации…"
+                : "Обновляем данные…"}
+            {(docs.syncError || enrichment?.status === "RETRY") && (
+              <Button variant="outline" size="sm" onClick={docs.requestSync}>
+                Повторить
+              </Button>
+            )}
+          </p>
+        )}
         {docs.synchronizing && (
           <div
             role="status"
             className="border-b border-[var(--border)] px-4 py-3 text-sm"
           >
-            {enrichment?.status === "RETRY"
-              ? "Не удалось загрузить все данные. Повторим загрузку автоматически."
+            {enrichment?.status === "RETRY" || docs.syncError
+              ? "Повторим позже"
               : "Синхронизация профиля и документов…"}
-            {docs.syncError && (
+            {(docs.syncError || enrichment?.status === "RETRY") && (
               <span className="ml-2">
-                Не удалось запросить загрузку.{" "}
                 <Button variant="ghost" size="sm" onClick={docs.requestSync}>
                   Повторить
                 </Button>
@@ -245,12 +257,24 @@ export function CandidateDrawer({
                     </span>
                     {docs.updating && (
                       <span className="flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]">
-                        <Loader2 className="inline h-3 w-3 animate-spin" /> Обновляем…
+                        {enrichment?.status === "RETRY" || docs.syncError ? (
+                          "Повторим позже"
+                        ) : enrichment?.status === "PENDING" ? (
+                          "Ожидает синхронизации"
+                        ) : (
+                          <>
+                            <Loader2 className="inline h-3 w-3 animate-spin" /> Обновляем…
+                          </>
+                        )}
                       </span>
                     )}
                   </span>
                 ) : docs.synchronizing ? (
-                  "Синхронизация документов…"
+                  enrichment?.status === "RETRY" || docs.syncError ? (
+                    "Повторим позже"
+                  ) : (
+                    "Синхронизация документов…"
+                  )
                 ) : (
                   formatDocumentProgress(
                     profile?.approvedDocuments ?? 0,

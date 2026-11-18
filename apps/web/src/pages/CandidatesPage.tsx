@@ -350,36 +350,59 @@ function CandidateCatalog() {
                     {candidate.projectName || "Не указан"}
                   </td>
                   <td className="p-3">
-                    {candidate.requiredDocuments != null ? (
-                      <span className="flex items-center gap-1.5">
-                        <span>
-                          {formatDocumentProgress(
-                            candidate.approvedDocuments,
-                            candidate.requiredDocuments,
-                          )}
-                        </span>
-                        {documentSync.pendingIds.has(candidate.id) && (
+                    {(() => {
+                      const syncState = documentSync.getSyncState(candidate.id);
+                      const isPending = documentSync.pendingIds.has(candidate.id);
+                      const statusIndicator =
+                        syncState?.status === "RETRY" ? (
                           <span
                             role="status"
                             className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]"
                           >
-                            <Loader2 className="inline h-3 w-3 animate-spin" /> Обновляем…
+                            Повторим позже
                           </span>
-                        )}
-                      </span>
-                    ) : documentSync.pendingIds.has(candidate.id) ? (
-                      <span
-                        role="status"
-                        className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]"
-                      >
-                        <Loader2 className="inline h-3 w-3 animate-spin" /> Синхронизация документов…
-                      </span>
-                    ) : (
-                      formatDocumentProgress(
+                        ) : syncState?.status === "PENDING" ? (
+                          <span
+                            role="status"
+                            className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]"
+                          >
+                            Ожидает синхронизации
+                          </span>
+                        ) : syncState?.status === "RUNNING" || isPending ? (
+                          <span
+                            role="status"
+                            className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]"
+                          >
+                            <Loader2 className="inline h-3 w-3 animate-spin" />{" "}
+                            {candidate.requiredDocuments != null
+                              ? "Обновляем…"
+                              : "Синхронизация документов…"}
+                          </span>
+                        ) : null;
+
+                      if (candidate.requiredDocuments != null) {
+                        return (
+                          <span className="flex items-center gap-1.5">
+                            <span>
+                              {formatDocumentProgress(
+                                candidate.approvedDocuments,
+                                candidate.requiredDocuments,
+                              )}
+                            </span>
+                            {statusIndicator}
+                          </span>
+                        );
+                      }
+
+                      if (statusIndicator) {
+                        return statusIndicator;
+                      }
+
+                      return formatDocumentProgress(
                         candidate.approvedDocuments,
                         candidate.requiredDocuments,
-                      )
-                    )}
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}

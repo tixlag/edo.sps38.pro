@@ -63,6 +63,41 @@ function dispatchStreamState(state: DocumentStreamState) {
   }
 }
 
+export function isRuEnrichmentQueryAffected(
+  path: string,
+  candidateIds: Set<string>,
+): boolean {
+  if (candidateIds.size === 0) return false;
+  if (/\/files\/|\/original$|\/annotation/.test(path)) return false;
+
+  const candidate = /^\/api\/v1\/candidates\/([^/]+)(?:\/|$)/.exec(path);
+  if (candidate) {
+    if (candidate[1] === "catalog") return true;
+    return candidateIds.has(candidate[1]);
+  }
+
+  return /^\/api\/v1\/(?:review-candidates|review-documents|candidate-review-queue|dashboard|candidates)(?:\/|$)/.test(
+    path,
+  );
+}
+
+export async function invalidateRuEnrichmentCandidates(
+  client: QueryClient,
+  candidateIds: string[],
+): Promise<void> {
+  if (candidateIds.length === 0) return;
+  const targetIds = new Set(candidateIds);
+  await client.invalidateQueries(
+    {
+      predicate: (query) => {
+        const path = String(query.queryKey[0]);
+        return isRuEnrichmentQueryAffected(path, targetIds);
+      },
+    },
+    { cancelRefetch: false },
+  );
+}
+
 /** Coalesce snapshot changes; immutable file contents are never status queries. */
 export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
   let previous = new Map<string, DocumentDto>();
@@ -107,8 +142,10 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
             const candidate = /^\/api\/v1\/candidates\/([^/]+)(?:\/|$)/.exec(
               path,
             );
-            if (candidate)
+            if (candidate) {
+              if (candidate[1] === "catalog") return profiles.size > 0;
               return candidates.has(candidate[1]) || profiles.has(candidate[1]);
+            }
             if (
               profiles.size &&
               /^\/api\/v1\/(?:review-candidates|review-documents|candidate-review-queue|dashboard|candidates)(?:\/|$)/.test(
