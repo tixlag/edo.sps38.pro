@@ -36,6 +36,7 @@ import {
   DocumentEventsService,
   DocumentStreamGuard,
 } from "./document-events.service";
+import { RuEnrichmentNotificationsService } from "./ru-enrichment-notifications.service";
 import {
   ManualDocumentIntegrationController,
   ManualDocumentReviewController,
@@ -106,9 +107,12 @@ import { LkModule } from "../lk/lk.module";
     IgProfileEnrichmentService,
     CandidatePreviousDocumentsSyncService,
     ErpCandidateClient,
+    IgEnrichmentQueueService,
+    RuEnrichmentNotificationsService,
   ],
   providers: [
     DocumentAbsenceService,
+    RuEnrichmentNotificationsService,
     CandidatePhotosService,
     ReviewerDocumentsService,
     IgEnrichmentQueueService,

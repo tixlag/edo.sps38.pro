@@ -1,9 +1,12 @@
 vi.mock("../lib/use-visible-ru-document-sync", () => ({
-  useVisibleRuDocumentSync: () => ({
-    pendingIds: new Set(),
-    error: false,
-    retry: vi.fn(),
-  }),
+  useVisibleRuDocumentSync: () =>
+    state.syncReturn ?? {
+      pendingIds: new Set(),
+      candidateStates: new Map(),
+      getSyncState: () => undefined,
+      error: false,
+      retry: vi.fn(),
+    },
 }));
 import { afterEach, expect, it, vi } from "vitest";
 import { act, type ReactNode } from "react";
@@ -16,6 +19,8 @@ const state = vi.hoisted(() => ({
   list: vi.fn(),
   me: { permissions: { "20002": [] }, fullName: "Менеджер Иванов" } as unknown,
   managers: [{ id: "mgr-1", name: "Менеджер Иванов" }] as unknown[],
+  syncReturn: undefined as any,
+  candidates: undefined as any,
 }));
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
@@ -45,7 +50,10 @@ vi.mock("@edo/api-client", () => {
     }),
     useListCommunicationCandidates: (params: unknown) => {
       state.list(params);
-      return empty;
+      return {
+        data: { items: state.candidates ?? [] },
+        refetch: vi.fn(),
+      };
     },
   };
 });
@@ -136,4 +144,59 @@ it("stores the employment toggle in URL, reloads it and clears it on reset", asy
   }));
   await act(async () => root.unmount());
   container.remove();
+});
+
+it("renders candidate sync states (RETRY, PENDING, RUNNING) without spinner on retry", async () => {
+  const syncStateMock = new Map([
+    ["c-retry", { status: "RETRY" as const, retryAt: null }],
+    ["c-pending", { status: "PENDING" as const, retryAt: null }],
+    ["c-running", { status: "RUNNING" as const, retryAt: null }],
+  ]);
+  state.syncReturn = {
+    pendingIds: new Set(["c-retry", "c-pending", "c-running"]),
+    candidateStates: syncStateMock,
+    getSyncState: (id: string) => syncStateMock.get(id),
+    error: false,
+    retry: vi.fn(),
+  };
+  state.candidates = [
+    {
+      id: "c-retry",
+      fullName: "Кандидат Повтор",
+      approvedDocuments: 0,
+      requiredDocuments: 2,
+    },
+    {
+      id: "c-pending",
+      fullName: "Кандидат Ожидание",
+      approvedDocuments: 0,
+      requiredDocuments: 2,
+    },
+    {
+      id: "c-running",
+      fullName: "Кандидат Запуск",
+      approvedDocuments: 0,
+      requiredDocuments: 2,
+    },
+  ];
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => root.render(<CandidatesPage />));
+
+  const rows = container.querySelectorAll("tbody tr");
+  expect(rows.length).toBe(3);
+  expect(rows[0].textContent).toContain("Повторим позже");
+  expect(rows[0].querySelector(".animate-spin")).toBeNull();
+
+  expect(rows[1].textContent).toContain("Ожидает синхронизации");
+  expect(rows[1].querySelector(".animate-spin")).toBeNull();
+
+  expect(rows[2].textContent).toContain("Обновляем…");
+  expect(rows[2].querySelector(".animate-spin")).not.toBeNull();
+
+  await act(async () => root.unmount());
+  container.remove();
+  state.syncReturn = undefined;
+  state.candidates = undefined;
 });

@@ -1,7 +1,10 @@
 import { FilterBar } from "@edo/ui";
 import { filterValues } from "../lib/filter-values";
 import { DocumentReviewDialog } from "../components/DocumentReviewDialog";
-import { useVisibleRuDocumentSync } from "../lib/use-visible-ru-document-sync";
+import {
+  useVisibleRuDocumentSync,
+  type CandidateSyncState,
+} from "../lib/use-visible-ru-document-sync";
 import { StageRing } from "../components/StageRing";
 import { parseIgRegistrySearch } from "../lib/ig-registry-search";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -47,6 +50,7 @@ import {
   GraduationCap,
   UserRound,
   FileSignature,
+  Loader2,
 } from "lucide-react";
 import {
   DocumentReviewWorkspace,
@@ -103,6 +107,7 @@ function CandidateRow({
   onContract,
   opensChat,
   synchronizing,
+  syncState,
 }: {
   group: CandidateDetailsDto;
   onOpen: () => void;
@@ -110,6 +115,7 @@ function CandidateRow({
   onContract?: () => void;
   opensChat: boolean;
   synchronizing?: boolean;
+  syncState?: CandidateSyncState;
   returnedHistory?: boolean;
 }) {
   const candidate = group.candidate;
@@ -238,21 +244,60 @@ function CandidateRow({
         >
           <div className="min-w-0 flex-1 pb-1">
             <div className="flex w-full flex-wrap items-center justify-end gap-1">
-              {synchronizing ? (
+              {candidate?.stageProgress && candidate.stageProgress.length > 0 ? (
+                <>
+                  {candidate.stageProgress.map((progress) => (
+                    <StageRing
+                      key={progress.stage ?? "additional"}
+                      progress={progress}
+                      onOpen={() => onOpenStage(progress.stage)}
+                    />
+                  ))}
+                  {syncState?.status === "RETRY" ? (
+                    <span
+                      role="status"
+                      className="ml-1 flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]"
+                    >
+                      Повторим позже
+                    </span>
+                  ) : syncState?.status === "PENDING" ? (
+                    <span
+                      role="status"
+                      className="ml-1 flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]"
+                    >
+                      Ожидает синхронизации
+                    </span>
+                  ) : syncState?.status === "RUNNING" || synchronizing ? (
+                    <span
+                      role="status"
+                      className="ml-1 flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]"
+                    >
+                      <Loader2 className="inline h-3 w-3 animate-spin" /> Обновляем…
+                    </span>
+                  ) : null}
+                </>
+              ) : syncState?.status === "RETRY" ? (
                 <p
                   role="status"
-                  className="p-3 text-xs text-[var(--muted-foreground)]"
+                  className="flex items-center gap-1.5 p-3 text-xs text-[var(--muted-foreground)]"
                 >
+                  Повторим позже
+                </p>
+              ) : syncState?.status === "PENDING" ? (
+                <p
+                  role="status"
+                  className="flex items-center gap-1.5 p-3 text-xs text-[var(--muted-foreground)]"
+                >
+                  Ожидает синхронизации
+                </p>
+              ) : syncState?.status === "RUNNING" || synchronizing ? (
+                <p
+                  role="status"
+                  className="flex items-center gap-1.5 p-3 text-xs text-[var(--muted-foreground)]"
+                >
+                  <Loader2 className="h-3 w-3 animate-spin" />
                   Синхронизация документов…
                 </p>
-              ) : candidate?.stageProgress ? (
-                candidate.stageProgress.map((progress) => (
-                  <StageRing
-                    key={progress.stage ?? "additional"}
-                    progress={progress}
-                    onOpen={() => onOpenStage(progress.stage)}
-                  />
-                ))
               ) : (
                 <span className="w-24 text-center text-xs text-[var(--muted-foreground)]">
                   Этапы неизвестны
@@ -546,7 +591,6 @@ export function ReviewPage({
   const visibleSync = useVisibleRuDocumentSync(
     groups.map((group) => group.candidate.id),
     reviewGroup === "RU" && canReview && !dateRangeInvalid && !!list.data,
-    () => list.refetch(),
   );
 
   // Selector options. Facet entries without an exact code cannot feed an
@@ -1071,6 +1115,9 @@ export function ReviewPage({
                       key={group.candidate.id}
                       group={group}
                       synchronizing={visibleSync.pendingIds.has(
+                        group.candidate.id,
+                      )}
+                      syncState={visibleSync.getSyncState(
                         group.candidate.id,
                       )}
                       returnedHistory={filters.status === "RETURNED"}

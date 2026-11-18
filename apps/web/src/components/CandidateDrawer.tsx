@@ -12,6 +12,7 @@ import {
   GraduationCap,
   UserRound,
   X,
+  Loader2,
 } from "lucide-react";
 import { formatDateRu, formatLocalArrivalTime } from "../lib/date-format";
 import { LkLink } from "./LkLink";
@@ -64,7 +65,13 @@ export function CandidateDrawer({
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as Record<string, unknown>;
   const docs = useCandidateDocumentSync(candidateId, stageProp);
+  const profile = docs.data?.candidate ?? queueProfile;
+  const isRu = profile?.reviewGroup === "RU";
+  const syncState = docs.syncState;
   const enrichment = docs.data?.enrichment;
+  const effectiveStatus = isRu
+    ? syncState?.status ?? enrichment?.status
+    : enrichment?.status;
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -86,7 +93,6 @@ export function CandidateDrawer({
   const arrivalTime = formatLocalArrivalTime(arrivalContext?.arrivalDateTime);
   const arrivalDate =
     arrivalContext?.arrivalDateTime?.slice(0, 10) ?? arrivalContext?.date;
-  const profile = docs.data?.candidate ?? queueProfile;
   const fullName = profile?.fullName?.trim() || null;
   const heading = fullName ?? "Профиль кандидата";
   const progressPercent = profile
@@ -175,21 +181,35 @@ export function CandidateDrawer({
       }}
     >
       <div className="candidate-drawer-panel absolute right-0 top-0 flex h-full w-full max-w-[760px] min-[640px]:w-[720px] lg:w-[760px] flex-col bg-[var(--card)] shadow-2xl">
-        {docs.updating && <p role="status" className="border-b border-[var(--border)] px-4 py-2 text-xs text-[var(--muted-foreground)]">
-          {docs.syncError || enrichment?.status === "RETRY" ? "Не удалось обновить данные. Показан последний полный снимок." : "Обновляем данные…"}
-          {docs.syncError && <Button variant="outline" size="sm" onClick={docs.requestSync}>Повторить</Button>}
-        </p>}
+        {docs.updating && (
+          <p
+            role="status"
+            className="border-b border-[var(--border)] px-4 py-2 text-xs text-[var(--muted-foreground)]"
+          >
+            {docs.syncError || effectiveStatus === "RETRY"
+              ? "Не удалось обновить данные. Показан последний полный снимок."
+              : isRu && effectiveStatus === "PENDING"
+                ? "Ожидает синхронизации…"
+                : "Обновляем данные…"}
+            {(docs.syncError || effectiveStatus === "RETRY") && (
+              <Button variant="outline" size="sm" onClick={docs.requestSync}>
+                Повторить
+              </Button>
+            )}
+          </p>
+        )}
         {docs.synchronizing && (
           <div
             role="status"
             className="border-b border-[var(--border)] px-4 py-3 text-sm"
           >
-            {enrichment?.status === "RETRY"
-              ? "Не удалось загрузить все данные. Повторим загрузку автоматически."
-              : "Синхронизация профиля и документов…"}
-            {docs.syncError && (
+            {effectiveStatus === "RETRY" || docs.syncError
+              ? "Повторим позже"
+              : isRu && effectiveStatus === "PENDING"
+                ? "Ожидает синхронизации…"
+                : "Синхронизация профиля и документов…"}
+            {(docs.syncError || effectiveStatus === "RETRY") && (
               <span className="ml-2">
-                Не удалось запросить загрузку.{" "}
                 <Button variant="ghost" size="sm" onClick={docs.requestSync}>
                   Повторить
                 </Button>
@@ -232,16 +252,48 @@ export function CandidateDrawer({
           <div className="flex shrink-0 items-center gap-3">
             <div className="flex flex-col items-end gap-1">
               <span className="text-xs font-medium text-[var(--muted-foreground)]">
-                {docs.synchronizing
-                  ? "Синхронизация документов…"
-                  : arrivalContext
-                  ? "Обязательные документы — по этапам ниже"
-                  : formatDocumentProgress(
-                      profile?.approvedDocuments ?? 0,
-                      profile?.requiredDocuments,
+                {arrivalContext ? (
+                  "Обязательные документы — по этапам ниже"
+                ) : profile?.requiredDocuments != null ? (
+                  <span className="flex items-center gap-1.5">
+                    <span>
+                      {formatDocumentProgress(
+                        profile?.approvedDocuments ?? 0,
+                        profile?.requiredDocuments,
+                      )}
+                    </span>
+                    {docs.updating && (
+                      <span className="flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]">
+                        {effectiveStatus === "RETRY" || docs.syncError ? (
+                          "Повторим позже"
+                        ) : isRu && effectiveStatus === "PENDING" ? (
+                          "Ожидает синхронизации"
+                        ) : (
+                          <>
+                            <Loader2 className="inline h-3 w-3 animate-spin" /> Обновляем…
+                          </>
+                        )}
+                      </span>
                     )}
+                  </span>
+                ) : docs.synchronizing ? (
+                  effectiveStatus === "RETRY" || docs.syncError ? (
+                    "Повторим позже"
+                  ) : isRu && effectiveStatus === "PENDING" ? (
+                    "Ожидает синхронизации"
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="inline h-3 w-3 animate-spin" /> Синхронизация документов…
+                    </span>
+                  )
+                ) : (
+                  formatDocumentProgress(
+                    profile?.approvedDocuments ?? 0,
+                    profile?.requiredDocuments,
+                  )
+                )}
               </span>
-              {!docs.synchronizing && !arrivalContext && progressPercent !== null && (
+              {!arrivalContext && progressPercent !== null && (
                 <span
                   role="progressbar"
                   aria-label="Прогресс подтверждения документов"
@@ -479,8 +531,9 @@ export function CandidateDrawer({
               </div>
             )}
 
-            {!returnedHistory && !docs.synchronizing && profile?.reviewGroup === "RU" &&
-              <CandidateDocumentAbsences candidateId={candidateId} missing={Array.from(new Map(stages.flatMap((stage) => stage.required.missingDocuments).map((item) => [item.code, item])).values())} />}
+            {!returnedHistory && !docs.synchronizing && profile?.reviewGroup === "RU" && (
+              <CandidateDocumentAbsences candidateId={candidateId} missing={Array.from(new Map(stages.flatMap((stage) => stage.required.missingDocuments).map((item) => [item.code, item])).values())} />
+            )}
             {/* Collapsible History Section at the bottom */}
             {!returnedHistory && (
               <CandidateDrawerHistorySection

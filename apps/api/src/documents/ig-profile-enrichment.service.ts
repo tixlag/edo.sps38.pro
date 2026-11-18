@@ -25,6 +25,7 @@ export class IgProfileEnrichmentService {
     options?: {
       signal?: AbortSignal;
       assertLease?: (tx?: Prisma.TransactionClient) => Promise<void>;
+      preloadedDocuments?: unknown;
     },
   ): Promise<{ profileSynced: boolean; documentsSynced: boolean }> {
     const candidate = await this.prisma.candidate.findUniqueOrThrow({

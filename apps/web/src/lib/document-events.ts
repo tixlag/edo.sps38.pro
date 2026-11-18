@@ -4,7 +4,99 @@ import {
   getDocumentStreamConnection,
   subscribeDocumentStatuses,
   type DocumentDto,
+  type RuEnrichmentStreamEvent,
 } from "@edo/api-client";
+
+export type RuEnrichmentListener = (event: RuEnrichmentStreamEvent) => void;
+export type DocumentStreamState =
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "disconnected";
+export type StreamStateListener = (state: DocumentStreamState) => void;
+
+const ruEnrichmentListeners = new Set<RuEnrichmentListener>();
+const streamStateListeners = new Set<StreamStateListener>();
+let currentStreamState: DocumentStreamState = "disconnected";
+
+export function subscribeRuEnrichmentEvents(
+  listener: RuEnrichmentListener,
+): () => void {
+  ruEnrichmentListeners.add(listener);
+  return () => {
+    ruEnrichmentListeners.delete(listener);
+  };
+}
+
+export function subscribeDocumentStreamState(
+  listener: StreamStateListener,
+): () => void {
+  streamStateListeners.add(listener);
+  listener(currentStreamState);
+  return () => {
+    streamStateListeners.delete(listener);
+  };
+}
+
+export function getDocumentStreamState(): DocumentStreamState {
+  return currentStreamState;
+}
+
+function dispatchRuEnrichment(event: RuEnrichmentStreamEvent) {
+  for (const listener of ruEnrichmentListeners) {
+    try {
+      listener(event);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function dispatchStreamState(state: DocumentStreamState) {
+  currentStreamState = state;
+  for (const listener of streamStateListeners) {
+    try {
+      listener(state);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function isRuEnrichmentQueryAffected(
+  path: string,
+  candidateIds: Set<string>,
+): boolean {
+  if (candidateIds.size === 0) return false;
+  if (/\/files\/|\/original$|\/annotation/.test(path)) return false;
+
+  const candidate = /^\/api\/v1\/candidates\/([^/]+)(?:\/|$)/.exec(path);
+  if (candidate) {
+    if (candidate[1] === "catalog") return true;
+    return candidateIds.has(candidate[1]);
+  }
+
+  return /^\/api\/v1\/(?:review-candidates|review-documents|candidate-review-queue|dashboard|candidates)(?:\/|$)/.test(
+    path,
+  );
+}
+
+export async function invalidateRuEnrichmentCandidates(
+  client: QueryClient,
+  candidateIds: string[],
+): Promise<void> {
+  if (candidateIds.length === 0) return;
+  const targetIds = new Set(candidateIds);
+  await client.invalidateQueries(
+    {
+      predicate: (query) => {
+        const path = String(query.queryKey[0]);
+        return isRuEnrichmentQueryAffected(path, targetIds);
+      },
+    },
+    { cancelRefetch: false },
+  );
+}
 
 /** Coalesce snapshot changes; immutable file contents are never status queries. */
 export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
@@ -50,8 +142,10 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
             const candidate = /^\/api\/v1\/candidates\/([^/]+)(?:\/|$)/.exec(
               path,
             );
-            if (candidate)
+            if (candidate) {
+              if (candidate[1] === "catalog") return profiles.size > 0;
               return candidates.has(candidate[1]) || profiles.has(candidate[1]);
+            }
             if (
               profiles.size &&
               /^\/api\/v1\/(?:review-candidates|review-documents|candidate-review-queue|dashboard|candidates)(?:\/|$)/.test(
@@ -88,6 +182,21 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
   };
   const unsubscribe = subscribeDocumentStatuses({
     connect: getDocumentStreamConnection,
+    onState: (state) => dispatchStreamState(state),
+    onRuEnrichment: (event) => {
+      let anyReady = false;
+      for (const item of event.items) {
+        if (item.status === "READY") {
+          candidateIds.add(item.candidateId);
+          profileIds.add(item.candidateId);
+          anyReady = true;
+        }
+      }
+      if (anyReady) {
+        schedule();
+      }
+      dispatchRuEnrichment(event);
+    },
     onDocuments: ({ items }) => {
       const next = new Map(items.map((document) => [document.id, document]));
       for (const document of items) {
@@ -113,6 +222,7 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
     stopped = true;
     clearTimeout(timer);
     unsubscribe();
+    dispatchStreamState("disconnected");
   };
 }
 

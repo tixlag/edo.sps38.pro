@@ -14,6 +14,11 @@ import { PrismaService } from "../prisma/prisma.service";
 import { DocumentReadService } from "./document-read.service";
 import { DocumentAccessService } from "./document-access.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
+import { canReviewGroup, reviewGroupWhere } from "./review-group";
+import {
+  RuEnrichmentNotificationsService,
+  type RuEnrichmentEvent,
+} from "./ru-enrichment-notifications.service";
 
 export interface DocumentEventScope {
   candidateId?: string;
@@ -60,12 +65,22 @@ export class DocumentEventsService implements OnModuleDestroy {
   >();
   private timer?: ReturnType<typeof setInterval>;
   private ticks = 0;
+  private readonly unsubscribeNotifications?: () => void;
   constructor(
     private readonly prisma: PrismaService,
     private readonly reads: DocumentReadService,
     private readonly access: DocumentAccessService,
     private readonly config: ConfigService,
-  ) {}
+    private readonly notifications?: RuEnrichmentNotificationsService,
+  ) {
+    if (this.notifications) {
+      this.unsubscribeNotifications = this.notifications.subscribe((event) => {
+        void this.handleRuEnrichment(event).catch((err) =>
+          this.logger.warn(`Failed to dispatch RU enrichment event: ${err}`),
+        );
+      });
+    }
+  }
   async grant(scope: DocumentEventScope) {
     this.reads.scopeWhere(scope);
     const token = randomBytes(32).toString("hex");
@@ -180,7 +195,52 @@ export class DocumentEventsService implements OnModuleDestroy {
       channel.busy = false;
     }
   }
+
+  private async handleRuEnrichment(event: RuEnrichmentEvent): Promise<void> {
+    if (!event.items.length) return;
+    const candidateIds = event.items.map((i) => i.candidateId);
+
+    for (const channel of this.channels.values()) {
+      if (channel.scope || !channel.principal) continue;
+      if (!channel.subscribers.size) continue;
+      if (!canReviewGroup(channel.principal, "RU")) continue;
+
+      try {
+        const allowed = await this.prisma.candidate.findMany({
+          where: {
+            AND: [
+              { id: { in: candidateIds } },
+              this.access.candidateWhere(channel.principal),
+              reviewGroupWhere("RU"),
+            ],
+          },
+          select: { id: true },
+        });
+
+        if (!allowed.length) continue;
+        const allowedSet = new Set(allowed.map((c) => c.id));
+        const filteredItems = event.items.filter((item) =>
+          allowedSet.has(item.candidateId),
+        );
+        if (!filteredItems.length) continue;
+
+        const messageEvent: MessageEvent = {
+          type: "ru-enrichment",
+          data: { items: filteredItems },
+        };
+        for (const sub of channel.subscribers) {
+          sub.next(messageEvent);
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Failed to dispatch RU enrichment event to review channel: ${err}`,
+        );
+      }
+    }
+  }
+
   onModuleDestroy(): void {
+    this.unsubscribeNotifications?.();
     clearInterval(this.timer);
     for (const c of this.channels.values())
       for (const s of c.subscribers) s.complete();

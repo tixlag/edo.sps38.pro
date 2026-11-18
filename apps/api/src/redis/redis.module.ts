@@ -17,14 +17,17 @@ import Redis from 'ioredis';
 @Injectable()
 export class RedisService implements OnModuleDestroy {
   private client: Redis | null = null;
+  private subClient: Redis | null = null;
+  private readonly subListeners = new Map<string, Set<(message: string) => void>>();
+  private readonly url: string;
 
   constructor(private readonly config: ConfigService) {
-    const url =
+    this.url =
       this.config.get<string>('REDIS_URL') ?? process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
     try {
       // Pass the full URL so username/password/DB from redis:// URLs are honored
       // (shared LK Redis currently has no auth; EDO must not ignore creds if set).
-      this.client = new Redis(url, {
+      this.client = new Redis(this.url, {
         maxRetriesPerRequest: 1,
         enableReadyCheck: false,
         lazyConnect: true,
@@ -36,6 +39,73 @@ export class RedisService implements OnModuleDestroy {
     } catch {
       this.client = null;
     }
+  }
+
+  private createSubscriberClient(): Redis {
+    const sub = new Redis(this.url, {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+      lazyConnect: true,
+    });
+    sub.on('error', () => {
+      // Swallow connection errors; ioredis reconnects and resubscribes automatically
+    });
+    sub.on('message', (channel: string, message: string) => {
+      const listeners = this.subListeners.get(channel);
+      if (listeners) {
+        for (const fn of listeners) {
+          try {
+            fn(message);
+          } catch {
+            // Listener failure must not break other subscribers
+          }
+        }
+      }
+    });
+    void sub.connect().catch(() => undefined);
+    return sub;
+  }
+
+  async publish(channel: string, message: string): Promise<number | null> {
+    if (!this.client) return null;
+    try {
+      return await this.client.publish(channel, message);
+    } catch {
+      return null;
+    }
+  }
+
+  subscribe(channel: string, onMessage: (message: string) => void): () => void {
+    if (!this.subClient) {
+      try {
+        this.subClient = this.createSubscriberClient();
+      } catch {
+        this.subClient = null;
+      }
+    }
+    let listeners = this.subListeners.get(channel);
+    const isFirst = !listeners || listeners.size === 0;
+    if (!listeners) {
+      listeners = new Set();
+      this.subListeners.set(channel, listeners);
+    }
+    listeners.add(onMessage);
+
+    if (isFirst && this.subClient) {
+      void this.subClient.subscribe(channel).catch(() => undefined);
+    }
+
+    return () => {
+      const current = this.subListeners.get(channel);
+      if (!current) return;
+      current.delete(onMessage);
+      if (current.size === 0) {
+        this.subListeners.delete(channel);
+        if (this.subClient) {
+          void this.subClient.unsubscribe(channel).catch(() => undefined);
+        }
+      }
+    };
   }
 
   async ping(): Promise<boolean> {
@@ -179,7 +249,10 @@ export class RedisService implements OnModuleDestroy {
 
   async onModuleDestroy() {
     try {
-      await this.client?.quit();
+      await Promise.allSettled([
+        this.client?.quit(),
+        this.subClient?.quit(),
+      ]);
     } catch {
       // ignore
     }

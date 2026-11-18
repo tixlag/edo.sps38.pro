@@ -1,17 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import type { DocumentDto, DocumentListDto } from "@edo/api-client";
-import { subscribeDocumentQueryUpdates } from "./document-events";
+import {
+  subscribeDocumentQueryUpdates,
+  invalidateRuEnrichmentCandidates,
+  isRuEnrichmentQueryAffected,
+} from "./document-events";
 const transport = vi.hoisted(() => ({
   receive: undefined as undefined | ((data: DocumentListDto) => void),
+  receiveRu: undefined as undefined | ((data: any) => void),
   stop: vi.fn(),
 }));
 vi.mock("@edo/api-client", () => ({
   getDocumentStreamConnection: vi.fn(),
   subscribeDocumentStatuses: (options: {
     onDocuments: (data: DocumentListDto) => void;
+    onRuEnrichment?: (data: any) => void;
+    onState?: (state: any) => void;
   }) => {
     transport.receive = options.onDocuments;
+    transport.receiveRu = options.onRuEnrichment;
     return transport.stop;
   },
 }));
@@ -137,5 +145,89 @@ describe("document snapshot cache updates", () => {
     expect(list).toHaveBeenCalledTimes(1);
     expect(document).not.toHaveBeenCalled();
     expect(binary).not.toHaveBeenCalled();
+  });
+
+  it("invalidates candidate details, previous documents, and lists on ru-enrichment READY event", async () => {
+    const paths = [
+      "/api/v1/candidates/ca",
+      "/api/v1/candidates/ca/previous-documents",
+      "/api/v1/candidates/catalog",
+      "/api/v1/candidate-review-queue",
+      "/api/v1/review-candidates",
+      "/api/v1/candidates/cb",
+      "/api/v1/candidates/ca/previous-documents/doc-1/original",
+    ];
+    const calls = paths.map((path) => observe(path));
+
+    transport.receiveRu!({
+      items: [
+        { candidateId: "ca", status: "READY", retryAt: null },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(100);
+
+    // ca details, ca previous-documents, catalog, candidate-review-queue, review-candidates invalidated!
+    // cb unaffected, original excluded!
+    expect(calls.map((fn) => fn.mock.calls.length)).toEqual([
+      1, 1, 1, 1, 1, 0, 0,
+    ]);
+  });
+
+  it("invalidateRuEnrichmentCandidates helper invalidates target candidate details, previous documents and lists", async () => {
+    const paths = [
+      "/api/v1/candidates/ca",
+      "/api/v1/candidates/ca/previous-documents",
+      "/api/v1/candidates/catalog",
+      "/api/v1/review-candidates",
+      "/api/v1/candidates/cb",
+      "/api/v1/candidates/ca/previous-documents/doc-1/original",
+    ];
+    const calls = paths.map((path) => observe(path));
+
+    await invalidateRuEnrichmentCandidates(client, ["ca"]);
+
+    expect(calls.map((fn) => fn.mock.calls.length)).toEqual([
+      1, 1, 1, 1, 0, 0,
+    ]);
+  });
+
+  it("isRuEnrichmentQueryAffected accurately identifies affected paths", () => {
+    const target = new Set(["ca"]);
+    expect(isRuEnrichmentQueryAffected("/api/v1/candidates/ca", target)).toBe(
+      true,
+    );
+    expect(
+      isRuEnrichmentQueryAffected(
+        "/api/v1/candidates/ca/previous-documents",
+        target,
+      ),
+    ).toBe(true);
+    expect(
+      isRuEnrichmentQueryAffected("/api/v1/candidates/catalog", target),
+    ).toBe(true);
+    expect(
+      isRuEnrichmentQueryAffected("/api/v1/review-candidates", target),
+    ).toBe(true);
+    expect(
+      isRuEnrichmentQueryAffected("/api/v1/candidate-review-queue", target),
+    ).toBe(true);
+    expect(isRuEnrichmentQueryAffected("/api/v1/candidates/cb", target)).toBe(
+      false,
+    );
+    expect(
+      isRuEnrichmentQueryAffected(
+        "/api/v1/candidates/ca/previous-documents/1/original",
+        target,
+      ),
+    ).toBe(false);
+    expect(
+      isRuEnrichmentQueryAffected(
+        "/api/v1/documents/a/versions/1/files/f/file",
+        target,
+      ),
+    ).toBe(false);
+    expect(isRuEnrichmentQueryAffected("/api/v1/candidates/ca", new Set())).toBe(
+      false,
+    );
   });
 });

@@ -1,5 +1,6 @@
 import { IsArray, ArrayMinSize, ArrayMaxSize, IsString, MaxLength } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
+import { QueryValues } from "../../common/query-values";
 
 export const ENRICHMENT_STATES = [
   "PENDING",
@@ -28,4 +29,25 @@ export class CandidateEnrichmentBatchRequestDto {
 export class CandidateEnrichmentBatchDto {
   @ApiProperty({ type: [String] })
   pendingCandidateIds!: string[];
+}
+
+export class CandidateBatchStatusQueryDto {
+  @QueryValues({ maxLength: 64 })
+  candidateIds?: string[];
+}
+
+export class CandidateBatchStatusItemDto {
+  @ApiProperty()
+  candidateId!: string;
+
+  @ApiProperty({ enum: ENRICHMENT_STATES })
+  status!: (typeof ENRICHMENT_STATES)[number];
+
+  @ApiProperty({ type: String, nullable: true, format: "date-time" })
+  retryAt!: string | null;
+}
+
+export class CandidateBatchStatusDto {
+  @ApiProperty({ type: [CandidateBatchStatusItemDto] })
+  items!: CandidateBatchStatusItemDto[];
 }

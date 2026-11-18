@@ -12,7 +12,7 @@ import { ConfigService } from "@nestjs/config";
 import { z } from "zod";
 import type { ReadableStreamReadResult } from "node:stream/web";
 
-const uuid = z
+export const uuid = z
   .string()
   .uuid()
   .transform((v) => v.toLowerCase());

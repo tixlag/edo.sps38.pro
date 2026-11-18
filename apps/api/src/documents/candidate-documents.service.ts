@@ -213,7 +213,13 @@ export class CandidateDocumentsService {
     return withinDocumentDeadline(
       (async () => {
         const chat = await this.identity.byUuid(uuid, signal);
-        await this.syncRuPreviousDocuments(chat.chatUuid, chat.code1c, signal);
+        void this.syncRuPreviousDocuments(chat.chatUuid, chat.code1c, signal).catch(
+          (error) => {
+            this.logger.warn(
+              `Background RU previous-document refresh failed for ${chat.chatUuid}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          },
+        );
         return this.reads.internalDocuments({ chat_uuid: chat.chatUuid });
       })(),
       signal,

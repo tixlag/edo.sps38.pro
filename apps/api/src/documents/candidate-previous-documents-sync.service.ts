@@ -408,11 +408,17 @@ export class CandidatePreviousDocumentsSyncService {
           const expiresAt = effectiveExpiry
             ? new Date(`${effectiveExpiry}T00:00:00Z`)
             : null;
+          const isRuErpNative =
+            !isIg &&
+            !doc.id.startsWith("edo:") &&
+            doc.originalErpId !== null &&
+            !doc.originalFiles;
+          const requiresOriginalVerification = isIg || !isRuErpNative;
           const automaticallyConfirmed =
             !!doc.documentUid &&
             doc.verifiedOwner &&
             knownValid &&
-            doc.verifiedOriginal &&
+            (!requiresOriginalVerification || doc.verifiedOriginal) &&
             isPreviousDocumentValid(
               {
                 documentUid: doc.documentUid,
@@ -527,7 +533,7 @@ export class CandidatePreviousDocumentsSyncService {
           const confirmedInvalid =
             old?.status === "CONFIRMED" &&
             (!doc.originalAvailable ||
-              !doc.verifiedOriginal ||
+              (requiresOriginalVerification && !doc.verifiedOriginal) ||
               isDocInvalid ||
               (sourceExpiresAt !== null &&
                 isPreviousDocumentExpired(sourceExpiresAt)) ||
@@ -535,6 +541,7 @@ export class CandidatePreviousDocumentsSyncService {
                 (!doc.documentUid || needsNewIgDocument(doc.documentUid))));
           const awaitingVerification =
             phase === "metadata" &&
+            requiresOriginalVerification &&
             doc.originalAvailable &&
             !doc.verifiedOriginal &&
             knownValid &&
@@ -562,7 +569,8 @@ export class CandidatePreviousDocumentsSyncService {
                   : old?.status === "CONFIRMED" && !knownValid && !isDocInvalid
                     ? "REQUIRES_REVIEW"
                     : confirmedInvalid
-                      ? !doc.originalAvailable || !doc.verifiedOriginal
+                      ? !doc.originalAvailable ||
+                        (requiresOriginalVerification && !doc.verifiedOriginal)
                         ? "ORIGINAL_UNAVAILABLE"
                         : "REPLACE"
                       : old?.status === "REQUIRES_REVIEW" &&
@@ -774,19 +782,14 @@ export class CandidatePreviousDocumentsSyncService {
                       }
                       return true;
                     })());
-                } else if (isIg)
+                } else if (isIg) {
                   verifiedOriginal = await this.erp.probePersonOriginal(
                     row.code1c!,
                     personUid!,
                     (doc as any).originalErpId ?? (doc as any).id,
                     options.signal,
                   );
-                else if (row.erpUid)
-                  verifiedOriginal = await this.erp.probeCandidateOriginal(
-                    row.erpUid,
-                    doc.originalErpId,
-                    options.signal,
-                  );
+                }
               } catch (error) {
                 await assertActive();
                 // A missing original is a completed negative check. Network and
