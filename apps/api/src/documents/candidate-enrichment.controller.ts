@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, Post, Query } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -11,7 +11,13 @@ import { RequireAccessRule } from "../auth/require-access-rule.decorator";
 import { EdoAccessRule } from "../auth/edo-access-rule";
 import { ApiErrorDto } from "./dto/document.dto";
 import { IgEnrichmentQueueService } from "./ig-enrichment-queue.service";
-import { CandidateEnrichmentBatchRequestDto, CandidateEnrichmentBatchDto, CandidateEnrichmentDto } from "./dto/candidate-enrichment.dto";
+import {
+  CandidateEnrichmentBatchRequestDto,
+  CandidateEnrichmentBatchDto,
+  CandidateEnrichmentDto,
+  CandidateBatchStatusQueryDto,
+  CandidateBatchStatusDto,
+} from "./dto/candidate-enrichment.dto";
 
 @ApiTags("documents")
 @ApiBearerAuth("access-jwt")
@@ -24,6 +30,20 @@ import { CandidateEnrichmentBatchRequestDto, CandidateEnrichmentBatchDto, Candid
 @Controller("v1/candidates")
 export class CandidateEnrichmentController {
   constructor(private readonly queue: IgEnrichmentQueueService) {}
+  @Get("enrichment-batch/status")
+  @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_RU)
+  @ApiOperation({
+    operationId: "getCandidateEnrichmentBatchStatus",
+    summary: "Check current sync status for a batch of RU candidates without triggering ERP requests",
+  })
+  @ApiResponse({ status: 200, type: CandidateBatchStatusDto })
+  getBatchStatus(
+    @Query() query: CandidateBatchStatusQueryDto,
+    @CurrentPrincipal() principal: AuthPrincipal,
+  ): Promise<CandidateBatchStatusDto> {
+    return this.queue.batchStatus(query.candidateIds ?? [], principal);
+  }
+
   @Post("enrichment-batch")
   @HttpCode(202)
   @RequireAccessRule(EdoAccessRule.DOCUMENT_REVIEW_RU)

@@ -987,6 +987,107 @@
         ]
       }
     },
+    "/api/v1/candidates/enrichment-batch/status": {
+      "get": {
+        "operationId": "getCandidateEnrichmentBatchStatus",
+        "parameters": [
+          {
+            "name": "candidateIds",
+            "required": false,
+            "in": "query",
+            "description": "OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.",
+            "schema": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateBatchStatusDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "Check current sync status for a batch of RU candidates without triggering ERP requests",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/v1/candidates/enrichment-batch": {
       "post": {
         "operationId": "requestCandidateEnrichmentBatch",
@@ -20778,6 +20879,47 @@
         "required": [
           "success",
           "photoPath"
+        ]
+      },
+      "CandidateBatchStatusItemDto": {
+        "type": "object",
+        "properties": {
+          "candidateId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "READY",
+              "RETRY"
+            ]
+          },
+          "retryAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "candidateId",
+          "status",
+          "retryAt"
+        ]
+      },
+      "CandidateBatchStatusDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateBatchStatusItemDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "CandidateEnrichmentBatchRequestDto": {

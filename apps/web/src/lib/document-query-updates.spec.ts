@@ -4,14 +4,18 @@ import type { DocumentDto, DocumentListDto } from "@edo/api-client";
 import { subscribeDocumentQueryUpdates } from "./document-events";
 const transport = vi.hoisted(() => ({
   receive: undefined as undefined | ((data: DocumentListDto) => void),
+  receiveRu: undefined as undefined | ((data: any) => void),
   stop: vi.fn(),
 }));
 vi.mock("@edo/api-client", () => ({
   getDocumentStreamConnection: vi.fn(),
   subscribeDocumentStatuses: (options: {
     onDocuments: (data: DocumentListDto) => void;
+    onRuEnrichment?: (data: any) => void;
+    onState?: (state: any) => void;
   }) => {
     transport.receive = options.onDocuments;
+    transport.receiveRu = options.onRuEnrichment;
     return transport.stop;
   },
 }));
@@ -137,5 +141,30 @@ describe("document snapshot cache updates", () => {
     expect(list).toHaveBeenCalledTimes(1);
     expect(document).not.toHaveBeenCalled();
     expect(binary).not.toHaveBeenCalled();
+  });
+
+  it("invalidates candidate details, previous documents, and lists on ru-enrichment READY event", async () => {
+    const paths = [
+      "/api/v1/candidates/ca",
+      "/api/v1/candidates/ca/previous-documents",
+      "/api/v1/candidate-review-queue",
+      "/api/v1/review-candidates",
+      "/api/v1/candidates/cb",
+      "/api/v1/candidates/ca/previous-documents/doc-1/original",
+    ];
+    const calls = paths.map((path) => observe(path));
+
+    transport.receiveRu!({
+      items: [
+        { candidateId: "ca", status: "READY", retryAt: null },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(100);
+
+    // ca details, ca previous-documents, candidate-review-queue, review-candidates invalidated!
+    // cb unaffected, original excluded!
+    expect(calls.map((fn) => fn.mock.calls.length)).toEqual([
+      1, 1, 1, 1, 0, 0,
+    ]);
   });
 });

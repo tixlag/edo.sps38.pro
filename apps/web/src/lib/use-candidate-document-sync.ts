@@ -10,6 +10,11 @@ import {
   getListIgArrivalRegistryGroupsQueryKey,
   getListIgArrivalRegistryParticipationsQueryKey,
 } from "@edo/api-client";
+import {
+  subscribeRuEnrichmentEvents,
+  subscribeDocumentStreamState,
+  getDocumentStreamState,
+} from "./document-events";
 
 /** Keep incomplete ERP snapshots out of document counters and empty states. */
 export function useCandidateDocumentSync(candidateId: string, stage?: string) {
@@ -24,7 +29,13 @@ export function useCandidateDocumentSync(candidateId: string, stage?: string) {
       queryKey: getGetCandidateDetailsQueryKey(candidateId, params),
       refetchInterval: (query) => {
         const status = query.state.data?.enrichment?.status;
-        return status && status !== "READY" ? 5000 : false;
+        if (!status || status === "READY") return false;
+        const group = query.state.data?.candidate?.reviewGroup;
+        if (group === "RU") {
+          const streamState = getDocumentStreamState();
+          return streamState === "connected" ? false : 60_000;
+        }
+        return 5000;
       },
     },
   });
@@ -67,6 +78,40 @@ export function useCandidateDocumentSync(candidateId: string, stage?: string) {
     }
     previous.current = enrichment?.status;
   }, [candidateId, enrichment?.status, details.dataUpdatedAt]);
+
+  useEffect(() => {
+    return subscribeRuEnrichmentEvents((event) => {
+      const match = event.items.find(
+        (item) => item.candidateId === candidateId && item.status === "READY",
+      );
+      if (match) {
+        for (const key of [
+          getGetCandidateDetailsQueryKey(candidateId),
+          getListCandidatePreviousDocumentsQueryKey(candidateId),
+          getListCandidateReviewQueueQueryKey(),
+          getListReviewCandidatesQueryKey(),
+          getListIgArrivalRegistryGroupsQueryKey(),
+          getListIgArrivalRegistryParticipationsQueryKey({ groupKey: "" }),
+        ]) {
+          void client.invalidateQueries({ queryKey: key.slice(0, 1) });
+        }
+      }
+    });
+  }, [candidateId, client]);
+
+  useEffect(() => {
+    let wasReconnecting = false;
+    return subscribeDocumentStreamState((state) => {
+      if (state === "reconnecting") {
+        wasReconnecting = true;
+      } else if (state === "connected" && wasReconnecting) {
+        wasReconnecting = false;
+        if (enrichment?.status && enrichment.status !== "READY") {
+          void details.refetch();
+        }
+      }
+    });
+  }, [details, enrichment?.status]);
   const lastComplete = useRef<{
     candidateId: string;
     stage?: string;

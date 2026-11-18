@@ -17,7 +17,15 @@ import {
   reviewGroupWhere,
 } from "./review-group";
 import { IgProfileEnrichmentService } from "./ig-profile-enrichment.service";
-import { CandidateEnrichmentDto } from "./dto/candidate-enrichment.dto";
+import {
+  CandidateBatchStatusDto,
+  CandidateEnrichmentDto,
+  ENRICHMENT_STATES,
+} from "./dto/candidate-enrichment.dto";
+import {
+  RuEnrichmentNotificationsService,
+  type RuEnrichmentItem,
+} from "./ru-enrichment-notifications.service";
 import {
   ErpWorkspaceClient,
   previousDocumentsBatchSchema,
@@ -68,6 +76,7 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly erp: ErpWorkspaceClient,
     private readonly previousDocs: CandidatePreviousDocumentsSyncService,
+    private readonly notifications?: RuEnrichmentNotificationsService,
   ) {}
   private get backgroundEnabled(): boolean {
     return this.config.get<string>("EDO_ARRIVAL_SYNC_ENABLED") === "true";
@@ -214,6 +223,81 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
       select: { candidateId: true },
     });
     return { pendingCandidateIds: pending.map((job) => job.candidateId) };
+  }
+
+  async batchStatus(
+    ids: string[],
+    principal: AuthPrincipal,
+  ): Promise<CandidateBatchStatusDto> {
+    requireReviewGroup(principal, "RU");
+    const uniqueIds = [...new Set(ids.filter(Boolean))];
+    if (uniqueIds.length === 0) {
+      return { items: [] };
+    }
+    const candidates = await this.prisma.candidate.findMany({
+      where: {
+        AND: [
+          this.access.candidateWhere(principal),
+          reviewGroupWhere("RU"),
+          {
+            id: { in: uniqueIds },
+            erpDeleted: false,
+          },
+        ],
+      },
+      select: {
+        id: true,
+        erpUid: true,
+        citizenship: true,
+        chatUuid: true,
+        reviewGroup: true,
+        previousDocumentsSyncedAt: true,
+        profileSyncedAt: true,
+        positionCode: true,
+      },
+    });
+    if (candidates.length === 0) {
+      return { items: [] };
+    }
+    const candidateIds = candidates.map((c) => c.id);
+    const jobs = await this.prisma.igEnrichmentJob.findMany({
+      where: { candidateId: { in: candidateIds } },
+      select: {
+        candidateId: true,
+        status: true,
+        leaseExpiresAt: true,
+        nextAttemptAt: true,
+      },
+    });
+    const jobMap = new Map(jobs.map((j) => [j.candidateId, j]));
+    const now = new Date();
+    const items = candidates.map((c) => {
+      const job = jobMap.get(c.id);
+      const ready = profileReady(c as Candidate);
+      const docs = c.previousDocumentsSyncedAt !== null;
+      let status: (typeof ENRICHMENT_STATES)[number];
+      let retryAt: string | null = null;
+      if (ready && docs && (!job || job.status === "READY")) {
+        status = "READY";
+      } else if (
+        job?.status === "RUNNING" &&
+        job.leaseExpiresAt &&
+        job.leaseExpiresAt > now
+      ) {
+        status = "RUNNING";
+      } else if (job?.status === "RETRY") {
+        status = "RETRY";
+        retryAt = job.nextAttemptAt ? job.nextAttemptAt.toISOString() : null;
+      } else {
+        status = "PENDING";
+      }
+      return {
+        candidateId: c.id,
+        status,
+        retryAt,
+      };
+    });
+    return { items };
   }
 
   private async claim(
@@ -467,18 +551,9 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
         for (const job of claim.jobs) {
           controller.signal.throwIfAborted();
           const erpUid = job.candidate?.erpUid?.toLowerCase();
-          const batchItem = batchResult?.items.find(
-            (item) => item.candidateUid.toLowerCase() === erpUid,
-          );
-
-          if (batchItem && "error" in batchItem) {
+          if (!erpUid) {
             continue;
           }
-
-          const preloadedDocuments =
-            batchItem && "documents" in batchItem
-              ? batchItem.documents
-              : undefined;
 
           // If personDocumentsBatch threw and batchResult is null, do not bombard ERP with 50 single requests.
           if (
@@ -487,6 +562,16 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
           ) {
             continue;
           }
+
+          const batchItem = batchResult?.items.find(
+            (item) => item.candidateUid.toLowerCase() === erpUid,
+          );
+
+          if (!batchItem || "error" in batchItem || !("documents" in batchItem)) {
+            continue;
+          }
+
+          const preloadedDocuments = batchItem.documents;
 
           try {
             const result = await this.enrichment.enrichCandidate(
@@ -511,6 +596,7 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
         clearInterval(heartbeat);
         this.controllers.delete(controller);
         const now = new Date();
+        const settled: RuEnrichmentItem[] = [];
         await this.prisma.$transaction(async (tx) => {
           await tx.$queryRaw`SELECT id FROM ig_enrichment_lanes WHERE id=${lane} FOR UPDATE`;
           for (const job of claim.jobs) {
@@ -542,6 +628,11 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
                   profileSyncNextAttemptAt: complete ? null : retryAt,
                 },
               });
+              settled.push({
+                candidateId: job.candidateId,
+                status: complete ? "READY" : "RETRY",
+                retryAt: complete ? null : retryAt.toISOString(),
+              });
             }
           }
           await tx.igEnrichmentLane.updateMany({
@@ -549,6 +640,9 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
             data: { leaseToken: null, leaseExpiresAt: null },
           });
         });
+        if (settled.length > 0 && this.notifications) {
+          await this.notifications.publish({ items: settled });
+        }
       }
       return;
     }
@@ -621,6 +715,7 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
       const retryAt = new Date(
         Date.now() + Math.min(30_000 * 2 ** Math.min(attempts - 1, 6), 600_000),
       );
+      let settled = false;
       await this.prisma.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM ig_enrichment_lanes WHERE id=${lane} FOR UPDATE`;
         const updated = await tx.igEnrichmentJob.updateMany({
@@ -637,7 +732,8 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
             leaseExpiresAt: null,
           },
         });
-        if (updated.count)
+        if (updated.count) {
+          settled = true;
           await tx.candidate.update({
             where: { id: job.candidateId },
             data: {
@@ -645,11 +741,28 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
               profileSyncNextAttemptAt: complete ? null : retryAt,
             },
           });
+        }
         await tx.igEnrichmentLane.updateMany({
           where: { id: lane, leaseToken: claim.token },
           data: { leaseToken: null, leaseExpiresAt: null },
         });
       });
+      if (
+        settled &&
+        job.candidate &&
+        candidateReviewGroup(job.candidate) === "RU" &&
+        this.notifications
+      ) {
+        await this.notifications.publish({
+          items: [
+            {
+              candidateId: job.candidateId,
+              status: complete ? "READY" : "RETRY",
+              retryAt: complete ? null : retryAt.toISOString(),
+            },
+          ],
+        });
+      }
     }
   }
 }

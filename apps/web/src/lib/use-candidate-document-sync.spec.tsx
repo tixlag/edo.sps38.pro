@@ -3,9 +3,16 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCandidateDocumentSync } from "./use-candidate-document-sync";
-const mock = vi.hoisted(() => ({ result: {} as Record<string, unknown> }));
+const mock = vi.hoisted(() => ({
+  result: {} as Record<string, unknown>,
+  lastOptions: {} as Record<string, unknown>,
+}));
+const sseListeners = vi.hoisted(() => new Set<(event: any) => void>());
 vi.mock("@edo/api-client", () => ({
-  useGetCandidateDetails: () => mock.result,
+  useGetCandidateDetails: (_id: string, _params: any, options: any) => {
+    mock.lastOptions = options;
+    return mock.result;
+  },
   useRequestCandidateEnrichment: () => ({ mutate: vi.fn(), isError: false }),
   getGetCandidateDetailsQueryKey: (id: string) => ["details", id],
   getListCandidatePreviousDocumentsQueryKey: () => ["previous"],
@@ -13,6 +20,14 @@ vi.mock("@edo/api-client", () => ({
   getListReviewCandidatesQueryKey: () => ["candidates"],
   getListIgArrivalRegistryGroupsQueryKey: () => ["groups"],
   getListIgArrivalRegistryParticipationsQueryKey: () => ["people"],
+}));
+vi.mock("./document-events", () => ({
+  subscribeRuEnrichmentEvents: (fn: any) => {
+    sseListeners.add(fn);
+    return () => sseListeners.delete(fn);
+  },
+  subscribeDocumentStreamState: vi.fn(() => () => {}),
+  getDocumentStreamState: vi.fn(() => "connected"),
 }));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 describe("complete candidate snapshots", () => {
@@ -99,5 +114,56 @@ describe("complete candidate snapshots", () => {
     await render("a", "7");
     expect(view!.synchronizing).toBe(true);
     expect(node.textContent).not.toBe("a");
+  });
+
+  it("disables 5s polling for RU candidate when SSE is connected, keeps 5s for IG", async () => {
+    await render("ru-cand");
+    const refetchInterval = (mock.lastOptions as any)?.query?.refetchInterval;
+    expect(refetchInterval).toBeDefined();
+
+    // RU candidate: connected stream returns false (no polling)
+    const ruQuery = {
+      state: {
+        data: {
+          candidate: { reviewGroup: "RU" },
+          enrichment: { status: "RUNNING" },
+        },
+      },
+    };
+    expect(refetchInterval(ruQuery)).toBe(false);
+
+    // IG candidate: returns 5000 (retaining IG polling behavior)
+    const igQuery = {
+      state: {
+        data: {
+          candidate: { reviewGroup: "IG" },
+          enrichment: { status: "RUNNING" },
+        },
+      },
+    };
+    expect(refetchInterval(igQuery)).toBe(5000);
+  });
+
+  it("invalidates queries when ru-enrichment READY arrives for this candidate", async () => {
+    const client = new QueryClient();
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+
+    await act(async () =>
+      root.render(
+        <QueryClientProvider client={client}>
+          <Probe id="candidate-x" />
+        </QueryClientProvider>,
+      ),
+    );
+
+    await act(async () => {
+      for (const listener of sseListeners) {
+        listener({
+          items: [{ candidateId: "candidate-x", status: "READY", retryAt: null }],
+        });
+      }
+    });
+
+    expect(invalidateSpy).toHaveBeenCalled();
   });
 });

@@ -1,9 +1,18 @@
 import type { DocumentListDto } from "./generated/api";
 
+export type RuEnrichmentStreamEvent = {
+  items: Array<{
+    candidateId: string;
+    status: "READY" | "RETRY";
+    retryAt: string | null;
+  }>;
+};
+
 /** SSE transport only; REST requests and contract types come from generated clients. */
 export function subscribeDocumentStatuses(options: {
   connect: (refreshToken: boolean) => Promise<{ url: string; token: string }>;
   onDocuments: (documents: DocumentListDto) => void;
+  onRuEnrichment?: (event: RuEnrichmentStreamEvent) => void;
   onState?: (state: "connecting" | "connected" | "reconnecting") => void;
 }): () => void {
   let stopped = false;
@@ -94,6 +103,42 @@ export function subscribeDocumentStatuses(options: {
               if (!Array.isArray(data.items))
                 throw new Error("Invalid document stream");
               options.onDocuments(data);
+            } else if (
+              options.onRuEnrichment &&
+              frame
+                .split("\n")
+                .some((line) => line.trim() === "event: ru-enrichment")
+            ) {
+              try {
+                const payload = frame
+                  .split("\n")
+                  .filter((line) => line.startsWith("data:"))
+                  .map((line) => line.slice(5).trimStart())
+                  .join("\n");
+                const data = JSON.parse(payload);
+                if (data && Array.isArray(data.items)) {
+                  const validItems: RuEnrichmentStreamEvent["items"] = [];
+                  for (const item of data.items) {
+                    if (
+                      item &&
+                      typeof item.candidateId === "string" &&
+                      (item.status === "READY" || item.status === "RETRY")
+                    ) {
+                      validItems.push({
+                        candidateId: item.candidateId,
+                        status: item.status,
+                        retryAt:
+                          typeof item.retryAt === "string" ? item.retryAt : null,
+                      });
+                    }
+                  }
+                  if (validItems.length > 0) {
+                    options.onRuEnrichment({ items: validItems });
+                  }
+                }
+              } catch {
+                // Malformed ru-enrichment payload must not terminate the stream
+              }
             }
           }
         }

@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { useRequestCandidateEnrichmentBatch } from "@edo/api-client";
+import {
+  useRequestCandidateEnrichmentBatch,
+  getCandidateEnrichmentBatchStatus,
+  type RuEnrichmentStreamEvent,
+} from "@edo/api-client";
+import {
+  subscribeRuEnrichmentEvents,
+  subscribeDocumentStreamState,
+} from "./document-events";
 
-/** One request per visible page; poll the existing queue only while it has work. */
+/**
+ * Initiates candidate enrichment batch once per visible page / filter set,
+ * then updates pending candidates and triggers React Query refetches via SSE events.
+ * Eliminates repeated POST polling; uses rare read-only status checks as safety net.
+ */
 export function useVisibleRuDocumentSync(
   ids: string[],
   enabled: boolean,
@@ -17,42 +29,135 @@ export function useVisibleRuDocumentSync(
     pending: string[];
     error?: boolean;
   }>();
+
   useEffect(() => {
     if (!enabled || !key) return;
     let active = true;
-    let timer: ReturnType<typeof setTimeout>;
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     const candidateIds = key.split(",");
-    let lastPending = candidateIds;
-    const update = () =>
-      actions.current.mutate(
-        { data: { candidateIds } },
-        {
-          onSuccess: async (data) => {
-            if (!active) return;
-            const newPending = data.pendingCandidateIds;
-            const anyFinished =
-              lastPending.some((id) => !newPending.includes(id)) ||
-              (newPending.length === 0 && lastPending.length > 0);
-            lastPending = newPending;
-            if (anyFinished) {
-              await actions.current.refetch();
-              if (!active) return;
+    const completedDuringPost = new Set<string>();
+    let pendingSet = new Set<string>();
+    let postFinished = false;
+
+    // Fast status check for reconciling state if SSE missed an event or after reconnect
+    const checkStatus = async () => {
+      if (!active || pendingSet.size === 0) return;
+      try {
+        const statusData = await getCandidateEnrichmentBatchStatus({
+          candidateIds: Array.from(pendingSet),
+        });
+        if (!active) return;
+        let anyCompleted = false;
+        for (const item of statusData.items) {
+          if (item.status === "READY" && pendingSet.has(item.candidateId)) {
+            pendingSet.delete(item.candidateId);
+            anyCompleted = true;
+          }
+        }
+        if (anyCompleted) {
+          setResult({ key, pending: Array.from(pendingSet) });
+          void actions.current.refetch();
+        }
+      } catch {
+        // Non-blocking fallback
+      }
+    };
+
+    // Listen to ru-enrichment SSE events
+    const unsubscribeSse = subscribeRuEnrichmentEvents(
+      (event: RuEnrichmentStreamEvent) => {
+        if (!active) return;
+        let anyCompleted = false;
+        for (const item of event.items) {
+          if (item.status === "READY") {
+            if (!postFinished) {
+              completedDuringPost.add(item.candidateId);
             }
-            setResult({ key, pending: newPending });
-            if (newPending.length)
-              timer = setTimeout(update, 5000);
-          },
-          onError: () => {
-            if (active) setResult({ key, pending: candidateIds, error: true });
-          },
+            if (pendingSet.has(item.candidateId)) {
+              pendingSet.delete(item.candidateId);
+              anyCompleted = true;
+            }
+          }
+        }
+        if (anyCompleted) {
+          setResult({ key, pending: Array.from(pendingSet) });
+          void actions.current.refetch();
+        }
+      },
+    );
+
+    // Reconcile status when stream reconnects
+    let wasReconnecting = false;
+    const unsubscribeStreamState = subscribeDocumentStreamState((state) => {
+      if (!active) return;
+      if (state === "reconnecting") {
+        wasReconnecting = true;
+      } else if (state === "connected" && wasReconnecting) {
+        wasReconnecting = false;
+        if (pendingSet.size > 0) {
+          void checkStatus();
+        }
+      }
+    });
+
+    // Reconcile status when tab regains visibility
+    const onVisibilityChange = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible" &&
+        pendingSet.size > 0
+      ) {
+        void checkStatus();
+      }
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
+
+    // Rare fallback check for long-pending jobs (every 60s)
+    const safetyInterval = setInterval(() => {
+      if (pendingSet.size > 0) {
+        void checkStatus();
+      }
+    }, 60_000);
+
+    // Initial POST: queued once upon page open / filter change
+    actions.current.mutate(
+      { data: { candidateIds } },
+      {
+        onSuccess: (data) => {
+          if (!active) return;
+          postFinished = true;
+          // Exclude any candidates that completed via SSE while POST was in-flight
+          const actualPending = data.pendingCandidateIds.filter(
+            (id) => !completedDuringPost.has(id),
+          );
+          pendingSet = new Set(actualPending);
+          setResult({ key, pending: actualPending });
+
+          // If there are pending jobs, schedule a one-time check after 1s to resolve race conditions
+          if (actualPending.length > 0) {
+            fallbackTimer = setTimeout(() => void checkStatus(), 1000);
+          }
         },
-      );
-    update();
+        onError: () => {
+          if (active) setResult({ key, pending: candidateIds, error: true });
+        },
+      },
+    );
+
     return () => {
       active = false;
-      clearTimeout(timer);
+      clearTimeout(fallbackTimer);
+      clearInterval(safetyInterval);
+      unsubscribeSse();
+      unsubscribeStreamState();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
     };
   }, [key, enabled, attempt]);
+
   return {
     pendingIds: new Set(
       enabled ? (result?.key === key ? result.pending : ids) : [],

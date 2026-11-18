@@ -150,4 +150,37 @@ describe("document SSE reconnects", () => {
     await vi.advanceTimersByTimeAsync(60000);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("delivers ru-enrichment events to onRuEnrichment callback and ignores malformed frames", async () => {
+    const fetchMock = vi.fn(async () =>
+      streamResponse(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                'event: ru-enrichment\ndata: {"items":[{"candidateId":"c-1","status":"READY","retryAt":null},{"candidateId":"c-2","status":"RETRY","retryAt":"2026-11-18T12:00:00Z"}]}\n\n' +
+                'event: ru-enrichment\ndata: {invalid json}\n\n' +
+                'event: documents\ndata: {"items":[]}\n\n',
+              ),
+            );
+            controller.close();
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const onDocuments = vi.fn();
+    const onRuEnrichment = vi.fn();
+    stop = subscribeDocumentStatuses({ connect, onDocuments, onRuEnrichment });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onRuEnrichment).toHaveBeenCalledTimes(1);
+    expect(onRuEnrichment).toHaveBeenCalledWith({
+      items: [
+        { candidateId: "c-1", status: "READY", retryAt: null },
+        { candidateId: "c-2", status: "RETRY", retryAt: "2026-11-18T12:00:00Z" },
+      ],
+    });
+    expect(onDocuments).toHaveBeenCalledTimes(1);
+  });
 });

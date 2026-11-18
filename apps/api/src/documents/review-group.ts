@@ -17,11 +17,12 @@ export const IG_PASSPORT_OCR_NAMES: Record<string, string> = {
   pas_patronymic: "middleNameLatin",
 };
 
-export function candidateReviewGroup(candidate: {
+export function candidateReviewGroup(candidate?: {
   reviewGroup?: ReviewGroup | null;
   chatUuid: string | null;
   citizenship: string | null;
-}): ReviewGroup {
+} | null): ReviewGroup {
+  if (!candidate) return "RU";
   if (candidate.reviewGroup) return candidate.reviewGroup;
   return candidate.chatUuid?.trim() ||
     candidate.citizenship?.trim().toLowerCase() === "ru"

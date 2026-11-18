@@ -458,6 +458,28 @@ export interface CandidatePhotoUploadResponseDto {
   photoPath: string;
 }
 
+export type CandidateBatchStatusItemDtoStatus =
+  (typeof CandidateBatchStatusItemDtoStatus)[keyof typeof CandidateBatchStatusItemDtoStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateBatchStatusItemDtoStatus = {
+  PENDING: "PENDING",
+  RUNNING: "RUNNING",
+  READY: "READY",
+  RETRY: "RETRY",
+} as const;
+
+export interface CandidateBatchStatusItemDto {
+  candidateId: string;
+  status: CandidateBatchStatusItemDtoStatus;
+  /** @nullable */
+  retryAt: string | null;
+}
+
+export interface CandidateBatchStatusDto {
+  items: CandidateBatchStatusItemDto[];
+}
+
 export interface CandidateEnrichmentBatchRequestDto {
   /**
    * @minItems 1
@@ -3544,6 +3566,13 @@ export type UploadCandidatePhotoBody = {
   file: Blob;
 };
 
+export type GetCandidateEnrichmentBatchStatusParams = {
+  /**
+   * OR within this filter; overrides the legacy singular parameter. Repeat the query parameter for multiple values.
+   */
+  candidateIds?: string[];
+};
+
 export type GetBrowserCandidateDocumentDraftParams = {
   /**
    * Exact returned document instance
@@ -5615,6 +5644,96 @@ export const useUploadCandidatePhoto = <
 
   return useMutation(mutationOptions);
 };
+
+/**
+ * @summary Check current sync status for a batch of RU candidates without triggering ERP requests
+ */
+export const getCandidateEnrichmentBatchStatus = (
+  params?: GetCandidateEnrichmentBatchStatusParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateBatchStatusDto>({
+    url: `/api/v1/candidates/enrichment-batch/status`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetCandidateEnrichmentBatchStatusQueryKey = (
+  params?: GetCandidateEnrichmentBatchStatusParams,
+) => {
+  return [
+    `/api/v1/candidates/enrichment-batch/status`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetCandidateEnrichmentBatchStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateEnrichmentBatchStatus>>,
+  TError = ApiErrorDto,
+>(
+  params?: GetCandidateEnrichmentBatchStatusParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateEnrichmentBatchStatus>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetCandidateEnrichmentBatchStatusQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateEnrichmentBatchStatus>>
+  > = ({ signal }) => getCandidateEnrichmentBatchStatus(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateEnrichmentBatchStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateEnrichmentBatchStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateEnrichmentBatchStatus>>
+>;
+export type GetCandidateEnrichmentBatchStatusQueryError = ApiErrorDto;
+
+/**
+ * @summary Check current sync status for a batch of RU candidates without triggering ERP requests
+ */
+
+export function useGetCandidateEnrichmentBatchStatus<
+  TData = Awaited<ReturnType<typeof getCandidateEnrichmentBatchStatus>>,
+  TError = ApiErrorDto,
+>(
+  params?: GetCandidateEnrichmentBatchStatusParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateEnrichmentBatchStatus>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateEnrichmentBatchStatusQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
 
 /**
  * @summary Refresh document snapshots for the visible RU candidate page

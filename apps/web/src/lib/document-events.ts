@@ -4,7 +4,64 @@ import {
   getDocumentStreamConnection,
   subscribeDocumentStatuses,
   type DocumentDto,
+  type RuEnrichmentStreamEvent,
 } from "@edo/api-client";
+
+export type RuEnrichmentListener = (event: RuEnrichmentStreamEvent) => void;
+export type DocumentStreamState =
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "disconnected";
+export type StreamStateListener = (state: DocumentStreamState) => void;
+
+const ruEnrichmentListeners = new Set<RuEnrichmentListener>();
+const streamStateListeners = new Set<StreamStateListener>();
+let currentStreamState: DocumentStreamState = "disconnected";
+
+export function subscribeRuEnrichmentEvents(
+  listener: RuEnrichmentListener,
+): () => void {
+  ruEnrichmentListeners.add(listener);
+  return () => {
+    ruEnrichmentListeners.delete(listener);
+  };
+}
+
+export function subscribeDocumentStreamState(
+  listener: StreamStateListener,
+): () => void {
+  streamStateListeners.add(listener);
+  listener(currentStreamState);
+  return () => {
+    streamStateListeners.delete(listener);
+  };
+}
+
+export function getDocumentStreamState(): DocumentStreamState {
+  return currentStreamState;
+}
+
+function dispatchRuEnrichment(event: RuEnrichmentStreamEvent) {
+  for (const listener of ruEnrichmentListeners) {
+    try {
+      listener(event);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function dispatchStreamState(state: DocumentStreamState) {
+  currentStreamState = state;
+  for (const listener of streamStateListeners) {
+    try {
+      listener(state);
+    } catch {
+      // ignore
+    }
+  }
+}
 
 /** Coalesce snapshot changes; immutable file contents are never status queries. */
 export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
@@ -88,6 +145,21 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
   };
   const unsubscribe = subscribeDocumentStatuses({
     connect: getDocumentStreamConnection,
+    onState: (state) => dispatchStreamState(state),
+    onRuEnrichment: (event) => {
+      let anyReady = false;
+      for (const item of event.items) {
+        if (item.status === "READY") {
+          candidateIds.add(item.candidateId);
+          profileIds.add(item.candidateId);
+          anyReady = true;
+        }
+      }
+      if (anyReady) {
+        schedule();
+      }
+      dispatchRuEnrichment(event);
+    },
     onDocuments: ({ items }) => {
       const next = new Map(items.map((document) => [document.id, document]));
       for (const document of items) {
@@ -113,6 +185,7 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
     stopped = true;
     clearTimeout(timer);
     unsubscribe();
+    dispatchStreamState("disconnected");
   };
 }
 

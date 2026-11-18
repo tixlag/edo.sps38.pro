@@ -9,6 +9,7 @@ import {
   vi,
 } from "vitest";
 import { DocumentEventsService } from "../src/documents/document-events.service";
+import { EdoAccessRule } from "../src/auth/edo-access-rule";
 
 describe("DocumentEventsService read failures", () => {
   let service: DocumentEventsService;
@@ -96,5 +97,116 @@ describe("DocumentEventsService read failures", () => {
     } finally {
       timeout.mockRestore();
     }
+  });
+});
+
+describe("DocumentEventsService ru-enrichment events", () => {
+  let service: DocumentEventsService;
+  let notificationsHandler: ((event: any) => void) | undefined;
+  const prisma = {
+    candidate: {
+      findMany: vi.fn(),
+    },
+  };
+  const reads = {
+    documents: vi.fn().mockResolvedValue({ items: [] }),
+    internalDocuments: vi.fn().mockResolvedValue({ items: [] }),
+  };
+  const access = {
+    documentWhere: vi.fn().mockReturnValue({}),
+    candidateWhere: vi.fn().mockReturnValue({}),
+  };
+  const notifications = {
+    subscribe: vi.fn((handler) => {
+      notificationsHandler = handler;
+      return vi.fn();
+    }),
+  };
+
+  beforeEach(() => {
+    notificationsHandler = undefined;
+    vi.clearAllMocks();
+    service = new DocumentEventsService(
+      prisma as never,
+      reads as never,
+      access as never,
+      { get: () => "https://edo.sps38.pro" } as never,
+      notifications as never,
+    );
+  });
+
+  afterEach(() => {
+    service.onModuleDestroy();
+  });
+
+  it("delivers ru-enrichment to reviewer with RU permissions and filters candidates", async () => {
+    const ruPrincipal = {
+      uuid: "ru-user",
+      accessRules: { [EdoAccessRule.DOCUMENT_REVIEW_RU]: [] },
+    };
+    const nextRu = vi.fn();
+    service.stream(undefined, ruPrincipal as never).subscribe({ next: nextRu });
+
+    // Only "c-1" is allowed in candidateWhere
+    prisma.candidate.findMany.mockResolvedValue([{ id: "c-1" }]);
+
+    notificationsHandler?.({
+      items: [
+        { candidateId: "c-1", status: "READY", retryAt: null },
+        { candidateId: "c-2", status: "RETRY", retryAt: "2026-11-18T15:00:00.000Z" },
+      ],
+    });
+
+    await Promise.resolve();
+
+    expect(prisma.candidate.findMany).toHaveBeenCalledWith({
+      where: {
+        AND: [
+          { id: { in: ["c-1", "c-2"] } },
+          {},
+          expect.anything(),
+        ],
+      },
+      select: { id: true },
+    });
+
+    expect(nextRu).toHaveBeenCalledWith({
+      type: "ru-enrichment",
+      data: {
+        items: [{ candidateId: "c-1", status: "READY", retryAt: null }],
+      },
+    });
+  });
+
+  it("does not deliver ru-enrichment to principal without RU review rule", async () => {
+    const igPrincipal = {
+      uuid: "ig-user",
+      accessRules: { [EdoAccessRule.DOCUMENT_REVIEW_IG]: [] },
+    };
+    const nextIg = vi.fn();
+    service.stream(undefined, igPrincipal as never).subscribe({ next: nextIg });
+
+    notificationsHandler?.({
+      items: [{ candidateId: "c-1", status: "READY", retryAt: null }],
+    });
+
+    await Promise.resolve();
+
+    expect(prisma.candidate.findMany).not.toHaveBeenCalled();
+    expect(nextIg).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ru-enrichment" }));
+  });
+
+  it("does not deliver ru-enrichment to owner-scoped stream", async () => {
+    const nextOwner = vi.fn();
+    service.stream({ chat_uuid: "owner-1" }).subscribe({ next: nextOwner });
+
+    notificationsHandler?.({
+      items: [{ candidateId: "c-1", status: "READY", retryAt: null }],
+    });
+
+    await Promise.resolve();
+
+    expect(prisma.candidate.findMany).not.toHaveBeenCalled();
+    expect(nextOwner).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ru-enrichment" }));
   });
 });
