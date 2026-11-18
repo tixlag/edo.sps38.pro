@@ -47,6 +47,7 @@ import {
   GraduationCap,
   UserRound,
   FileSignature,
+  Loader2,
 } from "lucide-react";
 import {
   DocumentReviewWorkspace,
@@ -238,21 +239,32 @@ function CandidateRow({
         >
           <div className="min-w-0 flex-1 pb-1">
             <div className="flex w-full flex-wrap items-center justify-end gap-1">
-              {synchronizing ? (
+              {candidate?.stageProgress && candidate.stageProgress.length > 0 ? (
+                <>
+                  {candidate.stageProgress.map((progress) => (
+                    <StageRing
+                      key={progress.stage ?? "additional"}
+                      progress={progress}
+                      onOpen={() => onOpenStage(progress.stage)}
+                    />
+                  ))}
+                  {synchronizing && (
+                    <span
+                      role="status"
+                      className="ml-1 flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]"
+                    >
+                      <Loader2 className="inline h-3 w-3 animate-spin" /> Обновляем…
+                    </span>
+                  )}
+                </>
+              ) : synchronizing ? (
                 <p
                   role="status"
-                  className="p-3 text-xs text-[var(--muted-foreground)]"
+                  className="flex items-center gap-1.5 p-3 text-xs text-[var(--muted-foreground)]"
                 >
+                  <Loader2 className="h-3 w-3 animate-spin" />
                   Синхронизация документов…
                 </p>
-              ) : candidate?.stageProgress ? (
-                candidate.stageProgress.map((progress) => (
-                  <StageRing
-                    key={progress.stage ?? "additional"}
-                    progress={progress}
-                    onOpen={() => onOpenStage(progress.stage)}
-                  />
-                ))
               ) : (
                 <span className="w-24 text-center text-xs text-[var(--muted-foreground)]">
                   Этапы неизвестны

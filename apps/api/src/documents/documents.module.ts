@@ -106,6 +106,7 @@ import { LkModule } from "../lk/lk.module";
     IgProfileEnrichmentService,
     CandidatePreviousDocumentsSyncService,
     ErpCandidateClient,
+    IgEnrichmentQueueService,
   ],
   providers: [
     DocumentAbsenceService,

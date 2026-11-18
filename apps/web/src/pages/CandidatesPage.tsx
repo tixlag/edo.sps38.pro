@@ -20,6 +20,7 @@ import { findCurrentUserAsManager } from "../lib/manager-default";
 import { buildGroupedCandidateStatusOptions } from "../lib/candidate-status-groups";
 import { hasAccessRule } from "../lib/audit-types";
 import { formatDocumentProgress } from "../lib/review-groups";
+import { Loader2 } from "lucide-react";
 
 export function CandidatesPage() {
   const me = useGetMe();
@@ -349,8 +350,30 @@ function CandidateCatalog() {
                     {candidate.projectName || "Не указан"}
                   </td>
                   <td className="p-3">
-                    {documentSync.pendingIds.has(candidate.id) ? (
-                      <span role="status">Синхронизация документов…</span>
+                    {candidate.requiredDocuments != null ? (
+                      <span className="flex items-center gap-1.5">
+                        <span>
+                          {formatDocumentProgress(
+                            candidate.approvedDocuments,
+                            candidate.requiredDocuments,
+                          )}
+                        </span>
+                        {documentSync.pendingIds.has(candidate.id) && (
+                          <span
+                            role="status"
+                            className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]"
+                          >
+                            <Loader2 className="inline h-3 w-3 animate-spin" /> Обновляем…
+                          </span>
+                        )}
+                      </span>
+                    ) : documentSync.pendingIds.has(candidate.id) ? (
+                      <span
+                        role="status"
+                        className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]"
+                      >
+                        <Loader2 className="inline h-3 w-3 animate-spin" /> Синхронизация документов…
+                      </span>
                     ) : (
                       formatDocumentProgress(
                         candidate.approvedDocuments,

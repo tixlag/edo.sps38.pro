@@ -12,6 +12,7 @@ import {
   GraduationCap,
   UserRound,
   X,
+  Loader2,
 } from "lucide-react";
 import { formatDateRu, formatLocalArrivalTime } from "../lib/date-format";
 import { LkLink } from "./LkLink";
@@ -232,16 +233,32 @@ export function CandidateDrawer({
           <div className="flex shrink-0 items-center gap-3">
             <div className="flex flex-col items-end gap-1">
               <span className="text-xs font-medium text-[var(--muted-foreground)]">
-                {docs.synchronizing
-                  ? "Синхронизация документов…"
-                  : arrivalContext
-                  ? "Обязательные документы — по этапам ниже"
-                  : formatDocumentProgress(
-                      profile?.approvedDocuments ?? 0,
-                      profile?.requiredDocuments,
+                {arrivalContext ? (
+                  "Обязательные документы — по этапам ниже"
+                ) : profile?.requiredDocuments != null ? (
+                  <span className="flex items-center gap-1.5">
+                    <span>
+                      {formatDocumentProgress(
+                        profile?.approvedDocuments ?? 0,
+                        profile?.requiredDocuments,
+                      )}
+                    </span>
+                    {docs.updating && (
+                      <span className="flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]">
+                        <Loader2 className="inline h-3 w-3 animate-spin" /> Обновляем…
+                      </span>
                     )}
+                  </span>
+                ) : docs.synchronizing ? (
+                  "Синхронизация документов…"
+                ) : (
+                  formatDocumentProgress(
+                    profile?.approvedDocuments ?? 0,
+                    profile?.requiredDocuments,
+                  )
+                )}
               </span>
-              {!docs.synchronizing && !arrivalContext && progressPercent !== null && (
+              {!arrivalContext && progressPercent !== null && (
                 <span
                   role="progressbar"
                   aria-label="Прогресс подтверждения документов"
@@ -479,8 +496,9 @@ export function CandidateDrawer({
               </div>
             )}
 
-            {!returnedHistory && !docs.synchronizing && profile?.reviewGroup === "RU" &&
-              <CandidateDocumentAbsences candidateId={candidateId} missing={Array.from(new Map(stages.flatMap((stage) => stage.required.missingDocuments).map((item) => [item.code, item])).values())} />}
+            {!returnedHistory && !docs.synchronizing && profile?.reviewGroup === "RU" && (
+              <CandidateDocumentAbsences candidateId={candidateId} missing={Array.from(new Map(stages.flatMap((stage) => stage.required.missingDocuments).map((item) => [item.code, item])).values())} />
+            )}
             {/* Collapsible History Section at the bottom */}
             {!returnedHistory && (
               <CandidateDrawerHistorySection

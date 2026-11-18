@@ -56,6 +56,7 @@ import {
   normalizeCandidatePhone,
 } from "./candidate-phone";
 import { EmploymentNotificationService } from "../documents/employment-notification.service";
+import { IgEnrichmentQueueService } from "../documents/ig-enrichment-queue.service";
 
 @Injectable()
 export class CandidateWorkspaceService {
@@ -71,6 +72,7 @@ export class CandidateWorkspaceService {
     @Optional() private readonly ownHistory?: OwnDocumentHistoryService,
     @Optional() private readonly candidates?: ErpCandidateClient,
     @Optional() private readonly employmentNotifications?: EmploymentNotificationService,
+    @Optional() private readonly enrichmentQueue?: IgEnrichmentQueueService,
   ) {}
   private actor(p: AuthPrincipal) {
     requireReviewGroup(p, "RU");
@@ -685,6 +687,35 @@ export class CandidateWorkspaceService {
   }
   async previous(id: string, p: AuthPrincipal) {
     const row = await this.previousOwner(id, p);
+    if (candidateReviewGroup(row) === "RU") {
+      const cutoff = Date.now() - 5 * 60_000;
+      if (
+        row.erpUid &&
+        (!row.previousDocumentsSyncedAt ||
+          row.previousDocumentsSyncedAt.getTime() < cutoff)
+      ) {
+        if (this.enrichmentQueue) {
+          await this.enrichmentQueue.request(id, p).catch(() => undefined);
+        }
+      }
+      const docs = await this.prisma.candidatePreviousDocument.findMany({
+        where: { candidateId: id },
+        orderBy: { title: "asc" },
+      });
+      return {
+        items: docs.map((doc) => ({
+          id: doc.id,
+          title: doc.title,
+          documentUid: doc.documentUid,
+          fields: (doc.fields ?? {}) as Record<string, unknown>,
+          expiresAt: doc.expiresAt?.toISOString().slice(0, 10) ?? null,
+          originalAvailable: doc.originalAvailable,
+          status: doc.status as any,
+          reviewedBy: doc.reviewedBy,
+          reviewedAt: doc.reviewedAt?.toISOString() ?? null,
+        })),
+      };
+    }
     return this.syncPreviousDocumentsInternal(id, p.uuid, "", row, p);
   }
 

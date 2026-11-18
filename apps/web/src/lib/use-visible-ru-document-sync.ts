@@ -22,16 +22,24 @@ export function useVisibleRuDocumentSync(
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const candidateIds = key.split(",");
+    let lastPending = candidateIds;
     const update = () =>
       actions.current.mutate(
         { data: { candidateIds } },
         {
           onSuccess: async (data) => {
             if (!active) return;
-            await actions.current.refetch();
-            if (!active) return;
-            setResult({ key, pending: data.pendingCandidateIds });
-            if (data.pendingCandidateIds.length)
+            const newPending = data.pendingCandidateIds;
+            const anyFinished =
+              lastPending.some((id) => !newPending.includes(id)) ||
+              (newPending.length === 0 && lastPending.length > 0);
+            lastPending = newPending;
+            if (anyFinished) {
+              await actions.current.refetch();
+              if (!active) return;
+            }
+            setResult({ key, pending: newPending });
+            if (newPending.length)
               timer = setTimeout(update, 5000);
           },
           onError: () => {

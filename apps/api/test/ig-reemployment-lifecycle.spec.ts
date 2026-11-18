@@ -2022,77 +2022,99 @@ describe("verified previous ERP documents for RU candidates", () => {
     return fixture;
   };
 
-  it("confirms valid RU originals only after verification and caches successful proofs", async () => {
+  it("confirms valid ERP-native RU documents immediately without probeCandidateOriginal and does not re-download on subsequent sync", async () => {
     const fixture = fixtureForRu();
-    fixture.erp.request.mockResolvedValue({ items: [previous("passport"), { ...previous("migration"), documentUid: MIGRATION_UID }] });
-    let pending: any[] = [];
-    fixture.erp.probeCandidateOriginal.mockImplementation(async () => {
-      pending = structuredClone(fixture.candidatePreviousDocumentsUpserted);
-      return true;
+    fixture.erp.request.mockResolvedValue({
+      items: [
+        previous("passport"),
+        { ...previous("driver_license"), documentUid: "some-doc-uid" },
+      ],
     });
     await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
-    expect(pending).toHaveLength(2);
-    expect(pending.every((doc) => doc.status === "REQUIRES_REVIEW" && !doc.originalVerified)).toBe(true);
     expect(fixture.candidatePreviousDocumentsUpserted).toMatchObject([
-      { sourceId: "passport", status: "CONFIRMED", originalVerified: true, verificationCheckedAt: expect.any(Date) },
-      { sourceId: "migration", status: "CONFIRMED", originalVerified: true, verificationCheckedAt: expect.any(Date) },
+      { sourceId: "passport", status: "CONFIRMED", originalAvailable: true },
+      { sourceId: "driver_license", status: "CONFIRMED", originalAvailable: true },
     ]);
-    expect(fixture.erp.probeCandidateOriginal.mock.calls.map((call: any[]) => call.slice(0, 2)))
-      .toEqual([[fixture.row.erpUid, "passport"], [fixture.row.erpUid, "migration"]]);
+    expect(fixture.erp.probeCandidateOriginal).not.toHaveBeenCalled();
     expect(fixture.erp.probePersonOriginal).not.toHaveBeenCalled();
-    fixture.erp.probeCandidateOriginal.mockClear();
+
+    // Repeat sync also does not probe
     await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
     expect(fixture.erp.probeCandidateOriginal).not.toHaveBeenCalled();
   });
 
-  it("does not confirm advertised but unreadable RU originals or reported unavailable files", async () => {
+  it("does not confirm RU documents reported unavailable, expired, or invalid", async () => {
     const fixture = fixtureForRu();
-    fixture.erp.request.mockResolvedValue({ items: [previous("unreadable"), { ...previous("missing"), originalAvailable: false, recheckStatus: "ORIGINAL_UNAVAILABLE" }] });
-    fixture.erp.probeCandidateOriginal.mockResolvedValue(false);
+    fixture.erp.request.mockResolvedValue({
+      items: [
+        { ...previous("missing"), originalAvailable: false, recheckStatus: "ORIGINAL_UNAVAILABLE" },
+        { ...previous("expired"), expiresAt: "2020-01-01", recheckStatus: "REQUIRES_REVIEW" },
+        { ...previous("invalid"), isInvalid: true, recheckStatus: "REQUIRES_REVIEW" },
+      ],
+    });
     await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
     expect(fixture.candidatePreviousDocumentsUpserted).toMatchObject([
-      { sourceId: "unreadable", status: "REQUIRES_REVIEW", originalVerified: false, verificationCheckedAt: null },
-      { sourceId: "missing", status: "ORIGINAL_UNAVAILABLE", originalVerified: false, verificationCheckedAt: null },
+      { sourceId: "missing", status: "ORIGINAL_UNAVAILABLE", originalAvailable: false },
+      { sourceId: "expired", status: "REQUIRES_REVIEW" },
+      { sourceId: "invalid", status: "REQUIRES_REVIEW" },
     ]);
-    expect(fixture.erp.probeCandidateOriginal.mock.calls.map((call: any[]) => call[1])).toEqual(["unreadable"]);
+    expect(fixture.erp.probeCandidateOriginal).not.toHaveBeenCalled();
   });
 
-  it("preserves an unchanged legacy RU manual confirmation while checking its original", async () => {
+  it("does not auto-confirm an EDO document just because it appeared in ERP", async () => {
+    const fixture = fixtureForRu();
+    fixture.erp.request.mockResolvedValue({
+      items: [
+        {
+          ...previous("edo:doc-1:ver-1"),
+          title: "Паспорт",
+          recheckStatus: "REQUIRES_REVIEW",
+        },
+      ],
+    });
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    expect(fixture.candidatePreviousDocumentsUpserted).toMatchObject([
+      { sourceId: "edo:doc-1:ver-1", status: "REQUIRES_REVIEW" },
+    ]);
+  });
+
+  it("does not withdraw CONFIRMED status from an RU document when 24h expires without technical verification", async () => {
+    const fixture = fixtureForRu();
+    fixture.erp.request.mockResolvedValue({ items: [previous("passport")] });
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    const old = fixture.candidatePreviousDocumentsUpserted[0];
+    expect(old.status).toBe("CONFIRMED");
+
+    // Advance verificationCheckedAt past 24h
+    old.verificationCheckedAt = new Date(Date.now() - 25 * 3600_000);
+    old.originalVerified = false;
+
+    // Resync
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    expect(old.status).toBe("CONFIRMED");
+    expect(fixture.erp.probeCandidateOriginal).not.toHaveBeenCalled();
+  });
+
+  it("preserves an unchanged legacy RU manual confirmation and does not drop status", async () => {
     const fixture = fixtureForRu();
     fixture.erp.request.mockResolvedValue({ items: [previous("passport")] });
     await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
     const old = fixture.candidatePreviousDocumentsUpserted[0];
     Object.assign(old, { originalVerified: false, verificationCheckedAt: null, sourceFingerprint: null, reviewedBy: "manual-reviewer" });
-    let duringProbe: any;
-    fixture.erp.probeCandidateOriginal.mockImplementation(async () => { duringProbe = structuredClone(old); return true; });
+
     await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
-    expect(duringProbe).toMatchObject({ status: "CONFIRMED", reviewedBy: "manual-reviewer", originalVerified: false });
-    expect(old).toMatchObject({ status: "CONFIRMED", reviewedBy: "manual-reviewer", originalVerified: true });
+    expect(old).toMatchObject({ status: "CONFIRMED", reviewedBy: "manual-reviewer" });
+    expect(fixture.erp.probeCandidateOriginal).not.toHaveBeenCalled();
   });
 
-  it("rejects an RU source whose candidate identity changes before its checkpoint", async () => {
+  it("rejects an RU sync when candidate identity changes before committing", async () => {
     const fixture = fixtureForRu();
-    fixture.erp.request.mockResolvedValue({ items: [previous("passport")] });
-    fixture.erp.probeCandidateOriginal.mockImplementation(async () => {
+    fixture.erp.request.mockImplementation(async () => {
       Object.assign(fixture.row, { erpUid: "33333333-3333-4333-8333-333333333333" });
-      return true;
+      return { items: [previous("passport")] };
     });
     await expect(fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor"))
       .rejects.toThrow("ERP_PERSON_IDENTITY_MISMATCH");
-    expect(fixture.candidatePreviousDocumentsUpserted).toMatchObject([
-      { sourceId: "passport", status: "REQUIRES_REVIEW", originalVerified: false },
-    ]);
     expect(fixture.row.previousDocumentsSyncedAt).toBeNull();
-  });
-
-  it("withdraws an existing RU confirmation when its original fails verification", async () => {
-    const fixture = fixtureForRu();
-    fixture.erp.request.mockResolvedValue({ items: [previous("passport")] });
-    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
-    const old = fixture.candidatePreviousDocumentsUpserted[0];
-    old.verificationCheckedAt = new Date(Date.now() - 25 * 3600_000);
-    fixture.erp.probeCandidateOriginal.mockResolvedValue(false);
-    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
-    expect(old).toMatchObject({ status: "ORIGINAL_UNAVAILABLE", originalVerified: false });
   });
 });
