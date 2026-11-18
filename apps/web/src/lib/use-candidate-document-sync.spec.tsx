@@ -461,4 +461,173 @@ describe("complete candidate snapshots", () => {
     // Because card was unmounted, invalidation from old card must NOT be called!
     expect(mock.invalidateRuSpy).not.toHaveBeenCalled();
   });
+
+  it("preserves SSE READY when POST responds later with PENDING", async () => {
+    let postCallback: ((data: any) => void) | undefined;
+    mock.mutate.mockImplementation((_vars: any, options: any) => {
+      postCallback = options?.onSuccess;
+    });
+    mock.result = {
+      ...mock.result,
+      data: data("cand-post-race-ready", "PENDING", false, "RU"),
+    };
+    await render("cand-post-race-ready");
+    expect(mock.mutate).toHaveBeenCalledTimes(1);
+
+    // SSE arrives before POST responds
+    await act(async () => {
+      for (const listener of sseListeners) {
+        listener({
+          items: [
+            {
+              candidateId: "cand-post-race-ready",
+              status: "READY",
+              retryAt: null,
+            },
+          ],
+        });
+      }
+    });
+    expect(view!.syncState?.status).toBe("READY");
+
+    // Later, delayed initial POST resolves with PENDING
+    await act(async () => {
+      postCallback?.({ status: "PENDING", retryAt: null });
+    });
+
+    // The newer SSE status must NOT be overwritten by stale POST
+    expect(view!.syncState?.status).toBe("READY");
+  });
+
+  it("preserves SSE RETRY when POST responds later with PENDING", async () => {
+    let postCallback: ((data: any) => void) | undefined;
+    mock.mutate.mockImplementation((_vars: any, options: any) => {
+      postCallback = options?.onSuccess;
+    });
+    mock.result = {
+      ...mock.result,
+      data: data("cand-post-race-retry", "PENDING", false, "RU"),
+    };
+    await render("cand-post-race-retry");
+    expect(mock.mutate).toHaveBeenCalledTimes(1);
+
+    // SSE arrives with RETRY before POST responds
+    const retryAt = "2026-11-18T17:00:00.000Z";
+    await act(async () => {
+      for (const listener of sseListeners) {
+        listener({
+          items: [
+            {
+              candidateId: "cand-post-race-retry",
+              status: "RETRY",
+              retryAt,
+            },
+          ],
+        });
+      }
+    });
+    expect(view!.syncState?.status).toBe("RETRY");
+    expect(view!.syncState?.retryAt).toBe(retryAt);
+
+    // Later, delayed initial POST resolves with PENDING
+    await act(async () => {
+      postCallback?.({ status: "PENDING", retryAt: null });
+    });
+
+    // The newer SSE RETRY status must NOT be overwritten by stale POST
+    expect(view!.syncState?.status).toBe("RETRY");
+    expect(view!.syncState?.retryAt).toBe(retryAt);
+  });
+
+  it("allows manual retry after RETRY to start a new sync and update state", async () => {
+    let postCallback: ((data: any) => void) | undefined;
+    mock.mutate.mockImplementation((_vars: any, options: any) => {
+      postCallback = options?.onSuccess;
+    });
+    mock.result = {
+      ...mock.result,
+      data: {
+        ...data("cand-manual-retry", "RETRY", false, "RU"),
+        enrichment: {
+          status: "RETRY",
+          profileReady: false,
+          documentsReady: false,
+          retryAt: "2026-11-18T16:00:00.000Z",
+        },
+      },
+    };
+    await render("cand-manual-retry");
+    // RU in RETRY does not auto-request
+    expect(mock.mutate).not.toHaveBeenCalled();
+    expect(view!.syncState?.status).toBe("RETRY");
+
+    // User explicitly clicks retry
+    await act(async () => {
+      view!.requestSync();
+    });
+    expect(mock.mutate).toHaveBeenCalledTimes(1);
+    expect(view!.syncState?.status).toBe("PENDING");
+
+    // SSE arrives with READY for the new sync run
+    await act(async () => {
+      for (const listener of sseListeners) {
+        listener({
+          items: [
+            {
+              candidateId: "cand-manual-retry",
+              status: "READY",
+              retryAt: null,
+            },
+          ],
+        });
+      }
+    });
+    expect(view!.syncState?.status).toBe("READY");
+
+    // POST also resolves
+    await act(async () => {
+      postCallback?.({ status: "READY", retryAt: null });
+    });
+    expect(view!.syncState?.status).toBe("READY");
+  });
+
+  it("automatically calls requestSync on opening IG card with initial RETRY", async () => {
+    mock.result = {
+      ...mock.result,
+      data: {
+        ...data("cand-ig-retry", "RETRY", false, "IG"),
+        enrichment: {
+          status: "RETRY",
+          profileReady: false,
+          documentsReady: false,
+          retryAt: "2026-11-18T16:00:00.000Z",
+        },
+      },
+    };
+    await render("cand-ig-retry");
+    // IG candidate with RETRY must auto-request on card open
+    expect(mock.mutate).toHaveBeenCalledWith(
+      { candidateId: "cand-ig-retry" },
+      expect.anything(),
+    );
+  });
+
+  it("does not automatically call requestSync on opening RU card with RETRY", async () => {
+    mock.result = {
+      ...mock.result,
+      data: {
+        ...data("cand-ru-retry", "RETRY", false, "RU"),
+        enrichment: {
+          status: "RETRY",
+          profileReady: false,
+          documentsReady: false,
+          retryAt: "2026-11-18T16:00:00.000Z",
+        },
+      },
+    };
+    await render("cand-ru-retry");
+    // RU candidate with RETRY must NOT auto-request on card open
+    expect(mock.mutate).not.toHaveBeenCalled();
+    expect(view!.syncState?.status).toBe("RETRY");
+  });
 });

@@ -27,13 +27,17 @@ export function useCandidateDocumentSync(candidateId: string, stage?: string) {
   const refresh = useRequestCandidateEnrichment();
   const requested = useRef<string>();
   const previous = useRef<string>();
+  const syncRunIdRef = useRef(0);
+  const isCompletedRef = useRef(false);
+  const sseSettledRef = useRef<"READY" | "RETRY" | null>(null);
   const [awaitingRefresh, setAwaitingRefresh] = useState(false);
   const [syncState, setSyncState] = useState<CandidateSyncState | undefined>();
-  const isCompletedRef = useRef(false);
 
   useEffect(() => {
+    syncRunIdRef.current++;
     setSyncState(undefined);
     isCompletedRef.current = false;
+    sseSettledRef.current = null;
     requested.current = undefined;
     previous.current = undefined;
   }, [candidateId]);
@@ -76,12 +80,14 @@ export function useCandidateDocumentSync(candidateId: string, stage?: string) {
   const needsRequest =
     !!enrichment &&
     requested.current !== candidateId &&
-    enrichment.status !== "RETRY" &&
+    (!isRu || enrichment.status !== "RETRY") &&
     (isRu || enrichment.status !== "READY");
 
   const requestSync = () => {
+    const runId = ++syncRunIdRef.current;
     requested.current = candidateId;
     isCompletedRef.current = false;
+    sseSettledRef.current = null;
     setAwaitingRefresh(true);
     if (isRu) {
       setSyncState({ status: "PENDING", retryAt: null });
@@ -90,14 +96,24 @@ export function useCandidateDocumentSync(candidateId: string, stage?: string) {
       { candidateId },
       {
         onSuccess: (data) => {
+          if (runId !== syncRunIdRef.current) return;
+          if (isRu && sseSettledRef.current) {
+            return;
+          }
           if (data?.status === "READY") {
             isCompletedRef.current = true;
+            sseSettledRef.current = "READY";
             setAwaitingRefresh(false);
             if (isRu) {
               setSyncState({ status: "READY", retryAt: null });
             }
           } else {
-            setAwaitingRefresh(true);
+            if (data?.status === "RETRY") {
+              sseSettledRef.current = "RETRY";
+              setAwaitingRefresh(false);
+            } else {
+              setAwaitingRefresh(true);
+            }
             if (isRu) {
               setSyncState({
                 status: (data?.status as CandidateSyncStatus) ?? "PENDING",
@@ -108,7 +124,11 @@ export function useCandidateDocumentSync(candidateId: string, stage?: string) {
           previous.current = data?.status ?? "PENDING";
           void details.refetch();
         },
-        onError: () => setAwaitingRefresh(false),
+        onError: () => {
+          if (runId !== syncRunIdRef.current) return;
+          if (isRu && sseSettledRef.current) return;
+          setAwaitingRefresh(false);
+        },
       },
     );
   };
@@ -144,9 +164,14 @@ export function useCandidateDocumentSync(candidateId: string, stage?: string) {
 
       if (match.status === "READY") {
         isCompletedRef.current = true;
+        sseSettledRef.current = "READY";
         setAwaitingRefresh(false);
         setSyncState({ status: "READY", retryAt: null });
       } else if (!isCompletedRef.current) {
+        if (match.status === "RETRY") {
+          sseSettledRef.current = "RETRY";
+          setAwaitingRefresh(false);
+        }
         setSyncState({
           status: match.status as CandidateSyncStatus,
           retryAt: match.retryAt,
@@ -167,10 +192,15 @@ export function useCandidateDocumentSync(candidateId: string, stage?: string) {
 
       if (item.status === "READY") {
         isCompletedRef.current = true;
+        sseSettledRef.current = "READY";
         setAwaitingRefresh(false);
         setSyncState({ status: "READY", retryAt: null });
         await invalidateRuEnrichmentCandidates(client, [candidateId]);
       } else if (!isCompletedRef.current) {
+        if (item.status === "RETRY") {
+          sseSettledRef.current = "RETRY";
+          setAwaitingRefresh(false);
+        }
         setSyncState({
           status: item.status as CandidateSyncStatus,
           retryAt: item.retryAt,
