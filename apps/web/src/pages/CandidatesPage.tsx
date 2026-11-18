@@ -120,7 +120,6 @@ function CandidateCatalog() {
   const documentSync = useVisibleRuDocumentSync(
     candidates.data?.items.map((c) => c.id) ?? [],
     !!candidates.data,
-    () => candidates.refetch(),
   );
   const statuses = useListCandidateStatuses();
   const projects = useListCandidateProjects({ q: projectQuery || undefined });

@@ -65,7 +65,13 @@ export function CandidateDrawer({
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as Record<string, unknown>;
   const docs = useCandidateDocumentSync(candidateId, stageProp);
+  const profile = docs.data?.candidate ?? queueProfile;
+  const isRu = profile?.reviewGroup === "RU";
+  const syncState = docs.syncState;
   const enrichment = docs.data?.enrichment;
+  const effectiveStatus = isRu
+    ? syncState?.status ?? enrichment?.status
+    : enrichment?.status;
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -87,7 +93,6 @@ export function CandidateDrawer({
   const arrivalTime = formatLocalArrivalTime(arrivalContext?.arrivalDateTime);
   const arrivalDate =
     arrivalContext?.arrivalDateTime?.slice(0, 10) ?? arrivalContext?.date;
-  const profile = docs.data?.candidate ?? queueProfile;
   const fullName = profile?.fullName?.trim() || null;
   const heading = fullName ?? "Профиль кандидата";
   const progressPercent = profile
@@ -181,12 +186,12 @@ export function CandidateDrawer({
             role="status"
             className="border-b border-[var(--border)] px-4 py-2 text-xs text-[var(--muted-foreground)]"
           >
-            {docs.syncError || enrichment?.status === "RETRY"
+            {docs.syncError || effectiveStatus === "RETRY"
               ? "Не удалось обновить данные. Показан последний полный снимок."
-              : enrichment?.status === "PENDING"
+              : isRu && effectiveStatus === "PENDING"
                 ? "Ожидает синхронизации…"
                 : "Обновляем данные…"}
-            {(docs.syncError || enrichment?.status === "RETRY") && (
+            {(docs.syncError || effectiveStatus === "RETRY") && (
               <Button variant="outline" size="sm" onClick={docs.requestSync}>
                 Повторить
               </Button>
@@ -198,10 +203,12 @@ export function CandidateDrawer({
             role="status"
             className="border-b border-[var(--border)] px-4 py-3 text-sm"
           >
-            {enrichment?.status === "RETRY" || docs.syncError
+            {effectiveStatus === "RETRY" || docs.syncError
               ? "Повторим позже"
-              : "Синхронизация профиля и документов…"}
-            {(docs.syncError || enrichment?.status === "RETRY") && (
+              : isRu && effectiveStatus === "PENDING"
+                ? "Ожидает синхронизации…"
+                : "Синхронизация профиля и документов…"}
+            {(docs.syncError || effectiveStatus === "RETRY") && (
               <span className="ml-2">
                 <Button variant="ghost" size="sm" onClick={docs.requestSync}>
                   Повторить
@@ -257,9 +264,9 @@ export function CandidateDrawer({
                     </span>
                     {docs.updating && (
                       <span className="flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]">
-                        {enrichment?.status === "RETRY" || docs.syncError ? (
+                        {effectiveStatus === "RETRY" || docs.syncError ? (
                           "Повторим позже"
-                        ) : enrichment?.status === "PENDING" ? (
+                        ) : isRu && effectiveStatus === "PENDING" ? (
                           "Ожидает синхронизации"
                         ) : (
                           <>
@@ -270,10 +277,14 @@ export function CandidateDrawer({
                     )}
                   </span>
                 ) : docs.synchronizing ? (
-                  enrichment?.status === "RETRY" || docs.syncError ? (
+                  effectiveStatus === "RETRY" || docs.syncError ? (
                     "Повторим позже"
+                  ) : isRu && effectiveStatus === "PENDING" ? (
+                    "Ожидает синхронизации"
                   ) : (
-                    "Синхронизация документов…"
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="inline h-3 w-3 animate-spin" /> Синхронизация документов…
+                    </span>
                   )
                 ) : (
                   formatDocumentProgress(

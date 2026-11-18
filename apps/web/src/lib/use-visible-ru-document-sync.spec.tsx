@@ -64,9 +64,8 @@ describe("useVisibleRuDocumentSync SSE & no repeated POST", () => {
   }
 
   it("requests the visible page once and does NOT poll with repeated POST", async () => {
-    const refetch = vi.fn().mockResolvedValue(undefined);
     function View({ ids }: { ids: string[] }) {
-      const state = useVisibleRuDocumentSync(ids, true, refetch);
+      const state = useVisibleRuDocumentSync(ids, true);
       return <span>{[...state.pendingIds].join(",")}</span>;
     }
 
@@ -83,9 +82,6 @@ describe("useVisibleRuDocumentSync SSE & no repeated POST", () => {
     );
     expect(node.textContent).toBe("b");
 
-    // Initial POST response must NOT trigger refetch() (fixing the lastPending bug!)
-    expect(refetch).not.toHaveBeenCalled();
-
     // Advance 5s, 10s, 30s: POST must NEVER be called again!
     await act(async () => vi.advanceTimersByTimeAsync(5000));
     expect(batch).toHaveBeenCalledTimes(1);
@@ -98,9 +94,8 @@ describe("useVisibleRuDocumentSync SSE & no repeated POST", () => {
   });
 
   it("removes candidate from pending without duplicate refetch when ru-enrichment READY arrives", async () => {
-    const refetch = vi.fn().mockResolvedValue(undefined);
     function View({ ids }: { ids: string[] }) {
-      const state = useVisibleRuDocumentSync(ids, true, refetch);
+      const state = useVisibleRuDocumentSync(ids, true);
       return <span>{[...state.pendingIds].join(",")}</span>;
     }
 
@@ -119,17 +114,14 @@ describe("useVisibleRuDocumentSync SSE & no repeated POST", () => {
       }
     });
 
-    // Pending set is cleared
+    // Pending set is cleared without duplicate manual refetch
     expect(node.textContent).toBe("");
-    // Centralized document-events invalidates queries; hook must NOT duplicate refetch()!
-    expect(refetch).not.toHaveBeenCalled();
   });
 
   it("tracks candidate states and updates to RETRY without infinite spinner or refetch", async () => {
-    const refetch = vi.fn().mockResolvedValue(undefined);
     let capturedState: ReturnType<typeof useVisibleRuDocumentSync> | undefined;
     function View({ ids }: { ids: string[] }) {
-      const state = useVisibleRuDocumentSync(ids, true, refetch);
+      const state = useVisibleRuDocumentSync(ids, true);
       capturedState = state;
       return <span>{state.getSyncState("a")?.status ?? "none"}</span>;
     }
@@ -155,20 +147,18 @@ describe("useVisibleRuDocumentSync SSE & no repeated POST", () => {
       }
     });
 
-    // Candidate state is updated to RETRY, still pending, no refetch, no extra POST
+    // Candidate state is updated to RETRY, still pending, no extra POST
     expect(node.textContent).toBe("RETRY");
     expect(capturedState?.getSyncState("a")?.status).toBe("RETRY");
     expect(capturedState?.getSyncState("a")?.retryAt).toBe(
       "2026-11-18T16:00:00.000Z",
     );
-    expect(refetch).not.toHaveBeenCalled();
     expect(batch).toHaveBeenCalledTimes(1);
   });
 
   it("handles race condition where SSE arrives before POST response resolves", async () => {
-    const refetch = vi.fn().mockResolvedValue(undefined);
     function View({ ids }: { ids: string[] }) {
-      const state = useVisibleRuDocumentSync(ids, true, refetch);
+      const state = useVisibleRuDocumentSync(ids, true);
       return <span>{[...state.pendingIds].join(",")}</span>;
     }
 
@@ -192,13 +182,12 @@ describe("useVisibleRuDocumentSync SSE & no repeated POST", () => {
     expect(node.textContent).toBe("");
   });
 
-  it("reconciles status on stream reconnect if pending jobs remain, calling invalidation and refetch", async () => {
+  it("reconciles status on stream reconnect if pending jobs remain, calling invalidation without redundant manual refetch", async () => {
     getBatchStatus.mockResolvedValue({
       items: [{ candidateId: "b", status: "READY", retryAt: null }],
     });
-    const refetch = vi.fn().mockResolvedValue(undefined);
     function View({ ids }: { ids: string[] }) {
-      const state = useVisibleRuDocumentSync(ids, true, refetch);
+      const state = useVisibleRuDocumentSync(ids, true);
       return <span>{[...state.pendingIds].join(",")}</span>;
     }
 
@@ -224,9 +213,8 @@ describe("useVisibleRuDocumentSync SSE & no repeated POST", () => {
     await act(async () => vi.advanceTimersByTimeAsync(0));
     expect(getBatchStatus).toHaveBeenCalledWith({ candidateIds: ["b"] });
     expect(node.textContent).toBe("");
-    // Fallback discovers READY, so it MUST invalidate queries and refetch
+    // Fallback discovers READY, so it invalidates queries (React Query refetches active lists automatically)
     expect(invalidateRuSpy).toHaveBeenCalledWith(queryClient, ["b"]);
-    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   it("prevents stale GET responses from regressing completed candidates to pending", async () => {
@@ -237,9 +225,8 @@ describe("useVisibleRuDocumentSync SSE & no repeated POST", () => {
           resolveStaleGet = resolve;
         }),
     );
-    const refetch = vi.fn().mockResolvedValue(undefined);
     function View({ ids }: { ids: string[] }) {
-      const state = useVisibleRuDocumentSync(ids, true, refetch);
+      const state = useVisibleRuDocumentSync(ids, true);
       return <span>{[...state.pendingIds].join(",")}</span>;
     }
 

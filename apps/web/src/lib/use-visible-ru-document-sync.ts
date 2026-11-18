@@ -23,15 +23,11 @@ export interface CandidateSyncState {
  * then updates pending candidates and triggers React Query refetches via SSE events.
  * Eliminates repeated POST polling; uses rare read-only status checks as safety net.
  */
-export function useVisibleRuDocumentSync(
-  ids: string[],
-  enabled: boolean,
-  refetch: () => Promise<unknown>,
-) {
+export function useVisibleRuDocumentSync(ids: string[], enabled: boolean) {
   const queryClient = useQueryClient();
   const batch = useRequestCandidateEnrichmentBatch();
-  const actions = useRef({ mutate: batch.mutate, refetch });
-  actions.current = { mutate: batch.mutate, refetch };
+  const mutateRef = useRef(batch.mutate);
+  mutateRef.current = batch.mutate;
   const key = ids.join(",");
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{
@@ -85,7 +81,6 @@ export function useVisibleRuDocumentSync(
         if (newlyCompleted.length > 0) {
           updateStates();
           await invalidateRuEnrichmentCandidates(queryClient, newlyCompleted);
-          void actions.current.refetch();
         } else if (statusData.items.length > 0) {
           updateStates();
         }
@@ -167,7 +162,7 @@ export function useVisibleRuDocumentSync(
     }, 60_000);
 
     // Initial POST: queued once upon page open / filter change
-    actions.current.mutate(
+    mutateRef.current(
       { data: { candidateIds } },
       {
         onSuccess: (data) => {

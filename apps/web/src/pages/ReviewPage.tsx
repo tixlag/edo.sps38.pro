@@ -591,7 +591,6 @@ export function ReviewPage({
   const visibleSync = useVisibleRuDocumentSync(
     groups.map((group) => group.candidate.id),
     reviewGroup === "RU" && canReview && !dateRangeInvalid && !!list.data,
-    () => list.refetch(),
   );
 
   // Selector options. Facet entries without an exact code cannot feed an

@@ -300,4 +300,165 @@ describe("complete candidate snapshots", () => {
       "reconnect-cand",
     ]);
   });
+
+  it("updates syncState to RETRY on SSE event without triggering new POST or full invalidation", async () => {
+    mock.result = {
+      ...mock.result,
+      data: data("cand-retry", "RUNNING", false, "RU"),
+    };
+    await render("cand-retry");
+
+    // SSE emits RETRY
+    await act(async () => {
+      for (const listener of sseListeners) {
+        listener({
+          items: [
+            {
+              candidateId: "cand-retry",
+              status: "RETRY",
+              retryAt: "2026-11-18T16:00:00.000Z",
+            },
+          ],
+        });
+      }
+    });
+
+    expect(view!.syncState?.status).toBe("RETRY");
+    expect(view!.syncState?.retryAt).toBe("2026-11-18T16:00:00.000Z");
+    expect(view!.syncError).toBe(true);
+    // Did NOT call invalidateRuEnrichmentCandidates on RETRY
+    expect(mock.invalidateRuSpy).not.toHaveBeenCalled();
+    // Did NOT trigger extra mutate call
+    expect(mock.mutate).toHaveBeenCalledTimes(1); // initial mount only
+  });
+
+  it("updates syncState to RETRY on fallback GET check without triggering full invalidation", async () => {
+    mock.getBatchStatus.mockResolvedValue({
+      items: [
+        {
+          candidateId: "cand-get-retry",
+          status: "RETRY",
+          retryAt: "2026-11-18T16:00:00.000Z",
+        },
+      ],
+    });
+    mock.result = {
+      ...mock.result,
+      data: data("cand-get-retry", "RUNNING", false, "RU"),
+    };
+    await render("cand-get-retry");
+
+    // Advance 60s to trigger fallback GET
+    await act(async () => vi.advanceTimersByTimeAsync(60000));
+    expect(mock.getBatchStatus).toHaveBeenCalledWith({
+      candidateIds: ["cand-get-retry"],
+    });
+
+    expect(view!.syncState?.status).toBe("RETRY");
+    expect(view!.syncError).toBe(true);
+    expect(mock.invalidateRuSpy).not.toHaveBeenCalled();
+  });
+
+  it("transitions from RETRY to READY on SSE event and prevents late stale GET from regressing state", async () => {
+    let resolveStaleGet: ((data: any) => void) | undefined;
+    mock.getBatchStatus.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveStaleGet = resolve;
+        }),
+    );
+    mock.result = {
+      ...mock.result,
+      data: data("cand-monotonic", "RUNNING", false, "RU"),
+    };
+    await render("cand-monotonic");
+
+    // Reconnection triggers checkStatus (GET in-flight)
+    await act(async () => {
+      for (const listener of stateListeners) {
+        listener("reconnecting");
+      }
+    });
+    await act(async () => {
+      for (const listener of stateListeners) {
+        listener("connected");
+      }
+    });
+    expect(mock.getBatchStatus).toHaveBeenCalledTimes(1);
+
+    // Meanwhile, SSE delivers READY!
+    await act(async () => {
+      for (const listener of sseListeners) {
+        listener({
+          items: [
+            { candidateId: "cand-monotonic", status: "READY", retryAt: null },
+          ],
+        });
+      }
+    });
+
+    expect(view!.syncState?.status).toBe("READY");
+
+    // Now late GET resolves with old RETRY
+    await act(async () => {
+      resolveStaleGet?.({
+        items: [
+          {
+            candidateId: "cand-monotonic",
+            status: "RETRY",
+            retryAt: "2026-11-18T16:00:00.000Z",
+          },
+        ],
+      });
+    });
+
+    // Monotonic guard: state MUST remain READY!
+    expect(view!.syncState?.status).toBe("READY");
+    expect(mock.invalidateRuSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not execute state update or invalidation if unmounted before GET finishes on reconnect", async () => {
+    let resolveGet: ((data: any) => void) | undefined;
+    mock.getBatchStatus.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveGet = resolve;
+        }),
+    );
+    mock.result = {
+      ...mock.result,
+      data: data("cand-unmount", "RUNNING", false, "RU"),
+    };
+    await render("cand-unmount");
+
+    // Trigger reconnect check
+    await act(async () => {
+      for (const listener of stateListeners) {
+        listener("reconnecting");
+      }
+    });
+    await act(async () => {
+      for (const listener of stateListeners) {
+        listener("connected");
+      }
+    });
+    expect(mock.getBatchStatus).toHaveBeenCalledWith({
+      candidateIds: ["cand-unmount"],
+    });
+
+    // Unmount the component BEFORE GET resolves
+    await act(async () => root.unmount());
+
+    // Now GET resolves with READY
+    await act(async () => {
+      resolveGet?.({
+        items: [
+          { candidateId: "cand-unmount", status: "READY", retryAt: null },
+        ],
+      });
+    });
+
+    // Because card was unmounted, invalidation from old card must NOT be called!
+    expect(mock.invalidateRuSpy).not.toHaveBeenCalled();
+  });
 });
