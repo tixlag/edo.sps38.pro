@@ -88,28 +88,25 @@ export class OwnDocumentHistoryService {
   }
 
   private async erpHistory(code1c: string) {
-    const identity = await this.currentIdentity(code1c);
-    if (
-      !identity ||
-      (identity.code1C === code1c && identity.recipientType === "candidate")
-    )
-      return this.erpCandidateHistory(code1c, identity?.erpUid);
-    if (
-      identity.reviewGroup !== "IG" ||
-      identity.recipientType !== "person" ||
-      !identity.personUid ||
-      identity.code1C !== code1c
-    )
-      throw new NotFoundException();
+    const employee = await this.prisma.lkEmployee.findUnique({
+      where: { code1c },
+      select: { uuid: true, sourcePresent: true },
+    });
+    if (employee && !employee.sourcePresent) throw new NotFoundException();
+    // Keep access for employees whose LK projection has not arrived yet.
+    const identity = employee ? null : await this.erp.identity(code1c);
+    if (identity && identity.code1C !== code1c) throw new NotFoundException();
+    const person = uuid.safeParse(employee?.uuid ?? identity?.personUid);
+    if (!person.success) throw new NotFoundException();
+    const personUid = person.data;
     const result = await this.erp.request(
-      "person-documents-by-code",
+      "employee-document-history",
       previousDocumentsSchema,
-      { code1c, personUid: identity.personUid },
+      { code1c, personUid },
     );
     return {
-      items: result.items,
-      open: (id: string) =>
-        this.erp.personOriginal(code1c, identity.personUid!, id),
+      items: result.items.filter((doc) => !doc.personUid || doc.personUid === personUid),
+      open: (id: string) => this.erp.employeeHistoryOriginal(code1c, personUid, id),
     };
   }
 
@@ -163,23 +160,6 @@ export class OwnDocumentHistoryService {
     const verified = matches.filter((card) => card !== null);
     if (verified.length !== 1 || !verified[0]) throw new NotFoundException();
     return { card: verified[0], personUid: person.data };
-  }
-
-  private async erpCandidateHistory(code1c: string, confirmedUid?: string | null) {
-    const signal = AbortSignal.timeout(12_000);
-    const { card, personUid } = await this.erpCandidateCard(code1c, confirmedUid, signal);
-    const candidate = card.erpUid;
-    const { items } = await this.erp.request(
-      "person-documents",
-      previousDocumentsSchema,
-      { candidate },
-      undefined,
-      signal,
-    );
-    return {
-      items: items.filter((doc) => !doc.personUid || doc.personUid === personUid),
-      open: (id: string) => this.erp.original(candidate, id),
-    };
   }
 
   async list(code1c: string) {
