@@ -3,6 +3,44 @@ import { DocumentReadService } from "../src/documents/document-read.service";
 import { CandidateDocumentsService } from "../src/documents/candidate-documents.service";
 import { DocumentEventsService } from "../src/documents/document-events.service";
 
+it("credits confirmed ERP documents for the verified RU employee without a chat", async () => {
+  const candidate = {
+    id: "erp-card", erpUid: "erp", personUid: null, reviewGroup: "RU",
+    chatUuid: "old-chat", previousDocumentsSyncedAt: null,
+  };
+  const documentFind = vi.fn().mockResolvedValue([]);
+  const prisma = {
+    igEmploymentState: { findUnique: vi.fn().mockResolvedValue(null) },
+    candidate: { findUnique: vi.fn().mockResolvedValue(candidate), findMany: vi.fn().mockResolvedValue([]) },
+    document: { findMany: documentFind },
+    candidateDocumentAbsence: { findMany: vi.fn().mockResolvedValue([]) },
+    candidatePreviousDocument: {
+      findMany: vi.fn().mockResolvedValue([
+        { documentUid: "passport", sourceId: "candidate|1", sourcePersonUid: null, fields: {}, expiresAt: null, originalAvailable: true },
+        { documentUid: "wrong-owner", sourceId: "person|1", sourcePersonUid: "other", fields: {}, expiresAt: null, originalAvailable: true },
+        { documentUid: "expired", sourceId: "candidate|2", sourcePersonUid: null, fields: {}, expiresAt: new Date("2001-01-01"), originalAvailable: true },
+      ]),
+    },
+  };
+  const history = { resolveRuCreditSource: vi.fn().mockResolvedValue({ erpUid: "erp", personUid: "employee" }) };
+  const sync = { syncPreviousDocuments: vi.fn().mockResolvedValue(undefined) };
+  const reads = new DocumentReadService(
+    prisma as never, {} as never, {} as never,
+    undefined, undefined, undefined, history as never, sync as never,
+  );
+  const testUpload = { id: "test-upload", candidateId: "unlinked", documentUid: "passport", status: "IN_REVIEW" };
+  vi.spyOn(reads, "documents")
+    .mockResolvedValueOnce({ items: [testUpload as never] })
+    .mockResolvedValueOnce({ items: [] });
+  expect(await reads.internalDocuments({ code_1c: "worker" })).toMatchObject(
+    { reusedDocumentUids: ["passport"], items: [] },
+  );
+  expect(sync.syncPreviousDocuments).toHaveBeenCalledTimes(1);
+  expect(prisma.candidatePreviousDocument.findMany).toHaveBeenCalledWith(
+    expect.objectContaining({ where: expect.objectContaining({ candidateId: "erp-card", status: "CONFIRMED" }) }),
+  );
+});
+
 describe("approved document absences in statuses", () => {
   it("delivers changed waivers through both status paths and the existing stream", async () => {
     vi.useFakeTimers();
