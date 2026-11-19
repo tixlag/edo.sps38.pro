@@ -68,6 +68,7 @@ function setup() {
         },
       ]),
     },
+    documentVersion: { findMany: vi.fn(async () => []) },
     candidateDocumentAbsence: { findMany: vi.fn(async () => []) },
     documentType: {
       findMany: vi.fn().mockResolvedValue([
@@ -87,6 +88,17 @@ function setup() {
 }
 
 describe("candidate review queue", () => {
+  it("omits the document relation for lightweight pages while retaining progress", async () => {
+    const { reads, prisma } = setup();
+    prisma.candidate.findMany.mockResolvedValue([{ ...owner("c1") }]);
+    const result = await reads.candidateReviewQueue(principal, {
+      includeDocuments: false,
+      status: "ALL",
+    });
+    expect(prisma.candidate.findMany.mock.calls[0][0].include).toBeUndefined();
+    expect(result.items[0].documents).toEqual([]);
+    expect(prisma.document.groupBy).toHaveBeenCalled();
+  });
   it.each(["PENDING", "APPROVED", "REJECTED"])(
     "counts only %s absence decisions in all document views",
     async (status) => {

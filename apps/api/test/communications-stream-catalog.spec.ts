@@ -4,6 +4,7 @@ import { ConfigService } from "@nestjs/config";
 import { NotFoundException } from "@nestjs/common";
 import { CommunicationEventsService } from "../src/communications/communication-events.service";
 import { CandidateCatalogService } from "../src/communications/candidate-catalog.service";
+import { CandidateCatalogProjectionService } from "../src/documents/candidate-catalog-projection.service";
 import type { AuthPrincipal } from "../src/auth/auth-principal";
 
 const principal: AuthPrincipal = {
@@ -83,6 +84,33 @@ describe("candidate scoped SSE grants", () => {
   });
 });
 
+describe("catalog cadence", () => {
+  it("does not run the scheduled events-mode reconciliation inside a week", async () => {
+    const redis = {
+      getStrict: vi.fn(async (key: string) =>
+        key.endsWith(":last-success") ? new Date().toISOString() : null,
+      ),
+    };
+    const erp = { configured: () => true };
+    const service = new CandidateCatalogService(
+      {} as never,
+      redis as never,
+      erp as never,
+      {} as never,
+      {} as never,
+      new ConfigService({
+        CANDIDATE_CATALOG_SYNC_ENABLED: "true",
+        ERP_CHANGE_SYNC_MODE: "events",
+      }),
+    );
+    const sync = vi.spyOn(service, "sync").mockResolvedValue();
+    service.onModuleInit();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sync).not.toHaveBeenCalled();
+    await service.onModuleDestroy();
+  });
+});
+
 function catalogSetup() {
   const candidate = {
     findMany: vi.fn(async () => []),
@@ -102,6 +130,7 @@ function catalogSetup() {
     candidate,
     $queryRaw: vi.fn(),
     lkLocation: {
+      findMany: vi.fn(async () => []),
       findUnique: vi.fn(async () => ({ locationId: 98, deleted: false })),
     },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) =>
@@ -151,6 +180,74 @@ const catalogRow = {
   deleted: false,
 };
 describe("ERP candidate catalog projection", () => {
+  it("retries pending employment independently of catalog pages", async () => {
+    const s = catalogSetup();
+    s.prisma.candidate.findMany.mockResolvedValue([
+      { id: "pending", erpUid },
+    ] as never[]);
+    const updateMany = vi.fn();
+    Object.assign(s.prisma.candidate, { updateMany });
+    const card = vi.fn(async () => ({ erpUid }));
+    const observe = vi.fn(async () => true);
+    const service = new CandidateCatalogService(
+      s.prisma as never,
+      s.redis as never,
+      s.erp as never,
+      s.audit as never,
+      s.access as never,
+      new ConfigService(),
+      s.documentReads as never,
+      { card } as never,
+      { observe } as never,
+    );
+    await service.processPendingEmployment();
+    expect(card).toHaveBeenCalledWith(erpUid);
+    expect(observe).toHaveBeenCalledWith("pending", { erpUid });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "pending",
+        employed: true,
+        employmentObservationPending: true,
+      },
+      data: { employmentObservationPending: false },
+    });
+    expect(s.erp.catalog).not.toHaveBeenCalled();
+  });
+  it("skips unchanged rows while retaining pending employment observations and equal dates", async () => {
+    const s = catalogSetup();
+    const row = {
+      ...catalogRow,
+      employed: true,
+      birthDate: "1990-01-02",
+      citizenship: "ru",
+      sex: null,
+      mentorName: null,
+    };
+    const existing = {
+      ...row,
+      identityKey: `erp-candidate:${erpUid}`,
+      id: "existing",
+      erpDeleted: false,
+      reviewGroup: "RU",
+      locationId: 98,
+      sexKnown: false,
+      birthDate: new Date("1990-01-02T00:00:00Z"),
+      catalogSyncedAt: new Date(),
+      employmentObservationPending: true,
+    };
+    s.prisma.candidate.findMany.mockResolvedValue([existing] as never[]);
+    s.prisma.lkLocation.findMany.mockResolvedValue([
+      { code1c: "PROJECT", locationId: 98, deleted: false },
+    ] as never[]);
+    const projection = new CandidateCatalogProjectionService(
+      s.prisma as never,
+      s.audit as never,
+    );
+    expect(await projection.applyRows([row], "correlation")).toEqual([
+      { erpUid, candidateId: "existing", pendingObservation: true },
+    ]);
+    expect(s.prisma.$transaction).not.toHaveBeenCalled();
+  });
   it("refreshes ERP employment facts in both directions and clears unavailable facts", async () => {
     const s = catalogSetup();
     const existing = {

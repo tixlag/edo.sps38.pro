@@ -434,7 +434,8 @@ export class CandidateDocumentSummaryDto extends DocumentReviewMetadataDto {
   @ApiProperty({
     type: Number,
     nullable: true,
-    description: "Previously accepted version retained while a newer version is reviewed",
+    description:
+      "Previously accepted version retained while a newer version is reviewed",
   })
   acceptedVersion!: number | null;
   @ApiProperty() revision!: number;
@@ -1200,6 +1201,16 @@ export class ReviewDocumentsDto extends DocumentListDto {
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
 }
 export class CandidateReviewQueueQueryDto extends ReviewDocumentsQueryDto {
+  @ApiPropertyOptional({
+    default: true,
+    description: "Include document summaries",
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === "true" ? true : value === "false" ? false : value,
+  )
+  @IsBoolean()
+  includeDocuments?: boolean;
   @ApiPropertyOptional({
     description: "Exact candidate manager id from ERP catalog",
   })

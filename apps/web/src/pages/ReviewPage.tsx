@@ -300,7 +300,7 @@ function CandidateRow({
                 </p>
               ) : (
                 <span className="w-24 text-center text-xs text-[var(--muted-foreground)]">
-                  Этапы неизвестны
+                  {candidate?.citizenship ? "Этапы неизвестны" : "Не указано гражданство"}
                 </span>
               )}
               <button
@@ -542,6 +542,7 @@ export function ReviewPage({
   const queryParams = useMemo(
     () => ({
       reviewGroup,
+      includeDocuments: false,
       status: filters.status,
       currentStatus: filters.currentStatus,
       includeEmployed: reviewGroup === "RU" ? filters.includeEmployed : undefined,

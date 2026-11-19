@@ -69,6 +69,7 @@ import { OwnDocumentHistoryService } from "./own-document-history.service";
 import { OwnDocumentHistoryController } from "./own-document-history.controller";
 import { ErpAdaptationGrantsController } from "./erp-adaptation-grants.controller";
 import { ExpirationModule } from "../expiration/expiration.module";
+import { CandidateCatalogProjectionService } from "./candidate-catalog-projection.service";
 import { LkModule } from "../lk/lk.module";
 
 @Module({
@@ -98,6 +99,7 @@ import { LkModule } from "../lk/lk.module";
     ReviewerDocumentsController,
   ],
   exports: [
+    CandidateCatalogProjectionService,
     CandidatePhotosService,
     DocumentReadService,
     CandidateContextService,
@@ -111,6 +113,7 @@ import { LkModule } from "../lk/lk.module";
     RuEnrichmentNotificationsService,
   ],
   providers: [
+    CandidateCatalogProjectionService,
     DocumentAbsenceService,
     RuEnrichmentNotificationsService,
     CandidatePhotosService,

@@ -4008,6 +4008,10 @@ export type ListCandidateReviewQueueParams = {
    */
   mentorCode1c?: string;
   /**
+   * Include document summaries
+   */
+  includeDocuments?: boolean;
+  /**
    * Exact candidate manager id from ERP catalog
    */
   managerId?: string;
