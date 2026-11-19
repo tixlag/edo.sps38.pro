@@ -31,9 +31,34 @@ const candidateMessages: Record<string, string> = {
   PERSON_LINK_REQUIRED_OR_AMBIGUOUS:
     "ERP не определила физлицо для этой карточки. Выберите нужного человека и подтвердите связь.",
   DISPATCHER_NOT_CONFIGURED:
-    "Диспетчер не назначен. Обратитесь к администратору 1С, затем повторите изменение статуса.",
+    "Диспетчер не назначен. Выберите диспетчера или проверьте настройки объекта в ERP.",
   DISPATCHER_EMAIL_NOT_CONFIGURED:
     "В ERP не указана почта диспетчера. Обратитесь к администратору 1С, затем повторите изменение статуса.",
+  ARRIVAL_PLAN_STALE:
+    "Условия плана изменились в ERP. Проверьте обновлённые данные и повторите сохранение.",
+  RECENT_ARRIVAL_BLOCKS_PLAN:
+    "В ERP уже зарегистрирован недавний заезд. Проверьте историю заездов кандидата.",
+  ARRIVAL_PLAN_REQUIRED: "Заполните план заезда.",
+  ARRIVAL_PROJECT_AND_DATE_REQUIRED: "Укажите объект и плановую дату заезда.",
+  INVALID_ARRIVAL_PROJECT_OR_DATE: "Проверьте объект и плановую дату заезда.",
+  ARRIVAL_PROJECT_OR_DATE_UNAVAILABLE:
+    "Объект или плановая дата заезда недоступны в ERP. Проверьте их и повторите сохранение.",
+  INVALID_ARRIVAL_PLAN: "Проверьте данные плана заезда.",
+  INVALID_ARRIVAL_POSITION: "Выберите доступную должность из справочника ERP.",
+  INVALID_ARRIVAL_EMPLOYMENT_METHOD: "Выберите доступный способ оформления.",
+  INVALID_ARRIVAL_MEASUREMENTS: "Проверьте рост, размер одежды и размер обуви.",
+  INVALID_ARRIVAL_DISPATCHER: "Выберите диспетчера из справочника физлиц ERP.",
+  INVALID_SITE_ARRIVAL_DATE: "Проверьте дату прибытия на объект.",
+  INVALID_ARRIVAL_PAY: "Проверьте вид оплаты и его параметры.",
+  INVALID_ARRIVAL_CLASS: "Выберите доступный класс оплаты.",
+  ARRIVAL_CLASS_PLUS_UNAVAILABLE: "Класс плюс недоступен для этой должности.",
+  INVALID_ARRIVAL_RATE: "Укажите положительную ставку с точностью до сотых.",
+  INVALID_ARRIVAL_AUP_RATE: "Проверьте ставку АУП.",
+  INVALID_ARRIVAL_DIRECTOR_RATE: "Проверьте ставку директора и её верхний предел.",
+  ARRIVAL_AUP_FORBIDDEN: "Выберите доступный вид оплаты. АУП сейчас недоступен.",
+  ARRIVAL_DIRECTOR_FORBIDDEN:
+    "Выберите доступный вид оплаты. Ставка директора сейчас недоступна.",
+  INVALID_COMMENT: "Проверьте комментарий к изменению статуса.",
   OPERATION_RESULT_UNKNOWN:
     "ERP ещё не определила результат. Проверьте результат позже; данные и номер операции сохранены.",
   IDEMPOTENCY_CONFLICT:
@@ -94,7 +119,10 @@ function candidateErrorCode(error: unknown): string {
   ).replace(/^ERP_/, "");
 }
 
-export function candidateError(error: unknown): string {
+export function candidateError(
+  error: unknown,
+  fallback = "ERP не подтвердила операцию. Сначала проверьте результат сохранения.",
+): string {
   const data = (
     error as {
       response?: { data?: { message?: string | string[]; code?: string } };
@@ -107,11 +135,25 @@ export function candidateError(error: unknown): string {
   if (code === "ACTOR_NOT_FOUND_OR_AMBIGUOUS")
     return "Пользователь 1С для вашей учётной записи не найден или не сопоставлен с физическим лицом в ERP. Обратитесь к администратору 1С.";
   return (
-    candidateMessages[code] ??
-    message ??
-    "ERP не подтвердила операцию. Сначала проверьте результат сохранения."
+    candidateMessages[code] ?? message ?? fallback
   );
 }
+
+const definitiveCandidateConflicts = new Set([
+  "CANDIDATE_DUPLICATE_REQUIRES_REVIEW",
+  "EXISTING_PERSON_REQUIRES_EXPLICIT_SELECTION",
+  "CANDIDATE_PERSON_LINK_AMBIGUOUS",
+  "PERSON_IDENTITY_AMBIGUOUS",
+  "CURRENT_CANDIDATE_AMBIGUOUS",
+  "CURRENT_CANDIDATE_CONFIRMATION_REQUIRED",
+  "CURRENT_CANDIDATE_UNAVAILABLE",
+  "CANDIDATE_PERSON_LINK_CONFLICT",
+  "PERSON_LINK_REQUIRED_OR_AMBIGUOUS",
+  "DISPATCHER_NOT_CONFIGURED",
+  "DISPATCHER_EMAIL_NOT_CONFIGURED",
+  "ARRIVAL_PLAN_STALE",
+  "RECENT_ARRIVAL_BLOCKS_PLAN",
+]);
 
 // Only definitive rejections permit a corrected operation with another ID.
 export function isKnownCandidateRejection(cause: unknown): boolean {
@@ -127,10 +169,7 @@ export function isKnownCandidateRejection(cause: unknown): boolean {
   if (code.includes("IDEMPOTENCY_CONFLICT")) return false;
   return (
     [400, 403, 422].includes(response?.status ?? 0) ||
-    (response?.status === 409 &&
-      /^(?:ERP_)?(?:CANDIDATE_DUPLICATE_REQUIRES_REVIEW|EXISTING_PERSON_REQUIRES_EXPLICIT_SELECTION|CANDIDATE_PERSON_LINK_AMBIGUOUS|PERSON_IDENTITY_AMBIGUOUS|CURRENT_CANDIDATE_AMBIGUOUS|CURRENT_CANDIDATE_CONFIRMATION_REQUIRED|CURRENT_CANDIDATE_UNAVAILABLE|CANDIDATE_PERSON_LINK_CONFLICT|PERSON_LINK_REQUIRED_OR_AMBIGUOUS|DISPATCHER_NOT_CONFIGURED|DISPATCHER_EMAIL_NOT_CONFIGURED)$/.test(
-        code,
-      ))
+    (response?.status === 409 && definitiveCandidateConflicts.has(code))
   );
 }
 
@@ -158,12 +197,15 @@ export function useCandidateRequest() {
     setLocked(false);
     setRequestId(crypto.randomUUID());
   };
-  const fail = (cause: unknown) => {
+  const fail = (cause: unknown, onRejected?: (code: string) => void) => {
+    const code = candidateErrorCode(cause);
     setError(candidateError(cause));
-    conflict.current = candidateErrorCode(cause) === "IDEMPOTENCY_CONFLICT";
+    conflict.current = code === "IDEMPOTENCY_CONFLICT";
     setBlocked(conflict.current);
-    if (isKnownCandidateRejection(cause)) unlock();
-    else uncertain.current = true;
+    if (isKnownCandidateRejection(cause)) {
+      unlock();
+      onRejected?.(code);
+    } else uncertain.current = true;
   };
   return {
     requestId,
@@ -174,6 +216,7 @@ export function useCandidateRequest() {
     execute: async (
       send: () => Promise<CandidateWorkspaceDto>,
       confirmed: (profile: CandidateWorkspaceDto) => Promise<void> | void,
+      onRejected?: (code: string) => void,
     ) => {
       if (running.current || conflict.current) return;
       running.current = true;
@@ -206,6 +249,7 @@ export function useCandidateRequest() {
                 : "ERP отклонила операцию. Исправьте данные и повторите сохранение.",
             );
             unlock();
+            onRejected?.(outcome.code?.replace(/^ERP_/, "") ?? "");
             return;
           }
           if (outcome.state !== "NOT_FOUND") {
@@ -218,7 +262,7 @@ export function useCandidateRequest() {
         const profile = await savedOperation.current();
         await confirmed(profile);
       } catch (cause) {
-        fail(cause);
+        fail(cause, onRejected);
       } finally {
         running.current = false;
         setChecking(false);

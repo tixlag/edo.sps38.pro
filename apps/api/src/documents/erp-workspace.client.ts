@@ -21,6 +21,41 @@ const named = z.object({ code: z.string(), name: z.string() });
 const positionNamed = named.extend({
   department: z.object({ id: z.string(), name: z.string() }).nullable().default(null),
 });
+const arrivalDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
+const arrivalReference = z.object({ id: z.string(), name: z.string() });
+export const erpArrivalPlanSchema = z.object({
+  version: z.string().min(1).max(128),
+  project: named.nullable(),
+  position: named.nullable(),
+  plannedArrivalDate: arrivalDate,
+  siteArrivalDate: arrivalDate,
+  employmentMethod: z.string().nullable(),
+  employmentMethods: z.array(arrivalReference),
+  departurePoint: z.string(),
+  height: z.string(),
+  clothingSize: z.string(),
+  shoeSize: z.string(),
+  dispatcher: arrivalReference.extend({ id: uuid }).nullable(),
+  recipients: z.array(z.object({ name: z.string(), roles: z.array(z.string()) })),
+  pay: z.object({
+    kind: z.enum(["class", "aup", "director"]),
+    classId: z.string().optional(),
+    classPlus: z.boolean().optional(),
+    rate: z.number().optional(),
+  }).nullable(),
+  classes: z.array(arrivalReference),
+  allowsClassPlus: z.boolean(),
+  allowsAup: z.boolean(),
+  allowsDirector: z.boolean(),
+  directorRateLimit: z.number().nullable(),
+});
+export const erpArrivalPlanNotificationsSchema = z.object({
+  items: z.array(z.object({
+    name: z.string(),
+    channel: z.enum(["lk", "erp", "email"]),
+    status: z.string(),
+  })).max(12),
+});
 const safeConflictCodes = new Set([
   "CANDIDATE_DUPLICATE_REQUIRES_REVIEW",
   "EXISTING_PERSON_REQUIRES_EXPLICIT_SELECTION",
@@ -34,12 +69,16 @@ const safeConflictCodes = new Set([
   "PERSON_LINK_REQUIRED_OR_AMBIGUOUS",
   "DISPATCHER_NOT_CONFIGURED",
   "DISPATCHER_EMAIL_NOT_CONFIGURED",
+  "ARRIVAL_PLAN_STALE",
+  "RECENT_ARRIVAL_BLOCKS_PLAN",
   "OPERATION_RESULT_UNKNOWN",
   "IDEMPOTENCY_CONFLICT",
 ]);
 const safeForbiddenCodes = new Set([
   "ACTOR_NOT_FOUND_OR_AMBIGUOUS",
   "STATUS_OWNED_BY_DISPATCH_OR_HR",
+  "ARRIVAL_AUP_FORBIDDEN",
+  "ARRIVAL_DIRECTOR_FORBIDDEN",
 ]);
 const safeBadRequestCodes = new Set([
   "REFERENCE_NOT_FOUND",
@@ -92,6 +131,19 @@ const safeBadRequestCodes = new Set([
   "ARRIVAL_PROJECT_AND_DATE_REQUIRED",
   "INVALID_ARRIVAL_PROJECT_OR_DATE",
   "ARRIVAL_PROJECT_OR_DATE_UNAVAILABLE",
+  "ARRIVAL_PLAN_REQUIRED",
+  "INVALID_ARRIVAL_PLAN",
+  "INVALID_ARRIVAL_PAY",
+  "INVALID_ARRIVAL_POSITION",
+  "INVALID_ARRIVAL_EMPLOYMENT_METHOD",
+  "INVALID_ARRIVAL_MEASUREMENTS",
+  "INVALID_ARRIVAL_DISPATCHER",
+  "INVALID_SITE_ARRIVAL_DATE",
+  "INVALID_ARRIVAL_CLASS",
+  "ARRIVAL_CLASS_PLUS_UNAVAILABLE",
+  "INVALID_ARRIVAL_RATE",
+  "INVALID_ARRIVAL_AUP_RATE",
+  "INVALID_ARRIVAL_DIRECTOR_RATE",
   "TARGET_REQUIRED",
   "EMPTY_BODY",
   "MISSING_IDENTITY",

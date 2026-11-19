@@ -1,5 +1,16 @@
 # Candidate workspace: EDO acceptance and release notes
 
+## «План на заезд»
+
+ЭДО читает значения и правила формы из ERP и сохраняет план через существующий переход статуса с `requestId`. Для своей завершённой операции менеджер может проверить состояние уведомлений из карточки кандидата. Подтверждение «Заезд/Выход» и отмена выполняются в ERP.
+
+Проверить на изолированной базе до включения формы в ЭДО:
+
+1. Сохранить одинаковый план из ERP и ЭДО под сопоставленными пользователями. Сравнить поля кандидата, плановую дату и строку истории. Для ставок проверить сотрудника без доступа, сотрудника с доступом и специальное ограничение ставки директора.
+2. При сохранении из штатной формы проверить прежнее письмо, одно новое уведомление ЛК на получателя и отсутствие уведомления при отмене формы. Проверить штатные подтверждение и отмену заезда.
+3. При сохранении из ЭДО проверить регистрацию уведомлений с результатом операции ERP и их отправку после фиксации плана. Повторить запрос после потери ответа. Проверить отдельного ответственного за перевахтовку, совпадение ролей и получателя без кода ЛК.
+4. Проверить состояние регламентного задания `PROFI_ОтправкаОповещенийЛК`, доставку в тестовых ERP и ЛК и отображение результата операции в ЭДО. Выпустить совместимый контракт ERP перед включением новой формы ЭДО.
+
 ## Candidate card update — 1C-122234 (2026-11-12)
 
 The candidate card is a permanent entity. A returning candidate, including one returning years after dismissal, opens the existing ERP candidate and EDO card. ERP UID, EDO ID, chat, document versions and status/employment history remain attached to that card. Opening by ERP UID must work even when the ordinary catalog hides its completed status, and must not change the status. A manager can explicitly choose `Подбор`, which appends a status event. This rule supersedes the older admission-cycle creation descriptions below.

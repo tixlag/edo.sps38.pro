@@ -15,10 +15,13 @@ import { validate } from "class-validator";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { AuditService } from "../src/audit/audit.service";
 import { DocumentAccessService } from "../src/documents/document-access.service";
+import { CandidatePreviousDocumentsSyncService } from "../src/documents/candidate-previous-documents-sync.service";
 import { ErpWorkspaceClient } from "../src/documents/erp-workspace.client";
 import { CandidateWorkspaceService } from "../src/communications/candidate-workspace.service";
+import { CandidateArrivalPlanQueryDto } from "../src/communications/candidate-arrival-plan.dto";
 import {
   CandidateFieldsDto,
+  CandidateStatusRequestDto,
   CreateCandidateDto,
   UpdateCandidateDto,
 } from "../src/communications/candidate-workspace.dto";
@@ -31,6 +34,83 @@ const fields = {
   positionCode: "POS",
   managerId: randomUUID(),
 };
+it("rejects arrival plan fields that cannot be sent to ERP", async () => {
+  const input = plainToInstance(CandidateStatusRequestDto, {
+    requestId: randomUUID(),
+    statusId: "ПланНаЗаезд",
+    projectCode: "PROJECT",
+    plannedArrivalDate: "2026-12-01",
+    arrivalPlan: {
+      version: "fixture",
+      positionCode: "POS",
+      siteArrivalDate: "2026-12-01T08:00:00Z",
+      employmentMethod: "Офис",
+      departurePoint: "",
+      height: "",
+      clothingSize: "",
+      shoeSize: "",
+      dispatcherId: "not-an-erp-uid",
+      pay: { kind: "aup", rate: -1, classId: "Класс1" },
+    },
+  });
+  const errors = await validate(input);
+  const planErrors = errors.find((error) => error.property === "arrivalPlan")?.children;
+  expect(planErrors?.map((error) => error.property)).toEqual(
+    expect.arrayContaining(["siteArrivalDate", "dispatcherId", "pay"]),
+  );
+});
+it("rejects an array in place of the arrival plan object", async () => {
+  const input = plainToInstance(CandidateStatusRequestDto, {
+    requestId: randomUUID(), statusId: "ПланНаЗаезд", arrivalPlan: [],
+  });
+  expect((await validate(input)).some((error) => error.property === "arrivalPlan")).toBe(true);
+});
+describe("arrival plan ERP boundary", () => {
+  const candidate = randomUUID();
+  const requestId = randomUUID();
+  const actor = { code1c: "ACTOR", accessRules: { "20002": [] } } as AuthPrincipal;
+  const makeService = () => {
+    const request = vi.fn().mockResolvedValue({ items: [] });
+    const service = new CandidateWorkspaceService(
+      {} as never,
+      { request } as never,
+      { candidate: vi.fn().mockResolvedValue({ erpUid: candidate, reviewGroup: "RU" }) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { request, service };
+  };
+
+  it("binds plan preview and notification reads to the verified author and ERP candidate", async () => {
+    const { request, service } = makeService();
+    await service.arrivalPlan("local", actor, plainToInstance(
+      CandidateArrivalPlanQueryDto, { projectCode: "PROJECT", positionCode: "POS" },
+    ));
+    await service.arrivalPlanNotifications("local", actor, requestId);
+    expect(request.mock.calls.map(([action, , query]) => ({ action, query }))).toEqual([
+      { action: "arrival-plan", query: { actor: "ACTOR", candidate, projectCode: "PROJECT", positionCode: "POS" } },
+      { action: "arrival-plan-notifications", query: { actor: "ACTOR", candidate, requestId } },
+    ]);
+    await expect(service.arrivalPlanNotifications("local", actor, "bad")).rejects.toThrow("INVALID_REQUEST_ID");
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects the shortened plan before the ERP mutation", async () => {
+    const { request, service } = makeService();
+    request.mockResolvedValueOnce({
+      items: [{ id: "ПланНаЗаезд", editable: true, requiresProject: true, requiresPlannedArrivalDate: true }],
+    });
+    await expect(service.status("local", actor, {
+      statusId: "ПланНаЗаезд",
+      requestId,
+      projectCode: "PROJECT",
+      plannedArrivalDate: "2026-12-01",
+    })).rejects.toThrow("ARRIVAL_PLAN_REQUIRED");
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+});
 it.each(["mentor", "mentorId", "erpUid", "personUid", "chatUuid", "code1c"])(
   "rejects editable API field %s",
   async (key) => {
@@ -213,13 +293,17 @@ describe.skipIf(!db)(
         ERP_PASSWORD: "test",
         JWT_SECRET: "isolated-selection",
       });
+      const erp = new ErpWorkspaceClient(config);
+      const access = new DocumentAccessService(prisma);
+      const audit = new AuditService(prisma);
       service = new CandidateWorkspaceService(
         prisma,
-        new ErpWorkspaceClient(config),
-        new DocumentAccessService(prisma),
-        new AuditService(prisma),
+        erp,
+        access,
+        audit,
         config,
         { list: catalogList } as never,
+        new CandidatePreviousDocumentsSyncService(prisma, erp, access, audit),
       );
     });
     afterEach(() => vi.unstubAllGlobals());
@@ -288,6 +372,36 @@ describe.skipIf(!db)(
         calls.findLast((c) => c.action === "status")?.body,
       ).not.toHaveProperty("comment");
     });
+    it("sends the full plan to ERP under the original operation id", async () => {
+      vi.stubGlobal("fetch", fetcher);
+      const body: CandidateStatusRequestDto = {
+        requestId: randomUUID(),
+        statusId: "ПланНаЗаезд",
+        projectCode: "PROJECT",
+        plannedArrivalDate: "2026-12-01",
+        arrivalPlan: {
+          version: "fixture",
+          positionCode: "POS",
+          siteArrivalDate: null,
+          employmentMethod: "Офис",
+          departurePoint: "Иркутск",
+          height: "",
+          clothingSize: "52",
+          shoeSize: "42",
+          dispatcherId: personUid,
+          pay: { kind: "class", classId: "Класс2" },
+        },
+      };
+      const first = await service.status(id, actor, body);
+      const repeated = await service.status(id, actor, body);
+      expect(repeated.status).toEqual(first.status);
+      expect(replay.get(body.requestId)?.card.status.id).toBe(body.statusId);
+      expect(calls.findLast((call) => call.action === "status")?.body).toEqual({
+        ...body,
+        actor: "VERIFIED-ACTOR",
+        candidate: erpUid,
+      });
+    });
     it("links only explicit server-issued person choices and rejects a forged ERP uid", async () => {
       vi.stubGlobal("fetch", fetcher);
       const search = await service.references("persons", actor, "Synthetic");
@@ -309,25 +423,23 @@ describe.skipIf(!db)(
         calls.findLast((c) => c.action === "link-person")?.body.personUid,
       ).toBe(personUid);
     });
-    it("automatically accepts valid previous ERP originals and persists current-cycle decisions", async () => {
+    it("automatically accepts and serves valid previous ERP originals for the current candidate", async () => {
       vi.stubGlobal("fetch", fetcher);
+      await service.syncPreviousDocumentsInternal(id, actor.uuid);
       const result = await service.previous(id, actor);
       expect(result.items[0].status).toBe("CONFIRMED");
-      const checked = await service.recheck(id, result.items[0].id, actor, {
-        status: "CONFIRMED",
-      });
-      expect(checked.items[0].status).toBe("CONFIRMED");
       const again = await service.previous(id, actor);
-      expect(again.items[0].status).toBe("CONFIRMED");
+      expect(again.items[0]).toMatchObject({ id: result.items[0].id, status: "CONFIRMED" });
       expect(
         (await service.original(id, result.items[0].id, actor)).bytes,
       ).toEqual(Buffer.from([1, 2, 3]));
       expect(
         await prisma.auditLog.count({
           where: {
-            entityId: result.items[0].id,
+            entityId: id,
             actorId: actor.uuid,
-            action: "DOCUMENT_FIELDS_UPDATED",
+            entityType: "CandidatePreviousDocuments",
+            action: "DATA_IMPORTED",
           },
         }),
       ).toBe(1);
