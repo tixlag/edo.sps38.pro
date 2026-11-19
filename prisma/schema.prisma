@@ -504,6 +504,7 @@ model Candidate {
   @@index([personUid])
   @@index([previousDocumentsSyncedAt])
   @@index([profileSyncNextAttemptAt])
+  @@index([managerId, erpDeleted, fullName, id], map: "candidates_manager_queue_idx")
   @@map("candidates")
 }
 

@@ -589,6 +589,36 @@ describe("chat source contract and attachment capabilities", () => {
       b = { ...a, id: "erp:1" };
     expect(mergeMessages([a], [b, a])).toEqual([b, a]);
   });
+  it("preserves optional catalog profile fields, including explicit null", () => {
+    const row = {
+      erpUid: chatUuid,
+      chatUuid: null,
+      fullName: "Candidate",
+      projectCode: null,
+      projectName: null,
+      positionCode: null,
+      positionName: null,
+      deleted: false,
+    };
+    const parsed = erpCatalogSchema.parse({
+      items: [
+        {
+          ...row,
+          birthDate: "1990-02-03",
+          citizenship: "ru",
+          sex: "male",
+          mentorName: null,
+        },
+      ],
+      nextCursor: null,
+    });
+    expect(parsed.items[0]).toMatchObject({
+      birthDate: "1990-02-03",
+      citizenship: "ru",
+      sex: "male",
+      mentorName: null,
+    });
+  });
   it("requires explicit end-of-pagination and permits candidates without a chat or position", () => {
     expect(erpCatalogSchema.safeParse({ items: [] }).success).toBe(false);
     expect(erpHistorySchema.safeParse({ items: [] }).success).toBe(false);

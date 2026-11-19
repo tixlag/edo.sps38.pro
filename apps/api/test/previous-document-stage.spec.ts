@@ -56,6 +56,7 @@ function setup(group: "RU" | "IG", expired = false, currentStatus?: string) {
       ]
     : [];
   const prisma = {
+    documentVersion: { findMany: vi.fn(async () => []) },
     candidateDocumentAbsence: { findMany: vi.fn(async () => []) },
     document: {
       findMany: vi.fn().mockResolvedValue(current),

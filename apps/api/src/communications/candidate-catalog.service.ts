@@ -4,7 +4,6 @@ import { candidateNamePage } from "../documents/candidate-name-page";
 import { DocumentReadService } from "../documents/document-read.service";
 import { reviewGroupWhere } from "../documents/review-group";
 import {
-  ConflictException,
   Injectable,
   Optional,
   Logger,
@@ -17,10 +16,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.module";
 import { AuditService } from "../audit/audit.service";
 import { DocumentAccessService } from "../documents/document-access.service";
-import {
-  candidateIdentityTransaction,
-  resolveCandidateIdentity,
-} from "../documents/candidate-identity";
+import { CandidateCatalogProjectionService } from "../documents/candidate-catalog-projection.service";
 import {
   buildDefaultExcludedRuStatusWhere,
   buildExcludeEmployedWhere,
@@ -37,6 +33,8 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CandidateCatalogService.name);
   private timer?: ReturnType<typeof setInterval>;
   private running?: Promise<void>;
+  private observationsRunning?: Promise<void>;
+  private observationsCursor?: string;
   private stopped = false;
   constructor(
     private readonly prisma: PrismaService,
@@ -47,7 +45,9 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     @Optional() private readonly documentReads?: DocumentReadService,
     @Optional() private readonly workspaceErp?: ErpWorkspaceClient,
-    @Optional() private readonly employmentNotifications?: EmploymentNotificationService,
+    @Optional()
+    private readonly employmentNotifications?: EmploymentNotificationService,
+    @Optional() private readonly projection?: CandidateCatalogProjectionService,
   ) {}
   onModuleInit() {
     if (
@@ -56,7 +56,31 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
     )
       return;
     const run = () => {
-      void this.sync().catch(() =>
+      void this.processPendingEmployment().catch(() =>
+        this.logger.warn(
+          "Pending employment notifications could not be processed",
+        ),
+      );
+      void (async () => {
+        const mode =
+          this.config.get<string>("ERP_CHANGE_SYNC_MODE") ?? "legacy";
+        if (!["legacy", "verify", "events"].includes(mode))
+          throw new Error("INVALID_ERP_CHANGE_SYNC_MODE");
+        if (mode === "events") {
+          const [last, checkpoint] = await Promise.all([
+            this.redis.getStrict("edo:candidate-catalog:last-success"),
+            this.redis.getStrict("edo:candidate-catalog:checkpoint"),
+          ]);
+          const lastAt = last ? Date.parse(last) : NaN;
+          if (
+            !checkpoint &&
+            Number.isFinite(lastAt) &&
+            Date.now() - lastAt < 7 * 24 * 60 * 60 * 1000
+          )
+            return;
+        }
+        await this.sync();
+      })().catch(() =>
         this.logger.warn(
           "Candidate catalog sync failed; cached catalog retained",
         ),
@@ -70,6 +94,7 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
     this.stopped = true;
     clearInterval(this.timer);
     await this.running;
+    await this.observationsRunning;
   }
   sync(): Promise<void> {
     if (this.running) return this.running;
@@ -107,100 +132,19 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
         const result = await this.erp.catalog(cursor);
         // No writes after losing coordination. Each transaction is bounded; lease
         // renewal is required before each page and each candidate write.
-        for (const row of result.items) {
-          if (!(await this.redis.compareAndExpire(lock, owner, 60000)))
-            throw new Error("CATALOG_LOCK_LOST");
-          try {
-            const pendingObservation = await candidateIdentityTransaction(this.prisma, async (tx) => {
-              const existing = await resolveCandidateIdentity(tx, {
-                erpUid: row.erpUid,
-                reviewGroup: "RU",
-                chatUuid: row.chatUuid,
-                identityKey: row.chatUuid
-                  ? `chat:${row.chatUuid}`
-                  : `erp-candidate:${row.erpUid}`,
-              });
-              const location = row.projectCode
-                ? await tx.lkLocation.findUnique({
-                    where: { code1c: row.projectCode },
-                  })
-                : null;
-              const data = {
-                erpUid: row.erpUid,
-                erpDeleted: row.deleted,
-                employed: row.employed ?? null,
-                employmentObservationPending: row.employed === true
-                  ? existing.employed !== true || existing.employmentObservationPending
-                  : row.employed === false ? false : existing.employmentObservationPending,
-                ...(row.statusId !== undefined
-                  ? { statusId: row.statusId }
-                  : {}),
-                ...(row.statusName !== undefined
-                  ? { statusName: row.statusName }
-                  : {}),
-                ...(row.managerId !== undefined
-                  ? { managerId: row.managerId }
-                  : {}),
-                ...(row.managerName !== undefined
-                  ? { managerName: row.managerName }
-                  : {}),
-                reviewGroup: "RU" as const,
-                chatUuid: row.chatUuid ?? existing?.chatUuid ?? null,
-                fullName: row.fullName || null,
-                projectCode: row.projectCode,
-                projectName: row.projectName,
-                positionCode: row.positionCode,
-                positionName: row.positionName,
-                locationId:
-                  location?.deleted === false ? location.locationId : null,
-                catalogSyncedAt: new Date(),
-              };
-              const changed =
-                !existing.catalogSyncedAt ||
-                Object.entries(data).some(
-                  ([field, value]) =>
-                    field !== "catalogSyncedAt" &&
-                    existing[field as keyof typeof existing] !== value,
-                );
-              const candidate = await tx.candidate.update({
-                where: { id: existing.id },
-                data,
-              });
-              if (changed)
-                await this.audit.logInTransaction(tx, {
-                  action: "DATA_IMPORTED",
-                  entityType: "CandidateCatalog",
-                  entityId: candidate.id,
-                  correlationId: owner,
-                  after: {
-                    erpUid: row.erpUid,
-                    deleted: row.deleted,
-                    employed: row.employed ?? null,
-                  },
-                });
-              return data.employmentObservationPending && row.employed === true
-                ? candidate.id : null;
-            });
-            if (pendingObservation && this.workspaceErp && this.employmentNotifications) {
-              try {
-                const card = await this.workspaceErp.card(row.erpUid);
-                if (card.erpUid === row.erpUid &&
-                  await this.employmentNotifications.observe(pendingObservation, card))
-                  await this.prisma.candidate.updateMany({
-                    where: { id: pendingObservation, employed: true, employmentObservationPending: true },
-                    data: { employmentObservationPending: false },
-                  });
-              } catch {
-                this.logger.warn(`Employment notification could not be queued for ${pendingObservation}`);
-              }
-            }
-          } catch (error) {
-            if (!(error instanceof ConflictException)) throw error;
+        await (
+          this.projection ??
+          new CandidateCatalogProjectionService(this.prisma, this.audit)
+        ).applyRows(result.items, owner, {
+          beforeRow: async () => {
+            if (!(await this.redis.compareAndExpire(lock, owner, 60000)))
+              throw new Error("CATALOG_LOCK_LOST");
+          },
+          onConflict: () =>
             this.logger.warn(
               "Candidate identity conflict; projection retained for manual reconciliation",
-            );
-          }
-        }
+            ),
+        });
         if (result.nextCursor === null) {
           await checkpointAt("");
           await this.redis.set(
@@ -218,6 +162,55 @@ export class CandidateCatalogService implements OnModuleInit, OnModuleDestroy {
       throw new Error("CATALOG_PAGE_LIMIT");
     } finally {
       await this.redis.compareAndDelStrict(lock, owner);
+    }
+  }
+  processPendingEmployment(): Promise<void> {
+    if (this.observationsRunning) return this.observationsRunning;
+    this.observationsRunning = this.processPendingEmploymentBatch().finally(
+      () => {
+        this.observationsRunning = undefined;
+      },
+    );
+    return this.observationsRunning;
+  }
+  private async processPendingEmploymentBatch(): Promise<void> {
+    if (!this.workspaceErp || !this.employmentNotifications) return;
+    const rows = await this.prisma.candidate.findMany({
+      where: {
+        employed: true,
+        employmentObservationPending: true,
+        erpUid: { not: null },
+        ...(this.observationsCursor
+          ? { id: { gt: this.observationsCursor } }
+          : {}),
+      },
+      select: { id: true, erpUid: true },
+      orderBy: { id: "asc" },
+      take: 100,
+    });
+    this.observationsCursor =
+      rows.length === 100 ? rows[rows.length - 1].id : undefined;
+    for (const row of rows) {
+      if (!row.erpUid || this.stopped) continue;
+      try {
+        const card = await this.workspaceErp.card(row.erpUid);
+        if (
+          card.erpUid === row.erpUid &&
+          (await this.employmentNotifications.observe(row.id, card))
+        )
+          await this.prisma.candidate.updateMany({
+            where: {
+              id: row.id,
+              employed: true,
+              employmentObservationPending: true,
+            },
+            data: { employmentObservationPending: false },
+          });
+      } catch {
+        this.logger.warn(
+          `Employment notification could not be queued for ${row.id}`,
+        );
+      }
     }
   }
   async managers(principal: AuthPrincipal) {

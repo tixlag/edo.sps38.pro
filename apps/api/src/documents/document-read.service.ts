@@ -1602,6 +1602,7 @@ export class DocumentReadService {
       reviewGroup = "RU",
       createdFrom,
       createdTo,
+      includeDocuments = true,
       ...profile
     } = query;
     const from = createdFrom
@@ -1661,13 +1662,17 @@ export class DocumentReadService {
       (args) =>
         this.prisma.candidate.findMany({
           ...args,
-          include: {
-            documents: {
-              where: documentsWhere,
-              include: documentSummaryInclude,
-              orderBy: { id: "asc" },
-            },
-          },
+          ...(includeDocuments
+            ? {
+                include: {
+                  documents: {
+                    where: documentsWhere,
+                    include: documentSummaryInclude,
+                    orderBy: { id: "asc" as const },
+                  },
+                },
+              }
+            : {}),
         }),
       {
         AND: [
@@ -1683,9 +1688,11 @@ export class DocumentReadService {
     );
     const items = result.items.map((row) => ({
       candidate: toCandidateProfile(row)!,
-      documents: row.documents.map((document) =>
-        this.documentSummary(document),
-      ),
+      documents: (
+        ("documents" in row ? row.documents : []) as Prisma.DocumentGetPayload<{
+          include: typeof documentSummaryInclude;
+        }>[]
+      ).map((document) => this.documentSummary(document)),
     }));
     await this.enrichReviewCandidates(
       principal,
@@ -1800,14 +1807,7 @@ export class DocumentReadService {
           candidateId: true,
           documentTypeId: true,
           currentVersion: true,
-          versions: {
-            select: {
-              version: true,
-              delivery: { select: { status: true } },
-              ocrSource: true,
-              ocrRaw: true,
-            },
-          },
+          id: true,
         },
       }),
       this.prisma.candidateDocumentAbsence.findMany({
@@ -1824,11 +1824,31 @@ export class DocumentReadService {
         },
       }),
     ]);
+    // Reserved versions can be newer than currentVersion, so query each actual
+    // current version by its compound identity instead of taking the newest.
+    const currentVersions = deliveryDocuments.length
+      ? await this.prisma.documentVersion.findMany({
+          where: {
+            OR: deliveryDocuments.map((doc) => ({
+              documentId: doc.id,
+              version: doc.currentVersion,
+            })),
+          },
+          select: {
+            documentId: true,
+            version: true,
+            delivery: { select: { status: true } },
+            ocrSource: true,
+            ocrRaw: true,
+          },
+        })
+      : [];
+    const currentByDocument = new Map(
+      currentVersions.map((version) => [version.documentId, version]),
+    );
     const deliveryProblems = new Map<string, Set<string>>();
     for (const doc of deliveryDocuments) {
-      const current = doc.versions.find(
-        (v) => v.version === doc.currentVersion,
-      );
+      const current = currentByDocument.get(doc.id);
       const delivery = current?.delivery;
       if (isHistoricallyDelivered(current)) continue;
       if (
@@ -1862,12 +1882,25 @@ export class DocumentReadService {
           },
         })
       : [];
+    const byCandidate = <T extends { candidateId: string | null }>(
+      rows: T[],
+    ) => {
+      const map = new Map<string, T[]>();
+      for (const row of rows) {
+        if (!row.candidateId) continue;
+        const values = map.get(row.candidateId) ?? [];
+        values.push(row);
+        map.set(row.candidateId, values);
+      }
+      return map;
+    };
+    const historyByCandidate = byCandidate(historical);
+    const absencesByCandidate = byCandidate(absences);
     const authoritativeErpTypes = new Map<string, Set<string>>();
     for (const profile of profiles.filter((p) => p.reviewGroup === "RU")) {
       const uids = usablePreviousUids(
-        historical.filter(
-          (doc) =>
-            doc.candidateId === profile.id && !doc.sourceId?.startsWith("edo:"),
+        (historyByCandidate.get(profile.id) ?? []).filter(
+          (doc) => !doc.sourceId?.startsWith("edo:"),
         ),
         false,
       );
@@ -1885,6 +1918,10 @@ export class DocumentReadService {
     const effectiveGrouped = grouped.filter(
       (row) =>
         !authoritativeErpTypes.get(row.candidateId!)?.has(row.documentTypeId!),
+    );
+    const groupedByCandidate = byCandidate(effectiveGrouped);
+    const syncedCatalog = catalog.filter(
+      (type) => type.catalogSyncedAt !== null,
     );
     const approved = new Map<string, Set<string>>();
     const profileById = new Map(
@@ -1931,37 +1968,30 @@ export class DocumentReadService {
     }
     for (const profile of profiles) {
       const previousUids = usablePreviousUids(
-        historical.filter((doc) => doc.candidateId === profile.id),
+        historyByCandidate.get(profile.id) ?? [],
         profile.reviewGroup === "IG",
       );
       const reusedTypes = catalog.filter(
         (type) =>
           type.erpUid &&
           previousUids.includes(type.erpUid.toLowerCase()) &&
-          !effectiveGrouped.some(
-            (row) =>
-              row.candidateId === profile.id &&
-              row.documentTypeId === type.id &&
-              row.status !== "DRAFT",
+          !(groupedByCandidate.get(profile.id) ?? []).some(
+            (row) => row.documentTypeId === type.id && row.status !== "DRAFT",
           ),
       );
       const hasProfile = !!profile.citizenship;
       const positionCode = profile.positionCode ?? "";
       const citizenship = (profile.citizenship ?? "").toLowerCase();
       profile.stageProgress =
-        hasProfile && catalog.some((type) => type.catalogSyncedAt !== null)
+        hasProfile && syncedCatalog.length > 0
           ? reviewStageProgress(
-              catalog.filter((type) => type.catalogSyncedAt !== null),
+              syncedCatalog,
               [
-                ...effectiveGrouped.filter(
-                  (row) => row.candidateId === profile.id,
-                ),
-                ...absences
-                  .filter((a) => a.candidateId === profile.id)
-                  .map((a) => ({
-                    documentTypeId: a.documentTypeId,
-                    status: "APPROVED",
-                  })),
+                ...(groupedByCandidate.get(profile.id) ?? []),
+                ...(absencesByCandidate.get(profile.id) ?? []).map((a) => ({
+                  documentTypeId: a.documentTypeId,
+                  status: "APPROVED",
+                })),
               ],
               {
                 positionCode,
@@ -1975,9 +2005,7 @@ export class DocumentReadService {
             )
           : null;
       const creditedIds = approved.get(profile.id) ?? new Set<string>();
-      for (const absence of absences.filter(
-        (a) => a.candidateId === profile.id,
-      )) {
+      for (const absence of absencesByCandidate.get(profile.id) ?? []) {
         const type = typeById.get(absence.documentTypeId);
         if (
           type &&

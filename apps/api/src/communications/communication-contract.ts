@@ -64,7 +64,22 @@ export const erpCandidateSchema = z.object({
   statusName: z.string().max(256).nullish(),
   managerId: z.string().max(64).nullish(),
   managerName: z.string().max(512).nullish(),
+  birthDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine((value) => {
+      const date = new Date(`${value}T00:00:00.000Z`);
+      return (
+        !Number.isNaN(date.getTime()) &&
+        date.toISOString().slice(0, 10) === value
+      );
+    })
+    .nullish(),
+  citizenship: z.string().max(2).nullish(),
+  sex: z.string().max(16).nullish(),
+  mentorName: z.string().max(512).nullish(),
 });
+export type ErpCandidate = z.infer<typeof erpCandidateSchema>;
 export const erpCatalogSchema = z.object({
   items: z.array(erpCandidateSchema).max(100),
   nextCursor: z.string().max(128).nullable(),

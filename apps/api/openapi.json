@@ -8016,6 +8016,16 @@
             }
           },
           {
+            "name": "includeDocuments",
+            "required": false,
+            "in": "query",
+            "description": "Include document summaries",
+            "schema": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          {
             "name": "managerId",
             "required": false,
             "in": "query",

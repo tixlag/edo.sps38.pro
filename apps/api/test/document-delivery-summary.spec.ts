@@ -40,13 +40,15 @@ describe("document delivery summaries", () => {
             currentVersion: 1,
             acceptedVersion: null,
             documentType: { code: "SNILS", title: "СНИЛС", erpUid: "snils" },
-            versions: [{
-              version: 1,
-              status: "APPROVED",
-              ocrSource: "PREVIOUS_LINK",
-              ocrRaw: { source: "ERP" },
-              delivery: null,
-            }],
+            versions: [
+              {
+                version: 1,
+                status: "APPROVED",
+                ocrSource: "PREVIOUS_LINK",
+                ocrRaw: { source: "ERP" },
+                delivery: null,
+              },
+            ],
           },
         ]),
       },
@@ -64,7 +66,12 @@ describe("document delivery summaries", () => {
       deliveryErrorReason: "1С отклонила файл",
       deliveredHistorically: false,
     });
-    expect(items[1]).toMatchObject({ acceptedVersion: null, deliveryStatus: null, deliveryErrorReason: null, deliveredHistorically: true });
+    expect(items[1]).toMatchObject({
+      acceptedVersion: null,
+      deliveryStatus: null,
+      deliveryErrorReason: null,
+      deliveredHistorically: true,
+    });
     expect(JSON.stringify(items[0])).not.toContain("PRIVATE_ERROR");
     expect(JSON.stringify(items[0])).not.toContain("ERP_HTTP_422");
   });
@@ -85,6 +92,7 @@ describe("document delivery summaries", () => {
       status: string | null,
       older = "REQUIRES_MANUAL",
     ) => ({
+      id,
       candidateId: "c",
       documentTypeId: id,
       currentVersion: 2,
@@ -94,15 +102,25 @@ describe("document delivery summaries", () => {
       ],
     });
     const previousLinked = (id: string, raw: Record<string, unknown>) => ({
+      id,
       candidateId: "c",
       documentTypeId: id,
       currentVersion: 1,
-      versions: [{ version: 1, delivery: null, ocrSource: "PREVIOUS_LINK", ocrRaw: raw }],
+      versions: [
+        { version: 1, delivery: null, ocrSource: "PREVIOUS_LINK", ocrRaw: raw },
+      ],
     });
     const prisma = {
       document: {
         groupBy: vi.fn().mockResolvedValue(
-          ["license", "tachograph", "inn", "other", "previous", "unconfirmed"].map((documentTypeId) => ({
+          [
+            "license",
+            "tachograph",
+            "inn",
+            "other",
+            "previous",
+            "unconfirmed",
+          ].map((documentTypeId) => ({
             candidateId: "c",
             documentTypeId,
             status: "APPROVED",
@@ -118,6 +136,25 @@ describe("document delivery summaries", () => {
             deliveryDoc("other", "PENDING"),
             previousLinked("previous", { source: "ERP" }),
             previousLinked("unconfirmed", { source: "EDO" }),
+          ]),
+      },
+      documentVersion: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            ...[
+              deliveryDoc("license", "SENT"),
+              deliveryDoc("tachograph", "REQUIRES_MANUAL"),
+              deliveryDoc("inn", null),
+              deliveryDoc("other", "PENDING"),
+              previousLinked("previous", { source: "ERP" }),
+              previousLinked("unconfirmed", { source: "EDO" }),
+            ].map((doc) => ({
+              documentId: doc.id,
+              ...doc.versions.find(
+                (version) => version.version === doc.currentVersion,
+              ),
+            })),
           ]),
       },
       documentType: {
