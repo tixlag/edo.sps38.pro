@@ -361,6 +361,9 @@ describe("candidate review queue", () => {
     expect(
       prisma.candidate.findMany.mock.calls[0][0].where.AND,
     ).toContainEqual({ id: { in: candidateIds } });
+    expect(
+      prisma.candidate.findMany.mock.calls[0][0].where.AND,
+    ).toContainEqual({ reviewArchivedAt: null });
 
     prisma.candidate.findMany.mockClear();
     await reads.candidateReviewQueue(principal, {
@@ -516,7 +519,7 @@ describe("candidate review queue", () => {
     );
     expect(nested).toEqual({
       ...access.documentWhere(scoped),
-      candidate: reviewGroupWhere("RU"),
+      candidate: { ...reviewGroupWhere("RU"), reviewArchivedAt: null },
       currentVersion: { gt: 0 },
       versions: { some: { status: "RETURNED" } },
       documentType: { code: "PASSPORT" },

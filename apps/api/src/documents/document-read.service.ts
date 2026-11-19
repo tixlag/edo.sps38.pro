@@ -1227,7 +1227,7 @@ export class DocumentReadService {
             AND: [
               this.access.candidateWhere(principal),
               reviewGroupWhere("RU"),
-              { erpDeleted: false },
+              { erpDeleted: false, reviewArchivedAt: null },
             ],
           },
       select: {
@@ -1308,6 +1308,7 @@ export class DocumentReadService {
           },
         }),
       {
+        reviewArchivedAt: null,
         ...(ids
           ? group === "IG"
             ? {
@@ -1362,7 +1363,7 @@ export class DocumentReadService {
         ...this.access.documentWhere(principal),
         currentVersion: { gt: 0 },
         candidateId: { not: null },
-        candidate: reviewGroupWhere(reviewGroup),
+        candidate: { ...reviewGroupWhere(reviewGroup), reviewArchivedAt: null },
       },
       select: { candidateId: true },
       distinct: ["candidateId"],
@@ -1647,7 +1648,7 @@ export class DocumentReadService {
     requireReviewGroup(principal, reviewGroup);
     return {
       ...this.access.documentWhere(principal),
-      candidate: reviewGroupWhere(reviewGroup),
+      candidate: { ...reviewGroupWhere(reviewGroup), reviewArchivedAt: null },
       currentVersion: { gt: 0 },
       ...(query.documentTypeCodes !== undefined
         ? query.documentTypeCodes.length
@@ -1766,6 +1767,7 @@ export class DocumentReadService {
         AND: [
           this.access.candidateWhere(principal),
           reviewGroupWhere(reviewGroup),
+          { reviewArchivedAt: null },
           buildCandidateProfileWhere({ ...profile, reviewGroup }) ?? {},
           ...(createdAt ? [{ createdAt }] : []),
           candidateEligibility,
@@ -1816,6 +1818,7 @@ export class DocumentReadService {
       ...(candidate
         ? {
             candidate: {
+              reviewArchivedAt: null,
               AND: [
                 reviewGroupWhere(reviewGroup),
                 ...(Array.isArray(candidate.AND) ? candidate.AND : [candidate]),

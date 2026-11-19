@@ -243,8 +243,11 @@ export class ManualDocumentService {
         });
         if (candidateId && currentVersionChanged.count)
           await tx.candidate.updateMany({
-            where: { id: candidateId, igCompletionVerified: true },
-            data: { igCompletionVerified: false },
+            where: {
+              id: candidateId,
+              OR: [{ igCompletionVerified: true }, { reviewArchivedAt: { not: null } }],
+            },
+            data: { igCompletionVerified: false, reviewArchivedAt: null },
           });
         await this.audit.logInTransaction(tx, {
           actorId: reviewer?.principal.uuid ?? "lk-service",
