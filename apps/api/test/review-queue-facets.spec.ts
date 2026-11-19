@@ -96,7 +96,7 @@ describe("reviewDocumentFacets scope", () => {
     expect(documentFind).toHaveBeenCalledWith({
       where: {
         ...access.documentWhere(scoped20007),
-        candidate: reviewGroupWhere("RU"),
+        candidate: { ...reviewGroupWhere("RU"), reviewArchivedAt: null },
         currentVersion: { gt: 0 },
         candidateId: { not: null },
       },
@@ -239,7 +239,7 @@ describe("reviewCandidates", () => {
     expect(documentFind).toHaveBeenCalledWith({
       where: {
         ...access.documentWhere(scoped20007),
-        candidate: reviewGroupWhere("RU"),
+        candidate: { ...reviewGroupWhere("RU"), reviewArchivedAt: null },
         currentVersion: { gt: 0 },
         candidateId: { not: null },
       },
@@ -249,6 +249,7 @@ describe("reviewCandidates", () => {
     expect(candidateFind).toHaveBeenCalledWith({
       where: {
         id: { in: ["c1", "c2"] },
+        reviewArchivedAt: null,
         fullName: { contains: "иван" },
         AND: [{ fullName: { not: null }, NOT: { fullName: "" } }],
       },

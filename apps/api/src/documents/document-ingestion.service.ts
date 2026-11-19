@@ -145,8 +145,11 @@ export class DocumentIngestionService {
         });
         if (currentVersionChanged.count)
           await tx.candidate.updateMany({
-            where: { id: candidateId, igCompletionVerified: true },
-            data: { igCompletionVerified: false },
+            where: {
+              id: candidateId,
+              OR: [{ igCompletionVerified: true }, { reviewArchivedAt: { not: null } }],
+            },
+            data: { igCompletionVerified: false, reviewArchivedAt: null },
           });
         await tx.ocrOutbox.create({ data: { jobId: reserved.job.id } });
         await this.audit.logInTransaction(tx, {
