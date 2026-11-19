@@ -781,8 +781,8 @@ export class ErpWorkspaceClient {
       signal,
     );
   }
-  card(erpUid: string) {
-    return this.request("card", erpCardSchema, { candidate: erpUid });
+  card(erpUid: string, signal?: AbortSignal) {
+    return this.request("card", erpCardSchema, { candidate: erpUid }, undefined, signal);
   }
   async original(erpUid: string, id: string) {
     const response = await this.response("person-document-original", {

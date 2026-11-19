@@ -1,12 +1,15 @@
 import { reviewGroupWhere } from "./review-group";
 import { createHash } from "node:crypto";
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import {
   ErpWorkspaceClient,
   previousDocumentsSchema,
+  uuid,
 } from "./erp-workspace.client";
+
+const MAX_HISTORY_CARD_LOOKUPS = 8;
 
 export function safeHistoricalMime(value: string | null | undefined) {
   const normalized = value?.split(";")[0].trim().toLowerCase();
@@ -50,7 +53,19 @@ export class OwnDocumentHistoryService {
   }
 
   private async erpHistory(code1c: string) {
-    const identity = await this.erp.identity(code1c);
+    const identity = await this.erp.identity(code1c).catch((error) => {
+      if (
+        error instanceof ConflictException &&
+        error.message === "CURRENT_CANDIDATE_CONFIRMATION_REQUIRED"
+      )
+        return null;
+      throw error;
+    });
+    if (
+      !identity ||
+      (identity.code1C === code1c && identity.recipientType === "candidate")
+    )
+      return this.erpCandidateHistory(code1c, identity?.erpUid);
     if (
       identity.reviewGroup !== "IG" ||
       identity.recipientType !== "person" ||
@@ -63,7 +78,71 @@ export class OwnDocumentHistoryService {
       previousDocumentsSchema,
       { code1c, personUid: identity.personUid },
     );
-    return { identity, items: result.items };
+    return {
+      items: result.items,
+      open: (id: string) =>
+        this.erp.personOriginal(code1c, identity.personUid!, id),
+    };
+  }
+
+  private async erpCandidateHistory(code1c: string, confirmedUid?: string | null) {
+    const employee = await this.prisma.lkEmployee.findUnique({
+      where: { code1c },
+      select: { uuid: true, fullName: true, birthday: true, sourcePresent: true },
+    });
+    if (!employee?.sourcePresent) throw new NotFoundException();
+    const person = uuid.safeParse(employee.uuid);
+    if (!person.success) throw new NotFoundException();
+    // Names and dates only narrow the catalog lookup. ERP confirms ownership.
+    const birthDate = employee.birthday?.toISOString().slice(0, 10);
+    const hints = confirmedUid
+      ? [{ erpUid: confirmedUid }]
+      : await this.prisma.candidate.findMany({
+          where: {
+            erpDeleted: false,
+            erpUid: { not: null },
+            reviewGroup: "RU",
+            OR: [
+              { personUid: person.data },
+              { code1c },
+              ...(birthDate
+                ? [{ fullName: employee.fullName, birthDate: new Date(birthDate) }]
+                : []),
+            ],
+          },
+          select: { erpUid: true },
+          take: MAX_HISTORY_CARD_LOOKUPS + 1,
+        });
+    if (hints.length > MAX_HISTORY_CARD_LOOKUPS) throw new NotFoundException();
+    const signal = AbortSignal.timeout(12_000);
+    const matches = await Promise.all(
+      hints.map(async ({ erpUid }) => {
+        if (!erpUid) return null;
+        const card = await this.erp.card(erpUid, signal).catch((error) => {
+          if (error instanceof NotFoundException) return null;
+          throw error;
+        });
+        return card?.erpUid === erpUid.toLowerCase() &&
+          card.code1C === code1c &&
+          card.personUid === person.data
+          ? card.erpUid
+          : null;
+      }),
+    );
+    const verified = matches.filter((id): id is string => id !== null);
+    if (verified.length !== 1) throw new NotFoundException();
+    const candidate = verified[0];
+    const { items } = await this.erp.request(
+      "person-documents",
+      previousDocumentsSchema,
+      { candidate },
+      undefined,
+      signal,
+    );
+    return {
+      items: items.filter((doc) => !doc.personUid || doc.personUid === person.data),
+      open: (id: string) => this.erp.original(candidate, id),
+    };
   }
 
   async list(code1c: string) {
@@ -195,11 +274,7 @@ export class OwnDocumentHistoryService {
       )
     )
       throw new NotFoundException();
-    const file = await this.erp.personOriginal(
-      code1c,
-      history.identity.personUid!,
-      documentId,
-    );
+    const file = await history.open(documentId);
     return { ...file, mimeType: safeHistoricalMime(file.mimeType) };
   }
 }
