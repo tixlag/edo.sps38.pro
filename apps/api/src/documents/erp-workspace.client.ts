@@ -28,6 +28,7 @@ const safeConflictCodes = new Set([
   "PERSON_IDENTITY_AMBIGUOUS",
   "CURRENT_CANDIDATE_AMBIGUOUS",
   "CURRENT_CANDIDATE_CONFIRMATION_REQUIRED",
+  "EMPLOYEE_DOCUMENT_HISTORY_TOO_LARGE",
   "CURRENT_CANDIDATE_UNAVAILABLE",
   "CANDIDATE_PERSON_LINK_CONFLICT",
   "PERSON_LINK_REQUIRED_OR_AMBIGUOUS",
@@ -46,6 +47,7 @@ const safeBadRequestCodes = new Set([
   "CONTACT_KIND_NOT_FOUND",
   "CONTACT_KIND_TYPE_MISMATCH",
   "INVALID_CODE",
+  "INVALID_PERSON_IDENTITY",
   "INVALID_CONTACT_COMMENT",
   "INVALID_CONTACT_PRESENTATION",
   "INVALID_CONTACT_ROW",
@@ -781,8 +783,8 @@ export class ErpWorkspaceClient {
       signal,
     );
   }
-  card(erpUid: string, signal?: AbortSignal) {
-    return this.request("card", erpCardSchema, { candidate: erpUid }, undefined, signal);
+  card(erpUid: string) {
+    return this.request("card", erpCardSchema, { candidate: erpUid });
   }
   async original(erpUid: string, id: string) {
     const response = await this.response("person-document-original", {
@@ -902,6 +904,18 @@ export class ErpWorkspaceClient {
       await reader.cancel().catch(() => undefined);
     }
   }
+  async employeeHistoryOriginal(code1c: string, personUid: string, id: string) {
+    const response = await this.response("employee-document-history-original", {
+      code1c,
+      personUid,
+      id,
+    });
+    return {
+      bytes: await this.readBounded(response, 100 * 1024 * 1024),
+      mimeType: response.headers.get("content-type") ?? "application/octet-stream",
+    };
+  }
+
   async personOriginal(
     code1c: string,
     personUid: string,

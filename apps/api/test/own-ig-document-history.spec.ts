@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { ConflictException } from "@nestjs/common";
 import {
   OwnDocumentHistoryService,
   safeHistoricalMime,
@@ -15,6 +14,7 @@ describe("own IG document history", () => {
   });
   it("keeps earlier EDO files visible when ERP history is unavailable", async () => {
     const prisma = {
+      lkEmployee: { findUnique: vi.fn().mockResolvedValue(null) },
       igEmploymentState: {
         findUnique: vi
           .fn()
@@ -83,7 +83,7 @@ describe("own IG document history", () => {
         .fn()
         .mockResolvedValue({
           code1C: "worker",
-          personUid: "person",
+          personUid: "c0d8c035-288f-4242-b63b-7d7467cbdb63",
           reviewGroup: "IG",
           recipientType: "person",
         }),
@@ -92,77 +92,51 @@ describe("own IG document history", () => {
         .mockResolvedValue({
           items: [{ id: "allowed", originalAvailable: true }],
         }),
-      personOriginal: vi.fn(),
+      employeeHistoryOriginal: vi.fn(),
     };
     const service = new OwnDocumentHistoryService(
-      {} as never,
+      { lkEmployee: { findUnique: vi.fn().mockResolvedValue(null) } } as never,
       erp as never,
       {} as never,
     );
     await expect(service.erpFile("worker", "somebody-else")).rejects.toThrow();
-    expect(erp.personOriginal).not.toHaveBeenCalled();
+    expect(erp.employeeHistoryOriginal).not.toHaveBeenCalled();
     erp.identity.mockResolvedValueOnce({
       code1C: "other",
-      personUid: "person",
+      personUid: "c0d8c035-288f-4242-b63b-7d7467cbdb63",
       reviewGroup: "IG",
       recipientType: "person",
     });
     await expect(service.erpFile("worker", "allowed")).rejects.toThrow();
-    expect(erp.personOriginal).not.toHaveBeenCalled();
+    expect(erp.employeeHistoryOriginal).not.toHaveBeenCalled();
   });
 });
 
-describe("own ERP history for an employee with a candidate card", () => {
-  const candidateUid = "a6a59761-a585-439b-a59f-a754aa44bd8e";
+describe("ERP employee document history contract", () => {
   const personUid = "c0d8c035-288f-4242-b63b-7d7467cbdb63";
-
-  function fixture() {
+  it("reads the history with a verified person UUID without resolving an active hire", async () => {
     const prisma = {
       igEmploymentState: { findUnique: vi.fn().mockResolvedValue(null) },
-      lkEmployee: {
-        findUnique: vi.fn().mockResolvedValue({
-          uuid: personUid,
-          sourcePresent: true,
-          fullName: "Test Employee",
-          birthday: new Date("2000-01-01"),
-        }),
-      },
-      candidate: { findMany: vi.fn().mockResolvedValue([{ erpUid: candidateUid }]) },
+      lkEmployee: { findUnique: vi.fn().mockResolvedValue({ uuid: personUid, sourcePresent: true }) },
     };
-    const original = { bytes: Buffer.from("file"), mimeType: "application/pdf" };
+    const id = "person:known-document";
+    const file = { bytes: Buffer.from("file"), mimeType: "application/pdf" };
     const erp = {
-      identity: vi.fn().mockRejectedValue(
-        new ConflictException("CURRENT_CANDIDATE_CONFIRMATION_REQUIRED"),
-      ),
-      card: vi.fn().mockResolvedValue({ erpUid: candidateUid, code1C: "worker", personUid }),
+      identity: vi.fn(),
       request: vi.fn().mockResolvedValue({
-        items: [{ id: "known-document", title: "Паспорт", originalAvailable: true }],
+        items: [{ id, title: "Паспорт", originalAvailable: true }],
       }),
-      original: vi.fn().mockResolvedValue(original),
+      employeeHistoryOriginal: vi.fn().mockResolvedValue(file),
     };
-    return {
-      erp, original,
-      service: new OwnDocumentHistoryService(prisma as never, erp as never, {} as never),
-    };
-  }
-
-  it("lists history and opens originals from a verified ERP candidate after a current-cycle conflict", async () => {
-    const { service, erp, original } = fixture();
-    expect(await service.list("worker")).toMatchObject({
-      erpAvailable: true,
-      items: [{ id: "known-document", source: "ERP", title: "Паспорт" }],
-    });
-    expect(erp.request).toHaveBeenCalledWith("person-documents", expect.anything(), { candidate: candidateUid }, undefined, expect.any(AbortSignal));
-    expect(await service.erpFile("worker", "known-document")).toEqual(original);
-    expect(erp.original).toHaveBeenCalledWith(candidateUid, "known-document");
-    expect(erp.card).toHaveBeenCalledTimes(2);
-  });
-
-  it("denies the original if ERP ownership changed or the ID is absent from the employee's history", async () => {
-    const { service, erp } = fixture();
-    await expect(service.erpFile("worker", "another-document")).rejects.toThrow();
-    erp.card.mockResolvedValueOnce({ erpUid: candidateUid, code1C: "worker", personUid: "other" });
-    await expect(service.erpFile("worker", "known-document")).rejects.toThrow();
-    expect(erp.original).not.toHaveBeenCalled();
+    const service = new OwnDocumentHistoryService(prisma as never, erp as never, {} as never);
+    expect(await service.list("worker")).toMatchObject({ erpAvailable: true, items: [{ id }] });
+    expect(erp.request).toHaveBeenCalledWith(
+      "employee-document-history", expect.anything(), { code1c: "worker", personUid },
+    );
+    await expect(service.erpFile("worker", "person:unknown")).rejects.toThrow();
+    expect(erp.employeeHistoryOriginal).not.toHaveBeenCalled();
+    expect(await service.erpFile("worker", id)).toEqual(file);
+    expect(erp.employeeHistoryOriginal).toHaveBeenCalledWith("worker", personUid, id);
+    expect(erp.identity).not.toHaveBeenCalled();
   });
 });
