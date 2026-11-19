@@ -596,14 +596,27 @@ export function ReviewPage({
 
   // Selector options. Facet entries without an exact code cannot feed an
   // exact backend filter, so they are not selectable.
-  const candidateOptions: SearchSelectOption[] = useMemo(
-    () =>
-      (candidates.data?.items ?? []).map((item) => ({
+  const candidateOptions = useMemo<SearchSelectOption[]>(() => {
+    const items = candidates.data?.items ?? [];
+    const counts = new Map<string, number>();
+    for (const { fullName } of items) {
+      const name = fullName?.trim();
+      if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return items.map((item) => {
+      const name = item.fullName?.trim() || "Без имени в профиле";
+      const context = item.erpLinked
+        ? item.statusName?.trim() || "Карточка ERP"
+        : item.erpLinked === false
+          ? "Без привязки к ERP"
+          : null;
+      return {
         value: item.id,
-        label: item.fullName?.trim() || "Без имени в профиле",
-      })),
-    [candidates.data],
-  );
+        label:
+          context && (counts.get(name) ?? 0) > 1 ? `${name} · ${context}` : name,
+      };
+    });
+  }, [candidates.data]);
   const positionOptions: SearchSelectOption[] = useMemo(
     () =>
       (positions.data?.items ?? []).map((item) => ({

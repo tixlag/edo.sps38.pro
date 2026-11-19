@@ -24105,6 +24105,13 @@
           "fullName": {
             "type": "string",
             "nullable": true
+          },
+          "erpLinked": {
+            "type": "boolean"
+          },
+          "statusName": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [

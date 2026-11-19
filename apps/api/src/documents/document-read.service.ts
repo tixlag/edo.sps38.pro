@@ -1301,7 +1301,11 @@ export class DocumentReadService {
       (args) =>
         this.prisma.candidate.findMany({
           ...args,
-          select: { id: true, fullName: true },
+          select: {
+            id: true,
+            fullName: true,
+            ...(ids === null ? { erpUid: true, statusName: true } : {}),
+          },
         }),
       {
         ...(ids
@@ -1337,7 +1341,13 @@ export class DocumentReadService {
       limit,
     );
     return {
-      items: result.items.map((r) => ({ id: r.id, fullName: r.fullName })),
+      items: result.items.map((r) => ({
+        id: r.id,
+        fullName: r.fullName,
+        ...(ids === null
+          ? { erpLinked: !!r.erpUid, statusName: r.statusName }
+          : {}),
+      })),
     };
   }
 

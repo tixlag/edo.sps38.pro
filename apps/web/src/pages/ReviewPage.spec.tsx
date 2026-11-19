@@ -24,6 +24,7 @@ const state = vi.hoisted(() => ({
   documentInfo: null as unknown,
   documentVersion: null as unknown,
   queueItems: [] as unknown[],
+  candidateOptions: [] as unknown[],
   drawer: vi.fn(),
   workspace: vi.fn(),
   arrivalQueue: vi.fn(),
@@ -71,7 +72,7 @@ vi.mock("@edo/api-client", () => {
     },
     useListReviewCandidates: (...args: unknown[]) => {
       state.candidates(...args);
-      return list;
+      return { ...list, data: { items: state.candidateOptions } };
     },
     useGetReviewDocumentFacets: (...args: unknown[]) => {
       state.facets(...args);
@@ -167,6 +168,7 @@ afterEach(async () => {
   state.documentInfo = null;
   state.documentVersion = null;
   state.queueItems = [];
+  state.candidateOptions = [];
   state.documentList = [];
   state.params = { documentId: "document-1" };
   state.meFullName = null;
@@ -176,6 +178,17 @@ afterEach(async () => {
 });
 
 describe("RU and IG review pages", () => {
+  it("distinguishes equal names by their candidate card context", async () => {
+    state.permissions = { "20002": [] };
+    state.search = { candidateIds: ["from-erp", "local"], includeEmployed: true };
+    state.candidateOptions = [
+      { id: "from-erp", fullName: "Иван Иванов", erpLinked: true, statusName: "Заезд подтвержден" },
+      { id: "local", fullName: "Иван Иванов", erpLinked: false, statusName: null },
+    ];
+    const view = await render("RU");
+    expect(view.querySelector('[aria-label="Убрать ФИО кандидата: Иван Иванов · Заезд подтвержден"]')).not.toBeNull();
+    expect(view.querySelector('[aria-label="Убрать ФИО кандидата: Иван Иванов · Без привязки к ERP"]')).not.toBeNull();
+  });
   it("renders candidate sync states (RETRY, PENDING, RUNNING) in CandidateRow without spinner on retry", async () => {
     state.permissions = { "20002": [] };
     const syncStateMock = new Map([
