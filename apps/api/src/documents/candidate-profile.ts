@@ -420,7 +420,7 @@ export function buildCandidateProfileWhere(
       statusId:
         filters.statusIds === undefined ? statusIds[0] : { in: statusIds },
     });
-  } else if (filters.reviewGroup === "RU") {
+  } else if (filters.reviewGroup === "RU" && !candidateIds.length) {
     and.push(buildDefaultExcludedRuStatusWhere());
   }
   if (and.length === 0) return undefined;

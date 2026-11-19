@@ -219,6 +219,22 @@ describe("candidate review queue", () => {
     expect(result.items).toEqual([{ id: "ig1", fullName: "Петров" }]);
     expect(prisma.candidate.findMany).toHaveBeenCalled();
   });
+  it("returns the ERP link and status for RU name filter options", async () => {
+    const { reads, prisma } = setup();
+    const fullName = "Иван Иванов";
+    prisma.candidate.findMany.mockResolvedValueOnce([
+      { id: "erp", fullName, erpUid: "erp-uid", statusName: "Заезд подтвержден" },
+      { id: "local", fullName, erpUid: null, statusName: null },
+    ]);
+    expect(
+      await reads.reviewCandidates(principal, { reviewGroup: "RU", includeAll: true }),
+    ).toEqual({
+      items: [
+        { id: "erp", fullName, erpLinked: true, statusName: "Заезд подтвержден" },
+        { id: "local", fullName, erpLinked: false, statusName: null },
+      ],
+    });
+  });
   it("includes candidates regardless of document presence in one alphabetical result", async () => {
     const { reads, prisma } = setup();
     prisma.candidate.findMany
@@ -331,6 +347,36 @@ describe("candidate review queue", () => {
     const where = prisma.candidate.findMany.mock.calls[0][0].where;
     expect(where.AND).toContainEqual({
       AND: [buildExcludeEmployedWhere(), { statusId: "ЗаездПодтвержден" }],
+    });
+  });
+  it("lets explicit candidate IDs bypass only the default RU status exclusions", async () => {
+    const { reads, prisma } = setup();
+    const candidateIds = ["erp-candidate", "upload-only-candidate"];
+    await reads.candidateReviewQueue(principal, {
+      status: "ALL",
+      reviewGroup: "RU",
+      includeEmployed: true,
+      candidateIds,
+    });
+    expect(
+      prisma.candidate.findMany.mock.calls[0][0].where.AND,
+    ).toContainEqual({ id: { in: candidateIds } });
+
+    prisma.candidate.findMany.mockClear();
+    await reads.candidateReviewQueue(principal, {
+      status: "ALL",
+      reviewGroup: "RU",
+      candidateIds,
+      statusIds: ["ЗаездПодтвержден"],
+    });
+    expect(
+      prisma.candidate.findMany.mock.calls[0][0].where.AND,
+    ).toContainEqual({
+      AND: [
+        buildExcludeEmployedWhere(),
+        { id: { in: candidateIds } },
+        { statusId: { in: ["ЗаездПодтвержден"] } },
+      ],
     });
   });
   it("requires a matching uploaded document when filtering all candidates by document type", async () => {

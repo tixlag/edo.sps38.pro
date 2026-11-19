@@ -2050,6 +2050,9 @@ export interface ReviewCandidateDto {
   id: string;
   /** @nullable */
   fullName: string | null;
+  erpLinked?: boolean;
+  /** @nullable */
+  statusName?: string | null;
 }
 
 export interface ReviewCandidateListDto {

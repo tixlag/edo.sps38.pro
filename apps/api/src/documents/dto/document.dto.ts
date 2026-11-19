@@ -697,6 +697,9 @@ export class ReviewDocumentFacetsDto {
 export class ReviewCandidateDto {
   @ApiProperty() id!: string;
   @ApiProperty({ type: String, nullable: true }) fullName!: string | null;
+  @ApiPropertyOptional() erpLinked?: boolean;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  statusName?: string | null;
 }
 export class ReviewCandidateListDto {
   @ApiProperty({ type: [ReviewCandidateDto] }) items!: ReviewCandidateDto[];
