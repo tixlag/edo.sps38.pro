@@ -61,7 +61,7 @@ export function AppShell() {
     });
   }, [profile.data?.uuid]);
   const pathname = location.pathname;
-  useDocumentEvents(canAccessPath(profile.data?.permissions, pathname));
+  useDocumentEvents(canAccessPath(profile.data?.permissions, pathname), profile.data?.erpEventDriven === true);
   const [collapsed, setCollapsed] = React.useState(true);
   const navigate = useNavigate();
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { syncArrivalFacts } from "../src/documents/ig-arrival-facts-worker";
+import { IgArrivalFactsWorker, syncArrivalFacts } from "../src/documents/ig-arrival-facts-worker";
 
 const lease = { lockToken: "test", generation: 1n };
 const api = (pages: unknown[]) => ({
@@ -214,4 +214,31 @@ describe("factual arrival sync", () => {
     );
     expect(target.finish).toHaveBeenCalledWith(lease);
   });
+});
+
+it("checks recovery at five-minute intervals in event mode and resumes stale scans", async () => {
+  vi.useFakeTimers();
+  const state = { cursor: null as string | null, lastScanCompletedAt: new Date() as Date | null };
+  const prisma = { igArrivalSyncState: { findUnique: vi.fn(async () => ({ ...state })) } };
+  const worker = new IgArrivalFactsWorker(prisma as never, {} as never, {} as never, { get: (key: string) => key === "ERP_CHANGE_SYNC_MODE" ? "events" : "false" } as never, {} as never, {} as never);
+  const sync = vi.spyOn(worker, "sync").mockResolvedValue(undefined);
+  try {
+    worker.onModuleInit();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sync).not.toHaveBeenCalled();
+    state.cursor = "resume";
+    await vi.advanceTimersByTimeAsync(299_998);
+    expect(sync).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sync).toHaveBeenCalledOnce();
+  } finally { await worker.onModuleDestroy(); vi.useRealTimers(); }
+});
+
+it.each([null, new Date("2020-01-01T00:00:00Z")])("runs recovery for missing or expired scan (%s)", async (lastScanCompletedAt) => {
+  vi.useFakeTimers();
+  const prisma = { igArrivalSyncState: { findUnique: vi.fn(async () => ({ cursor: null, lastScanCompletedAt })) } };
+  const worker = new IgArrivalFactsWorker(prisma as never, {} as never, {} as never, { get: (key: string) => key === "ERP_CHANGE_SYNC_MODE" ? "events" : "false" } as never, {} as never, {} as never);
+  const sync = vi.spyOn(worker, "sync").mockResolvedValue(undefined);
+  try { worker.onModuleInit(); await vi.advanceTimersByTimeAsync(1); expect(sync).toHaveBeenCalledOnce(); }
+  finally { await worker.onModuleDestroy(); vi.useRealTimers(); }
 });

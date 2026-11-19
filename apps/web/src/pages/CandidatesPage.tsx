@@ -35,10 +35,10 @@ export function CandidatesPage() {
         />
       </div>
     );
-  return <CandidateCatalog />;
+  return <CandidateCatalog erpEventDriven={me.data?.erpEventDriven === true} />;
 }
 
-function CandidateCatalog() {
+function CandidateCatalog({ erpEventDriven }: { erpEventDriven: boolean }) {
   const search = useSearch({ strict: false }) as Record<string, unknown>;
   const navigate = useNavigate();
   const [create, setCreate] = useState(false);
@@ -119,7 +119,7 @@ function CandidateCatalog() {
   const candidates = useListCommunicationCandidates(params);
   const documentSync = useVisibleRuDocumentSync(
     candidates.data?.items.map((c) => c.id) ?? [],
-    !!candidates.data,
+    !!candidates.data && !erpEventDriven,
   );
   const statuses = useListCandidateStatuses();
   const projects = useListCandidateProjects({ q: projectQuery || undefined });

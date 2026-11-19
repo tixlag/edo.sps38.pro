@@ -63,6 +63,9 @@ export class MeService {
       organizationName: employee?.organizationName ?? null,
       permissions: principal.accessRules,
       locationScope: resolveLocationScope(principal),
+      ...(this.config.get<string>('ERP_CHANGE_SYNC_MODE') === 'events'
+        ? { erpEventDriven: true }
+        : {}),
     };
   }
 

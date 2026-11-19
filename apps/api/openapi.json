@@ -569,6 +569,45 @@
         ]
       }
     },
+    "/api/internal/erp/v1/changes": {
+      "post": {
+        "operationId": "enqueueErpChanges",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErpChangesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Notifications committed"
+          },
+          "400": {
+            "description": "Invalid notification batch"
+          },
+          "401": {
+            "description": "Invalid service credential"
+          },
+          "503": {
+            "description": "Storage unavailable"
+          }
+        },
+        "security": [
+          {
+            "erp-changes-token": []
+          }
+        ],
+        "summary": "Store ERP candidate and person change notifications",
+        "tags": [
+          "ERP Integration"
+        ]
+      }
+    },
     "/api/v1/candidates/{candidateId}/document-absences": {
       "get": {
         "operationId": "listCandidateDocumentAbsences",
@@ -19867,6 +19906,12 @@
         "type": "http",
         "description": "Server-to-server credential: EDO_LK_INTERNAL_TOKEN"
       },
+      "erp-changes-token": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "description": "ERP change notification credential"
+      },
       "document-upload-token": {
         "scheme": "bearer",
         "bearerFormat": "JWT",
@@ -20727,6 +20772,9 @@
               ]
             }
           },
+          "erpEventDriven": {
+            "type": "boolean"
+          },
           "locationScope": {
             "$ref": "#/components/schemas/LocationScopeDto"
           }
@@ -20742,6 +20790,78 @@
           "organizationName",
           "permissions",
           "locationScope"
+        ]
+      },
+      "ErpChangeTarget": {
+        "type": "string",
+        "enum": [
+          "CANDIDATE",
+          "PERSON"
+        ]
+      },
+      "ErpChangeCategory": {
+        "type": "string",
+        "enum": [
+          "PROFILE",
+          "DOCUMENTS",
+          "ARRIVALS"
+        ]
+      },
+      "ErpChangeItemDto": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "target": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErpChangeTarget"
+              }
+            ]
+          },
+          "uid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "changes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/ErpChangeCategory"
+            }
+          }
+        },
+        "required": [
+          "eventId",
+          "target",
+          "uid",
+          "changes"
+        ]
+      },
+      "ErpChangesDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "items": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ErpChangeItemDto"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "items"
         ]
       },
       "ApiErrorDto": {

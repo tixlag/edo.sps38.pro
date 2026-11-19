@@ -373,3 +373,19 @@ describe("IgProfileEnrichmentService", () => {
   });
 
 });
+
+it("refreshes IG from validated preloaded data without per-person requests", async () => {
+  const candidate = { id: "target", reviewGroup: "IG", code1c: "IG-001", personUid: "11111111-1111-4111-8111-111111111111", chatUuid: null, citizenship: "uz", positionCode: "old", profileSyncedAt: new Date(), previousDocumentsSyncedAt: new Date() };
+  const update = vi.fn();
+  const tx = { $queryRaw: vi.fn(), candidate: { findUniqueOrThrow: vi.fn().mockResolvedValue(candidate), update } };
+  const prisma = { candidate: { findUniqueOrThrow: vi.fn().mockResolvedValue(candidate) }, $transaction: vi.fn((cb) => cb(tx)) };
+  const erp = { identity: vi.fn() }; const candidates = { findByEmployeeCode: vi.fn() };
+  const previousDocs = { syncPreviousDocuments: vi.fn() };
+  const service = new IgProfileEnrichmentService(prisma as any, { logInTransaction: vi.fn() } as any, erp as any, {} as any, candidates as any, previousDocs as any);
+  const options = { forceRefresh: true, preloadedIdentity: { recipientType: "person", reviewGroup: "IG", code1C: "IG-001", personUid: candidate.personUid, erpUid: null, chatUuid: null }, preloadedProfile: { code1C: "IG-001", position: { code: "new" }, citizenship: "uz" }, preloadedDocuments: { items: [] }, preloadedEmploymentHistory: { items: [] } };
+  await service.enrichCandidate("target", options as any);
+  expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ positionCode: "new" }) }));
+  expect(previousDocs.syncPreviousDocuments).toHaveBeenCalled();
+  expect(erp.identity).not.toHaveBeenCalled();
+  expect(candidates.findByEmployeeCode).not.toHaveBeenCalled();
+});

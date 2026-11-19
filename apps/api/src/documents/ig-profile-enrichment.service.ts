@@ -2,7 +2,8 @@ import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
-import { ErpCandidateClient } from "./erp-candidate.client";
+import { ErpCandidateClient, normalizeErpCandidate } from "./erp-candidate.client";
+import { erpIdentitySchema } from "./erp-workspace.client";
 import { ErpWorkspaceClient } from "./erp-workspace.client";
 import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
 import type { Prisma } from "@prisma/client";
@@ -26,6 +27,12 @@ export class IgProfileEnrichmentService {
       signal?: AbortSignal;
       assertLease?: (tx?: Prisma.TransactionClient) => Promise<void>;
       preloadedDocuments?: unknown;
+      preloadedIdentity?: unknown;
+      preloadedProfile?: unknown;
+      preloadedEmploymentHistory?: unknown;
+      forceRefresh?: boolean;
+      refreshProfile?: boolean;
+      refreshDocuments?: boolean;
     },
   ): Promise<{ profileSynced: boolean; documentsSynced: boolean }> {
     const candidate = await this.prisma.candidate.findUniqueOrThrow({
@@ -58,6 +65,13 @@ export class IgProfileEnrichmentService {
 
     let profileSynced = false;
     let documentsSynced = false;
+    const targeted = options?.refreshProfile !== undefined || options?.refreshDocuments !== undefined;
+    if (targeted && (options?.refreshProfile || options?.refreshDocuments) && options.preloadedIdentity === undefined)
+      throw new Error("ERP_BATCH_IDENTITY_REQUIRED");
+    if (targeted && options?.refreshProfile && options.preloadedProfile === undefined)
+      throw new Error("ERP_BATCH_PROFILE_REQUIRED");
+    if (targeted && options?.refreshDocuments && (options.preloadedDocuments === undefined || options.preloadedEmploymentHistory === undefined))
+      throw new Error("ERP_BATCH_DOCUMENTS_REQUIRED");
 
     const isProfileComplete = (c: {
       citizenship: string | null;
@@ -73,12 +87,11 @@ export class IgProfileEnrichmentService {
     };
 
     // Step 1: Profile enrichment if profile is incomplete
-    if (!isProfileComplete(candidate)) {
+    if (options?.refreshProfile || options?.forceRefresh || (!targeted && !isProfileComplete(candidate))) {
       if (this.candidates) {
-        const identity = await this.erp.identity(
-          candidate.code1c,
-          options?.signal,
-        );
+        const identity = options?.preloadedIdentity !== undefined
+          ? erpIdentitySchema.parse(options.preloadedIdentity)
+          : await this.erp.identity(candidate.code1c, options?.signal);
         if (
           identity.reviewGroup !== "IG" ||
           identity.recipientType !== "person" ||
@@ -89,17 +102,13 @@ export class IgProfileEnrichmentService {
           throw new Error("ERP_PERSON_IDENTITY_MISMATCH");
         }
 
-        const snapshot = await this.candidates
-          .findByEmployeeCode(
-            candidate.code1c,
-            options?.signal
-              ? AbortSignal.any([options.signal, AbortSignal.timeout(10_000)])
-              : AbortSignal.timeout(10_000),
-          )
-          .catch(() => {
-            options?.signal?.throwIfAborted();
-            return undefined;
-          });
+        const snapshot = options?.preloadedProfile !== undefined
+          ? normalizeErpCandidate(options.preloadedProfile, undefined, candidate.code1c)
+          : await this.candidates
+              .findByEmployeeCode(candidate.code1c, options?.signal
+                ? AbortSignal.any([options.signal, AbortSignal.timeout(10_000)])
+                : AbortSignal.timeout(10_000))
+              .catch(() => { options?.signal?.throwIfAborted(); return undefined; });
 
         const candidateCode1C =
           snapshot &&
@@ -171,7 +180,7 @@ export class IgProfileEnrichmentService {
     }
 
     // Step 2: Document history enrichment if not synced
-    if (!candidate.previousDocumentsSyncedAt) {
+    if (options?.refreshDocuments || options?.forceRefresh || (!targeted && !candidate.previousDocumentsSyncedAt)) {
       if (options)
         await this.previousDocsSync.syncPreviousDocuments(
           candidateId,

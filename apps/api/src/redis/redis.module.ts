@@ -20,6 +20,7 @@ export class RedisService implements OnModuleDestroy {
   private subClient: Redis | null = null;
   private readonly subListeners = new Map<string, Set<(message: string) => void>>();
   private readonly url: string;
+  private readonly subscriberReconnectListeners = new Set<() => void>();
 
   constructor(private readonly config: ConfigService) {
     this.url =
@@ -50,6 +51,12 @@ export class RedisService implements OnModuleDestroy {
     sub.on('error', () => {
       // Swallow connection errors; ioredis reconnects and resubscribes automatically
     });
+    let readyBefore = false;
+    sub.on('ready', () => {
+      if (readyBefore)
+        for (const listener of this.subscriberReconnectListeners) listener();
+      readyBefore = true;
+    });
     sub.on('message', (channel: string, message: string) => {
       const listeners = this.subListeners.get(channel);
       if (listeners) {
@@ -73,6 +80,11 @@ export class RedisService implements OnModuleDestroy {
     } catch {
       return null;
     }
+  }
+
+  onSubscriberReconnect(listener: () => void): () => void {
+    this.subscriberReconnectListeners.add(listener);
+    return () => { this.subscriberReconnectListeners.delete(listener); };
   }
 
   subscribe(channel: string, onMessage: (message: string) => void): () => void {

@@ -584,14 +584,14 @@ export function ReviewPage({
         canReview &&
         !dateRangeInvalid &&
         (reviewGroup === "RU" || igView === "list"),
-      refetchInterval: 30_000,
+      refetchInterval: profile.data?.erpEventDriven ? false : 30_000,
     },
   });
 
   const groups = list.data?.items ?? [];
   const visibleSync = useVisibleRuDocumentSync(
     groups.map((group) => group.candidate.id),
-    reviewGroup === "RU" && canReview && !dateRangeInvalid && !!list.data,
+    reviewGroup === "RU" && canReview && !dateRangeInvalid && !!list.data && !profile.data?.erpEventDriven,
   );
 
   // Selector options. Facet entries without an exact code cannot feed an

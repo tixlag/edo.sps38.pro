@@ -33,6 +33,11 @@ function setup(group: "RU" | "IG", expired = false, currentStatus?: string) {
   const previous = {
     id: "former",
     candidateId: "cycle",
+    sourceId: "passport-source",
+    sourceErpId: "passport-source",
+    sourcePersonUid: "person",
+    sourceCandidatePersonUid: "person",
+    candidate: owner,
     documentUid: "passport-uid",
     title: "Паспорт",
     status: "CONFIRMED",
@@ -253,7 +258,9 @@ describe("former documents in the current stage", () => {
     },
   );
   it("shows imported RU originals in stages before a person or employee code exists", async () => {
-    const { reads, access } = setup("RU");
+    const { reads, access, prisma } = setup("RU");
+    const docs = await prisma.candidatePreviousDocument.findMany({ where: {} });
+    Object.assign(docs[0], { sourceId: "candidate|passport", sourceErpId: "candidate|passport", sourcePersonUid: null, sourceCandidatePersonUid: null });
     access.candidate.mockResolvedValue({
       id: "cycle",
       erpUid: "erp-candidate",
@@ -337,4 +344,16 @@ describe("former documents in the current stage", () => {
       missing: 0,
     });
   });
+});
+
+it("does not display or credit confirmed history of a different person", async () => {
+  const { reads, prisma } = setup("RU");
+  prisma.candidatePreviousDocument.findMany.mockResolvedValue([{
+    id: "old", candidateId: "cycle", sourceId: "passport", sourceErpId: "passport", sourcePersonUid: "old-person", sourceCandidatePersonUid: "old-person", candidate: { reviewGroup: "RU", personUid: "person", chatUuid: "chat", citizenship: "ru" }, documentUid: "passport-uid", title: "Паспорт", status: "CONFIRMED", fields: { number: "PRIVATE" }, originalAvailable: true, originalVerified: true, expiresAt: null, reviewedAt: new Date(),
+  }] as never);
+  const result = await reads.candidateDetails("cycle", principal, "1");
+  expect(result.previousDocuments).toEqual([]);
+  expect(result.candidate.approvedDocuments).toBe(0);
+  expect(result.stages?.[0].previousDocuments).toEqual([]);
+  expect(result.stageDocuments?.required.missingDocuments).toContainEqual(expect.objectContaining({ code: "PASSPORT" }));
 });

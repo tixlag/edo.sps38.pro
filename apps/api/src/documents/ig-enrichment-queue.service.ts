@@ -5,6 +5,7 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Prisma, type Candidate } from "@prisma/client";
@@ -33,6 +34,7 @@ import {
 } from "./erp-workspace.client";
 import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
 import type { z } from "zod";
+import { ErpEventSyncService } from "./erp-event-sync.service";
 
 const LEASE_MS = 120_000;
 const igEligible: Prisma.CandidateWhereInput = {
@@ -69,6 +71,7 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
   private readonly running = new Map<string, Promise<void>>();
   private readonly controllers = new Set<AbortController>();
   private stopping = false;
+  private preferErpChanges = true;
   constructor(
     private readonly prisma: PrismaService,
     private readonly enrichment: IgProfileEnrichmentService,
@@ -77,12 +80,14 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
     private readonly erp: ErpWorkspaceClient,
     private readonly previousDocs: CandidatePreviousDocumentsSyncService,
     private readonly notifications?: RuEnrichmentNotificationsService,
+    @Optional() private readonly erpChanges?: ErpEventSyncService,
   ) {}
   private get backgroundEnabled(): boolean {
     return this.config.get<string>("EDO_ARRIVAL_SYNC_ENABLED") === "true";
   }
   onModuleInit() {
     const tick = () => {
+      this.erpChanges?.maintenanceTick();
       for (const lane of ["priority", "background"] as const) {
         if (this.running.has(lane) || this.stopping) continue;
         const work = this.runLane(lane)
@@ -187,7 +192,8 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
       },
       select: { id: true, erpUid: true, previousDocumentsSyncedAt: true },
     });
-    const cutoff = Date.now() - 5 * 60_000;
+    const eventMode = this.config.get?.<string>("ERP_CHANGE_SYNC_MODE") === "events";
+    const cutoff = Date.now() - 20 * 60_000;
     const staleIds = candidates
       .filter(
         (c) =>
@@ -195,7 +201,7 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
           c.previousDocumentsSyncedAt.getTime() < cutoff,
       )
       .map((c) => c.id);
-    if (staleIds.length) {
+    if (!eventMode && staleIds.length) {
       await this.prisma.$transaction(async (tx) => {
         await tx.igEnrichmentJob.createMany({
           data: staleIds.map((candidateId) => ({
@@ -463,9 +469,28 @@ export class IgEnrichmentQueueService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  private async runErpChanges(): Promise<boolean> {
+    if (!this.erpChanges || this.stopping) return false;
+    const controller = new AbortController();
+    this.controllers.add(controller);
+    try {
+      return await this.erpChanges.run(controller.signal);
+    } finally {
+      this.controllers.delete(controller);
+    }
+  }
+
   async runLane(lane: "priority" | "background"): Promise<void> {
+    if (lane === "background" && this.preferErpChanges && await this.runErpChanges()) {
+      this.preferErpChanges = false;
+      return;
+    }
+    if (lane === "background") this.preferErpChanges = true;
     const claim = await this.claim(lane);
-    if (!claim) return;
+    if (!claim) {
+      if (lane === "background") await this.runErpChanges();
+      return;
+    }
     const controller = new AbortController();
     this.controllers.add(controller);
     const timeout = setTimeout(() => controller.abort(), 600_000);

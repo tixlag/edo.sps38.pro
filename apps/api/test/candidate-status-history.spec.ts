@@ -45,6 +45,7 @@ describe("GET /previous-documents for RU candidate", () => {
     const localDocs = [
       {
         id: "prev-1",
+        sourceId: "candidate|20261118|passport-uid",
         title: "Паспорт РФ",
         documentUid: "passport-uid",
         fields: { seriesNumber: "1234 567890" },

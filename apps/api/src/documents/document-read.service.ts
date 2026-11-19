@@ -1,3 +1,4 @@
+import { previousDocumentAccessible } from "./previous-document-owner";
 import { candidateNamePage } from "./candidate-name-page";
 import { selectedValues } from "../common/query-values";
 import { IgEnrichmentQueueService } from "./ig-enrichment-queue.service";
@@ -326,7 +327,7 @@ export class DocumentReadService {
     });
     const candidate = toCandidateProfile(owner)!;
     await this.enrichReviewCandidates(principal, [candidate]);
-    const previous =
+    const previousRows =
       owner.erpUid ||
       owner.code1c ||
       owner.personUid ||
@@ -336,6 +337,7 @@ export class DocumentReadService {
             where: { candidateId: id },
           })
         : [];
+    const previous = previousRows.filter(doc => previousDocumentAccessible(doc, owner));
     const isIg = candidateReviewGroup(owner) === "IG";
     const approvedAbsences = !isIg
       ? await this.prisma.candidateDocumentAbsence.findMany({
@@ -1418,6 +1420,7 @@ export class DocumentReadService {
               reviewGroup: true,
               citizenship: true,
               chatUuid: true,
+              personUid: true,
             },
           })
         : null;
@@ -1427,6 +1430,7 @@ export class DocumentReadService {
       reviewGroup: true,
       citizenship: true,
       chatUuid: true,
+      personUid: true,
     } as const;
     let candidate = scope.candidateId
       ? await this.prisma.candidate.findFirst({
@@ -1482,7 +1486,7 @@ export class DocumentReadService {
     return {
       ...result,
       waivedDocumentUids,
-      reusedDocumentUids: usablePreviousUids(previous, isIg).filter(
+      reusedDocumentUids: usablePreviousUids(previous.filter(doc => !!candidate && previousDocumentAccessible(doc, candidate)), isIg).filter(
         (uid) => !current.has(uid),
       ),
     };
@@ -1880,6 +1884,7 @@ export class DocumentReadService {
               { candidate: reviewGroupWhere("RU") },
             ],
           },
+          include: { candidate: { select: { reviewGroup: true, personUid: true, chatUuid: true, citizenship: true } } },
         })
       : [];
     const byCandidate = <T extends { candidateId: string | null }>(
@@ -1894,7 +1899,7 @@ export class DocumentReadService {
       }
       return map;
     };
-    const historyByCandidate = byCandidate(historical);
+    const historyByCandidate = byCandidate(historical.filter(doc => doc.candidate && previousDocumentAccessible(doc, doc.candidate)));
     const absencesByCandidate = byCandidate(absences);
     const authoritativeErpTypes = new Map<string, Set<string>>();
     for (const profile of profiles.filter((p) => p.reviewGroup === "RU")) {

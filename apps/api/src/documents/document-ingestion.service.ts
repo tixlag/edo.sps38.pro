@@ -9,6 +9,8 @@ import {
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { assertDocumentUploadAllowed } from "./document-upload-policy";
+import { RedisService } from "../redis/redis.module";
+import { publishReviewChanges } from "./review-change-notifications";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { StorageService } from "../storage/storage.service";
@@ -28,6 +30,7 @@ export class DocumentIngestionService {
     private readonly audit: AuditService,
     private readonly reads: DocumentReadService,
     @Optional() private readonly erp?: ErpCandidateClient,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   ensureAvailable(): void {
@@ -167,6 +170,8 @@ export class DocumentIngestionService {
           },
         });
       });
+      if (this.redis)
+        void publishReviewChanges(this.redis, [{ documentId: reserved.accepted.documentId }]);
       return reserved.accepted;
     } catch {
       await this.failUpload(reserved.job.id, token, correlation);

@@ -18,6 +18,8 @@ import { resolveOcrProfile } from "../ocr/ocr-profile";
 import { documentCheckEnabled } from "../ocr/document-check";
 import { createHash, randomUUID } from "node:crypto";
 import { assertDocumentUploadAllowed } from "./document-upload-policy";
+import { RedisService } from "../redis/redis.module";
+import { publishReviewChanges } from "./review-change-notifications";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { AuditService } from "../audit/audit.service";
@@ -48,6 +50,7 @@ export class ManualDocumentService {
     @Optional() private readonly config?: ConfigService,
     @Optional() private readonly candidates?: ErpCandidateClient,
     @Optional() private readonly notifications?: DocumentNotificationService,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   async upload(
@@ -264,6 +267,8 @@ export class ManualDocumentService {
         });
         return queuedJobId;
       });
+      if (this.redis && this.config?.get("ERP_CHANGE_SYNC_MODE") === "events")
+        void publishReviewChanges(this.redis, [{ documentId: reserved.submission.version.documentId }]);
       if (!reviewer && !jobId && acceptedStatus === "IN_REVIEW")
         await this.notifications?.notifyDocumentReadyForReview({
           documentId: reserved.submission.version.documentId,

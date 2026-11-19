@@ -27,6 +27,8 @@ import {
 } from "./document-contract";
 import { tryCompleteIgEmployment } from "./ig-completion";
 import { createHash } from "node:crypto";
+import { RedisService } from "../redis/redis.module";
+import { publishReviewChanges } from "./review-change-notifications";
 import { DocumentReturnNotificationService } from "./document-return-notification.service";
 
 const editsSchema = z
@@ -51,6 +53,7 @@ export class DocumentReviewService {
     @Optional() private readonly erp?: ErpWorkspaceClient,
     @Optional() private readonly expiration?: DocumentExpirationService,
     @Optional() private readonly returnNotifications?: DocumentReturnNotificationService,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   async edit(
@@ -490,6 +493,7 @@ export class DocumentReviewService {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
+    if (this.redis) await publishReviewChanges(this.redis, [{ documentId }]);
     if (notificationId) {
       try {
         await this.returnNotifications?.send(notificationId);

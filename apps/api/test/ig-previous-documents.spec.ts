@@ -82,6 +82,7 @@ function setup() {
     request: vi.fn(async () => ({ items: [] })),
     employmentHistory: vi.fn(async () => ({ items: [] })),
     probePersonOriginal: vi.fn(async () => true),
+    personOriginal: vi.fn(async () => ({ bytes: Buffer.from("ERP file"), mimeType: "application/pdf" })),
   };
   const ownHistory = {
     probeOriginal: vi.fn(async () => true),
@@ -109,6 +110,17 @@ function setup() {
   return { service, row, tx, erp, audit, prisma, ownHistory };
 }
 describe("IG previous ERP documents", () => {
+  it("does not return previous-owner fields from the RU history list", async () => {
+    const { service, row, prisma } = setup();
+    Object.assign(row, { citizenship: "ru", erpUid: "33333333-3333-4333-8333-333333333333", personUid: personUid });
+    prisma.candidatePreviousDocument.findMany.mockResolvedValue([
+      { id: "stale", sourceId: "passport", sourceErpId: "passport", sourcePersonUid: "22222222-2222-4222-8222-222222222222", sourceCandidatePersonUid: "22222222-2222-4222-8222-222222222222", title: "Passport", fields: { number: "PRIVATE" } },
+      { id: "same", sourceId: "candidate|passport", sourceErpId: "candidate|passport", sourcePersonUid: null, title: "Passport", fields: {}, originalAvailable: false },
+    ] as never);
+    const result = await service.previous(row.id, actor({ "20002": [] }));
+    expect(result.items.map(item => item.id)).toEqual(["same"]);
+  });
+
   it("treats an earlier ordinary document as verified when importing it for the linked person", async () => {
     const { service, row, tx, erp } = setup();
     erp.request.mockResolvedValue({
@@ -146,7 +158,7 @@ describe("IG previous ERP documents", () => {
       const documentUid = "26b930ce-6462-11ec-80cc-002590854e7f";
       tx.candidatePreviousDocument.findMany.mockResolvedValue([
         {
-          sourceId: "prior-registration",
+          sourceId: "prior-registration", sourceErpId: "prior-registration", sourcePersonUid: personUid,
           documentUid,
           status: oldStatus,
           fields: { isInvalid: false },
@@ -520,7 +532,7 @@ describe("IG previous ERP documents", () => {
       files: [{ id: "file" }],
     } as never);
     prisma.candidatePreviousDocument.findFirst.mockResolvedValue({
-      sourceId: "edo:document:version",
+      sourceId: "edo:document:version", sourcePersonUid: personUid,
       originalAvailable: true,
     });
     const result = await service.original(
@@ -535,6 +547,25 @@ describe("IG previous ERP documents", () => {
       "file",
     );
     expect(tx.candidate.update).toHaveBeenCalled();
+  });
+  it("refuses ambiguous legacy source IDs rather than requesting the wrong ERP original", async () => {
+    const { service, row, prisma, erp } = setup();
+    prisma.candidatePreviousDocument.findFirst.mockResolvedValue({ sourceId: "legacy#2", sourceErpId: null, sourcePersonUid: personUid, originalAvailable: true });
+    await expect(service.original(row.id, "old", actor({ "20011": [] }))).rejects.toThrow("ERP_DOCUMENT_SOURCE_AMBIGUOUS");
+    expect(erp.personOriginal).not.toHaveBeenCalled();
+  });
+  it("does not open an original after its person owner changes", async () => {
+    const { service, row, prisma, erp } = setup();
+    prisma.candidatePreviousDocument.findFirst.mockResolvedValue({ sourceId: "passport", sourceErpId: "passport", sourcePersonUid: "22222222-2222-4222-8222-222222222222", originalAvailable: true });
+    await expect(service.original(row.id, "old", actor({ "20011": [] }))).rejects.toThrow("Оригинал недоступен");
+    expect(erp.personOriginal).not.toHaveBeenCalled();
+  });
+  it("opens ERP originals whose source ID starts with the EDO prefix", async () => {
+    const { service, row, prisma, erp } = setup();
+    prisma.candidatePreviousDocument.findFirst.mockResolvedValue({ sourceId: "edo:erp-instance", sourceErpId: "edo:erp-instance", sourcePersonUid: personUid, originalAvailable: true });
+    const result = await service.original(row.id, "old", actor({ "20011": [] }));
+    expect(result.bytes).toEqual(Buffer.from("ERP file"));
+    expect(erp.personOriginal).toHaveBeenCalledWith("worker", personUid, "edo:erp-instance");
   });
   it("rejects changed ERP identity without importing another person's documents", async () => {
     const { service, row, erp } = setup();
@@ -560,7 +591,7 @@ describe("IG previous ERP documents", () => {
     tx.candidatePreviousDocument.findMany.mockResolvedValue([
       {
         id: "old",
-        sourceId: "source",
+        sourceId: "source", sourceErpId: "source", sourcePersonUid: personUid,
         documentUid: personUid,
         status: "CONFIRMED",
         originalAvailable: true,
@@ -600,7 +631,7 @@ describe("IG previous ERP documents", () => {
     tx.candidatePreviousDocument.findMany.mockResolvedValue([
       {
         id: "old",
-        sourceId: "source",
+        sourceId: "source", sourceErpId: "source", sourcePersonUid: personUid,
         documentUid: personUid,
         status: "CONFIRMED",
         originalAvailable: true,
@@ -638,7 +669,7 @@ describe("IG previous ERP documents", () => {
     tx.candidatePreviousDocument.findMany.mockResolvedValue([
       {
         id: "old",
-        sourceId: "source",
+        sourceId: "source", sourceErpId: "source", sourcePersonUid: personUid,
         documentUid: personUid,
         status: "CONFIRMED",
         originalAvailable: true,

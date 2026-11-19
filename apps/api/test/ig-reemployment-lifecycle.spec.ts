@@ -87,6 +87,16 @@ function setupLifecycleTest() {
       }),
     },
     document: {
+      findFirst: vi.fn(async ({ where, include }) => {
+        const found = candidateUpsertedDocuments.find(d => d.candidateId === where.candidateId && d.documentTypeId === where.documentTypeId);
+        return found ? { ...found, ...(include?.versions ? { versions: candidateUpsertedVersions.filter(v => v.documentId === found.id) } : {}) } : null;
+      }),
+      create: vi.fn(async ({ data }) => { candidateUpsertedDocuments.push({ ...data }); return { ...data }; }),
+      update: vi.fn(async ({ where, data }) => {
+        const existing = candidateUpsertedDocuments.find(d => d.id === where.id);
+        if (!existing) throw new Error("missing document");
+        Object.assign(existing, data); return existing;
+      }),
       findUnique: vi.fn(async ({ where, include }) => {
         const found = candidateUpsertedDocuments.find(
           (d) =>
@@ -493,6 +503,7 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
     tx.candidatePreviousDocument.findMany = vi.fn(async () => [
       {
         id: "prev-passport",
+        sourceId: "passport", sourcePersonUid: row.personUid,
         documentUid: PASSPORT_UID,
         status: "CONFIRMED",
         originalAvailable: true,
@@ -797,6 +808,7 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
 
     const previousPassport = {
       id: "prev-pass-1",
+      sourceId: "passport", sourcePersonUid: candidate.personUid,
       documentUid: PASSPORT_UID,
       status: "CONFIRMED",
       originalAvailable: true,
@@ -983,6 +995,7 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
 
     const previousPassport = {
       id: "prev-pass-edo",
+      sourceId: "passport", sourcePersonUid: candidate.personUid,
       documentUid: PASSPORT_UID,
       status: "CONFIRMED",
       originalAvailable: true,
@@ -1157,6 +1170,7 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
         update: vi.fn(),
       },
       ocrJob: { updateMany: vi.fn() },
+      communicationOperation: { create: vi.fn().mockResolvedValue({ id: "notification" }) },
     };
 
     const prismaMock: any = {
@@ -1212,8 +1226,8 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
     expect(tx.candidate.update).not.toHaveBeenCalled();
   });
 
-  // Scenario J: CandidateWorkspaceService.original() strips #count suffix
-  it("Scenario J: CandidateWorkspaceService.original() strips #count suffix before querying 1C ERP", async () => {
+  // Scenario J: CandidateWorkspaceService.original() uses the stored ERP source ID
+  it("Scenario J: CandidateWorkspaceService.original() uses the stored ERP ID for duplicate source IDs", async () => {
     const candidateId = "cand-original-test";
     const personUid = "person-orig-1";
     const code1c = "worker-orig-1";
@@ -1229,6 +1243,8 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
       id: "prev-doc-with-count",
       candidateId,
       sourceId: "erp-document-id-abc#2", // Deduplicated sourceId with suffix
+      sourceErpId: "erp-document-id-abc",
+      sourcePersonUid: personUid,
       originalAvailable: true,
     };
 
@@ -1277,7 +1293,7 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
 
     await workspaceService.original(candidateId, prevDoc.id, actor());
 
-    // Verified: erp.personOriginal was called with "erp-document-id-abc", NOT "erp-document-id-abc#2"!
+    // The exact ERP ID remains distinct from the deduplicated local ID.
     expect(erpMock.personOriginal).toHaveBeenCalledWith(
       code1c,
       personUid,
@@ -1684,6 +1700,7 @@ describe("IG Reemployment Lifecycle and ERP Document Integration", () => {
 
     const previousPassport = {
       id: "prev-pass-no-sub",
+      sourceId: "passport", sourcePersonUid: candidate.personUid,
       documentUid: PASSPORT_UID,
       status: "CONFIRMED",
       originalAvailable: true,
@@ -2037,10 +2054,108 @@ describe("verified previous ERP documents for RU candidates", () => {
     ]);
     expect(fixture.erp.probeCandidateOriginal).not.toHaveBeenCalled();
     expect(fixture.erp.probePersonOriginal).not.toHaveBeenCalled();
+    expect(fixture.prisma.document.findMany).not.toHaveBeenCalled();
 
     // Repeat sync also does not probe
     await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
     expect(fixture.erp.probeCandidateOriginal).not.toHaveBeenCalled();
+  });
+
+  it("tracks an ERP person owner even when the local RU candidate has no link", async () => {
+    const fixture = fixtureForRu();
+    fixture.row.personUid = null;
+    const firstOwner = "11111111-1111-4111-8111-111111111111", secondOwner = "44444444-4444-4444-8444-444444444444";
+    fixture.erp.request.mockResolvedValue({ items: [{ ...previous("20260101|passport"), personUid: firstOwner }] });
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    const first = fixture.candidatePreviousDocumentsUpserted[0];
+    expect(first.sourcePersonUid).toBe(firstOwner);
+    fixture.erp.request.mockResolvedValue({ items: [{ ...previous("20260101|passport"), personUid: secondOwner }] });
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    expect(first.originalAvailable).toBe(false);
+    expect(fixture.candidatePreviousDocumentsUpserted.find(d => d.sourcePersonUid === secondOwner)).toBeDefined();
+  });
+
+  it("keeps candidate-owned documents when the person link changes", async () => {
+    const fixture = fixtureForRu();
+    const candidateDoc = previous("candidate|20260101|passport");
+    fixture.erp.request.mockResolvedValue({ items: [candidateDoc] });
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    const stored = fixture.candidatePreviousDocumentsUpserted[0];
+    stored.fieldEdits = [{ name: "number", value: "LOCAL", kind: "text" }];
+    fixture.row.personUid = "44444444-4444-4444-8444-444444444444";
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    expect(fixture.candidatePreviousDocumentsUpserted).toHaveLength(1);
+    expect(stored.fields.number).toBe("LOCAL");
+    expect(stored.originalAvailable).toBe(true);
+  });
+
+  it("retains an unambiguous legacy candidate-owned document and its edits", async () => {
+    const fixture = fixtureForRu();
+    fixture.erp.request.mockResolvedValue({ items: [previous("candidate|20260101|passport")] });
+    fixture.candidatePreviousDocumentsUpserted.push({ id: "legacy-candidate", candidateId: fixture.row.id, sourceId: "candidate|20260101|passport", sourceErpId: null, sourcePersonUid: null, fields: { number: "LOCAL" }, fieldEdits: [{ name: "number", value: "LOCAL", kind: "text" }], status: "CONFIRMED", originalAvailable: true, documentUid: PASSPORT_UID });
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    expect(fixture.candidatePreviousDocumentsUpserted).toHaveLength(1);
+    expect(fixture.candidatePreviousDocumentsUpserted[0].fields.number).toBe("LOCAL");
+  });
+
+  it("keeps edits for the same owner but isolates and archives them after person rebinding", async () => {
+    const fixture = fixtureForRu();
+    const firstOwner = fixture.row.personUid!;
+    const secondOwner = "44444444-4444-4444-8444-444444444444";
+    fixture.erp.request.mockResolvedValue({ items: [{ ...previous("20260101|passport"), personUid: firstOwner }] });
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    const first = fixture.candidatePreviousDocumentsUpserted[0];
+    first.fieldEdits = [{ name: "number", value: "OLD-EDIT", kind: "text" }];
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    expect(fixture.candidatePreviousDocumentsUpserted).toHaveLength(1);
+    expect(first.fields.number).toBe("OLD-EDIT");
+    fixture.row.personUid = secondOwner;
+    fixture.erp.request.mockResolvedValue({ items: [{ ...previous("20260101|passport"), personUid: secondOwner }] });
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    const second = fixture.candidatePreviousDocumentsUpserted.find(d => d.sourcePersonUid === secondOwner);
+    expect(second).toBeDefined();
+    expect(second.id).not.toBe(first.id);
+    expect(second.fields.number).toBeUndefined();
+    expect(first.originalAvailable).toBe(false);
+  });
+
+  it("archives legacy documents of unknown ownership instead of carrying their edits forward", async () => {
+    const fixture = fixtureForRu();
+    fixture.erp.request.mockResolvedValue({ items: [{ ...previous("legacy"), personUid: fixture.row.personUid }] });
+    fixture.candidatePreviousDocumentsUpserted.push({ id: "legacy-row", candidateId: fixture.row.id, sourceId: "legacy", sourceErpId: null, sourcePersonUid: null, fields: { number: "OLD" }, fieldEdits: [{ name: "number", value: "OLD", kind: "text" }], status: "CONFIRMED", originalAvailable: true, documentUid: PASSPORT_UID });
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    expect(fixture.candidatePreviousDocumentsUpserted[0].originalAvailable).toBe(false);
+    const fresh = fixture.candidatePreviousDocumentsUpserted[1];
+    expect(fresh.id).not.toBe("legacy-row");
+    expect(fresh.fields.number).toBeUndefined();
+  });
+
+  it("does not rewrite an unchanged RU original on repeated sync", async () => {
+    const fixture = fixtureForRu();
+    fixture.erp.request.mockResolvedValue({ items: [{ ...previous("passport"), personUid: fixture.row.personUid }] });
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    fixture.tx.candidatePreviousDocument.upsert.mockClear();
+    const auditCount = fixture.auditLogs.length;
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    expect(fixture.tx.candidatePreviousDocument.upsert).not.toHaveBeenCalled();
+    expect(fixture.auditLogs).toHaveLength(auditCount);
+  });
+
+  it("imports a candidate/person ERP echo of one EDO instance only once", async () => {
+    const fixture = fixtureForRu();
+    const echo = previous("edo:old-instance");
+    fixture.erp.request.mockResolvedValue({ items: [echo, { ...echo, personUid: fixture.row.personUid }] });
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    expect(fixture.candidatePreviousDocumentsUpserted).toHaveLength(1);
+    expect(fixture.erp.probeCandidateOriginal).toHaveBeenCalledTimes(1);
+  });
+
+  it("probes ERP-hosted EDO originals in a mixed RU snapshot", async () => {
+    const fixture = fixtureForRu();
+    fixture.erp.request.mockResolvedValue({ items: [previous("passport"), previous("edo:old-instance")] });
+    await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
+    expect(fixture.erp.probeCandidateOriginal).toHaveBeenCalledWith(fixture.row.erpUid, "edo:old-instance", undefined);
+    expect(fixture.erp.probeCandidateOriginal).toHaveBeenCalledTimes(1);
   });
 
   it("does not confirm RU documents reported unavailable, expired, or invalid", async () => {
@@ -2061,8 +2176,9 @@ describe("verified previous ERP documents for RU candidates", () => {
     expect(fixture.erp.probeCandidateOriginal).not.toHaveBeenCalled();
   });
 
-  it("does not auto-confirm an EDO document just because it appeared in ERP", async () => {
+  it("does not auto-confirm an EDO document when the original probe fails", async () => {
     const fixture = fixtureForRu();
+    fixture.erp.probeCandidateOriginal.mockResolvedValue(false);
     fixture.erp.request.mockResolvedValue({
       items: [
         {
@@ -2105,6 +2221,16 @@ describe("verified previous ERP documents for RU candidates", () => {
     await fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor");
     expect(old).toMatchObject({ status: "CONFIRMED", reviewedBy: "manual-reviewer" });
     expect(fixture.erp.probeCandidateOriginal).not.toHaveBeenCalled();
+  });
+
+  it("rejects an RU sync if the person is unlinked while the snapshot is loading", async () => {
+    const fixture = fixtureForRu();
+    fixture.erp.request.mockImplementation(async () => {
+      fixture.row.personUid = null;
+      return { items: [previous("passport")] };
+    });
+    await expect(fixture.syncService.syncPreviousDocuments(fixture.row.id, "actor")).rejects.toThrow("ERP_PERSON_IDENTITY_MISMATCH");
+    expect(fixture.candidatePreviousDocumentsUpserted).toHaveLength(0);
   });
 
   it("rejects an RU sync when candidate identity changes before committing", async () => {

@@ -13,6 +13,7 @@ import { DocumentCatalogService } from "./document-catalog.service";
 import { FIELD_LABELS, fieldKind, textValue, typedValue, validateFields } from "./document-contract";
 import { previousDocumentAvailability } from "./previous-document-availability";
 import { applyPreviousDocumentEdits } from "./previous-document-edits";
+import { previousDocumentAccessible } from "./previous-document-owner";
 import { tryCompleteIgEmployment } from "./ig-completion";
 import type { PreviousDocumentDetailsDto } from "./dto/reviewer-document.dto";
 import type { EditDocumentFieldsDto } from "./dto/document.dto";
@@ -66,9 +67,9 @@ export class ReviewerDocumentsService {
       document: { candidateId }, submission: { origin: { in: ["REVIEWER", "CANDIDATE"] } } } });
     if (!row) throw new NotFoundException("DELIVERY_RETRY_NOT_FOUND");
   }
-  private async load(tx: Prisma.TransactionClient, candidateId: string, id: string) {
+  private async load(tx: Prisma.TransactionClient, candidateId: string, id: string, owner: Parameters<typeof previousDocumentAccessible>[1]) {
     const row = await tx.candidatePreviousDocument.findFirst({ where: { id, candidateId }, include: { fieldEdits: true } });
-    if (!row) throw new NotFoundException("PREVIOUS_DOCUMENT_NOT_FOUND");
+    if (!row || !previousDocumentAccessible(row, owner)) throw new NotFoundException("PREVIOUS_DOCUMENT_NOT_FOUND");
     const type = row.documentUid ? await tx.documentType.findUnique({ where: { erpUid: row.documentUid }, include: { definitions: true } }) : null;
     const erp = (row.erpFields ?? row.fields) as Record<string, unknown>;
     const definitions = new Map((type?.definitions ?? []).map((field) => [field.name, field]));
@@ -80,7 +81,7 @@ export class ReviewerDocumentsService {
   }
   async details(candidateId: string, id: string, principal: AuthPrincipal): Promise<PreviousDocumentDetailsDto> {
     const owner = await this.owner(candidateId, principal);
-    const { row, type, erp, definitions } = await this.load(this.prisma, candidateId, id);
+    const { row, type, erp, definitions } = await this.load(this.prisma, candidateId, id, owner);
     const document = previousDocumentAvailability([{ code: type?.code ?? "", title: row.title,
       erpUid: row.documentUid, category: "required" }], [row], [], candidateReviewGroup(owner) === "IG")[0];
     if (!document) throw new ConflictException("PREVIOUS_DOCUMENT_TYPE_REQUIRED");
@@ -104,7 +105,7 @@ export class ReviewerDocumentsService {
       const owner = await tx.candidate.findFirst({ where: { id: candidateId, ...candidateGroupAccessWhere(principal, true) } });
       if (!owner) throw new NotFoundException("CANDIDATE_NOT_FOUND");
       requireReviewGroup(principal, candidateReviewGroup(owner));
-      const { row, erp, definitions } = await this.load(tx, candidateId, id);
+      const { row, erp, definitions } = await this.load(tx, candidateId, id, owner);
       if (row.localRevision !== body.revision) throw new ConflictException("Document fields changed; reload before saving");
       const fields = body.fields;
       if (!fields || typeof fields !== "object" || Array.isArray(fields) || Object.keys(fields).length > 200)
@@ -167,14 +168,19 @@ export class ReviewerDocumentsService {
       return;
     }
     try {
+      if (!row.originalAvailable || !previousDocumentAccessible(row, candidate))
+        throw new ConflictException("ERP_DOCUMENT_OWNER_MISMATCH");
+      if (!row.sourceErpId && row.sourceId.includes("#"))
+        throw new ConflictException("ERP_DOCUMENT_SOURCE_AMBIGUOUS");
+      const rawSourceId = row.sourceErpId ?? row.sourceId;
       const fields = Object.fromEntries(row.fieldEdits.map((edit) => [edit.name,
         edit.kind === "boolean" ? edit.value === "true" : edit.value]));
       const result = await this.erp.request("update-person-document-fields",
         z.object({ id: z.string(), fields: z.record(z.unknown()) }), {},
         { actor: principal.code1c, requestId,
           ...(ruIdentity ? { candidate: candidate.erpUid } : { personUid: candidate.personUid, code1c: candidate.code1c }),
-          sourceId: row.sourceId, fields });
-      if (result.id !== row.sourceId) throw new ConflictException("ERP_DOCUMENT_IDENTITY_MISMATCH");
+          sourceId: rawSourceId, fields });
+      if (result.id !== rawSourceId) throw new ConflictException("ERP_DOCUMENT_IDENTITY_MISMATCH");
       await this.prisma.candidatePreviousDocument.updateMany({
         where: { id, erpEditRequestId: requestId },
         data: { erpFields: result.fields as Prisma.InputJsonObject,
