@@ -16,6 +16,7 @@ import {
   type CandidateWorkspaceDto,
   type CandidateProfileDto,
   type CandidatePatchFieldsDto,
+  type CandidateStatusRequestDto,
 } from "@edo/api-client";
 import {
   Badge,
@@ -49,6 +50,11 @@ import { groupCandidateStatuses } from "../lib/candidate-status-groups";
 import { CandidatePreviousDocuments } from "./CandidatePreviousDocuments";
 import { CandidatePersonPicker } from "./CandidatePersonPicker";
 import { LkLink } from "./LkLink";
+import {
+  CandidateArrivalPlanFields,
+  CandidateArrivalPlanNotifications,
+  useCandidateArrivalPlanDraft,
+} from "./CandidateArrivalPlan";
 
 function CopyPhoneButton({ phone }: { phone: string }) {
   const [copied, setCopied] = useState(false);
@@ -229,9 +235,11 @@ function EditCandidate({
 function CandidateStatus({
   profile,
   onClose,
+  onArrivalPlanSaved,
 }: {
   profile: CandidateWorkspaceDto;
   onClose: () => void;
+  onArrivalPlanSaved: (requestId: string) => void;
 }) {
   const statuses = useListCandidateStatuses();
   const [statusId, setStatusId] = useState("");
@@ -246,6 +254,8 @@ function CandidateStatus({
   const selected = statuses.data?.items.find(
     (status) => status.id === statusId,
   );
+  const isArrivalPlan = statusId === "ПланНаЗаезд";
+  const plan = useCandidateArrivalPlanDraft(profile.id, isArrivalPlan && selected?.editable !== false);
   const groupedStatuses = groupCandidateStatuses(statuses.data?.items ?? []);
   return (
     <form
@@ -254,20 +264,29 @@ function CandidateStatus({
       onSubmit={(event) => {
         event.preventDefault();
         if (!selected || selected.editable === false) return;
-        const data = {
+        if (isArrivalPlan && !request.locked && !plan.data) return;
+        const data: CandidateStatusRequestDto = {
           requestId: request.requestId,
           statusId,
           ...(comment.trim() ? { comment: comment.trim() } : {}),
-          ...(selected.requiresProject ? { projectCode } : {}),
-          ...(selected.requiresPlannedArrivalDate
-            ? { plannedArrivalDate }
-            : {}),
+          ...(isArrivalPlan
+            ? plan.data
+            : {
+                ...(selected.requiresProject ? { projectCode } : {}),
+                ...(selected.requiresPlannedArrivalDate ? { plannedArrivalDate } : {}),
+              }),
         };
         void request.execute(
           () => mutation.mutateAsync({ candidateId: profile.id, data }),
           async (saved) => {
+            if (isArrivalPlan) onArrivalPlanSaved(data.requestId);
             await confirmed(saved);
             onClose();
+          },
+          (code) => {
+            if (isArrivalPlan && code === "ARRIVAL_PLAN_STALE") {
+              void plan.contextQuery.refetch();
+            }
           },
         );
       }}
@@ -321,7 +340,10 @@ function CandidateStatus({
           </Button>
         </p>
       )}
-      {(selected?.requiresProject || selected?.requiresPlannedArrivalDate) && (
+      {isArrivalPlan && selected?.editable !== false && (
+        <CandidateArrivalPlanFields plan={plan} disabled={request.locked || mutation.isPending} />
+      )}
+      {!isArrivalPlan && (selected?.requiresProject || selected?.requiresPlannedArrivalDate) && (
         <div className="rounded-lg border border-[var(--primary)]/20 bg-[var(--primary)]/5 p-3 space-y-3">
           {selected.requiresProject && (
             <div className="space-y-1 text-sm">
@@ -383,14 +405,18 @@ function CandidateStatus({
             request.blocked ||
             !selected ||
             selected.editable === false ||
-            (selected.requiresProject && !projectCode)
+            (isArrivalPlan
+              ? !request.locked && !plan.data
+              : selected.requiresProject && !projectCode)
           }
         >
           {mutation.isPending
             ? "Сохранение…"
             : request.error && request.locked
               ? "Проверить результат изменения статуса"
-              : "Сохранить статус"}
+              : isArrivalPlan
+                ? "Сохранить план заезда"
+                : "Сохранить статус"}
         </Button>
         <Button
           type="button"
@@ -486,11 +512,14 @@ export function CandidateManagement({
   fallbackProfile?: CandidateProfileDto | null;
 }) {
   const workspace = useGetCandidateWorkspace(candidateId);
+  const cache = useQueryClient();
   const me = useGetMe();
   const [action, setAction] = useState<"edit" | "status" | "person" | null>(
     null,
   );
   const [isPhotoDialogOpen, setIsPhotoDialogOpen] = useState(false);
+  const planOperationKey = ["last-candidate-arrival-plan-operation", candidateId];
+  const arrivalPlanRequestId = cache.getQueryData<string>(planOperationKey);
   if (workspace.isLoading) return <p role="status">Загрузка данных ERP…</p>;
   const response = (
     workspace.error as {
@@ -588,12 +617,25 @@ export function CandidateManagement({
           <EditCandidate profile={profile} onClose={() => setAction(null)} />
         )}
         {action === "status" && (
-          <CandidateStatus profile={profile} onClose={() => setAction(null)} />
+          <CandidateStatus
+            key={profile.id}
+            profile={profile}
+            onClose={() => setAction(null)}
+            onArrivalPlanSaved={(requestId) =>
+              cache.setQueryData<string>(planOperationKey, requestId)
+            }
+          />
         )}
         {action === "person" && (
           <CandidatePersonLink
             profile={profile}
             onClose={() => setAction(null)}
+          />
+        )}
+        {arrivalPlanRequestId && (
+          <CandidateArrivalPlanNotifications
+            candidateId={profile.id}
+            requestId={arrivalPlanRequestId}
           />
         )}
         {!action && (

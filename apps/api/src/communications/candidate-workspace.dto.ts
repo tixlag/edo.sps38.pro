@@ -14,6 +14,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsObject,
   Min,
   Max,
   ValidateIf,
@@ -28,6 +29,7 @@ import {
   MaxLength,
   ValidateNested,
 } from "class-validator";
+import { CandidateArrivalPlanFieldsDto } from "./candidate-arrival-plan.dto";
 
 export class CandidateResponsibleDto {
   @ApiProperty({ enum: ["user", "person"] }) @IsIn(["user", "person"]) kind!:
@@ -242,6 +244,13 @@ export class CandidateStatusRequestDto {
   @IsOptional()
   @IsISO8601({ strict: true })
   plannedArrivalDate?: string;
+
+  @ApiPropertyOptional({ type: CandidateArrivalPlanFieldsDto })
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => CandidateArrivalPlanFieldsDto)
+  arrivalPlan?: CandidateArrivalPlanFieldsDto;
 }
 export class CandidatePersonLinkDto {
   @ApiProperty({ format: "uuid" }) @IsUUID() requestId!: string;

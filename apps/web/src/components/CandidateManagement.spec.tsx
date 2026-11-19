@@ -61,9 +61,14 @@ const state = vi.hoisted(() => ({
   status: vi.fn(),
   link: vi.fn(),
   recheck: vi.fn(),
+  arrivalPlan: vi.fn(),
+  refetchArrivalPlan: vi.fn(),
+  arrivalPlanUpdated: false,
+  arrivalNotifications: vi.fn(),
   navigate: vi.fn(),
   invalidate: vi.fn(),
   setData: vi.fn(),
+  queryData: new Map<string, unknown>(),
   persons: vi.fn(),
   manualPersonToken: "signed-opaque-person",
   matches: vi.fn(),
@@ -79,6 +84,7 @@ vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({
     invalidateQueries: state.invalidate,
     setQueryData: state.setData,
+    getQueryData: (key: unknown) => state.queryData.get(JSON.stringify(key)),
   }),
 }));
 vi.mock("@tanstack/react-router", () => ({
@@ -125,17 +131,21 @@ vi.mock("@edo/api-client", () => {
     useListPositions: () => result([]),
     useListCatalogMentors: () => result([]),
     useListCandidatePositions: () =>
-      result([{ id: "pos", code: "position-secret", name: "Водитель" }]),
+      result([
+        { id: "pos", code: "position-secret", name: "Водитель" },
+        { id: "alt-pos", code: "mechanic", name: "Механик" },
+      ]),
     useListCandidateProjects: () =>
       result([
         { id: "project", code: "project-secret", name: "Северный объект" },
+        { id: "alternate", code: "south", name: "Южный объект" },
       ]),
     useListCandidateStatuses: () =>
       result([
         { id: "recruiting", name: "Подбор", editable: true },
         { id: "potential", name: "Потенциальный", editable: true },
         {
-          id: "arrival-plan",
+          id: "ПланНаЗаезд",
           name: "План на заезд",
           editable: true,
           requiresProject: true,
@@ -243,6 +253,16 @@ vi.mock("@edo/api-client", () => {
     useListCandidateUniversities: () => result([]),
     useUpdateCandidateWorkspace: () => mutation(state.update),
     useChangeCandidateStatus: () => mutation(state.status),
+    useGetCandidateArrivalPlan: (
+      candidateId: string,
+      params: { projectCode?: string; positionCode?: string; dispatcherId?: string },
+    ) => ({ data: state.arrivalPlan(candidateId, params), refetch: state.refetchArrivalPlan }),
+    getGetCandidateArrivalPlanQueryKey: (id: string, params: unknown) => ["arrival-plan", id, params],
+    useGetCandidateArrivalPlanNotifications: (
+      candidateId: string,
+      requestId: string,
+    ) => ({ data: { items: state.arrivalNotifications(candidateId, requestId) } }),
+    getGetCandidateArrivalPlanNotificationsQueryKey: (id: string, requestId: string) => ["arrival-plan-notifications", id, requestId],
     useLinkCandidatePerson: () => mutation(state.link),
     getGetCandidateDetailsQueryKey: (id: string) => ["details", id],
     getGetCandidateWorkspaceQueryKey: (id: string) => ["workspace", id],
@@ -342,6 +362,49 @@ beforeEach(() => {
   for (const mutation of [state.create, state.update, state.status, state.link])
     mutation.mockResolvedValue(state.profile);
   state.recheck.mockResolvedValue({ items: [] });
+  state.queryData.clear();
+  state.setData.mockImplementation((key, data) =>
+    state.queryData.set(JSON.stringify(key), data),
+  );
+  state.arrivalPlanUpdated = false;
+  state.refetchArrivalPlan.mockImplementation(() => {
+    state.arrivalPlanUpdated = true;
+    return Promise.resolve();
+  });
+  state.arrivalPlan.mockReset();
+  state.arrivalPlan.mockImplementation((_candidateId, { projectCode, positionCode, dispatcherId }) => ({
+    version: state.arrivalPlanUpdated ? "new-version" : `version-${projectCode ?? "default"}-${positionCode ?? "default"}`,
+    project: projectCode === "south"
+      ? { code: "south", name: "Южный объект" }
+      : { code: "project-secret", name: "Северный объект" },
+    position: positionCode === "mechanic"
+      ? { code: "mechanic", name: "Механик" }
+      : { code: "position-secret", name: "Водитель" },
+    plannedArrivalDate: "2026-12-01",
+    siteArrivalDate: null,
+    employmentMethod: "contract",
+    employmentMethods: [{ id: "contract", name: "Трудовой договор" }],
+    departurePoint: "Иркутск",
+    height: "180",
+    clothingSize: "50",
+    shoeSize: "42",
+    dispatcher: dispatcherId === "same-person-uid"
+      ? { id: "same-person-uid", name: "Иванов Иван" }
+      : projectCode === "south"
+        ? { id: "south-dispatcher", name: "Диспетчер Южного" }
+        : { id: "north-dispatcher", name: "Диспетчер Северного" },
+    recipients: [{ name: "Мария Руководитель", roles: ["Руководитель"] }],
+    pay: { kind: "class", classId: "class-four" },
+    classes: [{ id: "class-four", name: "4 класс" }],
+    allowsClassPlus: true,
+    allowsAup: true,
+    allowsDirector: true,
+    directorRateLimit: 500,
+  }));
+  state.arrivalNotifications.mockReset();
+  state.arrivalNotifications.mockReturnValue([
+    { name: "Мария Руководитель", channel: "lk", status: "sent" },
+  ]);
 });
 afterEach(async () => {
   await act(async () => root?.unmount());
@@ -965,13 +1028,118 @@ describe("candidate manager flows", () => {
     expect(view.querySelector("dl")).not.toBeNull();
     await click("Изменить статус");
     expect(view.querySelector("dl")).toBeNull();
-    select(view.querySelector("form select")!, "arrival-plan");
+    select(view.querySelector("form select")!, "ПланНаЗаезд");
     expect(
       view.querySelector<HTMLInputElement>('input[type="date"]')!.required,
     ).toBe(true);
-    expect(button("Сохранить статус").disabled).toBe(true);
+    expect(button("Сохранить план заезда").disabled).toBe(false);
     await click("Отмена");
     expect(view.querySelector("dl")).not.toBeNull();
+  });
+
+  it("updates plan defaults for project and position while keeping entered details after ERP rejects the change", async () => {
+    vi.useFakeTimers();
+    state.status.mockRejectedValueOnce({
+      response: { status: 422, data: { message: "Проверьте данные плана" } },
+    });
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Изменить статус");
+    select(view.querySelector("form select")!, "ПланНаЗаезд");
+    const field = (name: string) =>
+      view.querySelector<HTMLInputElement>(`input[name="${name}"]`);
+    expect(field("plannedArrivalDate")?.value).toBe("2026-12-01");
+    expect(field("departurePoint")?.value).toBe("Иркутск");
+    expect(view.textContent).toContain("Диспетчер Северного");
+    expect(view.textContent).toContain("Мария Руководитель");
+    type(field("departurePoint")!, "Точка сбора");
+    type(field("siteArrivalDate")!, "2026-12-02");
+    const dispatcher = view.querySelector<HTMLInputElement>('input[aria-label="Диспетчер"]')!;
+    await act(async () => dispatcher.dispatchEvent(new FocusEvent("focusin", { bubbles: true })));
+    type(dispatcher, "Иванов");
+    await act(async () => vi.advanceTimersByTime(300));
+    await pick("Диспетчер", "Иванов Иван · 03.02.1990");
+    await pick("Объект для заявки", "Южный объект");
+    await pick("Должность", "Механик");
+    expect(view.textContent).toContain("Диспетчер Южного");
+    expect(field("departurePoint")?.value).toBe("Точка сбора");
+    await submit("Изменение статуса");
+    expect(state.status).toHaveBeenCalledWith({
+      candidateId: "current-cycle",
+      data: {
+        requestId: expect.any(String),
+        statusId: "ПланНаЗаезд",
+        projectCode: "south",
+        plannedArrivalDate: "2026-12-01",
+        arrivalPlan: {
+          version: "version-south-mechanic",
+          positionCode: "mechanic",
+          siteArrivalDate: "2026-12-02",
+          employmentMethod: "contract",
+          departurePoint: "Точка сбора",
+          height: "180",
+          clothingSize: "50",
+          shoeSize: "42",
+          dispatcherId: "south-dispatcher",
+          pay: { kind: "class", classId: "class-four", classPlus: false },
+        },
+      },
+    });
+    expect(view.textContent).toContain("Проверьте данные плана");
+    expect(field("departurePoint")?.value).toBe("Точка сбора");
+    expect(field("siteArrivalDate")?.value).toBe("2026-12-02");
+  });
+
+  it("keeps the selected ERP dispatcher and delivery results for a recovered operation after reopening the card", async () => {
+    vi.useFakeTimers();
+    state.status.mockRejectedValueOnce(new Error("Response lost"));
+    state.operation.mockResolvedValue({ data: { state: "SUCCEEDED", candidate: state.profile } });
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Изменить статус");
+    select(view.querySelector("form select")!, "ПланНаЗаезд");
+    const dispatcher = view.querySelector<HTMLInputElement>(
+      'input[aria-label="Диспетчер"]',
+    );
+    expect(dispatcher?.value).toBe("Диспетчер Северного");
+    await act(async () => dispatcher!.dispatchEvent(new FocusEvent("focusin", { bubbles: true })));
+    type(dispatcher!, "Иванов");
+    await act(async () => vi.advanceTimersByTime(300));
+    await pick("Диспетчер", "Иванов Иван · 03.02.1990");
+    await submit("Изменение статуса");
+    const saved = state.status.mock.calls[0]?.[0];
+    expect(saved?.data.arrivalPlan.dispatcherId).toBe("same-person-uid");
+    expect(state.arrivalNotifications).not.toHaveBeenCalled();
+    await click("Проверить результат изменения статуса");
+    expect(state.status).toHaveBeenCalledTimes(1);
+    expect(state.arrivalNotifications).toHaveBeenCalledWith(
+      "current-cycle",
+      saved?.data.requestId,
+    );
+    expect(view.textContent).toContain("Мария Руководитель");
+    expect(view.textContent).toContain("Отправлено");
+    await act(async () => root.unmount());
+    view.remove();
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    expect(view.textContent).toContain("Отправлено");
+  });
+
+  it("refreshes a stale plan with a new operation ID and retains entered details", async () => {
+    state.status.mockRejectedValueOnce({
+      response: { status: 409, data: { message: "ERP_ARRIVAL_PLAN_STALE" } },
+    });
+    await render(<CandidateManagement candidateId="current-cycle" />);
+    await click("Изменить статус");
+    select(view.querySelector("form select")!, "ПланНаЗаезд");
+    type(view.querySelector<HTMLInputElement>('input[name="departurePoint"]')!, "Место сбора");
+    await submit("Изменение статуса");
+    expect(view.textContent).toContain("Условия плана изменились");
+    expect(state.refetchArrivalPlan).toHaveBeenCalledOnce();
+    await click("Сохранить план заезда");
+    const [first, last] = state.status.mock.calls.map(([input]) => input.data);
+    expect(last.requestId).not.toBe(first.requestId);
+    expect(last.arrivalPlan).toMatchObject({
+      version: "new-version",
+      departurePoint: "Место сбора",
+    });
   });
 
   it("shows the exact linked person and does not offer ordinary relinking", async () => {

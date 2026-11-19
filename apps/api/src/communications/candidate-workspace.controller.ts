@@ -29,6 +29,11 @@ import {
 } from "../documents/dto/document.dto";
 import { CandidateWorkspaceService } from "./candidate-workspace.service";
 import {
+  CandidateArrivalPlanDto,
+  CandidateArrivalPlanNotificationsDto,
+  CandidateArrivalPlanQueryDto,
+} from "./candidate-arrival-plan.dto";
+import {
   CandidateOperationDto,
   OpenExistingCandidateDto,
   CandidatePersonMatchesDto,
@@ -299,6 +304,32 @@ export class CandidateWorkspaceController {
     @Body() body: UpdateCandidateDto,
   ) {
     return this.workspace.update(id, p, body);
+  }
+  @Get(":candidateId/arrival-plan")
+  @ApiOperation({
+    operationId: "getCandidateArrivalPlan",
+    summary: "ERP arrival plan defaults and permitted choices for the verified actor",
+  })
+  @ApiResponse({ status: 200, type: CandidateArrivalPlanDto })
+  arrivalPlan(
+    @Param("candidateId") id: string,
+    @CurrentPrincipal() p: AuthPrincipal,
+    @Query() query: CandidateArrivalPlanQueryDto,
+  ) {
+    return this.workspace.arrivalPlan(id, p, query);
+  }
+  @Get(":candidateId/arrival-plan/:requestId/notifications")
+  @ApiOperation({
+    operationId: "getCandidateArrivalPlanNotifications",
+    summary: "ERP delivery status for the verified actor's saved arrival plan",
+  })
+  @ApiResponse({ status: 200, type: CandidateArrivalPlanNotificationsDto })
+  arrivalPlanNotifications(
+    @Param("candidateId") id: string,
+    @Param("requestId") requestId: string,
+    @CurrentPrincipal() p: AuthPrincipal,
+  ) {
+    return this.workspace.arrivalPlanNotifications(id, p, requestId);
   }
   @Post(":candidateId/status")
   @HttpCode(200)

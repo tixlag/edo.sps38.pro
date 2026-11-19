@@ -17759,6 +17759,251 @@
         ]
       }
     },
+    "/api/v1/candidates/{candidateId}/arrival-plan": {
+      "get": {
+        "operationId": "getCandidateArrivalPlan",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectCode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "positionCode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dispatcherId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateArrivalPlanDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "ERP arrival plan defaults and permitted choices for the verified actor",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
+    "/api/v1/candidates/{candidateId}/arrival-plan/{requestId}/notifications": {
+      "get": {
+        "operationId": "getCandidateArrivalPlanNotifications",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateArrivalPlanNotificationsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-jwt": []
+          }
+        ],
+        "summary": "ERP delivery status for the verified actor's saved arrival plan",
+        "tags": [
+          "candidate-workspace"
+        ]
+      }
+    },
     "/api/v1/candidates/{candidateId}/status": {
       "post": {
         "operationId": "changeCandidateStatus",
@@ -26801,6 +27046,284 @@
           "fields"
         ]
       },
+      "CandidateArrivalCodeDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ]
+      },
+      "CandidateArrivalReferenceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "CandidateArrivalRecipientDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "roles"
+        ]
+      },
+      "CandidateArrivalPayDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "class",
+              "aup",
+              "director"
+            ]
+          },
+          "classId": {
+            "type": "string"
+          },
+          "classPlus": {
+            "type": "boolean"
+          },
+          "rate": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "CandidateArrivalPlanDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "project": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateArrivalCodeDto"
+              }
+            ]
+          },
+          "position": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateArrivalCodeDto"
+              }
+            ]
+          },
+          "plannedArrivalDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "siteArrivalDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "employmentMethod": {
+            "type": "string",
+            "nullable": true
+          },
+          "employmentMethods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateArrivalReferenceDto"
+            }
+          },
+          "departurePoint": {
+            "type": "string"
+          },
+          "height": {
+            "type": "string"
+          },
+          "clothingSize": {
+            "type": "string"
+          },
+          "shoeSize": {
+            "type": "string"
+          },
+          "dispatcher": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateArrivalReferenceDto"
+              }
+            ]
+          },
+          "recipients": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateArrivalRecipientDto"
+            }
+          },
+          "pay": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CandidateArrivalPayDto"
+              }
+            ]
+          },
+          "classes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateArrivalReferenceDto"
+            }
+          },
+          "allowsClassPlus": {
+            "type": "boolean"
+          },
+          "allowsAup": {
+            "type": "boolean"
+          },
+          "allowsDirector": {
+            "type": "boolean"
+          },
+          "directorRateLimit": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "version",
+          "project",
+          "position",
+          "plannedArrivalDate",
+          "siteArrivalDate",
+          "employmentMethod",
+          "employmentMethods",
+          "departurePoint",
+          "height",
+          "clothingSize",
+          "shoeSize",
+          "dispatcher",
+          "recipients",
+          "pay",
+          "classes",
+          "allowsClassPlus",
+          "allowsAup",
+          "allowsDirector",
+          "directorRateLimit"
+        ]
+      },
+      "CandidateArrivalNotificationDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "lk",
+              "erp",
+              "email"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "channel",
+          "status"
+        ]
+      },
+      "CandidateArrivalPlanNotificationsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateArrivalNotificationDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "CandidateArrivalPlanFieldsDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "positionCode": {
+            "type": "string"
+          },
+          "siteArrivalDate": {
+            "type": "string",
+            "nullable": true,
+            "format": "date"
+          },
+          "employmentMethod": {
+            "type": "string"
+          },
+          "departurePoint": {
+            "type": "string"
+          },
+          "height": {
+            "type": "string"
+          },
+          "clothingSize": {
+            "type": "string"
+          },
+          "shoeSize": {
+            "type": "string"
+          },
+          "dispatcherId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pay": {
+            "$ref": "#/components/schemas/CandidateArrivalPayDto"
+          }
+        },
+        "required": [
+          "version",
+          "positionCode",
+          "employmentMethod",
+          "departurePoint",
+          "height",
+          "clothingSize",
+          "shoeSize",
+          "dispatcherId",
+          "pay"
+        ]
+      },
       "CandidateStatusRequestDto": {
         "type": "object",
         "properties": {
@@ -26820,6 +27343,9 @@
           "plannedArrivalDate": {
             "type": "string",
             "format": "date"
+          },
+          "arrivalPlan": {
+            "$ref": "#/components/schemas/CandidateArrivalPlanFieldsDto"
           }
         },
         "required": [

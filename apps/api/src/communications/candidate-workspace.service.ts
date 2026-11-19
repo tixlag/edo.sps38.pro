@@ -18,6 +18,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { isISO8601, isUUID } from "class-validator";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
@@ -35,6 +36,8 @@ import {
 } from "../documents/review-group";
 import {
   ErpWorkspaceClient,
+  erpArrivalPlanSchema,
+  erpArrivalPlanNotificationsSchema,
   erpCardSchema,
   referencesSchema,
   personMatchesSchema,
@@ -50,6 +53,7 @@ import {
   CreateCandidateDto,
   UpdateCandidateDto,
 } from "./candidate-workspace.dto";
+import type { CandidateArrivalPlanQueryDto } from "./candidate-arrival-plan.dto";
 import { ErpCandidateClient } from "../documents/erp-candidate.client";
 import type { Candidate, Prisma } from "@prisma/client";
 import {
@@ -649,6 +653,31 @@ export class CandidateWorkspaceService {
     );
     return this.project(card, p, id);
   }
+  async arrivalPlan(id: string, p: AuthPrincipal, query: CandidateArrivalPlanQueryDto) {
+    const actor = this.actor(p);
+    const row = await this.owner(id, p);
+    const { projectCode, positionCode, dispatcherId } = query;
+    return this.erp.request("arrival-plan", erpArrivalPlanSchema, {
+      ...(projectCode ? { projectCode } : {}),
+      ...(positionCode ? { positionCode } : {}),
+      ...(dispatcherId ? { dispatcherId } : {}),
+      actor,
+      candidate: row.erpUid!,
+    });
+  }
+
+  async arrivalPlanNotifications(id: string, p: AuthPrincipal, requestId: string) {
+    const actor = this.actor(p);
+    if (!isUUID(requestId))
+      throw new BadRequestException("INVALID_REQUEST_ID");
+    const row = await this.owner(id, p);
+    return this.erp.request("arrival-plan-notifications", erpArrivalPlanNotificationsSchema, {
+      actor,
+      candidate: row.erpUid!,
+      requestId,
+    });
+  }
+
   async status(id: string, p: AuthPrincipal, body: CandidateStatusRequestDto) {
     const actor = this.actor(p),
       row = await this.owner(id, p);
@@ -662,6 +691,20 @@ export class CandidateWorkspaceService {
       throw new BadRequestException("Для статуса требуется объект");
     if (status.requiresPlannedArrivalDate && !body.plannedArrivalDate)
       throw new BadRequestException("Для статуса требуется дата заезда");
+    if (body.statusId === "ПланНаЗаезд") {
+      if (!body.arrivalPlan)
+        throw new BadRequestException("ARRIVAL_PLAN_REQUIRED");
+      const date = body.plannedArrivalDate;
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !isISO8601(date, { strict: true }))
+        throw new BadRequestException("INVALID_ARRIVAL_PROJECT_OR_DATE");
+      const pay = body.arrivalPlan.pay;
+      if (pay.kind === "class"
+        ? !pay.classId || pay.rate != null
+        : pay.rate == null || pay.classId != null || pay.classPlus != null)
+        throw new BadRequestException("INVALID_ARRIVAL_PAY");
+    } else if (body.arrivalPlan) {
+      throw new BadRequestException("INVALID_ARRIVAL_PLAN");
+    }
     const card = await this.erp.request(
       "status",
       erpCardSchema,

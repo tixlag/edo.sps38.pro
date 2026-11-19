@@ -3274,12 +3274,130 @@ export interface UpdateCandidateDto {
   fields: CandidatePatchFieldsDto;
 }
 
+export interface CandidateArrivalCodeDto {
+  code: string;
+  name: string;
+}
+
+export interface CandidateArrivalReferenceDto {
+  id: string;
+  name: string;
+}
+
+export interface CandidateArrivalRecipientDto {
+  name: string;
+  roles: string[];
+}
+
+export type CandidateArrivalPayDtoKind =
+  (typeof CandidateArrivalPayDtoKind)[keyof typeof CandidateArrivalPayDtoKind];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateArrivalPayDtoKind = {
+  class: "class",
+  aup: "aup",
+  director: "director",
+} as const;
+
+export interface CandidateArrivalPayDto {
+  kind: CandidateArrivalPayDtoKind;
+  classId?: string;
+  classPlus?: boolean;
+  rate?: number;
+}
+
+/**
+ * @nullable
+ */
+export type CandidateArrivalPlanDtoProject = CandidateArrivalCodeDto | null;
+
+/**
+ * @nullable
+ */
+export type CandidateArrivalPlanDtoPosition = CandidateArrivalCodeDto | null;
+
+/**
+ * @nullable
+ */
+export type CandidateArrivalPlanDtoDispatcher =
+  CandidateArrivalReferenceDto | null;
+
+/**
+ * @nullable
+ */
+export type CandidateArrivalPlanDtoPay = CandidateArrivalPayDto | null;
+
+export interface CandidateArrivalPlanDto {
+  version: string;
+  /** @nullable */
+  project: CandidateArrivalPlanDtoProject;
+  /** @nullable */
+  position: CandidateArrivalPlanDtoPosition;
+  /** @nullable */
+  plannedArrivalDate: string | null;
+  /** @nullable */
+  siteArrivalDate: string | null;
+  /** @nullable */
+  employmentMethod: string | null;
+  employmentMethods: CandidateArrivalReferenceDto[];
+  departurePoint: string;
+  height: string;
+  clothingSize: string;
+  shoeSize: string;
+  /** @nullable */
+  dispatcher: CandidateArrivalPlanDtoDispatcher;
+  recipients: CandidateArrivalRecipientDto[];
+  /** @nullable */
+  pay: CandidateArrivalPlanDtoPay;
+  classes: CandidateArrivalReferenceDto[];
+  allowsClassPlus: boolean;
+  allowsAup: boolean;
+  allowsDirector: boolean;
+  /** @nullable */
+  directorRateLimit: number | null;
+}
+
+export type CandidateArrivalNotificationDtoChannel =
+  (typeof CandidateArrivalNotificationDtoChannel)[keyof typeof CandidateArrivalNotificationDtoChannel];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const CandidateArrivalNotificationDtoChannel = {
+  lk: "lk",
+  erp: "erp",
+  email: "email",
+} as const;
+
+export interface CandidateArrivalNotificationDto {
+  name: string;
+  channel: CandidateArrivalNotificationDtoChannel;
+  status: string;
+}
+
+export interface CandidateArrivalPlanNotificationsDto {
+  items: CandidateArrivalNotificationDto[];
+}
+
+export interface CandidateArrivalPlanFieldsDto {
+  version: string;
+  positionCode: string;
+  /** @nullable */
+  siteArrivalDate?: string | null;
+  employmentMethod: string;
+  departurePoint: string;
+  height: string;
+  clothingSize: string;
+  shoeSize: string;
+  dispatcherId: string;
+  pay: CandidateArrivalPayDto;
+}
+
 export interface CandidateStatusRequestDto {
   requestId: string;
   statusId: string;
   comment?: string;
   projectCode?: string;
   plannedArrivalDate?: string;
+  arrivalPlan?: CandidateArrivalPlanFieldsDto;
 }
 
 export interface CandidatePersonLinkDto {
@@ -4390,6 +4508,12 @@ export type FindCandidatePersonMatchesScope =
 export const FindCandidatePersonMatchesScope = {
   creation: "creation",
 } as const;
+
+export type GetCandidateArrivalPlanParams = {
+  projectCode?: string;
+  positionCode?: string;
+  dispatcherId?: string;
+};
 
 export type ListCommunicationCandidatesParams = {
   cursor?: string;
@@ -16307,6 +16431,205 @@ export function useGetCandidateRequirements<
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetCandidateRequirementsQueryOptions(
     candidateId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary ERP arrival plan defaults and permitted choices for the verified actor
+ */
+export const getCandidateArrivalPlan = (
+  candidateId: string,
+  params?: GetCandidateArrivalPlanParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateArrivalPlanDto>({
+    url: `/api/v1/candidates/${candidateId}/arrival-plan`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetCandidateArrivalPlanQueryKey = (
+  candidateId: string,
+  params?: GetCandidateArrivalPlanParams,
+) => {
+  return [
+    `/api/v1/candidates/${candidateId}/arrival-plan`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetCandidateArrivalPlanQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateArrivalPlan>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  params?: GetCandidateArrivalPlanParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateArrivalPlan>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetCandidateArrivalPlanQueryKey(candidateId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateArrivalPlan>>
+  > = ({ signal }) => getCandidateArrivalPlan(candidateId, params, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!candidateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateArrivalPlan>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateArrivalPlanQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateArrivalPlan>>
+>;
+export type GetCandidateArrivalPlanQueryError = ApiErrorDto;
+
+/**
+ * @summary ERP arrival plan defaults and permitted choices for the verified actor
+ */
+
+export function useGetCandidateArrivalPlan<
+  TData = Awaited<ReturnType<typeof getCandidateArrivalPlan>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  params?: GetCandidateArrivalPlanParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateArrivalPlan>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateArrivalPlanQueryOptions(
+    candidateId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary ERP delivery status for the verified actor's saved arrival plan
+ */
+export const getCandidateArrivalPlanNotifications = (
+  candidateId: string,
+  requestId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CandidateArrivalPlanNotificationsDto>({
+    url: `/api/v1/candidates/${candidateId}/arrival-plan/${requestId}/notifications`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetCandidateArrivalPlanNotificationsQueryKey = (
+  candidateId: string,
+  requestId: string,
+) => {
+  return [
+    `/api/v1/candidates/${candidateId}/arrival-plan/${requestId}/notifications`,
+  ] as const;
+};
+
+export const getGetCandidateArrivalPlanNotificationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandidateArrivalPlanNotifications>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  requestId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateArrivalPlanNotifications>>,
+      TError,
+      TData
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetCandidateArrivalPlanNotificationsQueryKey(candidateId, requestId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCandidateArrivalPlanNotifications>>
+  > = ({ signal }) =>
+    getCandidateArrivalPlanNotifications(candidateId, requestId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(candidateId && requestId),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandidateArrivalPlanNotifications>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandidateArrivalPlanNotificationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandidateArrivalPlanNotifications>>
+>;
+export type GetCandidateArrivalPlanNotificationsQueryError = ApiErrorDto;
+
+/**
+ * @summary ERP delivery status for the verified actor's saved arrival plan
+ */
+
+export function useGetCandidateArrivalPlanNotifications<
+  TData = Awaited<ReturnType<typeof getCandidateArrivalPlanNotifications>>,
+  TError = ApiErrorDto,
+>(
+  candidateId: string,
+  requestId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandidateArrivalPlanNotifications>>,
+      TError,
+      TData
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandidateArrivalPlanNotificationsQueryOptions(
+    candidateId,
+    requestId,
     options,
   );
 
