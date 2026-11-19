@@ -41,6 +41,8 @@ import {
   reviewStageProgress,
 } from "./review-stage-progress";
 import { DocumentCatalogService } from "./document-catalog.service";
+import { OwnDocumentHistoryService } from "./own-document-history.service";
+import { CandidatePreviousDocumentsSyncService } from "./candidate-previous-documents-sync.service";
 import {
   requiredApplicable,
   excludedForSex,
@@ -194,6 +196,11 @@ function ocrValuesMatch(
 
 @Injectable()
 export class DocumentReadService {
+  private readonly employeeHistoryRefreshes = new Map<
+    string,
+    { until: number; pending: Promise<boolean> }
+  >();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: DocumentAccessService,
@@ -201,6 +208,8 @@ export class DocumentReadService {
     @Optional() private readonly config?: ConfigService,
     @Optional() private readonly catalog?: DocumentCatalogService,
     @Optional() private readonly enrichment?: IgEnrichmentQueueService,
+    @Optional() private readonly ownHistory?: OwnDocumentHistoryService,
+    @Optional() private readonly previousSync?: CandidatePreviousDocumentsSyncService,
   ) {}
 
   candidateDto(c: {
@@ -1467,8 +1476,13 @@ export class DocumentReadService {
     const waivedDocumentUids = absences.flatMap(({ documentType }) =>
       documentType.erpUid ? [documentType.erpUid] : [],
     );
-    if (!previousCandidateId)
+    if (!previousCandidateId) {
+      if (!scope.candidateId && !scope.chat_uuid && scope.code_1c) {
+        const credits = await this.ruEmployeeCredits(scope.code_1c, result.items);
+        if (credits) return { ...credits, waivedDocumentUids };
+      }
       return { ...result, reusedDocumentUids: [], waivedDocumentUids };
+    }
     const isIg = state?.currentCandidateId
       ? true
       : candidateReviewGroup(chatCandidate!) === "IG";
@@ -1489,6 +1503,66 @@ export class DocumentReadService {
       reusedDocumentUids: usablePreviousUids(previous.filter(doc => !!candidate && previousDocumentAccessible(doc, candidate)), isIg).filter(
         (uid) => !current.has(uid),
       ),
+    };
+  }
+
+  private async ruEmployeeCredits(code1c: string, employeeItems: DocumentDto[]) {
+    const source = await this.ownHistory?.resolveRuCreditSource(code1c);
+    if (!source) return null;
+    const candidate = await this.prisma.candidate.findUnique({
+      where: { erpUid: source.erpUid, erpDeleted: false },
+    });
+    if (
+      !candidate ||
+      candidateReviewGroup(candidate) !== "RU" ||
+      (candidate.personUid && candidate.personUid !== source.personUid)
+    )
+      return null;
+    const now = Date.now();
+    if (!candidate.previousDocumentsSyncedAt ||
+        now - candidate.previousDocumentsSyncedAt.getTime() >= 5 * 60_000) {
+      if (!this.previousSync) return null;
+      const key = `${candidate.id}:${source.personUid}`;
+      let refresh = this.employeeHistoryRefreshes.get(key);
+      if (!refresh || refresh.until <= now) {
+        if (this.employeeHistoryRefreshes.size >= 500)
+          this.employeeHistoryRefreshes.clear();
+        const pending = this.previousSync
+          .syncPreviousDocuments(
+            candidate.id,
+            "system:employee-adaptation",
+            "",
+            candidate,
+            undefined,
+            { signal: AbortSignal.timeout(8_000) },
+          )
+          .then(() => true, () => false);
+        refresh = { pending, until: now + 30_000 };
+        this.employeeHistoryRefreshes.set(key, refresh);
+      }
+      if (!(await refresh.pending)) return null;
+    }
+    const [previous, current] = await Promise.all([
+      this.prisma.candidatePreviousDocument.findMany({
+        where: { candidateId: candidate.id, status: "CONFIRMED", originalAvailable: true },
+      }),
+      this.documents({ ...this.scopeWhere({ candidateId: candidate.id }), currentVersion: { gt: 0 } }),
+    ]);
+    const submitted = new Set(current.items
+      .filter((doc) => doc.status !== "DRAFT")
+      .map((doc) => doc.documentUid?.toLowerCase()));
+    const owned = previous.filter((doc) =>
+      previousDocumentAccessible(doc, candidate) &&
+      (doc.sourcePersonUid === source.personUid ||
+        (!doc.sourcePersonUid && (doc.sourceErpId ?? doc.sourceId).startsWith("candidate|"))),
+    );
+    const reusedDocumentUids = [...new Set(usablePreviousUids(owned, false))]
+      .filter((uid) => !submitted.has(uid));
+    const reused = new Set(reusedDocumentUids);
+    return {
+      // An upload on an unlinked employee card cannot replace a confirmed ERP source.
+      items: employeeItems.filter((doc) => !reused.has(doc.documentUid?.toLowerCase() ?? "")),
+      reusedDocumentUids,
     };
   }
   async internalDraft(
