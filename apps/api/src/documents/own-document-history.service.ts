@@ -10,6 +10,7 @@ import {
 } from "./erp-workspace.client";
 
 const MAX_HISTORY_CARD_LOOKUPS = 8;
+const RU_CREDIT_SOURCE_TTL_MS = 30_000;
 
 export function safeHistoricalMime(value: string | null | undefined) {
   const normalized = value?.split(";")[0].trim().toLowerCase();
@@ -23,6 +24,11 @@ export function safeHistoricalMime(value: string | null | undefined) {
 
 @Injectable()
 export class OwnDocumentHistoryService {
+  private readonly ruCreditSources = new Map<
+    string,
+    { expiresAt: number; source: Promise<{ erpUid: string; personUid: string } | null> }
+  >();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly erp: ErpWorkspaceClient,
@@ -52,8 +58,8 @@ export class OwnDocumentHistoryService {
     };
   }
 
-  private async erpHistory(code1c: string) {
-    const identity = await this.erp.identity(code1c).catch((error) => {
+  private async currentIdentity(code1c: string, signal?: AbortSignal) {
+    return this.erp.identity(code1c, signal).catch((error) => {
       if (
         error instanceof ConflictException &&
         error.message === "CURRENT_CANDIDATE_CONFIRMATION_REQUIRED"
@@ -61,6 +67,28 @@ export class OwnDocumentHistoryService {
         return null;
       throw error;
     });
+  }
+
+  resolveRuCreditSource(code1c: string) {
+    const now = Date.now();
+    const cached = this.ruCreditSources.get(code1c);
+    if (cached && cached.expiresAt > now) return cached.source;
+    if (this.ruCreditSources.size >= 500) this.ruCreditSources.clear();
+    const source = (async () => {
+      const signal = AbortSignal.timeout(12_000);
+      const identity = await this.currentIdentity(code1c, signal);
+      if (identity && (identity.code1C !== code1c || identity.recipientType !== "candidate"))
+        return null;
+      const { card, personUid } = await this.erpCandidateCard(code1c, identity?.erpUid, signal);
+      if (!identity && !card.employmentConfirmed) return null;
+      return { erpUid: card.erpUid, personUid };
+    })().catch(() => null);
+    this.ruCreditSources.set(code1c, { expiresAt: now + RU_CREDIT_SOURCE_TTL_MS, source });
+    return source;
+  }
+
+  private async erpHistory(code1c: string) {
+    const identity = await this.currentIdentity(code1c);
     if (
       !identity ||
       (identity.code1C === code1c && identity.recipientType === "candidate")
@@ -85,7 +113,11 @@ export class OwnDocumentHistoryService {
     };
   }
 
-  private async erpCandidateHistory(code1c: string, confirmedUid?: string | null) {
+  private async erpCandidateCard(
+    code1c: string,
+    confirmedUid: string | null | undefined,
+    signal: AbortSignal,
+  ) {
     const employee = await this.prisma.lkEmployee.findUnique({
       where: { code1c },
       select: { uuid: true, fullName: true, birthday: true, sourcePresent: true },
@@ -114,7 +146,6 @@ export class OwnDocumentHistoryService {
           take: MAX_HISTORY_CARD_LOOKUPS + 1,
         });
     if (hints.length > MAX_HISTORY_CARD_LOOKUPS) throw new NotFoundException();
-    const signal = AbortSignal.timeout(12_000);
     const matches = await Promise.all(
       hints.map(async ({ erpUid }) => {
         if (!erpUid) return null;
@@ -125,13 +156,19 @@ export class OwnDocumentHistoryService {
         return card?.erpUid === erpUid.toLowerCase() &&
           card.code1C === code1c &&
           card.personUid === person.data
-          ? card.erpUid
+          ? card
           : null;
       }),
     );
-    const verified = matches.filter((id): id is string => id !== null);
-    if (verified.length !== 1) throw new NotFoundException();
-    const candidate = verified[0];
+    const verified = matches.filter((card) => card !== null);
+    if (verified.length !== 1 || !verified[0]) throw new NotFoundException();
+    return { card: verified[0], personUid: person.data };
+  }
+
+  private async erpCandidateHistory(code1c: string, confirmedUid?: string | null) {
+    const signal = AbortSignal.timeout(12_000);
+    const { card, personUid } = await this.erpCandidateCard(code1c, confirmedUid, signal);
+    const candidate = card.erpUid;
     const { items } = await this.erp.request(
       "person-documents",
       previousDocumentsSchema,
@@ -140,7 +177,7 @@ export class OwnDocumentHistoryService {
       signal,
     );
     return {
-      items: items.filter((doc) => !doc.personUid || doc.personUid === person.data),
+      items: items.filter((doc) => !doc.personUid || doc.personUid === personUid),
       open: (id: string) => this.erp.original(candidate, id),
     };
   }
