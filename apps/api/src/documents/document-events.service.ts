@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   OnModuleDestroy,
+  Optional,
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -11,6 +12,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { Observable, type Subscriber } from "rxjs";
 import type { MessageEvent } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { RedisService } from "../redis/redis.module";
+import { REVIEW_CHANGE_CHANNEL, reviewChangeSchema, type ReviewChangeItem } from "./review-change-notifications";
 import { DocumentReadService } from "./document-read.service";
 import { DocumentAccessService } from "./document-access.service";
 import type { AuthPrincipal } from "../auth/auth-principal";
@@ -66,12 +69,15 @@ export class DocumentEventsService implements OnModuleDestroy {
   private timer?: ReturnType<typeof setInterval>;
   private ticks = 0;
   private readonly unsubscribeNotifications?: () => void;
+  private readonly unsubscribeReviewChanges?: () => void;
+  private readonly unsubscribeRedisReconnect?: () => void;
   constructor(
     private readonly prisma: PrismaService,
     private readonly reads: DocumentReadService,
     private readonly access: DocumentAccessService,
     private readonly config: ConfigService,
     private readonly notifications?: RuEnrichmentNotificationsService,
+    @Optional() redis?: RedisService,
   ) {
     if (this.notifications) {
       this.unsubscribeNotifications = this.notifications.subscribe((event) => {
@@ -80,6 +86,23 @@ export class DocumentEventsService implements OnModuleDestroy {
         );
       });
     }
+    this.unsubscribeReviewChanges = redis?.subscribe(REVIEW_CHANGE_CHANNEL, (payload) => {
+      try {
+        const result = reviewChangeSchema.safeParse(JSON.parse(payload));
+        if (result.success)
+          void this.handleReviewChanges(result.data.items).catch(() =>
+            this.logger.warn("Failed to dispatch review notifications"),
+          );
+      } catch {
+        this.logger.warn("Invalid review notification");
+      }
+    });
+    this.unsubscribeRedisReconnect = redis?.onSubscriberReconnect(() => {
+      for (const channel of this.channels.values())
+        if (!channel.scope)
+          for (const subscriber of channel.subscribers)
+            subscriber.next({ type: "review-resync", data: {} });
+    });
   }
   async grant(scope: DocumentEventScope) {
     this.reads.scopeWhere(scope);
@@ -166,6 +189,7 @@ export class DocumentEventsService implements OnModuleDestroy {
   private async refresh(key: string): Promise<void> {
     const channel = this.channels.get(key);
     if (!channel || channel.busy || Date.now() < channel.retryAt) return;
+    if (!channel.scope && this.config.get?.("ERP_CHANGE_SYNC_MODE") === "events") return;
     channel.busy = true;
     try {
       const result = channel.scope
@@ -193,6 +217,39 @@ export class DocumentEventsService implements OnModuleDestroy {
       channel.retryDelay = Math.min(channel.retryDelay * 2, 60000);
     } finally {
       channel.busy = false;
+    }
+  }
+
+  private async handleReviewChanges(items: ReviewChangeItem[]): Promise<void> {
+    const candidateIds = items.flatMap((item) => item.candidateId ? [item.candidateId] : []);
+    const documentIds = items.flatMap((item) => item.documentId ? [item.documentId] : []);
+    for (const channel of this.channels.values()) {
+      const principal = channel.principal;
+      if (channel.scope || !principal || !channel.subscribers.size) continue;
+      const [candidates, documents] = await Promise.all([
+        candidateIds.length ? this.prisma.candidate.findMany({
+          where: { AND: [{ id: { in: candidateIds } }, this.access.candidateWhere(principal)] },
+          select: { id: true },
+        }) : [],
+        documentIds.length ? this.prisma.document.findMany({
+          where: { AND: [{ id: { in: documentIds } }, this.access.documentWhere(principal)] },
+          select: { id: true, candidateId: true },
+        }) : [],
+      ]);
+      const groups = [...new Set(items.flatMap(({ group }) =>
+        group && canReviewGroup(principal, group) ? [group] : [],
+      ))];
+      if (!candidates.length && !documents.length && !groups.length) continue;
+      const data = {
+        groups,
+        candidateIds: [...new Set([
+          ...candidates.map((item) => item.id),
+          ...documents.flatMap((item) => item.candidateId ? [item.candidateId] : []),
+        ])],
+        documentIds: documents.map((item) => item.id),
+      };
+      for (const subscriber of channel.subscribers)
+        subscriber.next({ type: "review-changed", data });
     }
   }
 
@@ -241,6 +298,8 @@ export class DocumentEventsService implements OnModuleDestroy {
 
   onModuleDestroy(): void {
     this.unsubscribeNotifications?.();
+    this.unsubscribeReviewChanges?.();
+    this.unsubscribeRedisReconnect?.();
     clearInterval(this.timer);
     for (const c of this.channels.values())
       for (const s of c.subscribers) s.complete();

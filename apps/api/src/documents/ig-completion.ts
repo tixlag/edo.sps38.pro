@@ -1,3 +1,4 @@
+import { previousDocumentAccessible } from "./previous-document-owner";
 import type { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { MIGRATION_UID } from "../ocr/ocr-profile";
@@ -235,7 +236,7 @@ export async function tryCompleteIgEmployment(
       where: { id: candidateId },
       data: { igRequirementsConflict: false },
     });
-  const previousUids = usablePreviousUids(previous);
+  const previousUids = usablePreviousUids(previous.filter(doc => previousDocumentAccessible(doc, candidate)));
   if (!igRequiredDocumentsComplete(required, documents, previousUids)) return;
   await tx.candidate.update({
     where: { id: candidateId },

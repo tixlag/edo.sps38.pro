@@ -53,6 +53,7 @@ export async function createApp(): Promise<{ app: NestFastifyApplication; docume
     .setVersion('0.1.0')
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'access-jwt')
     .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'Server-to-server credential: EDO_LK_INTERNAL_TOKEN' }, 'lk-service-token')
+    .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'ERP change notification credential' }, 'erp-changes-token')
     .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'Owner-scoped, short-lived direct document upload grant' }, 'document-upload-token')
     .build();
   const document = SwaggerModule.createDocument(app, config);

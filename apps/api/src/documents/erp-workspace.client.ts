@@ -1,5 +1,6 @@
 import { arrivalPageSchema } from "./ig-arrival-contract";
-import { arrivalFactsPageSchema } from "./ig-arrival-facts-contract";
+import { arrivalFactsPageSchema, arrivalFactsPersonSchema } from "./ig-arrival-facts-contract";
+import { erpCandidateSchema } from "../communications/communication-contract";
 import {
   BadRequestException,
   ConflictException,
@@ -251,6 +252,7 @@ export const previousDocumentsSchema = z.object({
   items: z.array(
     z.object({
       id: z.string().max(256),
+      personUid: uuid.nullable().optional(),
       documentUid: uuid.nullable(),
       title: z.string().max(512),
       fields: z.record(z.unknown()),
@@ -279,6 +281,21 @@ export const erpEmploymentHistorySchema = z.object({
     )
     .max(500),
 });
+export const candidateProfilesBatchSchema = z.object({ items: z.array(z.union([
+  z.object({ candidateUid: uuid, profile: erpCandidateSchema }),
+  z.object({ candidateUid: uuid, deleted: z.literal(true) }),
+  z.object({ candidateUid: uuid, error: z.object({ code: z.string().min(1).max(64) }) }),
+])).max(50) });
+export const igPersonSnapshotBatchSchema = z.object({ items: z.array(z.union([
+  z.object({ personUid: uuid, identity: erpIdentitySchema,
+    profile: z.record(z.unknown()).optional(), documents: previousDocumentsSchema.optional(),
+    employmentHistory: erpEmploymentHistorySchema.optional(),
+    arrivals: arrivalFactsPersonSchema.optional(), arrivalsComplete: z.boolean().optional() }),
+  z.object({ personUid: uuid, deleted: z.literal(true) }),
+  z.object({ personUid: uuid, error: z.object({ code: z.string().min(1).max(64) }) }),
+])).max(50) });
+export type IgSnapshotRequest = { personUid: string; changes: Array<"PROFILE" | "DOCUMENTS" | "ARRIVALS"> };
+
 export const referencesSchema = z.object({
   items: z.array(
     z.object({
@@ -393,14 +410,98 @@ export function safeOperationRejection(code: string | undefined) {
 @Injectable()
 export class ErpWorkspaceClient {
   private readonly responseSignals = new WeakMap<Response, AbortSignal>();
+  private batchWidth = 50;
+  private batchActive = 0;
+  private readonly batchWaiters: Array<() => void> = [];
+
+  private async batchRequest<T>(action: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, body: unknown, signal: AbortSignal): Promise<T> {
+    await new Promise<void>((resolve, reject) => {
+      if (signal.aborted) { reject(signal.reason); return; }
+      if (this.batchActive < 2) { this.batchActive++; resolve(); return; }
+      const grant = () => { signal.removeEventListener("abort", abort); resolve(); };
+      const abort = () => {
+        const index = this.batchWaiters.indexOf(grant);
+        if (index >= 0) this.batchWaiters.splice(index, 1);
+        reject(signal.reason);
+      };
+      this.batchWaiters.push(grant);
+      signal.addEventListener("abort", abort, { once: true });
+    });
+    try { return await this.request(action, schema, {}, body, signal); }
+    finally {
+      const next = this.batchWaiters.shift();
+      if (next) next(); else this.batchActive--;
+    }
+  }
+
+  private async adaptiveBatch<I, O extends Record<string, unknown>>(
+    entries: I[], key: "candidateUid" | "personUid", id: (entry: I) => string,
+    action: string, bodyKey: string, schema: z.ZodType<{items: O[]}, z.ZodTypeDef, unknown>, signal?: AbortSignal,
+  ): Promise<{items: O[]}> {
+    if (!entries.length || entries.length > 50 || new Set(entries.map(id)).size !== entries.length || entries.some(e => !uuid.safeParse(id(e)).success))
+      throw new BadRequestException("INVALID_ERP_BATCH");
+    const deadline = AbortSignal.timeout(90_000);
+    const active = signal ? AbortSignal.any([signal, deadline]) : deadline;
+    const queue: I[][] = [];
+    for (let i = 0; i < entries.length; i += this.batchWidth) queue.push(entries.slice(i, i + this.batchWidth));
+    const results = new Map<string, O>();
+    const worker = async () => {
+      for (;;) {
+        signal?.throwIfAborted();
+        const part = queue.shift();
+        if (!part) return;
+        try {
+          const response = await this.batchRequest(action, schema, { [bodyKey]: part }, active);
+          const expected = new Set(part.map(e => id(e).toLowerCase()));
+          const accepted = new Map<string, O>();
+          for (const item of response.items) {
+            const value = item[key];
+            if (typeof value !== "string" || !expected.delete(value.toLowerCase()) || results.has(value.toLowerCase()) || accepted.has(value.toLowerCase()))
+              throw new ServiceUnavailableException("ERP_WORKSPACE_CONTRACT_ERROR");
+            accepted.set(value.toLowerCase(), item);
+          }
+          if (expected.size) throw new ServiceUnavailableException("ERP_WORKSPACE_CONTRACT_ERROR");
+          for (const [itemKey, item] of accepted) results.set(itemKey, item);
+        } catch (error) {
+          signal?.throwIfAborted();
+          const oversized = error instanceof Error && error.message === "ERP_WORKSPACE_RESPONSE_TOO_LARGE";
+          const retryablePart = oversized || (error instanceof Error && error.message === "ERP_OPERATION_RESULT_UNKNOWN");
+          if (retryablePart && part.length > 1 && !active.aborted) {
+            const middle = Math.ceil(part.length / 2);
+            this.batchWidth = Math.min(this.batchWidth, middle);
+            queue.push(part.slice(0, middle), part.slice(middle));
+          } else {
+            if (retryablePart && part.length === 1 && !active.aborted) {
+              try {
+                const retry = await this.batchRequest(action, schema, { [bodyKey]: part }, active);
+                if (retry.items.length === 1 && retry.items[0][key] === id(part[0]).toLowerCase()) {
+                  results.set(id(part[0]).toLowerCase(), retry.items[0]);
+                  continue;
+                }
+              } catch { signal?.throwIfAborted(); }
+            }
+            for (const entry of part)
+              if (!results.has(id(entry).toLowerCase()))
+                results.set(id(entry).toLowerCase(), { [key]: id(entry).toLowerCase(), error: { code: "ERP_BATCH_SIZE_OR_TIMEOUT" } } as unknown as O);
+          }
+        }
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    return { items: entries.map(e => results.get(id(e).toLowerCase())!) };
+  }
+  candidateProfilesBatch(candidateUids: string[], signal?: AbortSignal) {
+    return this.adaptiveBatch(candidateUids, "candidateUid", id => id, "candidate-profiles-batch", "candidateUids", candidateProfilesBatchSchema, signal);
+  }
+  igPersonSnapshotBatch(items: IgSnapshotRequest[], signal?: AbortSignal) {
+    if (items.some(i => !i.changes.length || new Set(i.changes).size !== i.changes.length || i.changes.some(c => !["PROFILE", "DOCUMENTS", "ARRIVALS"].includes(c))))
+      throw new BadRequestException("INVALID_ERP_BATCH");
+    return this.adaptiveBatch(items, "personUid", i => i.personUid, "ig-person-snapshot-batch", "items", igPersonSnapshotBatchSchema, signal);
+  }
+
   constructor(private readonly config: ConfigService) {}
   personDocumentsBatch(candidateUids: string[], signal?: AbortSignal) {
-    if (!candidateUids.length || candidateUids.length > 50 ||
-      new Set(candidateUids).size !== candidateUids.length ||
-      candidateUids.some((id) => !uuid.safeParse(id).success))
-      throw new BadRequestException("INVALID_CANDIDATE_BATCH");
-    return this.request("person-documents-batch", previousDocumentsBatchSchema,
-      {}, { candidateUids }, signal);
+    return this.adaptiveBatch(candidateUids, "candidateUid", id => id, "person-documents-batch", "candidateUids", previousDocumentsBatchSchema, signal);
   }
   private async response(
     action: string,

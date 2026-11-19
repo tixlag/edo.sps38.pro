@@ -11,6 +11,8 @@ import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { StorageService } from "../storage/storage.service";
+import { RedisService } from "../redis/redis.module";
+import { publishReviewChanges } from "../documents/review-change-notifications";
 import { DocumentUploadService } from "../documents/document-upload.service";
 import { DocumentNotificationService } from "../documents/document-notification.service";
 import {
@@ -44,6 +46,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly audit: AuditService,
     private readonly config: ConfigService,
     @Optional() private readonly notifications?: DocumentNotificationService,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   private get requestTimeout(): number {
@@ -274,6 +277,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     result: OcrResult,
     raw: Prisma.InputJsonValue,
   ): Promise<void> {
+    let changedDocument: string | undefined;
     let readyForReview:
       | { documentId: string; version: number; candidateId: string }
       | undefined;
@@ -503,6 +507,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           ...(passToReview ? { automaticReturnLimitReached: true } : {}),
         },
       });
+      changedDocument = initial.version.documentId;
       if (status === "IN_REVIEW" && !reviewerUpload)
         readyForReview = {
           documentId: initial.version.documentId,
@@ -525,6 +530,8 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           },
         });
     });
+    if (changedDocument && this.redis && this.config.get("ERP_CHANGE_SYNC_MODE") === "events")
+      await publishReviewChanges(this.redis, [{ documentId: changedDocument }]);
     if (readyForReview)
       await this.notifications?.notifyDocumentReadyForReview(readyForReview);
   }
@@ -535,6 +542,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
     code: string,
     permanent = false,
   ): Promise<void> {
+    let changedDocument: string | undefined;
     await this.prisma.$transaction(async (tx) => {
       const job = await tx.ocrJob.findUnique({
         where: { id: jobId },
@@ -605,6 +613,7 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
           },
           data: { status: manual ? "IN_REVIEW" : "OCR_FAILED" },
         });
+        changedDocument = job.version.documentId;
         await this.audit.logInTransaction(tx, {
           action: "DOCUMENT_OCR_COMPLETED",
           entityType: "Document",
@@ -618,6 +627,8 @@ export class OcrWorkerService implements OnModuleInit, OnModuleDestroy {
         });
       }
     });
+    if (changedDocument && this.redis && this.config.get("ERP_CHANGE_SYNC_MODE") === "events")
+      await publishReviewChanges(this.redis, [{ documentId: changedDocument }]);
   }
 
   private async recover(): Promise<void> {

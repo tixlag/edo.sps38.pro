@@ -12,6 +12,8 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
+import { RedisService } from "../redis/redis.module";
+import { publishReviewChanges } from "./review-change-notifications";
 import { AuditService } from "../audit/audit.service";
 import { DocumentAccessService } from "./document-access.service";
 import { DocumentReadService } from "./document-read.service";
@@ -49,6 +51,7 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
     private readonly uploads: DocumentUploadService,
     @Optional() private readonly erp?: ErpWorkspaceClient,
     @Optional() private readonly previousDocs?: CandidatePreviousDocumentsSyncService,
+    @Optional() private readonly redis?: RedisService,
   ) {}
   onModuleInit(): void {
     if (this.config.get<string>("DOCUMENT_WORKER_ENABLED") === "false") return;
@@ -418,6 +421,8 @@ export class DocumentDeliveryService implements OnModuleInit, OnModuleDestroy {
         },
       });
     });
+    if (this.redis && this.config.get("ERP_CHANGE_SYNC_MODE") === "events")
+      await publishReviewChanges(this.redis, [{ documentId: attempt.row.version.documentId }]);
     if (status === "SENT" && this.previousDocs && attempt.row.version.submission?.origin === "REVIEWER") {
       const owner = await this.prisma.document.findUnique({ where: { id: attempt.row.version.documentId }, select: { candidateId: true } });
       if (owner?.candidateId) {

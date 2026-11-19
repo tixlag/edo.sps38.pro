@@ -99,7 +99,20 @@ export async function invalidateRuEnrichmentCandidates(
 }
 
 /** Coalesce snapshot changes; immutable file contents are never status queries. */
-export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
+const reviewCollections = /^\/api\/v1\/(?:candidate-review-queue|review-documents|review-candidates|review-document-facets|dashboard|candidates\/catalog)(?:\/|$)/;
+const reviewDetails = /^\/api\/v1\/(?:candidates\/[^/]+|documents\/[^/]+|employees\/[^/]+\/documents)(?:\/|$)/;
+
+function untilIrkutskMidnight() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Irkutsk", hourCycle: "h23",
+    hour: "numeric", minute: "numeric", second: "numeric",
+  }).formatToParts(now);
+  const part = (key: string) => Number(parts.find((item) => item.type === key)?.value);
+  return 86_400_000 - (part("hour") * 3600 + part("minute") * 60 + part("second")) * 1000 - now.getMilliseconds();
+}
+
+export function subscribeDocumentQueryUpdates(client: QueryClient, erpEventDriven = false): () => void {
   let previous = new Map<string, DocumentDto>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let flushing = false;
@@ -107,12 +120,16 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
   const documentIds = new Set<string>();
   const candidateIds = new Set<string>();
   const profileIds = new Set<string>();
+  let collectionsChanged = false;
+  let reconcileActive = false;
+  let midnight: ReturnType<typeof setTimeout> | undefined;
+  let reconnecting = false;
   const schedule = () => {
     if (
       !stopped &&
       !flushing &&
       !timer &&
-      (documentIds.size || profileIds.size)
+      (documentIds.size || profileIds.size || collectionsChanged || reconcileActive)
     )
       timer = setTimeout(() => void flush(), 100);
   };
@@ -123,6 +140,10 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
     const documents = new Set(documentIds);
     const candidates = new Set(candidateIds);
     const profiles = new Set(profileIds);
+    const refreshCollections = collectionsChanged;
+    const refreshDetails = reconcileActive;
+    collectionsChanged = false;
+    reconcileActive = false;
     documentIds.clear();
     candidateIds.clear();
     profileIds.clear();
@@ -134,6 +155,8 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
             // Original EDO/ERP files and rendered annotation pages do not change
             // when approval/delivery changes. Permissions still gate every read.
             if (/\/files\/|\/original$|\/annotation/.test(path)) return false;
+            if (refreshCollections && reviewCollections.test(path)) return true;
+            if (refreshDetails && (reviewCollections.test(path) || reviewDetails.test(path))) return true;
             const document =
               /^\/api\/v1\/documents\/([^/]+)(?:\/versions\/\d+(?:\/ocr-details)?)?$/.exec(
                 path,
@@ -180,9 +203,38 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
     documentIds.add(document.id);
     if (document.candidateId) candidateIds.add(document.candidateId);
   };
+  const reconcile = () => {
+    reconcileActive = true;
+    schedule();
+  };
+  const scheduleMidnight = () => {
+    midnight = setTimeout(() => {
+      reconcile();
+      scheduleMidnight();
+    }, untilIrkutskMidnight() + 100);
+  };
+  if (erpEventDriven) scheduleMidnight();
+
   const unsubscribe = subscribeDocumentStatuses({
     connect: getDocumentStreamConnection,
-    onState: (state) => dispatchStreamState(state),
+    onState: (state) => {
+      dispatchStreamState(state);
+      if (state === "reconnecting") reconnecting = true;
+      else if (state === "connected" && reconnecting) {
+        reconnecting = false;
+        if (erpEventDriven) reconcile();
+      }
+    },
+    onReviewResync: () => { if (erpEventDriven) reconcile(); },
+    onReviewChange: (event) => {
+      for (const id of event.candidateIds) {
+        candidateIds.add(id);
+        profileIds.add(id);
+      }
+      for (const id of event.documentIds) documentIds.add(id);
+      collectionsChanged ||= event.groups.length > 0 || event.candidateIds.length > 0 || event.documentIds.length > 0;
+      schedule();
+    },
     onRuEnrichment: (event) => {
       let anyReady = false;
       for (const item of event.items) {
@@ -221,14 +273,15 @@ export function subscribeDocumentQueryUpdates(client: QueryClient): () => void {
   return () => {
     stopped = true;
     clearTimeout(timer);
+    clearTimeout(midnight);
     unsubscribe();
     dispatchStreamState("disconnected");
   };
 }
 
-export function useDocumentEvents(enabled: boolean): void {
+export function useDocumentEvents(enabled: boolean, erpEventDriven = false): void {
   const client = useQueryClient();
   useEffect(() => {
-    if (enabled) return subscribeDocumentQueryUpdates(client);
-  }, [client, enabled]);
+    if (enabled) return subscribeDocumentQueryUpdates(client, erpEventDriven);
+  }, [client, enabled, erpEventDriven]);
 }

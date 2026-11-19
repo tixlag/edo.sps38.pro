@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class LocationScopeDto {
   @ApiProperty({ example: false })
@@ -35,6 +35,9 @@ export class MeResponseDto {
 
   @ApiProperty({ example: { '20000': [], '20007': ['98', '148'] } })
   permissions!: Record<string, string[]>;
+
+  @ApiPropertyOptional({ type: Boolean })
+  erpEventDriven?: boolean;
 
   @ApiProperty({ type: LocationScopeDto })
   locationScope!: LocationScopeDto;

@@ -1,0 +1,20 @@
+CREATE TABLE erp_change_inbox (
+  target VARCHAR(12) NOT NULL,
+  uid CHAR(36) NOT NULL,
+  lastEventKey CHAR(64) NOT NULL,
+  revision BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  profileRevision BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  documentsRevision BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  arrivalsRevision BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  dueAt DATETIME(3) NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  batchWidth INTEGER NOT NULL DEFAULT 50,
+  deferredMask INTEGER NOT NULL DEFAULT 0,
+  notifyRevision BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  notifyAt DATETIME(3) NULL,
+  notifyCandidateId VARCHAR(64) NULL,
+  PRIMARY KEY (target, uid),
+  INDEX erp_change_inbox_dueAt_target_uid_idx (dueAt, target, uid),
+  INDEX erp_change_inbox_target_deferredMask_idx (target, deferredMask),
+  INDEX erp_change_inbox_notifyAt_idx (notifyAt)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

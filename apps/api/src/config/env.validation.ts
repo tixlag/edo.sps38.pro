@@ -34,6 +34,8 @@ const envSchema = z.object({
   REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
   EDO_LK_INTERNAL_TOKEN: z.string().optional(),
   EDO_ERP_ADAPTATION_TOKEN: z.string().optional(),
+  EDO_ERP_CHANGES_TOKEN: z.string().optional(),
+  ERP_CHANGE_SYNC_MODE: z.enum(['legacy', 'verify', 'events']).default('legacy'),
   ERP_ADAPTATION_TOKEN: z.string().optional(),
   ERP_DOCUMENTS_BASE_URL: z.string().url().default('https://api-erp.sps38.pro/ERP/hs/api/'),
   ERP_DOCUMENTS_TRANSPORT: z.literal('multipart-v2').default('multipart-v2'),
@@ -83,6 +85,10 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
   const parsed = envSchema.parse(config);
   if (parsed.EDO_ARRIVAL_SYNC_ENABLED === 'true' && !parsed.ERP_COMMUNICATIONS_URL) {
     throw new Error('ERP_COMMUNICATIONS_URL is required when EDO_ARRIVAL_SYNC_ENABLED=true');
+  }
+  if (parsed.ERP_CHANGE_SYNC_MODE !== 'legacy' &&
+      (!parsed.ERP_COMMUNICATIONS_URL || !parsed.EDO_ERP_CHANGES_TOKEN?.trim())) {
+    throw new Error('ERP_COMMUNICATIONS_URL and EDO_ERP_CHANGES_TOKEN are required for ERP change synchronization');
   }
   if (parsed.EDO_ARRIVAL_CONTEXTS_URL) {
     if (!parsed.EDO_ADAPTATION_SYNC_TOKEN?.trim()) {

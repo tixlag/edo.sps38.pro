@@ -9,6 +9,8 @@ import {
 const transport = vi.hoisted(() => ({
   receive: undefined as undefined | ((data: DocumentListDto) => void),
   receiveRu: undefined as undefined | ((data: any) => void),
+  receiveReview: undefined as undefined | ((data: { candidateIds: string[]; documentIds: string[]; groups: string[] }) => void),
+  receiveState: undefined as undefined | ((state: string) => void),
   stop: vi.fn(),
 }));
 vi.mock("@edo/api-client", () => ({
@@ -16,10 +18,13 @@ vi.mock("@edo/api-client", () => ({
   subscribeDocumentStatuses: (options: {
     onDocuments: (data: DocumentListDto) => void;
     onRuEnrichment?: (data: any) => void;
-    onState?: (state: any) => void;
+    onState?: (state: string) => void;
+    onReviewChange?: typeof transport.receiveReview;
   }) => {
     transport.receive = options.onDocuments;
     transport.receiveRu = options.onRuEnrichment;
+    transport.receiveReview = options.onReviewChange;
+    transport.receiveState = options.onState;
     return transport.stop;
   },
 }));
@@ -145,6 +150,23 @@ describe("document snapshot cache updates", () => {
     expect(list).toHaveBeenCalledTimes(1);
     expect(document).not.toHaveBeenCalled();
     expect(binary).not.toHaveBeenCalled();
+  });
+
+  it("invalidates only affected review reads and reconciles once after reconnect", async () => {
+    stop();
+    stop = subscribeDocumentQueryUpdates(client, true);
+    const list = observe("/api/v1/candidate-review-queue/ig-arrivals/groups");
+    const affected = observe("/api/v1/candidates/ca/previous-documents");
+    const other = observe("/api/v1/candidates/cb");
+    const original = observe("/api/v1/candidates/ca/previous-documents/doc-1/original");
+    transport.receiveReview!({ candidateIds: ["ca"], documentIds: [], groups: ["IG"] });
+    await vi.advanceTimersByTimeAsync(100);
+    expect([list, affected, other, original].map(fn => fn.mock.calls.length)).toEqual([1, 1, 0, 0]);
+    transport.receiveState!("reconnecting");
+    transport.receiveState!("connected");
+    transport.receiveState!("connected");
+    await vi.advanceTimersByTimeAsync(200);
+    expect([list, affected, other, original].map(fn => fn.mock.calls.length)).toEqual([2, 2, 1, 0]);
   });
 
   it("invalidates candidate details, previous documents, and lists on ru-enrichment READY event", async () => {

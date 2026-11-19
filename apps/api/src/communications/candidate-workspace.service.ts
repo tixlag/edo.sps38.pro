@@ -1,3 +1,4 @@
+import { previousDocumentAccessible } from "../documents/previous-document-owner";
 import { DocumentCatalogService } from "../documents/document-catalog.service";
 import { CandidatePreviousDocumentsSyncService } from "../documents/candidate-previous-documents-sync.service";
 import { CandidateDocumentError } from "../documents/candidate-document.error";
@@ -703,7 +704,7 @@ export class CandidateWorkspaceService {
         orderBy: { title: "asc" },
       });
       return {
-        items: docs.map((doc) => ({
+        items: docs.filter(doc => previousDocumentAccessible(doc, row)).map((doc) => ({
           id: doc.id,
           title: doc.title,
           documentUid: doc.documentUid,
@@ -751,10 +752,11 @@ export class CandidateWorkspaceService {
       });
     }
     if (doc) {
-      if (!doc.originalAvailable)
+      if (!doc.originalAvailable || !previousDocumentAccessible(doc, row))
         throw new NotFoundException("Оригинал недоступен");
       if (
         candidateReviewGroup(row) === "IG" &&
+        !doc.sourceErpId &&
         doc.sourceId.startsWith("edo:")
       ) {
         const parts = doc.sourceId.split(":");
@@ -779,7 +781,9 @@ export class CandidateWorkspaceService {
           version.files[0]?.id ?? `legacy-${version.id}`,
         );
       }
-      const rawSourceId = doc.sourceId.split("#")[0];
+      if (!doc.sourceErpId && doc.sourceId.includes("#"))
+        throw new ConflictException("ERP_DOCUMENT_SOURCE_AMBIGUOUS");
+      const rawSourceId = doc.sourceErpId ?? doc.sourceId;
       return candidateReviewGroup(row) === "IG"
         ? this.erp.personOriginal(row.code1c!, row.personUid!, rawSourceId)
         : this.erp.original(row.erpUid!, rawSourceId);

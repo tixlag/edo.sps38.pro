@@ -23,6 +23,8 @@
     "candidates:sync": "ts-node --transpile-only src/communications/run-catalog-sync.ts",
     "expiration:check": "ts-node --transpile-only src/expiration/run-check-expirations.ts",
     "expiration:backfill": "ts-node --transpile-only src/expiration/run-expiration-backfill.ts",
+    "arrivals:sync": "ts-node --transpile-only src/documents/run-arrival-sync.ts",
+    "erp:history-backfill": "ts-node --transpile-only src/documents/run-erp-history-backfill.ts",
     "erp:retry": "ts-node --transpile-only src/documents/run-erp-retry.ts"
   },
   "dependencies": {

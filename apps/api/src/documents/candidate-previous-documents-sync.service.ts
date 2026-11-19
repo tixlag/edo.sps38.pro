@@ -1,3 +1,4 @@
+import { ownerQualifiedSourceId, previousDocumentOwnerMatches, previousDocumentAccessible } from "./previous-document-owner";
 import { applyPreviousDocumentEdits } from "./previous-document-edits";
 import {
   ConflictException,
@@ -22,6 +23,8 @@ import {
 import {
   ErpWorkspaceClient,
   previousDocumentsSchema,
+  erpIdentitySchema,
+  erpEmploymentHistorySchema,
 } from "./erp-workspace.client";
 import { tryCompleteIgEmployment } from "./ig-completion";
 import {
@@ -50,6 +53,22 @@ function hasActiveCandidateUpload(
   return !!doc.versions?.some(
     (v) => v.submission !== null || (v.version >= 1 && v.status !== "DRAFT"),
   );
+}
+
+export function uniquePreviousDocumentSourceIds<T extends { id: string }>(rows: T[]): T[] {
+  const reserved = new Set(rows.map(row => row.id));
+  const used = new Set<string>();
+  return rows.map(row => {
+    if (!used.has(row.id)) { used.add(row.id); return row; }
+    let suffix = 2;
+    let id: string;
+    do {
+      const tail = `#${suffix++}`;
+      id = `${row.id.slice(0, 256 - tail.length)}${tail}`;
+    } while (used.has(id) || reserved.has(id));
+    used.add(id);
+    return { ...row, id };
+  });
 }
 
 /** Stable across ERP JSON key ordering; identity and original-file revisions are included. */
@@ -91,6 +110,8 @@ export class CandidatePreviousDocumentsSyncService {
       signal?: AbortSignal;
       assertLease?: (tx?: Prisma.TransactionClient) => Promise<void>;
       preloadedDocuments?: unknown;
+      preloadedIdentity?: unknown;
+      preloadedEmploymentHistory?: unknown;
     } = {},
   ) {
     const assertActive = async (tx?: Prisma.TransactionClient) => {
@@ -105,11 +126,14 @@ export class CandidatePreviousDocumentsSyncService {
       (await this.prisma.candidate.findFirst?.({ where: { id } }));
     if (!row) throw new NotFoundException("CANDIDATE_NOT_FOUND");
     const isIg = candidateReviewGroup(row) === "IG";
+    const initialPersonUid = row.personUid ?? null;
     let personUid = row.personUid;
     if (isIg) {
       if (!row.code1c)
         throw new ConflictException("ERP_PERSON_IDENTITY_REQUIRED");
-      const identity = await this.erp.identity(row.code1c, options.signal);
+      const identity = options.preloadedIdentity !== undefined
+        ? erpIdentitySchema.parse(options.preloadedIdentity)
+        : await this.erp.identity(row.code1c, options.signal);
       if (
         identity.reviewGroup !== "IG" ||
         identity.recipientType !== "person" ||
@@ -121,13 +145,15 @@ export class CandidatePreviousDocumentsSyncService {
       personUid = identity.personUid;
       row.personUid = personUid;
     }
-    const historyPromise = isIg
+    const historyPromise = isIg && options.preloadedEmploymentHistory !== undefined
+      ? Promise.resolve({ available: true, items: erpEmploymentHistorySchema.parse(options.preloadedEmploymentHistory).items })
+      : isIg
       ? this.erp
           .employmentHistory(row.code1c!, personUid!, options.signal)
           .then((history) => ({ available: true, items: history.items }))
           .catch(() => ({ available: false, items: [] }))
       : undefined;
-    const result = options.preloadedDocuments !== undefined && !isIg
+    const result = options.preloadedDocuments !== undefined
       ? previousDocumentsSchema.parse(options.preloadedDocuments)
       : await this.erp.request(
           isIg ? "person-documents-by-code" : "person-documents",
@@ -139,14 +165,20 @@ export class CandidatePreviousDocumentsSyncService {
           options.signal,
         );
     await assertActive();
+    const snapshotOwners = new Set(result.items.flatMap(doc => doc.personUid ? [doc.personUid] : []));
+    if (snapshotOwners.size > 1 || (isIg && personUid && [...snapshotOwners].some(uid => uid !== personUid)))
+      throw new ConflictException("ERP_DOCUMENT_OWNER_MISMATCH");
+    const snapshotPersonUid = [...snapshotOwners][0] ?? personUid ?? null;
     // ERP echoes delivered EDO instances in its person-documents feed. The
     // candidate already owns those live documents here; importing them as
     // history would show a duplicate and could compete with the newer version.
     const ownDocumentIds = new Set(
-      (await this.prisma.document.findMany({
-        where: { candidateId: id },
-        select: { id: true },
-      })).map((document) => document.id),
+      isIg || result.items.some(doc => doc.id.startsWith("edo:"))
+        ? (await this.prisma.document.findMany({
+            where: { candidateId: id },
+            select: { id: true },
+          })).map((document) => document.id)
+        : [],
     );
     const edoDocuments = isIg
       ? await this.prisma.document.findMany({
@@ -239,13 +271,19 @@ export class CandidatePreviousDocumentsSyncService {
     const edoSourceInstanceUids = new Set(
       [...edoSourceDocumentIds].map(erpDocumentInstanceUid),
     );
+    // A single EDO instance can be returned once via the candidate and once
+    // via their person. Prefer the identity-bearing row, never duplicate it.
+    const erpRows = result.items.filter((doc, index, all) =>
+      !doc.id.startsWith("edo:") || !all.some((other, otherIndex) =>
+        otherIndex !== index && other.id === doc.id && !!other.personUid && !doc.personUid));
     const rawCandidates = [
-      ...result.items.filter((doc) =>
+      ...erpRows.filter((doc) =>
         !doc.id.startsWith("edo:") ||
         (!edoSourceDocumentIds.has(doc.id.slice(4).split(":", 1)[0]) &&
           !edoSourceInstanceUids.has(doc.id.slice(4).split(":", 1)[0].toLowerCase())),
       ).map((doc) => ({
         ...doc,
+        sourcePersonUid: doc.id.startsWith("candidate|") ? null : (doc.personUid ?? snapshotPersonUid),
         originalErpId: doc.id,
         verifiedOwner: true,
         originalFiles: null,
@@ -253,17 +291,14 @@ export class CandidatePreviousDocumentsSyncService {
       })),
       ...edoHistory.map((doc) => ({
         ...doc,
+        sourcePersonUid: personUid ?? null,
         originalErpId: null,
       })),
     ];
-    const seenIds = new Map<string, number>();
-    const candidates = rawCandidates.map((doc) => {
-      const count = (seenIds.get(doc.id) ?? 0) + 1;
-      seenIds.set(doc.id, count);
-      return count > 1 ? { ...doc, id: `${doc.id}#${count}` } : doc;
-    });
+    const candidates = uniquePreviousDocumentSourceIds(rawCandidates);
     const allDocuments = candidates.map((doc) => ({
       ...doc,
+      baseSourceId: doc.id,
       sourceFingerprint: sourceFingerprint({
         erpUid: row.erpUid,
         code1c: row.code1c,
@@ -275,6 +310,7 @@ export class CandidatePreviousDocumentsSyncService {
       verificationCheckedAt: null as Date | null,
     }));
 
+    const fastRu = !isIg && allDocuments.every(doc => !doc.id.startsWith("edo:") && doc.originalErpId !== null && !doc.originalFiles);
     const createdStorageKeys: string[] = [];
     const preparedLinkDocuments = new Map<
       string,
@@ -307,7 +343,8 @@ export class CandidatePreviousDocumentsSyncService {
         if (
           !current ||
           candidateReviewGroup(current) !== candidateReviewGroup(row) ||
-          (current.personUid && personUid && current.personUid !== personUid) ||
+          ((current.personUid ?? null) !== initialPersonUid &&
+            !(isIg && initialPersonUid === null && current.personUid === personUid)) ||
           current.code1c !== row.code1c ||
           current.erpUid !== row.erpUid
         )
@@ -329,9 +366,22 @@ export class CandidatePreviousDocumentsSyncService {
           oldDocuments.map((doc) => [doc.sourceId, doc]),
         );
         const seen = new Set<string>();
+        let documentsChanged = false;
         let completionChanged = false;
         let completionInvalidated = false;
         for (const doc of documents) {
+          const qualified = ownerQualifiedSourceId(doc.baseSourceId, doc.sourcePersonUid);
+          const qualifiedRow = oldBySource.get(qualified);
+          const baseRow = oldBySource.get(doc.baseSourceId);
+          const matchesOwner = (candidate: typeof baseRow) => !!candidate &&
+            previousDocumentOwnerMatches(candidate, doc.sourcePersonUid) &&
+            ((candidate.sourceErpId ?? null) === doc.originalErpId ||
+              (!candidate.sourceErpId && candidate.sourceId === doc.originalErpId && !candidate.sourceId.includes("#")));
+          if (qualifiedRow && !matchesOwner(qualifiedRow))
+            throw new ConflictException("ERP_DOCUMENT_IDENTITY_MISMATCH");
+          doc.id = qualifiedRow ? qualified
+            : baseRow && matchesOwner(baseRow) ? doc.baseSourceId
+            : baseRow || (doc.sourcePersonUid === null && !doc.baseSourceId.startsWith("candidate|")) ? qualified : doc.baseSourceId;
           if (seen.has(doc.id)) continue;
           seen.add(doc.id);
           const old = oldBySource.get(doc.id);
@@ -372,7 +422,7 @@ export class CandidatePreviousDocumentsSyncService {
               ? { isInvalid }
               : {}),
           } as Prisma.InputJsonObject;
-          if (phase === "metadata") {
+          if (phase === "metadata" || fastRu) {
             doc.previouslyConfirmed = old?.status === "CONFIRMED";
             const age = old?.verificationCheckedAt
               ? Date.now() - old.verificationCheckedAt.getTime()
@@ -600,7 +650,18 @@ export class CandidatePreviousDocumentsSyncService {
               (old.originalVerified && !doc.verifiedOriginal))
           )
             completionInvalidated = true;
+          const unchangedFastRu = fastRu && old && !nextStatus &&
+            old.sourceFingerprint === doc.sourceFingerprint &&
+            old.sourceErpId === doc.originalErpId && old.sourcePersonUid === doc.sourcePersonUid &&
+            (old.sourceCandidatePersonUid ?? null) === initialPersonUid &&
+            old.documentUid === (doc.documentUid ?? old.documentUid ?? null) &&
+            old.title === doc.title && old.originalAvailable === doc.originalAvailable &&
+            old.originalVerified === (doc.verifiedOriginal && knownValid) &&
+            (old.expiresAt?.getTime() ?? null) === (expiresAt?.getTime() ?? null) &&
+            isDeepStrictEqual(old.fields, fields) && isDeepStrictEqual(old.erpFields, erpFields);
+          if (unchangedFastRu) continue;
           await assertActive(tx);
+          documentsChanged = true;
           await tx.candidatePreviousDocument.upsert({
             where: {
               candidateId_sourceId: { candidateId: id, sourceId: doc.id },
@@ -608,6 +669,9 @@ export class CandidatePreviousDocumentsSyncService {
             create: {
               candidateId: id,
               sourceId: doc.id,
+              sourceErpId: doc.originalErpId,
+              sourcePersonUid: doc.sourcePersonUid,
+              sourceCandidatePersonUid: initialPersonUid,
               documentUid: doc.documentUid,
               title: doc.title,
               fields,
@@ -628,6 +692,9 @@ export class CandidatePreviousDocumentsSyncService {
                 : {}),
             },
             update: {
+              sourceErpId: doc.originalErpId,
+              sourcePersonUid: doc.sourcePersonUid,
+              sourceCandidatePersonUid: initialPersonUid,
               title: doc.title,
               documentUid: doc.documentUid ?? old?.documentUid ?? null,
               fields,
@@ -686,6 +753,7 @@ export class CandidatePreviousDocumentsSyncService {
             if (isIg && old.status === "CONFIRMED")
               completionInvalidated = true;
             await assertActive(tx);
+            documentsChanged = true;
             await tx.candidatePreviousDocument.update({
               where: { id: old.id },
               data: {
@@ -735,7 +803,7 @@ export class CandidatePreviousDocumentsSyncService {
             "system:previous-document",
             correlationId,
           );
-        await this.audit.logInTransaction(tx, {
+        if (!fastRu || documentsChanged) await this.audit.logInTransaction(tx, {
           actorId,
           action: "DATA_IMPORTED",
           entityType: "CandidatePreviousDocuments",
@@ -746,6 +814,11 @@ export class CandidatePreviousDocumentsSyncService {
         await assertActive(tx);
       });
     };
+    if (fastRu) {
+      await persistDocuments(allDocuments, "complete");
+      const docs = await this.prisma.candidatePreviousDocument.findMany({ where: { candidateId: id }, orderBy: { title: "asc" } });
+      return { items: docs.filter(doc => previousDocumentAccessible(doc, row)).map((doc) => ({ id: doc.id, title: doc.title, documentUid: doc.documentUid, fields: doc.fields, expiresAt: doc.expiresAt?.toISOString().slice(0, 10) ?? null, originalAvailable: doc.originalAvailable, status: doc.status, reviewedBy: doc.reviewedBy, reviewedAt: doc.reviewedAt?.toISOString() ?? null })) };
+    }
     await persistDocuments(allDocuments, "metadata");
     let employmentHistory: Awaited<typeof historyPromise>;
     try {
@@ -782,6 +855,8 @@ export class CandidatePreviousDocumentsSyncService {
                       }
                       return true;
                     })());
+                } else if (!isIg && doc.originalErpId && doc.baseSourceId.startsWith("edo:")) {
+                  verifiedOriginal = await this.erp.probeCandidateOriginal(row.erpUid!, doc.originalErpId, options.signal);
                 } else if (isIg) {
                   verifiedOriginal = await this.erp.probePersonOriginal(
                     row.code1c!,
@@ -916,7 +991,7 @@ export class CandidatePreviousDocumentsSyncService {
                 });
               }
             } else {
-              const rawId = (doc.originalErpId ?? doc.id).split("#")[0];
+              const rawId = doc.originalErpId ?? doc.id;
               const originalData = await this.erp.personOriginal(
                 row.code1c!,
                 personUid!,
@@ -1006,7 +1081,7 @@ export class CandidatePreviousDocumentsSyncService {
       orderBy: { title: "asc" },
     });
     return {
-      items: docs.map((doc) => ({
+      items: docs.filter(doc => previousDocumentAccessible(doc, row)).map((doc) => ({
         id: doc.id,
         title: doc.title,
         documentUid: doc.documentUid,

@@ -187,7 +187,7 @@ describe("IG arrival synchronization", () => {
     vi.stubGlobal("fetch", sender);
     try {
       await worker.sync();
-      expect(prisma.igArrivalPerson.findMany).not.toHaveBeenCalled();
+      expect(prisma.igArrivalPerson.findMany).toHaveBeenCalled();
       expect(sender).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
@@ -262,7 +262,7 @@ describe("IG arrival synchronization", () => {
   it("persists acknowledgement only for exact revision and receipt", async () => {
     const { prisma, worker } = fixture();
     prisma.igArrivalPerson.findMany.mockResolvedValue([
-      { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value },
+      { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value, factsSeenGeneration: 1n },
     ] as never);
     vi.stubGlobal(
       "fetch",
@@ -283,7 +283,7 @@ describe("IG arrival synchronization", () => {
       await worker.sync();
       expect(prisma.igArrivalPerson.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ factsSeenGeneration: { lte: 1n } }),
+          where: expect.objectContaining({ AND: expect.arrayContaining([expect.objectContaining({ OR: expect.arrayContaining([{ factsSeenGeneration: { lte: 1n } }]) })]) }),
         }),
       );
       expect(prisma.igArrivalPerson.updateMany).toHaveBeenCalledWith(
@@ -306,7 +306,7 @@ describe("IG arrival synchronization", () => {
   it("forwards the unchanged source snapshot with its revision", async () => {
     const { prisma, worker } = fixture();
     prisma.igArrivalPerson.findMany.mockResolvedValue([
-      { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value },
+      { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value, factsSeenGeneration: 1n },
     ] as never);
     const sender = vi.fn(
       async (_url: unknown, _options: { body?: string }) =>
@@ -331,7 +331,7 @@ describe("IG arrival synchronization", () => {
   it("leaves delivery pending when receipt conflicts", async () => {
     const { prisma, worker } = fixture();
     prisma.igArrivalPerson.findMany.mockResolvedValue([
-      { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value },
+      { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value, factsSeenGeneration: 1n },
     ] as never);
     vi.stubGlobal(
       "fetch",
@@ -579,7 +579,7 @@ describe("IG arrival synchronization", () => {
     it("continues importing from ERP when surveys delivery encounters network error", async () => {
       const { erp, projection, worker, prisma } = fixture();
       prisma.igArrivalPerson.findMany.mockResolvedValueOnce([
-        { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value },
+        { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value, factsSeenGeneration: 1n },
       ] as never);
 
       vi.stubGlobal(
@@ -607,7 +607,7 @@ describe("IG arrival synchronization", () => {
     it("breaks delivery loop without blocking ERP import when surveys returns HTTP 500", async () => {
       const { erp, projection, worker, prisma } = fixture();
       prisma.igArrivalPerson.findMany.mockResolvedValueOnce([
-        { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value },
+        { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value, factsSeenGeneration: 1n },
         {
           personUid: "00000000-0000-4000-8000-000000000099",
           revision: 1n,
@@ -641,7 +641,7 @@ describe("IG arrival synchronization", () => {
     it("clears syncError and marks syncPending false once surveys recovers", async () => {
       const { worker, prisma } = fixture();
       prisma.igArrivalPerson.findMany.mockResolvedValueOnce([
-        { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value },
+        { personUid, revision: 1n, sourceHash: "hash", sourcePayload: value, factsSeenGeneration: 1n },
       ] as never);
 
       vi.stubGlobal(
@@ -688,4 +688,16 @@ describe("IG arrival synchronization", () => {
       expect(prisma.igArrivalPerson.findMany).not.toHaveBeenCalled();
     });
   });
+});
+
+it("exports targeted pending arrivals without a completed full scan", async () => {
+  const f = fixture();
+  f.prisma.igArrivalPerson.findMany.mockResolvedValueOnce([{ personUid, revision: 1n, sourceHash: "hash", sourcePayload: value, targetedPendingRevision: 1n }] as never);
+  const fetcher = vi.fn().mockResolvedValue(Response.json({ personUid, revision: 1, state: "CURRENT", currentArrivalMemberUid: memberUid }));
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    await f.worker.exportPending(Date.now() + 10000);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(f.prisma.igArrivalPerson.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ targetedPendingRevision: null, syncedRevision: 1n }) }));
+  } finally { vi.unstubAllGlobals(); }
 });

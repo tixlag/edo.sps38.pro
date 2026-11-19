@@ -210,3 +210,25 @@ describe("DocumentEventsService ru-enrichment events", () => {
     expect(nextOwner).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ru-enrichment" }));
   });
 });
+
+it("keeps review SSE connected in events mode without reading all documents", async () => {
+  vi.useFakeTimers();
+  const snapshots = vi.fn().mockResolvedValue({ items: [] });
+  const scoped = vi.fn().mockResolvedValue({ items: [] });
+  const service = new DocumentEventsService(
+    {} as never, { documents: snapshots, internalDocuments: scoped } as never,
+    {} as never, { get: () => "events" } as never,
+  );
+  try {
+    const next = vi.fn();
+    service.stream(undefined, { uuid: "reviewer", accessRules: {} } as never).subscribe({ next });
+    service.stream({ candidateId: "person" }).subscribe();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(snapshots).not.toHaveBeenCalled();
+    expect(scoped).toHaveBeenCalledTimes(16);
+    expect(next).toHaveBeenCalledWith({ type: "heartbeat", data: {} });
+  } finally {
+    service.onModuleDestroy();
+    vi.useRealTimers();
+  }
+});

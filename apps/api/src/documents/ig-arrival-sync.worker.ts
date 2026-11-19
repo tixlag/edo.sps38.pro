@@ -42,7 +42,7 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
     private readonly audit: AuditService,
   ) {}
   onModuleInit(): void {
-    if (this.config.get<string>("EDO_ARRIVAL_SYNC_ENABLED") !== "true") return;
+    if (this.config.get<string>("ERP_CHANGE_SYNC_MODE") === "events" || this.config.get<string>("EDO_ARRIVAL_SYNC_ENABLED") !== "true") return;
     const tick = () =>
       void this.sync().catch(() =>
         this.logger.warn("Arrival synchronization failed; retry scheduled"),
@@ -385,13 +385,14 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
       where: { id: "singleton" },
       select: { factsFinishedGeneration: true },
     });
-    if (completed?.factsFinishedGeneration == null) return;
     const rows = await this.prisma.igArrivalPerson.findMany({
       where: {
-        factsSeenGeneration: { lte: completed.factsFinishedGeneration },
-        OR: [
-          { state: { not: "CURRENT" } },
-          { currentMember: { is: { factsIdentityIssue: null } } },
+        AND: [
+          { OR: [
+            { targetedPendingRevision: { not: null } },
+            ...(completed?.factsFinishedGeneration == null ? [] : [{ factsSeenGeneration: { lte: completed.factsFinishedGeneration } }]),
+          ] },
+          { OR: [ { state: { not: "CURRENT" } }, { currentMember: { is: { factsIdentityIssue: null } } } ] },
         ],
         syncPending: true,
         igVerified: true,
@@ -403,6 +404,8 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
     });
     for (const row of rows) {
       if (Date.now() >= deadline) return;
+      const scanEligible = completed?.factsFinishedGeneration != null && row.factsSeenGeneration != null && row.factsSeenGeneration <= completed.factsFinishedGeneration;
+      if (!scanEligible && row.targetedPendingRevision !== row.revision) continue;
       const where = {
         personUid: row.personUid,
         revision: row.revision,
@@ -410,6 +413,7 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
         syncPending: true,
         bindingError: null,
         igVerified: true,
+        ...(row.targetedPendingRevision != null ? { targetedPendingRevision: row.targetedPendingRevision } : {}),
       };
       try {
         const item = arrivalStateSchema.parse(row.sourcePayload);
@@ -491,6 +495,7 @@ export class IgArrivalSyncWorker implements OnModuleInit, OnModuleDestroy {
           data: {
             syncPending: false,
             syncedRevision: row.revision,
+            ...(row.targetedPendingRevision != null ? { targetedPendingRevision: null } : {}),
             syncError: null,
           },
         });

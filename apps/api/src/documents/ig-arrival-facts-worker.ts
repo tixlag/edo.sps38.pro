@@ -154,6 +154,7 @@ export class IgArrivalFactsWorker implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(IgArrivalFactsWorker.name);
   private timer?: ReturnType<typeof setInterval>;
   private running?: Promise<void>;
+  private recoveryCheck?: Promise<void>;
   constructor(
     private readonly prisma: PrismaService,
     private readonly erp: WorkspaceClient,
@@ -163,6 +164,18 @@ export class IgArrivalFactsWorker implements OnModuleInit, OnModuleDestroy {
     private readonly audit: AuditService,
   ) {}
   onModuleInit(): void {
+    if (this.config.get<string>("ERP_CHANGE_SYNC_MODE") === "events") {
+      const tick = () => {
+        if (this.recoveryCheck) return;
+        this.recoveryCheck = this.recoverIfDue().catch(() =>
+          this.logger.warn("Arrival recovery check failed; retry scheduled"),
+        ).finally(() => { this.recoveryCheck = undefined; });
+      };
+      tick();
+      this.timer = setInterval(tick, 5 * 60_000);
+      this.timer.unref();
+      return;
+    }
     if (this.config.get<string>("EDO_ARRIVAL_SYNC_ENABLED") !== "true") return;
     const tick = () =>
       void this.sync().catch(() =>
@@ -176,7 +189,12 @@ export class IgArrivalFactsWorker implements OnModuleInit, OnModuleDestroy {
   }
   async onModuleDestroy(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
+    await this.recoveryCheck;
     await this.running;
+  }
+  private async recoverIfDue(): Promise<void> {
+    const state = await this.prisma.igArrivalSyncState.findUnique({ where: { id: "singleton" }, select: { cursor: true, lastScanCompletedAt: true } });
+    if (state?.cursor || !state?.lastScanCompletedAt || Date.now() - state.lastScanCompletedAt.getTime() >= 7 * 24 * 60 * 60_000) await this.sync();
   }
   sync(): Promise<void> {
     if (!this.running)
@@ -200,14 +218,17 @@ export class IgArrivalFactsWorker implements OnModuleInit, OnModuleDestroy {
           cursor: string | null;
           factsScanGeneration: bigint | null;
           factsScanIncomplete: boolean;
+          factsScanStartedAt: Date | null;
+          databaseNow: Date;
         }[]
-      >`SELECT lockToken,generation,lockExpiresAt,\`cursor\`,factsScanGeneration,factsScanIncomplete FROM ig_arrival_sync_state WHERE id='singleton' FOR UPDATE`;
+      >`SELECT lockToken,generation,lockExpiresAt,\`cursor\`,factsScanGeneration,factsScanIncomplete,factsScanStartedAt,CURRENT_TIMESTAMP(3) AS databaseNow FROM ig_arrival_sync_state WHERE id='singleton' FOR UPDATE`;
       const row = rows[0];
       if (row.lockToken && row.lockExpiresAt && row.lockExpiresAt > new Date())
         return null;
       const generation = row.generation + 1n;
       const resume = !!row.cursor && row.factsScanGeneration !== null;
       const scanGeneration = resume ? row.factsScanGeneration! : generation;
+      const scanStartedAt = resume ? (row.factsScanStartedAt ?? new Date(0)) : row.databaseNow;
       await tx.igArrivalSyncState.update({
         where: { id: "singleton" },
         data: {
@@ -215,6 +236,7 @@ export class IgArrivalFactsWorker implements OnModuleInit, OnModuleDestroy {
           generation,
           lockExpiresAt: new Date(Date.now() + 300_000),
           factsScanGeneration: scanGeneration,
+          factsScanStartedAt: scanStartedAt,
           ...(resume ? {} : { cursor: null, factsScanIncomplete: false }),
         },
       });
@@ -222,6 +244,7 @@ export class IgArrivalFactsWorker implements OnModuleInit, OnModuleDestroy {
         lockToken: token,
         generation,
         scanGeneration,
+        scanStartedAt,
         cursor: resume ? row.cursor! : undefined,
         incomplete: resume && !!row.factsScanIncomplete,
       };
@@ -251,6 +274,7 @@ export class IgArrivalFactsWorker implements OnModuleInit, OnModuleDestroy {
                     cursor: null,
                     factsScanIncomplete: false,
                     factsScanGeneration: null,
+                    factsScanStartedAt: null,
                     lastScanCompletedAt: new Date(),
                     lastScanHadErrors: incomplete,
                   },

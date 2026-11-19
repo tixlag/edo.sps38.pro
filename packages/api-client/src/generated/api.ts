@@ -392,7 +392,55 @@ export interface MeResponseDto {
   /** @nullable */
   organizationName: string | null;
   permissions: MeResponseDtoPermissions;
+  erpEventDriven?: boolean;
   locationScope: LocationScopeDto;
+}
+
+export type ErpChangeTarget =
+  (typeof ErpChangeTarget)[keyof typeof ErpChangeTarget];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ErpChangeTarget = {
+  CANDIDATE: "CANDIDATE",
+  PERSON: "PERSON",
+} as const;
+
+export type ErpChangeCategory =
+  (typeof ErpChangeCategory)[keyof typeof ErpChangeCategory];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ErpChangeCategory = {
+  PROFILE: "PROFILE",
+  DOCUMENTS: "DOCUMENTS",
+  ARRIVALS: "ARRIVALS",
+} as const;
+
+export interface ErpChangeItemDto {
+  eventId: string;
+  target: ErpChangeTarget;
+  uid: string;
+  /**
+   * @minItems 1
+   * @maxItems 3
+   */
+  changes: ErpChangeCategory[];
+}
+
+export type ErpChangesDtoVersion =
+  (typeof ErpChangesDtoVersion)[keyof typeof ErpChangesDtoVersion];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const ErpChangesDtoVersion = {
+  NUMBER_1: 1,
+} as const;
+
+export interface ErpChangesDto {
+  version: ErpChangesDtoVersion;
+  /**
+   * @minItems 1
+   * @maxItems 50
+   */
+  items: ErpChangeItemDto[];
 }
 
 export type ApiErrorDtoMessage = string | string[];
@@ -5199,6 +5247,89 @@ export function useGetMe<
 
   return query;
 }
+
+/**
+ * @summary Store ERP candidate and person change notifications
+ */
+export const enqueueErpChanges = (
+  erpChangesDto: ErpChangesDto,
+  signal?: AbortSignal,
+) => {
+  return customInstance<void>({
+    url: `/api/internal/erp/v1/changes`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: erpChangesDto,
+    signal,
+  });
+};
+
+export const getEnqueueErpChangesMutationOptions = <
+  TError = void,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof enqueueErpChanges>>,
+    TError,
+    { data: ErpChangesDto },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof enqueueErpChanges>>,
+  TError,
+  { data: ErpChangesDto },
+  TContext
+> => {
+  const mutationKey = ["enqueueErpChanges"];
+  const { mutation: mutationOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey } };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof enqueueErpChanges>>,
+    { data: ErpChangesDto }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return enqueueErpChanges(data);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type EnqueueErpChangesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof enqueueErpChanges>>
+>;
+export type EnqueueErpChangesMutationBody = ErpChangesDto;
+export type EnqueueErpChangesMutationError = void;
+
+/**
+ * @summary Store ERP candidate and person change notifications
+ */
+export const useEnqueueErpChanges = <
+  TError = void,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof enqueueErpChanges>>,
+    TError,
+    { data: ErpChangesDto },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof enqueueErpChanges>>,
+  TError,
+  { data: ErpChangesDto },
+  TContext
+> => {
+  const mutationOptions = getEnqueueErpChangesMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
 
 /**
  * @summary Document absence requests and reviewer decisions

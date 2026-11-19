@@ -3,7 +3,7 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { ErpWorkspaceClient } from "./erp-workspace.client";
+import { ErpWorkspaceClient, erpIdentitySchema } from "./erp-workspace.client";
 import { candidateIdentityTransaction } from "./candidate-identity";
 import { arrivalStateSchema } from "./ig-arrival-contract";
 import {
@@ -15,6 +15,7 @@ export type ArrivalFactsLease = {
   lockToken: string;
   generation: bigint;
   scanGeneration?: bigint;
+  scanStartedAt?: Date;
 };
 type FactIssue = { code: string; sourceKey?: string | null };
 
@@ -26,10 +27,35 @@ export class IgArrivalFactsProjectionService {
     private readonly erp: ErpWorkspaceClient,
   ) {}
 
-  async apply(
+  async applyTargeted(raw: ArrivalFactsPerson, identity: unknown, complete: boolean, issues: FactIssue[] = []): Promise<void> {
+    if (!complete) throw new Error("ARRIVAL_SNAPSHOT_INCOMPLETE");
+    const item = arrivalFactsPersonSchema.parse(raw);
+    const parsed = erpIdentitySchema.parse(identity);
+    if (parsed.reviewGroup !== "IG" || parsed.recipientType !== "person" || parsed.personUid !== item.personUid || !item.code1c || parsed.code1C !== item.code1c)
+      throw new Error("ERP_PERSON_IDENTITY_MISMATCH");
+    await this.project(item, null, issues, true);
+  }
+
+  async applyTargetedDeletion(personUid: string): Promise<string | null> {
+    const itemUid = arrivalFactsPersonSchema.parse({ personUid, code1c: null, participations: [] }).personUid;
+    const person = await this.prisma.igArrivalPerson.findUnique({ where: { personUid: itemUid } });
+    if (!person) return null;
+    if (!person.igVerified || !person.code1c || person.bindingError)
+      throw new Error("ERP_PERSON_IDENTITY_UNAVAILABLE");
+    await this.project({ personUid: itemUid, code1c: person.code1c, participations: [] }, null, [], true, true);
+    return person.candidateId;
+  }
+
+  async apply(raw: ArrivalFactsPerson, lease: ArrivalFactsLease, issues: FactIssue[]): Promise<void> {
+    return this.project(raw, lease, issues);
+  }
+
+  private async project(
     raw: ArrivalFactsPerson,
-    lease: ArrivalFactsLease,
+    lease: ArrivalFactsLease | null,
     issues: FactIssue[],
+    targeted = false,
+    deletion = false,
   ): Promise<void> {
     const item = arrivalFactsPersonSchema.parse(raw);
     const canonicalCode =
@@ -50,8 +76,8 @@ export class IgArrivalFactsProjectionService {
         }),
       )
       .digest("hex");
-    let verified = false;
-    if (canonicalCode) {
+    let verified = targeted;
+    if (canonicalCode && !targeted) {
       try {
         const identity = await this.erp.identity(canonicalCode);
         verified =
@@ -66,25 +92,25 @@ export class IgArrivalFactsProjectionService {
       }
     }
     await candidateIdentityTransaction(this.prisma, async (tx) => {
-      const locks = await tx.$queryRaw<
-        {
-          lockToken: string | null;
-          generation: bigint;
-          lockExpiresAt: Date | null;
-        }[]
-      >`SELECT lockToken,generation,lockExpiresAt FROM ig_arrival_sync_state WHERE id='singleton' FOR UPDATE`;
-      const lock = locks[0];
-      if (
-        !lock ||
-        lock.lockToken !== lease.lockToken ||
-        lock.generation !== lease.generation ||
-        !lock.lockExpiresAt ||
-        lock.lockExpiresAt <= new Date()
-      )
-        throw new Error("ARRIVAL_SYNC_FENCING_CONFLICT");
+      if (targeted) {
+        await tx.$queryRaw`SELECT personUid FROM ig_arrival_persons WHERE personUid=${item.personUid} FOR UPDATE`;
+      } else {
+        const locks = await tx.$queryRaw<{ lockToken: string | null; generation: bigint; lockExpiresAt: Date | null }[]>`SELECT lockToken,generation,lockExpiresAt FROM ig_arrival_sync_state WHERE id='singleton' FOR UPDATE`;
+        const lock = locks[0];
+        if (!lease || !lock || lock.lockToken !== lease.lockToken || lock.generation !== lease.generation || !lock.lockExpiresAt || lock.lockExpiresAt <= new Date())
+          throw new Error("ARRIVAL_SYNC_FENCING_CONFLICT");
+        await tx.$queryRaw`SELECT personUid FROM ig_arrival_persons WHERE personUid=${item.personUid} FOR UPDATE`;
+      }
       let person = await tx.igArrivalPerson.findUnique({
         where: { personUid: item.personUid },
       });
+      if (!targeted && lease?.scanStartedAt && person?.targetedAppliedAt && person.targetedAppliedAt >= lease.scanStartedAt)
+        return;
+      const targetedAt = targeted
+        ? (await tx.$queryRaw<{ now: Date }[]>`SELECT CURRENT_TIMESTAMP(3) AS now`)[0].now
+        : null;
+      if (deletion && (!person || !person.igVerified || person.bindingError || person.code1c !== canonicalCode))
+        throw new Error("ERP_PERSON_IDENTITY_UNAVAILABLE");
       if (!person)
         person = await tx.igArrivalPerson.create({
           data: {
@@ -211,7 +237,7 @@ export class IgArrivalFactsProjectionService {
           where: { arrivalMemberUid: row.arrivalMemberUid },
           data: {
             sourceMemberUid: fact.arrivalMemberUid,
-            factsSeenGeneration: lease.scanGeneration ?? lease.generation,
+            ...(lease ? { factsSeenGeneration: lease.scanGeneration ?? lease.generation } : {}),
             factsMissingPasses: 0,
             factsArchived: false,
             factsIdentityIssue: identityIssue,
@@ -228,6 +254,10 @@ export class IgArrivalFactsProjectionService {
           },
         });
       }
+      if (targeted) await tx.igArrivalMember.updateMany({
+        where: { personUid: item.personUid, factsArchived: false, OR: [{ sourceKey: null }, { sourceKey: { notIn: item.participations.map(f => f.sourceKey) } }] },
+        data: { factsArchived: true },
+      });
       const active = await tx.igArrivalMember.findMany({
         where: {
           personUid: item.personUid,
@@ -316,7 +346,7 @@ export class IgArrivalFactsProjectionService {
           )
             bindingError = "ARRIVAL_OWNER_CONFLICT";
           else {
-            if (!candidate)
+            if (!candidate && !targeted)
               candidate = await tx.candidate.create({
                 data: {
                   identityKey: `ig-person:${item.personUid}`,
@@ -328,11 +358,12 @@ export class IgArrivalFactsProjectionService {
                       ?.fullName ?? null,
                 },
               });
-            else if (!candidate.personUid || !candidate.reviewGroup)
+            else if (candidate && (!candidate.personUid || !candidate.reviewGroup))
               candidate = await tx.candidate.update({
                 where: { id: candidate.id },
                 data: { personUid: item.personUid, reviewGroup: "IG" },
               });
+            if (candidate) {
             candidateId = candidate.id;
             await tx.igEmploymentState.upsert({
               where: { code1c: canonicalCode },
@@ -342,6 +373,7 @@ export class IgArrivalFactsProjectionService {
               },
               update: {},
             });
+            }
           }
         }
       }
@@ -353,7 +385,7 @@ export class IgArrivalFactsProjectionService {
       const contextState =
         active.length === 0
           ? "NONE"
-          : contextEligible && !bindingError && candidateId
+          : contextEligible && !bindingError && (targeted || candidateId)
             ? "CURRENT"
             : "CONFLICT";
       const payload = canonicalCode
@@ -402,7 +434,7 @@ export class IgArrivalFactsProjectionService {
         await tx.igArrivalMember.updateMany({
           where: {
             personUid: item.personUid,
-            factsSeenGeneration: lease.scanGeneration ?? lease.generation,
+            ...(lease ? { factsSeenGeneration: lease.scanGeneration ?? lease.generation } : { sourceKey: { in: item.participations.map(f => f.sourceKey) } }),
           },
           data: { lastSeenRevision: revision },
         });
@@ -414,7 +446,7 @@ export class IgArrivalFactsProjectionService {
         data: {
           code1c: canonicalCode,
           rawSourceCode1c: item.code1c,
-          factsSeenGeneration: lease.scanGeneration ?? lease.generation,
+          ...(lease ? { factsSeenGeneration: lease.scanGeneration ?? lease.generation } : { targetedAppliedRevision: revision, targetedPendingRevision: revision, targetedAppliedAt: targetedAt }),
           factsMissingPasses: 0,
           revision,
           state,
@@ -425,7 +457,7 @@ export class IgArrivalFactsProjectionService {
             verified &&
             !!canonicalCode &&
             !bindingError &&
-            (revision !== person.revision ||
+            (targeted || revision !== person.revision ||
               !person.igVerified ||
               person.syncPending),
           igVerified: verified,
@@ -523,6 +555,7 @@ export class IgArrivalFactsProjectionService {
         return;
       const affected = await tx.igArrivalPerson.findMany({
         where: {
+          ...(lease.scanStartedAt ? { OR: [{ targetedAppliedAt: null }, { targetedAppliedAt: { lt: lease.scanStartedAt } }] } : {}),
           members: {
             some: {
               factsArchived: false,
@@ -539,9 +572,13 @@ export class IgArrivalFactsProjectionService {
           },
         },
       });
-      const archived =
-        await tx.$executeRaw`UPDATE ig_arrival_members SET factsArchived = CASE WHEN factsMissingPasses >= 1 THEN TRUE ELSE factsArchived END, factsMissingPasses = factsMissingPasses + 1 WHERE factsArchived=0 AND (factsSeenGeneration IS NULL OR factsSeenGeneration <> ${lease.scanGeneration ?? lease.generation})`;
-      for (const person of affected) {
+      const archived = lease.scanStartedAt
+        ? await tx.$executeRaw`UPDATE ig_arrival_members m JOIN ig_arrival_persons p ON p.personUid=m.personUid SET m.factsArchived = CASE WHEN m.factsMissingPasses >= 1 THEN TRUE ELSE m.factsArchived END, m.factsMissingPasses = m.factsMissingPasses + 1 WHERE m.factsArchived=0 AND (m.factsSeenGeneration IS NULL OR m.factsSeenGeneration <> ${lease.scanGeneration ?? lease.generation}) AND (p.targetedAppliedAt IS NULL OR p.targetedAppliedAt < ${lease.scanStartedAt})`
+        : await tx.$executeRaw`UPDATE ig_arrival_members SET factsArchived = CASE WHEN factsMissingPasses >= 1 THEN TRUE ELSE factsArchived END, factsMissingPasses = factsMissingPasses + 1 WHERE factsArchived=0 AND (factsSeenGeneration IS NULL OR factsSeenGeneration <> ${lease.scanGeneration ?? lease.generation})`;
+      for (const affectedPerson of affected) {
+        await tx.$queryRaw`SELECT personUid FROM ig_arrival_persons WHERE personUid=${affectedPerson.personUid} FOR UPDATE`;
+        const person = await tx.igArrivalPerson.findUnique({ where: { personUid: affectedPerson.personUid } });
+        if (!person || (lease.scanStartedAt && person.targetedAppliedAt && person.targetedAppliedAt >= lease.scanStartedAt)) continue;
         const active = await tx.igArrivalMember.findMany({
           where: {
             personUid: person.personUid,
@@ -623,6 +660,7 @@ export class IgArrivalFactsProjectionService {
         data: {
           factsFinishedGeneration: lease.scanGeneration ?? lease.generation,
           factsScanGeneration: null,
+          factsScanStartedAt: null,
           factsScanIncomplete: false,
           completedAt: new Date(),
           lastScanCompletedAt: new Date(),
@@ -630,6 +668,6 @@ export class IgArrivalFactsProjectionService {
           cursor: null,
         },
       });
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
 }

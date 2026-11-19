@@ -70,6 +70,9 @@ import { OwnDocumentHistoryController } from "./own-document-history.controller"
 import { ErpAdaptationGrantsController } from "./erp-adaptation-grants.controller";
 import { ExpirationModule } from "../expiration/expiration.module";
 import { CandidateCatalogProjectionService } from "./candidate-catalog-projection.service";
+import { ErpChangeInboxService } from "./erp-change-inbox";
+import { ErpChangesController, ErpChangesGuard } from "./erp-changes.controller";
+import { ErpEventSyncService } from "./erp-event-sync.service";
 import { LkModule } from "../lk/lk.module";
 
 @Module({
@@ -83,6 +86,7 @@ import { LkModule } from "../lk/lk.module";
     LkModule,
   ],
   controllers: [
+    ErpChangesController,
     DocumentAbsenceController,
     CandidatePhotosController,
     CandidateEnrichmentController,
@@ -114,6 +118,9 @@ import { LkModule } from "../lk/lk.module";
   ],
   providers: [
     CandidateCatalogProjectionService,
+    ErpChangeInboxService,
+    ErpChangesGuard,
+    ErpEventSyncService,
     DocumentAbsenceService,
     RuEnrichmentNotificationsService,
     CandidatePhotosService,

@@ -8,11 +8,19 @@ export type RuEnrichmentStreamEvent = {
   }>;
 };
 
+export type ReviewChangeStreamEvent = {
+  candidateIds: string[];
+  documentIds: string[];
+  groups: Array<"RU" | "IG">;
+};
+
 /** SSE transport only; REST requests and contract types come from generated clients. */
 export function subscribeDocumentStatuses(options: {
   connect: (refreshToken: boolean) => Promise<{ url: string; token: string }>;
   onDocuments: (documents: DocumentListDto) => void;
   onRuEnrichment?: (event: RuEnrichmentStreamEvent) => void;
+  onReviewChange?: (event: ReviewChangeStreamEvent) => void;
+  onReviewResync?: () => void;
   onState?: (state: "connecting" | "connected" | "reconnecting") => void;
 }): () => void {
   let stopped = false;
@@ -89,11 +97,29 @@ export function subscribeDocumentStatuses(options: {
           while ((index = buffer.indexOf("\n\n")) !== -1) {
             const frame = buffer.slice(0, index);
             buffer = buffer.slice(index + 2);
-            if (
-              frame
-                .split("\n")
-                .some((line) => line.trim() === "event: documents")
-            ) {
+            const event = frame.split("\n").find((line) => line.startsWith("event:"))?.slice(6).trim();
+            if (event === "review-resync") {
+              options.onReviewResync?.();
+            } else if (event === "review-changed" && options.onReviewChange) {
+              const payload = frame.split("\n").filter((line) => line.startsWith("data:"))
+                .map((line) => line.slice(5).trimStart()).join("\n");
+              try {
+                const data: unknown = JSON.parse(payload);
+                if (typeof data !== "object" || data === null) continue;
+                const record = data as Record<string, unknown>;
+                const strings = (value: unknown): string[] => Array.isArray(value)
+                  ? value.filter((v): v is string => typeof v === "string" && v.length <= 64).slice(0, 100)
+                  : [];
+                const groups = strings(record.groups).filter((g): g is "RU" | "IG" => g === "RU" || g === "IG");
+                options.onReviewChange({
+                  candidateIds: strings(record.candidateIds),
+                  documentIds: strings(record.documentIds),
+                  groups,
+                });
+              } catch {
+                // An invalid change frame must not interrupt live status updates.
+              }
+            } else if (event === "documents") {
               const payload = frame
                 .split("\n")
                 .filter((line) => line.startsWith("data:"))

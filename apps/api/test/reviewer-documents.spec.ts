@@ -59,6 +59,7 @@ describe("ReviewerDocumentsService & Controller", () => {
       $transaction: vi.fn((cb) => cb(tx)),
       candidatePreviousDocument: {
         findFirst: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       candidatePreviousDocumentFieldEdit: {
         findMany: vi.fn().mockResolvedValue([]),
@@ -96,6 +97,7 @@ describe("ReviewerDocumentsService & Controller", () => {
       request: vi.fn().mockResolvedValue({ status: "PENDING" }),
     };
 
+    const erp = { request: vi.fn() };
     const service = new ReviewerDocumentsService(
       prisma as never,
       access as never,
@@ -103,11 +105,12 @@ describe("ReviewerDocumentsService & Controller", () => {
       manual as never,
       catalog as never,
       audit as never,
+      erp as never,
     );
 
     const controller = new ReviewerDocumentsController(service, delivery as never);
 
-    return { service, controller, prisma, tx, access, uploads, manual, catalog, audit, delivery };
+    return { service, controller, prisma, tx, access, uploads, manual, catalog, audit, delivery, erp };
   }
 
   describe("permissions and direction scopes", () => {
@@ -211,12 +214,35 @@ describe("ReviewerDocumentsService & Controller", () => {
   });
 
   describe("previous documents details and edits", () => {
+    it("still shows unavailable history belonging to the current candidate", async () => {
+      const { service, access, prisma } = createService();
+      access.candidate.mockResolvedValue(ruCandidate);
+      prisma.candidatePreviousDocument.findFirst.mockResolvedValue({ id: "prev-1", candidateId: "c-ru", sourceId: "candidate|passport", sourceErpId: "candidate|passport", sourcePersonUid: null, documentUid: "type-uid-1", title: "Паспорт", fields: {}, erpFields: {}, fieldEdits: [], localRevision: 1, originalAvailable: false, status: "ORIGINAL_UNAVAILABLE", expiresAt: null });
+      prisma.documentType.findUnique.mockResolvedValue({ code: "PASSPORT", definitions: [] });
+      const result = await service.details("c-ru", "prev-1", ruPrincipal);
+      expect(result.document.state).toBe("ORIGINAL_UNAVAILABLE");
+    });
+
+    it("hides stale owner details and rejects edits before writing", async () => {
+      const { service, access, prisma, tx } = createService();
+      const current = { ...ruCandidate, personUid: "new-person" };
+      const stale = { id: "prev-1", candidateId: "c-ru", sourceId: "passport", sourceErpId: "passport", sourcePersonUid: "old-person", sourceCandidatePersonUid: "old-person", fieldEdits: [], localRevision: 1 };
+      access.candidate.mockResolvedValue(current);
+      prisma.candidatePreviousDocument.findFirst.mockResolvedValue(stale);
+      tx.candidate.findFirst.mockResolvedValue(current);
+      tx.candidatePreviousDocument.findFirst.mockResolvedValue(stale);
+      await expect(service.details("c-ru", "prev-1", ruPrincipal)).rejects.toThrow("PREVIOUS_DOCUMENT_NOT_FOUND");
+      await expect(service.edit("c-ru", "prev-1", { revision: 1, fields: { number: "secret" } }, ruPrincipal, "test")).rejects.toThrow("PREVIOUS_DOCUMENT_NOT_FOUND");
+      expect(tx.candidatePreviousDocumentFieldEdit.upsert).not.toHaveBeenCalled();
+    });
+
     it("returns details with fields, original and edited values", async () => {
       const { service, access, prisma } = createService();
       access.candidate.mockResolvedValueOnce(ruCandidate);
       prisma.candidatePreviousDocument.findFirst.mockResolvedValueOnce({
         id: "prev-1",
         candidateId: "c-ru",
+        sourceId: "candidate|passport", sourceErpId: "candidate|passport", sourcePersonUid: null,
         documentUid: "type-uid-1",
         title: "Паспорт",
         fields: { series: "1234", number: "567890" },
@@ -256,6 +282,26 @@ describe("ReviewerDocumentsService & Controller", () => {
       );
     });
 
+    it("does not send corrections for an unavailable or different owner", async () => {
+      const { service, access, prisma, erp } = createService();
+      access.candidate.mockResolvedValue(ruCandidate);
+      prisma.candidatePreviousDocument.findFirst.mockResolvedValue({ id: "prev-1", candidateId: "c-ru", erpEditRequestId: "request", erpEditSyncStatus: "FAILED", candidate: { ...ruCandidate, personUid: "person-new" }, sourceId: "source", sourcePersonUid: "person-old", sourceErpId: "source", originalAvailable: true, fieldEdits: [] });
+      vi.spyOn(service, "details").mockResolvedValue({} as never);
+      await service.retryErpEdit("c-ru", "prev-1", { ...ruPrincipal, code1c: "reviewer" });
+      expect(erp.request).not.toHaveBeenCalled();
+      expect(prisma.candidatePreviousDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ erpEditSyncStatus: "FAILED", erpEditSyncError: "ERP_DOCUMENT_OWNER_MISMATCH" }) }));
+    });
+
+    it("does not send corrections for ambiguous legacy source IDs", async () => {
+      const { service, access, prisma, erp } = createService();
+      access.candidate.mockResolvedValue(ruCandidate);
+      prisma.candidatePreviousDocument.findFirst.mockResolvedValue({ id: "prev-1", candidateId: "c-ru", erpEditRequestId: "request", erpEditSyncStatus: "FAILED", candidate: { ...ruCandidate, personUid: "person-1" }, sourceId: "legacy#2", sourcePersonUid: "person-1", sourceCandidatePersonUid: "person-1", sourceErpId: null, originalAvailable: true, fieldEdits: [] });
+      vi.spyOn(service, "details").mockResolvedValue({} as never);
+      await service.retryErpEdit("c-ru", "prev-1", { ...ruPrincipal, code1c: "reviewer" });
+      expect(erp.request).not.toHaveBeenCalled();
+      expect(prisma.candidatePreviousDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ erpEditSyncStatus: "FAILED", erpEditSyncError: "ERP_DOCUMENT_SOURCE_AMBIGUOUS" }) }));
+    });
+
     it("rejects edit if revision does not match current localRevision", async () => {
       const { service, access, tx } = createService();
       access.candidate.mockResolvedValueOnce(ruCandidate);
@@ -263,6 +309,7 @@ describe("ReviewerDocumentsService & Controller", () => {
       tx.candidatePreviousDocument.findFirst.mockResolvedValueOnce({
         id: "prev-1",
         candidateId: "c-ru",
+        sourceId: "candidate|passport", sourceErpId: "candidate|passport", sourcePersonUid: null,
         localRevision: 2,
         fields: {},
         erpFields: {},
@@ -287,6 +334,7 @@ describe("ReviewerDocumentsService & Controller", () => {
       tx.candidatePreviousDocument.findFirst.mockResolvedValue({
         id: "prev-1",
         candidateId: "c-ru",
+        sourceId: "candidate|passport", sourceErpId: "candidate|passport", sourcePersonUid: null,
         localRevision: 2,
         fields: { number: "old-num", expiryDate: "2025-01-01" },
         erpFields: { number: "old-num", expiryDate: "2025-01-01" },
@@ -307,6 +355,8 @@ describe("ReviewerDocumentsService & Controller", () => {
         { name: "expiryDate", value: "2030-12-31", kind: "date", editedBy: "reviewer-ru" },
       ]);
       prisma.candidatePreviousDocument.findFirst.mockResolvedValue({
+        candidate: ruCandidate,
+        sourceId: "candidate|passport", sourceErpId: "candidate|passport", sourcePersonUid: null,
         id: "prev-1",
         candidateId: "c-ru",
         localRevision: 3,

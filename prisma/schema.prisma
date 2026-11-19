@@ -500,11 +500,11 @@ model Candidate {
   chatAttachments CommunicationAttachment[]
 
   @@index([locationId])
+  @@index([managerId, erpDeleted, fullName, id], map: "candidates_manager_queue_idx")
   @@index([code1c])
   @@index([personUid])
   @@index([previousDocumentsSyncedAt])
   @@index([profileSyncNextAttemptAt])
-  @@index([managerId, erpDeleted, fullName, id], map: "candidates_manager_queue_idx")
   @@map("candidates")
 }
 
@@ -1177,6 +1177,9 @@ model CandidatePreviousDocument {
   candidateId String @db.VarChar(64)
   candidate Candidate @relation(fields: [candidateId], references: [id], onUpdate: Restrict)
   sourceId String @db.VarChar(256)
+  sourceErpId String? @db.VarChar(256)
+  sourcePersonUid String? @db.VarChar(36)
+  sourceCandidatePersonUid String? @db.VarChar(36)
   documentUid String? @db.VarChar(36)
   title String @db.VarChar(512)
   fields Json
@@ -1233,6 +1236,9 @@ model IgArrivalPerson {
   code1c String? @db.VarChar(64)
   rawSourceCode1c String? @db.Text
   factsSeenGeneration BigInt?
+  targetedPendingRevision BigInt?
+  targetedAppliedRevision BigInt?
+  targetedAppliedAt DateTime? @db.DateTime(3)
   factsMissingPasses Int @default(0)
   revision BigInt @default(0)
   state String @db.VarChar(16)
@@ -1302,6 +1308,7 @@ model IgArrivalSyncState {
   id String @id @db.VarChar(32)
   factsFinishedGeneration BigInt?
   factsScanGeneration BigInt?
+  factsScanStartedAt DateTime? @db.DateTime(3)
   factsScanIncomplete Boolean @default(false)
   cursor String? @db.VarChar(128)
   completedAt DateTime? @db.DateTime(3)
@@ -1344,4 +1351,28 @@ model CandidatePreviousDocumentFieldEdit {
   previousDocument CandidatePreviousDocument @relation(fields: [previousDocumentId], references: [id], onDelete: Cascade)
   @@id([previousDocumentId, name])
   @@map("candidate_previous_document_field_edits")
+}
+
+/// Durable ERP notifications are keyed independently of the EDO candidate card.
+model ErpChangeInbox {
+  target String @db.VarChar(12)
+  uid String @db.Char(36)
+  lastEventKey String @db.Char(64)
+  revision BigInt @default(0) @db.UnsignedBigInt
+  profileRevision BigInt @default(0) @db.UnsignedBigInt
+  documentsRevision BigInt @default(0) @db.UnsignedBigInt
+  arrivalsRevision BigInt @default(0) @db.UnsignedBigInt
+  dueAt DateTime? @db.DateTime(3)
+  attempts Int @default(0)
+  batchWidth Int @default(50)
+  deferredMask Int @default(0)
+  notifyRevision BigInt @default(0) @db.UnsignedBigInt
+  notifyAt DateTime? @db.DateTime(3)
+  notifyCandidateId String? @db.VarChar(64)
+
+  @@id([target, uid])
+  @@index([dueAt, target, uid])
+  @@index([target, deferredMask])
+  @@index([notifyAt])
+  @@map("erp_change_inbox")
 }
